@@ -169,6 +169,140 @@ async function printViaWebSocket(options: SilentPrintOptions): Promise<SilentPri
 }
 
 /**
+ * Yazdırma işlemi devam ederken ekranda dönen yüklenme ikonunu (spinner overlay) gösterir.
+ */
+function showPrintLoadingOverlay(printerName?: string | null): void {
+  if (typeof document === "undefined") return;
+
+  hidePrintLoadingOverlay();
+
+  if (!document.getElementById("likya-print-spinner-style")) {
+    const style = document.createElement("style");
+    style.id = "likya-print-spinner-style";
+    style.innerHTML = `
+      @keyframes likyaPrintSpin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      @keyframes likyaPrintPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const overlay = document.createElement("div");
+  overlay.id = "likya-print-loading-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 99999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    pointer-events: all;
+  `;
+
+  const card = document.createElement("div");
+  card.style.cssText = `
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 24px 32px;
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-width: 280px;
+    max-width: 90vw;
+  `;
+
+  const spinnerContainer = document.createElement("div");
+  spinnerContainer.style.cssText = `
+    width: 56px;
+    height: 56px;
+    position: relative;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `;
+
+  const spinner = document.createElement("div");
+  spinner.style.cssText = `
+    width: 52px;
+    height: 52px;
+    border: 4px solid #e2e8f0;
+    border-top: 4px solid #0284c7;
+    border-right: 4px solid #0284c7;
+    border-radius: 50%;
+    animation: likyaPrintSpin 0.8s linear infinite;
+  `;
+
+  const icon = document.createElement("div");
+  icon.style.cssText = `
+    position: absolute;
+    font-size: 22px;
+    line-height: 1;
+  `;
+  icon.innerHTML = "🖨️";
+
+  spinnerContainer.appendChild(spinner);
+  spinnerContainer.appendChild(icon);
+
+  const titleEl = document.createElement("div");
+  titleEl.style.cssText = `
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 6px;
+    letter-spacing: -0.2px;
+  `;
+  titleEl.innerText = "Yazıcıya Gönderiliyor...";
+
+  const descEl = document.createElement("div");
+  descEl.style.cssText = `
+    font-size: 13px;
+    color: #64748b;
+    max-width: 280px;
+    line-height: 1.4;
+    animation: likyaPrintPulse 1.6s ease-in-out infinite;
+  `;
+  const pName = printerName ? `"${printerName}"` : "Tanımlı Yazıcı";
+  descEl.innerText = `${pName} çıktısı hazırlanıyor, lütfen bekleyiniz...`;
+
+  card.appendChild(spinnerContainer);
+  card.appendChild(titleEl);
+  card.appendChild(descEl);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
+/**
+ * Ekranda gösterilen yüklenme spinner overlay'ini temizler.
+ */
+function hidePrintLoadingOverlay(): void {
+  if (typeof document === "undefined") return;
+  const overlay = document.getElementById("likya-print-loading-overlay");
+  if (overlay) {
+    try {
+      overlay.remove();
+    } catch {
+      overlay.parentNode?.removeChild(overlay);
+    }
+  }
+}
+
+/**
  * Gönderilen HTML veya Metin verisini doğrudan yazıcıya gönderir.
  * Tarayıcı önizleme penceresini açmaz, arka plandaki yerel yazıcı servisine iletir.
  */
@@ -190,81 +324,88 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
-  // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
+  // Yazıcıya gönderim süresince ekranda dönen yüklenme ikonu gösterilir
+  showPrintLoadingOverlay(printerName);
+
   try {
-    const wsResult = await printViaWebSocket(options);
-    if (wsResult) {
-      return wsResult;
-    }
-  } catch (wsErr) {
-    console.warn("[triggerSilentPrint] WebSocket yazdırma denenirken hata:", wsErr);
-  }
-
-  // 2. Yedek: Yerel HTTP POST (Port 9100 ve Port 5050 - 127.0.0.1 & localhost)
-  const candidateUrls = [
-    "http://127.0.0.1:9100/print",
-    "http://127.0.0.1:9100/api/print",
-    "http://localhost:9100/print",
-    "http://localhost:9100/api/print",
-    "http://127.0.0.1:5050/print",
-  ];
-
-  let lastError = "";
-
-  for (const url of candidateUrls) {
+    // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          html,
-          text,
-          printerName,
-          targetDevice: printerName,
-          copies,
-          isPos,
-          title,
-        }),
-        signal: controller.signal,
-      }).catch((e) => {
-        lastError = e?.message || "Bağlantı kurulamadı";
-        return null;
-      });
-
-      clearTimeout(timeoutId);
-
-      if (res) {
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          if (data.success !== false) {
-            return {
-              success: true,
-              message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
-            };
-          } else {
-            lastError = data.message || "Yazdırma servisi hata döndürdü.";
-          }
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
-        }
+      const wsResult = await printViaWebSocket(options);
+      if (wsResult) {
+        return wsResult;
       }
-    } catch (err: any) {
-      lastError = err?.message || "Servis isteği başarısız.";
+    } catch (wsErr) {
+      console.warn("[triggerSilentPrint] WebSocket yazdırma denenirken hata:", wsErr);
     }
-  }
 
-  // 3. Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
-  // Tarayıcı önizleme penceresini açmadan, kullanıcıya bildirim olarak hata döndürülür.
-  return {
-    success: false,
-    message: lastError
-      ? `Yazıcı servisine ulaşılamadı (${lastError}). Lütfen PrinterAgent.exe uygulamasının açık olduğunu kontrol ediniz.`
-      : "Yazıcı servisine (PrinterAgent.exe) ulaşılamadı. Lütfen PrinterAgent uygulamasının açık olduğunu kontrol ediniz.",
-  };
+    // 2. Yedek: Yerel HTTP POST (Port 9100 ve Port 5050 - 127.0.0.1 & localhost)
+    const candidateUrls = [
+      "http://127.0.0.1:9100/print",
+      "http://127.0.0.1:9100/api/print",
+      "http://localhost:9100/print",
+      "http://localhost:9100/api/print",
+      "http://127.0.0.1:5050/print",
+    ];
+
+    let lastError = "";
+
+    for (const url of candidateUrls) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            html,
+            text,
+            printerName,
+            targetDevice: printerName,
+            copies,
+            isPos,
+            title,
+          }),
+          signal: controller.signal,
+        }).catch((e) => {
+          lastError = e?.message || "Bağlantı kurulamadı";
+          return null;
+        });
+
+        clearTimeout(timeoutId);
+
+        if (res) {
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            if (data.success !== false) {
+              return {
+                success: true,
+                message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
+              };
+            } else {
+              lastError = data.message || "Yazdırma servisi hata döndürdü.";
+            }
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
+          }
+        }
+      } catch (err: any) {
+        lastError = err?.message || "Servis isteği başarısız.";
+      }
+    }
+
+    // 3. Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
+    return {
+      success: false,
+      message: lastError
+        ? `Yazıcı servisine ulaşılamadı (${lastError}). Lütfen PrinterAgent.exe uygulamasının açık olduğunu kontrol ediniz.`
+        : "Yazıcı servisine (PrinterAgent.exe) ulaşılamadı. Lütfen PrinterAgent uygulamasının açık olduğunu kontrol ediniz.",
+    };
+  } finally {
+    // Yazdırma işlemi bittiğinde (başarılı veya hatalı) yüklenme ikonunu kaldır
+    hidePrintLoadingOverlay();
+  }
 }
 
 /**

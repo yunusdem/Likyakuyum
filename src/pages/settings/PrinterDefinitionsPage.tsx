@@ -341,21 +341,19 @@ export const PrinterDefinitionsPage: React.FC = () => {
     }, 150);
   };
 
-  // Seçilen yazıcıyı forma ata ve doğrudan SQL veritabanına kaydet
-  const handleSelectAndSaveToSQL = async (printerName: string) => {
+  // Seçilen yazıcıyı forma ata, ilgili inputları doldur ve modalı kapat
+  const handleSelectPrinterToInput = (printerName: string) => {
     const cleanName = (printerName || "").trim();
     if (!cleanName) return;
 
+    // 1. İstemci LocalStorage'ına ekle
+    const stored = getLocalPrintersFromStorage();
+    const updated = Array.from(new Set([cleanName, ...stored]));
+    saveLocalPrintersToStorage(updated);
+    updateClientPrinterLists(updated);
+
+    // 2. Terminal bazlı seçili yazıcı olarak hafızaya al
     try {
-      setIsSaving(true);
-
-      // 1. İstemci LocalStorage'ına ekle
-      const stored = getLocalPrintersFromStorage();
-      const updated = Array.from(new Set([cleanName, ...stored]));
-      saveLocalPrintersToStorage(updated);
-      updateClientPrinterLists(updated);
-
-      // 2. Terminal bazlı seçili yazıcı olarak hafızaya al
       const terminalUUID = PrinterService.getTerminalUUID();
       PrinterService.saveClientPrinter(
         {
@@ -366,49 +364,39 @@ export const PrinterDefinitionsPage: React.FC = () => {
         },
         user?.id
       );
+    } catch {}
 
-      // 3. Form alanlarını otomatik güncelle
-      const newAd =
-        !formData.ad || formData.ad.trim() === "" || formData.ad === formData.cihazAdi
-          ? cleanName
-          : formData.ad;
+    // 3. Form alanlarını ve ilgili inputları otomatik doldur
+    const newAd =
+      !formData.ad || formData.ad.trim() === "" || formData.ad === formData.cihazAdi
+        ? cleanName
+        : formData.ad;
 
-      let cleanSiraNo = parseInt(String(formData.siraNo), 10);
-      if (isNaN(cleanSiraNo) || cleanSiraNo <= 0) {
-        const maxSira = yazicilar.reduce((max, y) => {
-          const s = Number(y.siraNo);
-          return !isNaN(s) && s > max ? s : max;
-        }, 0);
-        cleanSiraNo = Math.max(maxSira + 1, yazicilar.length + 1);
-      }
-
-      const payload: YaziciFormData = {
-        ...formData,
-        siraNo: cleanSiraNo,
-        ad: newAd,
-        cihazAdi: cleanName,
-        kopyaSayisi: parseInt(String(formData.kopyaSayisi), 10) || 1,
-      };
-
-      setFormData(payload);
-
-      // 4. Mevcut SQL API rotamıza POST / PUT ederek kaydet
-      if (isNewRecord || !selectedYazici) {
-        await PrinterService.createYazici(payload);
-      } else {
-        await PrinterService.updateYazici(selectedYazici.id, payload);
-      }
-
-      await loadData();
-      setShowSystemPrintersModal(false);
-    } catch (err: any) {
-      setAlertError(`❌ SQL Kayıt Hatası: ${err.message || "Yazıcı veritabanına kaydedilemedi."}`);
-    } finally {
-      setIsSaving(false);
+    let cleanSiraNo = parseInt(String(formData.siraNo), 10);
+    if (isNaN(cleanSiraNo) || cleanSiraNo <= 0) {
+      const maxSira = yazicilar.reduce((max, y) => {
+        const s = Number(y.siraNo);
+        return !isNaN(s) && s > max ? s : max;
+      }, 0);
+      cleanSiraNo = Math.max(maxSira + 1, yazicilar.length + 1);
     }
+
+    setFormData((prev) => ({
+      ...prev,
+      siraNo: prev.siraNo || cleanSiraNo,
+      ad: newAd,
+      cihazAdi: cleanName,
+      kopyaSayisi: prev.kopyaSayisi || 1,
+    }));
+
+    // Datalist ve dropdown için de listeye ekle
+    setPrinterList((prev) => Array.from(new Set([cleanName, ...prev])));
+    setSelectedSystemPrinterName(cleanName);
+    setShowSystemPrintersModal(false);
   };
 
-  const handleSelectSystemPrinter = handleSelectAndSaveToSQL;
+  const handleSelectSystemPrinter = handleSelectPrinterToInput;
+  const handleSelectAndSaveToSQL = handleSelectPrinterToInput;
 
   // Load all printers
   const loadData = async (targetIndex?: number) => {
@@ -1029,9 +1017,9 @@ export const PrinterDefinitionsPage: React.FC = () => {
                           key={idx}
                           style={{ cursor: "pointer" }}
                           onClick={() => setSelectedSystemPrinterName(p.name)}
-                          onDoubleClick={() => handleSelectAndSaveToSQL(p.name)}
+                          onDoubleClick={() => handleSelectPrinterToInput(p.name)}
                           className={isSelected ? "table-primary fw-semibold" : ""}
-                          title="Tek tık: Satırı seçer | Çift tık: Seçip SQL veritabanına otomatik kaydeder"
+                          title="Çift tık: Yazıcıyı seçer ve forma aktarır"
                         >
                           <td className="text-center text-secondary small">{idx + 1}</td>
                           <td>
@@ -1073,18 +1061,13 @@ export const PrinterDefinitionsPage: React.FC = () => {
                                 variant={isSelected ? "primary" : "outline-primary"}
                                 size="sm"
                                 className="py-0 px-2 fw-semibold text-nowrap"
-                                disabled={isSaving}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleSelectAndSaveToSQL(p.name);
+                                  handleSelectPrinterToInput(p.name);
                                 }}
-                                title="Bu yazıcıyı seçip SQL veritabanına otomatik kaydeder"
+                                title="Bu yazıcıyı seçip forma aktarır"
                               >
-                                {isSaving && selectedSystemPrinterName === p.name ? (
-                                  <Spinner size="sm" animation="border" />
-                                ) : (
-                                  "Seç ve Ata"
-                                )}
+                                Seç
                               </Button>
                             </div>
                           </td>
@@ -1100,7 +1083,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
         <Modal.Footer className="bg-light py-2 px-3 d-flex justify-content-between align-items-center">
           <div className="small text-muted">
             {selectedSystemPrinterName ? (
-              <span>Seçili Yazıcı: <strong className="text-dark">{selectedSystemPrinterName}</strong> ("Seç ve Ata" veya çift tıklama ile doğrudan SQL'e kaydedilir)</span>
+              <span>Seçili Yazıcı: <strong className="text-dark">{selectedSystemPrinterName}</strong> (Çift tıklayarak veya "Seç" butonu ile forma aktarabilirsiniz)</span>
             ) : (
               <span>Listeden bir yazıcı seçiniz veya satıra çift tıklayınız.</span>
             )}
@@ -1109,13 +1092,12 @@ export const PrinterDefinitionsPage: React.FC = () => {
             <Button
               variant="primary"
               size="sm"
-              disabled={!selectedSystemPrinterName || isSaving}
-              onClick={() => handleSelectAndSaveToSQL(selectedSystemPrinterName)}
+              disabled={!selectedSystemPrinterName}
+              onClick={() => handleSelectPrinterToInput(selectedSystemPrinterName)}
               className="fw-bold px-3 d-flex align-items-center gap-1.5"
             >
               <IconCheck size={16} />
-              <span>Seç ve Ata</span>
-              {isSaving && <Spinner size="sm" animation="border" className="ms-1" />}
+              <span>Seç</span>
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowSystemPrintersModal(false)}>
               Kapat
