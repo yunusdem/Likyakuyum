@@ -6,6 +6,7 @@ const router = Router();
 router.post("/register-client-printers", YaziciController.registerClientPrinters);
 router.get("/client-printers", YaziciController.getClientPrinters);
 router.get("/agent-script", YaziciController.getAgentScript);
+router.get("/download-agent", YaziciController.downloadAgent);
 router.get("/print-jobs", YaziciController.getPendingPrintJobs);
 router.post("/print-jobs/:id/complete", YaziciController.completePrintJob);
 router.use(authenticate);

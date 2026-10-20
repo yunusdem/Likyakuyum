@@ -1,3 +1,5 @@
+import path from "path";
+import fs from "fs";
 import { YaziciService } from "../services/yazici.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -395,7 +397,42 @@ while ($listener.IsListening) {
      */
     static directPrint = asyncHandler(async (req, res) => {
         const dbContext = YaziciController.getDbContext(req);
-        const result = await YaziciService.directPrint(req.body, dbContext);
+        const rawIp = (req.headers["cf-connecting-ip"]?.toString().trim() ||
+            req.headers["x-real-ip"]?.toString().trim() ||
+            req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() ||
+            req.socket.remoteAddress ||
+            "127.0.0.1").replace(/^.*:/, "");
+        const clientIp = rawIp === "1" ? "127.0.0.1" : rawIp;
+        const result = await YaziciService.directPrint({ ...req.body, clientIp }, dbContext);
         return ApiResponse.ok(res, result.message, result);
+    });
+    /**
+     * GET /api/v1/yazici/download-agent
+     * Her iki siteden de (likyakuyum.com ve likyaerp.com) güncel PrinterAgent.exe dosyasını indirir.
+     */
+    static downloadAgent = asyncHandler(async (_req, res) => {
+        const candidatePaths = [
+            path.resolve(process.cwd(), "../public/PrinterAgent.exe"),
+            path.resolve(process.cwd(), "../public-erp/PrinterAgent.exe"),
+            path.resolve(process.cwd(), "public/PrinterAgent.exe"),
+            path.resolve(process.cwd(), "../printercekmeApp/dist/PrinterAgent.exe"),
+            path.resolve(process.cwd(), "../dist/PrinterAgent.exe"),
+            path.resolve(process.cwd(), "../dist-erp/PrinterAgent.exe"),
+            path.resolve(process.cwd(), "uploads/PrinterAgent.exe"),
+        ];
+        let foundPath = null;
+        for (const p of candidatePaths) {
+            if (fs.existsSync(p)) {
+                foundPath = p;
+                break;
+            }
+        }
+        if (!foundPath) {
+            return res.status(404).json({ success: false, message: "PrinterAgent.exe bulunamadı." });
+        }
+        res.setHeader("Content-Disposition", 'attachment; filename="PrinterAgent.exe"');
+        res.setHeader("Content-Type", "application/octet-stream");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        return res.sendFile(foundPath);
     });
 }

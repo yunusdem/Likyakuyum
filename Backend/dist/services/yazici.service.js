@@ -325,8 +325,11 @@ export class YaziciService {
                 logger.warn(`[DirectPrint] Klasöre yazdırma hatası: ${dirErr.message}`);
             }
         }
-        // 3. İşletim Sistemi Spooler Yazdırması (CUPS / lp on macOS/Linux or PowerShell on Windows)
-        if (targetDevice && targetDevice !== "Varsayılan Yazıcı") {
+        // 3. İşletim Sistemi Spooler Yazdırması — SADECE istek sunucunun kendi bilgisayarından geliyorsa.
+        //    Bulutta sunucunun yazıcıları kullanıcının yazıcıları değildir; o durumda iş istemci kuyruğuna (adım 4) gider.
+        const ip = (dto.clientIp || "").trim();
+        const isLocalRequest = !ip || ip === "127.0.0.1" || ip === "::1" || ip === "localhost";
+        if (isLocalRequest)
             try {
                 const isPos = Boolean(dto.isPos);
                 const ext = isPos ? "txt" : "html";
@@ -335,21 +338,22 @@ export class YaziciService {
                 const isWin = process.platform === "win32";
                 let cmd = "";
                 if (isWin) {
+                    const safeTarget = (targetDevice && targetDevice !== "Varsayılan Yazıcı" ? targetDevice : "").replace(/'/g, "''");
                     if (isPos) {
-                        // Termal / Metin Fiş: PowerShell Out-Printer ile doğrudan sürücüye ilet
-                        cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Raw -Encoding UTF8 '${tmpFile}' | Out-Printer -Name '${targetDevice}'"`;
+                        cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$target = '${safeTarget}'; $p = if ($target) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $target -or $_.DeviceID -eq $target } | Select-Object -First 1 } else { $null }; if (-not $p -and $target) { $clean = ($target -split '[\\\\/]')[-1]; $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $clean + '*') -or $_.DeviceID -like ('*' + $clean + '*') } | Select-Object -First 1 }; if ($p) { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Raw -Encoding UTF8 '${tmpFile}' | Out-Printer -Name $p.Name } else { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Content -Raw -Encoding UTF8 '${tmpFile}' | Out-Printer }"`;
                     }
                     else {
-                        // HTML / A4 Fatura: Microsoft Edge headless ile doğrudan yazdırma (Windows 10/11 yerleşik)
-                        cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath msedge.exe -ArgumentList '--headless','--disable-gpu','--print-to-printer=\`"${targetDevice}\`"','\`"${tmpFile}\`"' -Wait -WindowStyle Hidden"`;
+                        cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$target = '${safeTarget}'; $p = if ($target) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $target -or $_.DeviceID -eq $target } | Select-Object -First 1 } else { $null }; if (-not $p -and $target) { $clean = ($target -split '[\\\\/]')[-1]; $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $clean + '*') -or $_.DeviceID -like ('*' + $clean + '*') } | Select-Object -First 1 }; $pName = if ($p) { $p.Name } else { (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name }; if ($pName) { Start-Process -FilePath msedge.exe -ArgumentList '--headless','--disable-gpu',(\\"--print-to-printer=\\\\\`\\"\\" + $pName + \\"\\\\\\\`\\"\\"),'\\"${tmpFile}\\"' -Wait -WindowStyle Hidden } else { Start-Process -FilePath msedge.exe -ArgumentList '--headless','--disable-gpu','--print-to-printer','\\"${tmpFile}\\"' -Wait -WindowStyle Hidden }"`;
                     }
                 }
                 else {
-                    cmd = `lp -d "${targetDevice}" -n ${copies} "${tmpFile}"`;
+                    const cleanTarget = (targetDevice && targetDevice !== "Varsayılan Yazıcı" ? targetDevice : "").split(/[\\/]/).pop() || "";
+                    cmd = cleanTarget
+                        ? `lp -d "${cleanTarget}" -n ${copies} "${tmpFile}"`
+                        : `lp -n ${copies} "${tmpFile}"`;
                 }
                 const printed = await new Promise((resolve) => {
                     exec(cmd, { timeout: 10000 }, (error) => {
-                        // cleanup temp file after a bit
                         setTimeout(() => {
                             try {
                                 fs.unlinkSync(tmpFile);
@@ -376,7 +380,6 @@ export class YaziciService {
             catch (osErr) {
                 logger.warn(`[DirectPrint] OS print error: ${osErr.message}`);
             }
-        }
         // 4. İstemci Bilgisayarı Kuyruğu (Bulut sunucusundan istemci bilgisayara sessiz yazdırma)
         if (targetDevice && targetDevice !== "Varsayılan Yazıcı") {
             const jobId = YaziciService.queuePrintJob({
@@ -391,7 +394,7 @@ export class YaziciService {
             });
             return {
                 success: true,
-                message: `"${targetDevice}" yazıcısına yazdırma emri iletildi (Kuyruk ID: ${jobId}).`,
+                message: `"${targetDevice}" yazıcısına yazdırma emri bu bilgisayarın yerel yazdırma servisine iletildi (Kuyruk ID: ${jobId}).`,
             };
         }
         // Fallback: Tarayıcı yazdırma motoru tetiklenecek

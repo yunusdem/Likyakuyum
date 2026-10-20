@@ -472,86 +472,120 @@ export class PrinterService {
   }
 
   /**
-   * printercekmeApp (Yerel Ajan - Port 9100) üzerinden işletim sistemi yazıcılarını çeker
+   * printercekmeApp (Yerel Ajan - Port 9100) üzerinden işletim sistemi yazıcılarını çeker.
+   * 1. Öncelik WebSocket (ws://127.0.0.1:9100) — Canlı HTTPS sayfalarında Mixed Content / PNA engeline takılmaz.
+   * 2. Sadece localhost ortamında çalışırken fallback olarak fetch('http://127.0.0.1:9100/api/printers') kullanır.
    */
   public static async fetchFromPrinterCekmeApp(): Promise<{
     success: boolean;
     printers: SystemPrinterItem[];
     error?: string;
   }> {
-    // 1. HTTP GET /api/printers
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const res = await fetch("http://127.0.0.1:9100/api/printers", {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const list: SystemPrinterItem[] = data
-            .map((item: any) => ({
-              name: String(item.name || "").trim(),
-              isDefault: Boolean(item.isDefault),
-              isOnline: item.status !== "Çevrimdışı",
-              source: "local_agent" as const,
-              details: `🔌 printercekmeApp (${item.status || "Hazır"})`,
-            }))
-            .filter((p) => p.name.length > 0);
-          return { success: true, printers: list };
-        }
-      }
-    } catch (httpErr) {
-      // 2. WebSocket Fallback (ws://127.0.0.1:9100) - HTTPS mixed content bypass
+    // 1. Öncelik WebSocket (ws://127.0.0.1:9100)
+    if (typeof WebSocket !== "undefined") {
       try {
-        if (typeof WebSocket !== "undefined") {
-          const wsList = await new Promise<SystemPrinterItem[]>((resolve, reject) => {
-            const ws = new WebSocket("ws://127.0.0.1:9100");
-            const timer = setTimeout(() => {
+        const wsPrinters = await new Promise<SystemPrinterItem[] | null>((resolve) => {
+          let resolved = false;
+          let ws: WebSocket | null = null;
+
+          const finish = (result: SystemPrinterItem[] | null) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timer);
+              if (ws) {
+                try { ws.close(); } catch {}
+              }
+              resolve(result);
+            }
+          };
+
+          const timer = setTimeout(() => {
+            finish(null);
+          }, 1500);
+
+          try {
+            ws = new WebSocket("ws://127.0.0.1:9100");
+
+            ws.onopen = () => {
               try {
-                ws.close();
+                ws?.send(JSON.stringify({ action: "get_printers" }));
               } catch {}
-              reject(new Error("WebSocket timeout"));
-            }, 1800);
+            };
 
             ws.onmessage = (event) => {
               try {
-                const msg = JSON.parse(event.data);
-                if (msg.type === "PRINTER_LIST" && Array.isArray(msg.data)) {
-                  clearTimeout(timer);
-                  ws.close();
-                  const list: SystemPrinterItem[] = msg.data
+                const parsed = JSON.parse(event.data);
+                const rawList = Array.isArray(parsed) ? parsed : (parsed.data || parsed.printers || []);
+                if (Array.isArray(rawList)) {
+                  const list: SystemPrinterItem[] = rawList
                     .map((item: any) => ({
                       name: String(item.name || "").trim(),
                       isDefault: Boolean(item.isDefault),
                       isOnline: item.status !== "Çevrimdışı",
                       source: "local_agent" as const,
-                      details: `🔌 printercekmeApp WS (${item.status || "Hazır"})`,
+                      details: `🔌 printercekmeApp (${item.status || "Hazır"})`,
                     }))
-                    .filter((p: any) => p.name.length > 0);
-                  resolve(list);
+                    .filter((p) => p.name.length > 0);
+                  finish(list);
                 }
               } catch {}
             };
 
-            ws.onerror = (err) => {
-              clearTimeout(timer);
-              reject(err);
+            ws.onerror = () => {
+              finish(null);
             };
-          });
+          } catch {
+            finish(null);
+          }
+        });
 
-          if (wsList && wsList.length > 0) {
-            return { success: true, printers: wsList };
+        if (wsPrinters && wsPrinters.length > 0) {
+          return { success: true, printers: wsPrinters };
+        }
+      } catch (wsErr) {
+        console.warn("[printerService] WebSocket bağlantı hatası:", wsErr);
+      }
+    }
+
+    // 2. Sadece localhost / HTTP ortamında çalışırken fallback olarak HTTP GET /api/printers
+    const isLocalhostOrHttp =
+      typeof window !== "undefined" &&
+      (window.location.protocol === "http:" ||
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1");
+
+    if (isLocalhostOrHttp) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const res = await fetch("http://127.0.0.1:9100/api/printers", {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const list: SystemPrinterItem[] = data
+              .map((item: any) => ({
+                name: String(item.name || "").trim(),
+                isDefault: Boolean(item.isDefault),
+                isOnline: item.status !== "Çevrimdışı",
+                source: "local_agent" as const,
+                details: `🔌 printercekmeApp (${item.status || "Hazır"})`,
+              }))
+              .filter((p) => p.name.length > 0);
+            return { success: true, printers: list };
           }
         }
-      } catch {}
+      } catch (httpErr) {
+        console.warn("[printerService] Localhost HTTP /api/printers başarısız:", httpErr);
+      }
     }
 
     return {
       success: false,
       printers: [],
-      error: "Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.",
+      error: "Yerel yazıcı servisine (PrinterAgent.exe) ulaşılamadı. Lütfen PrinterAgent uygulamasının açık olduğundan emin olun.",
     };
   }
 }

@@ -2199,6 +2199,16 @@ export class DovizFisSqlRepository {
     /**
      * Get single Döviz Fişi by ID with lines
      */
+    /**
+     * Fiş GİB'e gönderilmiş mi: eski masaüstü satır alanı (E_BELGE_DURUMU=1) ya da web e-Belge giden kaydı (99:<fisId>:% GONDERILDI)
+     */
+    static async gibeGonderildiMi(pool, id) {
+        const r = await pool.request().input("ID", sql.Int, id).input("K", sql.VarChar(60), `99:${id}:%`).query(`
+      SELECT CASE WHEN EXISTS (SELECT 1 FROM [dbo].[TODVZ_FIS_SATIRI] WHERE FIS_ID = @ID AND ISNULL(E_BELGE_DURUMU, 0) = 1) THEN 1
+        WHEN OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_GIDEN] WHERE KAYNAK_FIS_ID LIKE @K AND GONDERIM_DURUMU = 'GONDERILDI') THEN 1
+        ELSE 0 END AS G`);
+        return Number(r.recordset?.[0]?.G) === 1;
+    }
     static async findById(id, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         const fisRes = await pool.request().input("ID", sql.Int, id).query(`
@@ -2351,6 +2361,7 @@ export class DovizFisSqlRepository {
             odemeTutari: Number(row.ODEME_TUTARI) || 0,
             bsmvTutar: bsmvSum,
             iptal: Boolean(row.IPTAL),
+            gibeGonderildi: await DovizFisSqlRepository.gibeGonderildiMi(pool, id),
             iptalTarihi: row.IPTAL_TARIHI ? new Date(row.IPTAL_TARIHI).toISOString() : null,
             ekleyenId: Number(row.EKLEYEN_ID) || 1,
             eklemeZamani: row.EKLEME_ZAMANI ? new Date(row.EKLEME_ZAMANI).toISOString() : "",
@@ -2418,6 +2429,8 @@ export class DovizFisSqlRepository {
      */
     static async deleteFis(id, dbContext, kullaniciId = 1) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        if (await DovizFisSqlRepository.gibeGonderildiMi(pool, id))
+            throw ApiError.badRequest("GİB'e gönderilmiş döviz fişi silinemez.");
         // Fişin işçilik hesabına yazılmış kasa kaydı (kayıtta "Döviz Fişi İşçilik - Fiş No: <seri no>") fiş silinince kalmasın (rapor denetimi 01.10.2026)
         const seriNo = String((await pool.request().input("ID", sql.Int, id).query(`SELECT RTRIM(ISNULL(SERI_NO,'')) s FROM [dbo].[TODVZ_FIS] WHERE FIS_ID = @ID`)).recordset[0]?.s || "");
         const iscilikKaydiniSil = async () => {

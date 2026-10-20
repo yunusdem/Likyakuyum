@@ -90,6 +90,74 @@ async function printViaWebPrintingApi(html: string, printerName?: string | null,
 }
 
 /**
+ * WebSocket (ws://127.0.0.1:9100) üzerinden doğrudan sessiz yazdırma.
+ * Canlı HTTPS siteler yerel WebSocket bağlantılarını engellemediğinden
+ * Mixed Content / Private Network Access hatası olmadan doğrudan çalışır.
+ */
+async function printViaWebSocket(options: SilentPrintOptions): Promise<SilentPrintResult | null> {
+  if (typeof WebSocket === "undefined") return null;
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    let ws: WebSocket | null = null;
+
+    const finish = (result: SilentPrintResult | null) => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timer);
+        if (ws) {
+          try { ws.close(); } catch {}
+        }
+        resolve(result);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      finish(null);
+    }, 15000);
+
+    try {
+      ws = new WebSocket("ws://127.0.0.1:9100");
+
+      ws.onopen = () => {
+        try {
+          ws?.send(
+            JSON.stringify({
+              action: "print",
+              html: options.html,
+              text: options.text,
+              printerName: options.printerName,
+              targetDevice: options.printerName,
+              copies: options.copies || 1,
+              isPos: options.isPos !== false,
+              title: options.title || "Likya_Fis",
+            })
+          );
+        } catch {
+          finish(null);
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.action === "print_result") {
+            finish({
+              success: parsed.success !== false,
+              message: parsed.message || (parsed.success ? "Fiş yazıcıya başarıyla gönderildi." : "Yazdırma hatası."),
+            });
+          }
+        } catch {}
+      };
+
+      ws.onerror = () => finish(null);
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+/**
  * Gönderilen HTML veya Metin verisini doğrudan yazıcıya gönderir.
  * Tarayıcı önizleme penceresini açmaz, arka plandaki yerel yazıcı servisine iletir.
  */
@@ -111,57 +179,76 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
-  // 1. Yerel PrinterAgent (Port 9100 veya 5050) üzerinden doğrudan sessiz yazdırma
-  const ports = [9100, 5050];
+  // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
+  try {
+    const wsResult = await printViaWebSocket(options);
+    if (wsResult) {
+      return wsResult;
+    }
+  } catch (wsErr) {
+    console.warn("[triggerSilentPrint] WebSocket yazdırma denenirken hata:", wsErr);
+  }
+
+  // 2. Sadece localhost veya düz HTTP ortamında çalışırken fallback olarak HTTP POST (Port 9100 veya 5050)
+  const isLocalhostOrHttp =
+    typeof window !== "undefined" &&
+    (window.location.protocol === "http:" ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1");
+
   let lastError = "";
 
-  for (const port of ports) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+  if (isLocalhostOrHttp) {
+    const ports = [9100, 5050];
 
-      const res = await fetch(`http://127.0.0.1:${port}/print`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          html,
-          text,
-          printerName,
-          targetDevice: printerName,
-          copies,
-          isPos,
-          title,
-        }),
-        signal: controller.signal,
-      }).catch((e) => {
-        lastError = e?.message || "Bağlantı kurulamadı";
-        return null;
-      });
+    for (const port of ports) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-      clearTimeout(timeoutId);
+        const res = await fetch(`http://127.0.0.1:${port}/print`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            html,
+            text,
+            printerName,
+            targetDevice: printerName,
+            copies,
+            isPos,
+            title,
+          }),
+          signal: controller.signal,
+        }).catch((e) => {
+          lastError = e?.message || "Bağlantı kurulamadı";
+          return null;
+        });
 
-      if (res) {
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          if (data.success !== false) {
-            return {
-              success: true,
-              message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
-            };
+        clearTimeout(timeoutId);
+
+        if (res) {
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            if (data.success !== false) {
+              return {
+                success: true,
+                message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
+              };
+            } else {
+              lastError = data.message || "Yazdırma servisi hata döndürdü.";
+            }
           } else {
-            lastError = data.message || "Yazdırma servisi hata döndürdü.";
+            const errData = await res.json().catch(() => ({}));
+            lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
           }
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
         }
+      } catch (err: any) {
+        lastError = err?.message || "Servis isteği başarısız.";
       }
-    } catch (err: any) {
-      lastError = err?.message || "Servis isteği başarısız.";
     }
   }
 
-  // 2. Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
+  // 3. Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
   // Tarayıcı önizleme penceresini açmadan, kullanıcıya bildirim olarak hata döndürülür.
   return {
     success: false,

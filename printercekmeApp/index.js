@@ -275,12 +275,12 @@ function extractTextFromHtmlSimple(html) {
     .trim();
 }
 
-// ─── Doğrudan Sessiz Yazdırma Endpoint'i (/print ve /api/print) ───────────────
-app.post(["/api/print", "/print"], async (req, res) => {
-  const { html, text, printerName, targetDevice, isPos = true, copies = 1, title = "Likya_Fis" } = req.body || {};
+// ─── Doğrudan Sessiz Yazdırma İşi (Windows & macOS/Linux) ─────────────────────
+async function executePrintJob(job) {
+  const { html, text, printerName, targetDevice, isPos = true, copies = 1, title = "Likya_Fis" } = job || {};
 
   if (!html && !text) {
-    return res.status(400).json({ success: false, message: "Yazdırılacak içerik (html veya text) bulunamadı." });
+    return { success: false, message: "Yazdırılacak içerik (html veya text) bulunamadı." };
   }
 
   const targetPrinter = (printerName || targetDevice || "").trim();
@@ -528,16 +528,16 @@ if ($printedOk) {
       }, 10000);
 
       if (printed) {
-        return res.json({
+        return {
           success: true,
           message: `Fiş "${targetPrinter || 'Varsayılan Yazıcı'}" cihazına başarıyla gönderildi.`,
           printerName: targetPrinter,
-        });
+        };
       } else {
-        return res.status(500).json({
+        return {
           success: false,
           message: `Yazıcıya gönderilemedi: ${printErrorMessage || "Bilinmeyen hata"}`,
-        });
+        };
       }
     } else {
       // macOS / Linux Ortamı
@@ -549,15 +549,25 @@ if ($printedOk) {
       await execAsync(`lp ${targetArg} -n ${Number(copies) || 1} "${tmpFile}"`, { timeout: 10000 });
       setTimeout(() => { try { fs.unlinkSync(tmpFile); } catch {} }, 6000);
 
-      return res.json({
+      return {
         success: true,
         message: `Fiş "${targetPrinter || 'Varsayılan Yazıcı'}" cihazına başarıyla gönderildi.`,
         printerName: targetPrinter,
-      });
+      };
     }
   } catch (err) {
     console.error("[printercekmeApp] Yazdırma hatası:", err);
-    return res.status(500).json({ success: false, message: `Yazıcı hatası: ${err.message}` });
+    return { success: false, message: `Yazıcı hatası: ${err.message}` };
+  }
+}
+
+// ─── HTTP Endpoints ─────────────────────────────────────────────────────────
+app.post(["/api/print", "/print"], async (req, res) => {
+  const result = await executePrintJob(req.body);
+  if (result.success) {
+    return res.json(result);
+  } else {
+    return res.status(500).json(result);
   }
 });
 
@@ -565,34 +575,42 @@ if ($printedOk) {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-wss.on("connection", (ws) => {
+wss.on("connection", async (ws) => {
   console.log("[printercekmeApp] Yeni WebSocket istemcisi bağlandı.");
 
-  // Bağlanır bağlanmaz güncel listeyi gönder
-  getSystemPrinters()
-    .then((list) => {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: "PRINTER_LIST", data: list || [] }));
-      }
-    })
-    .catch((err) => {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: "PRINTER_LIST", data: [] }));
-      }
-    });
-
-  // İstemciden istek geldiğinde
-  ws.on("message", async (msg) => {
+  const sendPrinters = async () => {
     try {
       const list = await getSystemPrinters();
       if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: "PRINTER_LIST", data: list || [] }));
+        // İstemcinin beklediği doğrudan JSON yazıcı listesi
+        ws.send(JSON.stringify(list || []));
       }
-    } catch {
+    } catch (err) {
       if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: "PRINTER_LIST", data: [] }));
+        ws.send(JSON.stringify([]));
       }
     }
+  };
+
+  // Bağlantı kurulur kurulmaz yazıcı listesini ilet
+  await sendPrinters();
+
+  // İstemciden istek geldiğinde
+  ws.on("message", async (data) => {
+    try {
+      const text = data ? data.toString() : "";
+      if (text.startsWith("{")) {
+        const msg = JSON.parse(text);
+        if (msg.action === "print" || msg.type === "PRINT") {
+          const result = await executePrintJob(msg);
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ action: "print_result", ...result }));
+          }
+          return;
+        }
+      }
+    } catch {}
+    await sendPrinters();
   });
 
   ws.on("close", () => {

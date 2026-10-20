@@ -1,4 +1,6 @@
 import { Request, Response } from "express";
+import path from "path";
+import fs from "fs";
 import { YaziciService } from "../services/yazici.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -427,5 +429,38 @@ while ($listener.IsListening) {
     const clientIp = rawIp === "1" ? "127.0.0.1" : rawIp;
     const result = await YaziciService.directPrint({ ...req.body, clientIp }, dbContext);
     return ApiResponse.ok(res, result.message, result);
+  });
+
+  /**
+   * GET /api/v1/yazici/download-agent
+   * Her iki siteden de (likyakuyum.com ve likyaerp.com) güncel PrinterAgent.exe dosyasını indirir.
+   */
+  public static downloadAgent = asyncHandler(async (_req: Request, res: Response) => {
+    const candidatePaths = [
+      path.resolve(process.cwd(), "../public/PrinterAgent.exe"),
+      path.resolve(process.cwd(), "../public-erp/PrinterAgent.exe"),
+      path.resolve(process.cwd(), "public/PrinterAgent.exe"),
+      path.resolve(process.cwd(), "../printercekmeApp/dist/PrinterAgent.exe"),
+      path.resolve(process.cwd(), "../dist/PrinterAgent.exe"),
+      path.resolve(process.cwd(), "../dist-erp/PrinterAgent.exe"),
+      path.resolve(process.cwd(), "uploads/PrinterAgent.exe"),
+    ];
+
+    let foundPath: string | null = null;
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        foundPath = p;
+        break;
+      }
+    }
+
+    if (!foundPath) {
+      return res.status(404).json({ success: false, message: "PrinterAgent.exe bulunamadı." });
+    }
+
+    res.setHeader("Content-Disposition", 'attachment; filename="PrinterAgent.exe"');
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    return res.sendFile(foundPath);
   });
 }

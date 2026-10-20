@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   Row,
@@ -141,43 +141,164 @@ export const PrinterDefinitionsPage: React.FC = () => {
     return allItems;
   };
 
-  // printercekmeApp (Port 9100) üzerinden yazıcıları canlı çeker
-  const loadPrintersFromAgent = async () => {
-    setIsLoadingSystemPrinters(true);
-    setPermissionStatus("Yerel yazıcı servisi (printercekmeApp:9100) taranıyor...");
+  // Modal açıldığında WebSocket (ws://127.0.0.1:9100) üzerinden anında canlı veri dinleme
+  const wsRef = useRef<WebSocket | null>(null);
+  const fallbackTimerRef = useRef<any>(null);
 
+  // 1. Veri Formatı Düzeltmesi: Düz dizi [ { name: ... } ] veya { printers: [...] }
+  const handlePrintersData = (data: any): boolean => {
     try {
-      const res = await PrinterService.fetchFromPrinterCekmeApp();
-      if (res.success && res.printers.length > 0) {
-        setIsAgentOnline(true);
-        setAgentErrorMessage(null);
+      const printerArray = Array.isArray(data) ? data : (data?.printers || data?.data || []);
+      if (Array.isArray(printerArray) && printerArray.length > 0) {
+        const list: SystemPrinterItem[] = printerArray
+          .map((item: any) => {
+            const name = String(typeof item === "string" ? item : (item?.name || "")).trim();
+            const isDef = typeof item === "object" ? Boolean(item.isDefault) : false;
+            const status = typeof item === "object" ? (item.status || "Hazır") : "Hazır";
+            return {
+              name,
+              isDefault: isDef,
+              isOnline: status !== "Çevrimdışı",
+              source: "local_agent" as const,
+              details: `🔌 printercekmeApp (${status})`,
+            };
+          })
+          .filter((p) => p.name.length > 0);
 
-        const stored = getLocalPrintersFromStorage();
-        const combinedNames = Array.from(
-          new Set([...res.printers.map((p) => p.name), ...stored])
-        );
-        saveLocalPrintersToStorage(combinedNames);
-        const list = updateClientPrinterLists(res.printers);
-        setPermissionStatus(`🟢 printercekmeApp bağlı. ${res.printers.length} adet yerel yazıcı algılandı.`);
         if (list.length > 0) {
-          setSelectedSystemPrinterName((prev) => (prev && list.some((p) => p.name === prev) ? prev : list[0].name));
+          const stored = getLocalPrintersFromStorage();
+          const combinedNames = Array.from(new Set([...list.map((p) => p.name), ...stored]));
+          saveLocalPrintersToStorage(combinedNames);
+          const updated = updateClientPrinterLists(list);
+
+          // if (printerArray.length > 0) ise setIsAgentRunning(true) ve setError(null) yap, sarı uyarı kutusunu gizle
+          setIsAgentOnline(true);
+          setAgentErrorMessage(null);
+          setIsLoadingSystemPrinters(false);
+          setPermissionStatus(`🟢 printercekmeApp bağlı. ${list.length} adet yerel yazıcı algılandı.`);
+          if (updated.length > 0) {
+            setSelectedSystemPrinterName((prev) => (prev && updated.some((p) => p.name === prev) ? prev : updated[0].name));
+          }
+          return true;
         }
-      } else {
+      }
+    } catch (err) {
+      console.warn("[PrinterDefinitions] Yazıcı verisi ayrıştırma hatası:", err);
+    }
+    return false;
+  };
+
+  // 2. Canlı Sitede Kesin Çalışma Mantığı:
+  // - Canlı sitede HTTPS -> HTTP Mixed Content engeline takılmamak için modal açıldığında ilk olarak ws://127.0.0.1:9100 açılır.
+  // - ws.onmessage tetiklendiğinde gelen veri doğrudan listeye basılır, sarı kutu gizlenir.
+  // 3. Yedek (HTTP Fetch):
+  // - Eğer WebSocket 1.5 saniye içinde yanıt vermezse, fetch('http://127.0.0.1:9100/api/printers') denenir.
+  const loadPrintersFromAgent = () => {
+    setIsLoadingSystemPrinters(true);
+    setAgentErrorMessage(null);
+    setPermissionStatus("Yerel yazıcı servisi (ws://127.0.0.1:9100) taranıyor...");
+
+    let received = false;
+
+    // Önceki fallback timer varsa temizle
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+
+    // Önceki açık WebSocket varsa kapat
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch {}
+      wsRef.current = null;
+    }
+
+    // 1. WebSocket Önceliği (Canlı HTTPS siteler yerel ws:// bağlantılarını engellemez)
+    if (typeof WebSocket !== "undefined") {
+      try {
+        const ws = new WebSocket("ws://127.0.0.1:9100");
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          try {
+            ws.send(JSON.stringify({ action: "get_printers" }));
+          } catch {}
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            const ok = handlePrintersData(data);
+            if (ok) {
+              received = true;
+              if (fallbackTimerRef.current) {
+                clearTimeout(fallbackTimerRef.current);
+                fallbackTimerRef.current = null;
+              }
+            }
+          } catch {}
+        };
+
+        ws.onerror = () => {
+          console.debug("[PrinterDefinitions] WebSocket bağlantısı kurulamadı.");
+        };
+      } catch (wsErr) {
+        console.warn("[PrinterDefinitions] WebSocket açılış hatası:", wsErr);
+      }
+    }
+
+    // 3. Yedek (HTTP Fetch) — Eğer WebSocket 1.5 saniye içinde yanıt vermezse çağrılır
+    fallbackTimerRef.current = setTimeout(async () => {
+      if (received) return;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const res = await fetch("http://127.0.0.1:9100/api/printers", {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const data = await res.json();
+          const ok = handlePrintersData(data);
+          if (ok) {
+            received = true;
+            return;
+          }
+        }
+      } catch (httpErr) {
+        console.debug("[PrinterDefinitions] HTTP fetch fallback hatası (Mixed Content veya servis kapalı):", httpErr);
+      }
+
+      // Hem WebSocket hem HTTP fetch başarısız olduysa
+      if (!received) {
         setIsAgentOnline(false);
         setAgentErrorMessage("Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.");
         setPermissionStatus(null);
-        // Fallback olarak yerel hafızadaki yazıcıları göster
+        setIsLoadingSystemPrinters(false);
+
+        // Yerel hafızadaki son yazıcıları göster
         const stored = getLocalPrintersFromStorage();
         updateClientPrinterLists(stored);
       }
-    } catch (err: any) {
-      setIsAgentOnline(false);
-      setAgentErrorMessage("Yerel yazıcı servisine ulaşılamadı. Lütfen Printer Ajanını başlatın.");
-      setPermissionStatus(null);
-    } finally {
-      setIsLoadingSystemPrinters(false);
-    }
+    }, 1500);
   };
+
+  // Modal açılıp kapandığında WebSocket ve taramayı yönet
+  useEffect(() => {
+    if (showSystemPrintersModal) {
+      loadPrintersFromAgent();
+    } else {
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+      }
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch {}
+        wsRef.current = null;
+      }
+    }
+  }, [showSystemPrintersModal]);
 
   // Sayfa açıldığında bu istemci bilgisayarın LocalStorage'ındaki kayıtlı yazıcılarını yükle
   useEffect(() => {
@@ -185,7 +306,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
     updateClientPrinterLists(stored);
   }, []);
 
-  // Modal Açılışı: Otomatik olarak http://127.0.0.1:9100/api/printers adresine istek atar
+  // Modal Açılışı: WebSocket ve servis üzerinden anında canlı tarama başlatır
   const handleOpenSystemPrinters = () => {
     setShowSystemPrintersModal(true);
     setSystemPrinterSearchTerm("");
@@ -200,12 +321,25 @@ export const PrinterDefinitionsPage: React.FC = () => {
     } else {
       setSelectedSystemPrinterName("");
     }
-
-    // Modal açıldığında otomatik printercekmeApp servisinden yazıcıları çek
-    loadPrintersFromAgent();
   };
 
   const handleGetPrinters = handleOpenSystemPrinters;
+
+  // En güncel PrinterAgent.exe dosyasını tüm alan adlarında (likyaerp.com, likyakuyum.com) önbelleğe takılmadan indirir
+  const handleDownloadAgent = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const downloadUrl = `/PrinterAgent.exe?v=${Date.now()}`;
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.setAttribute("download", "PrinterAgent.exe");
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      try {
+        document.body.removeChild(link);
+      } catch {}
+    }, 150);
+  };
 
   // Seçilen yazıcıyı forma ata ve doğrudan SQL veritabanına kaydet
   const handleSelectAndSaveToSQL = async (printerName: string) => {
@@ -768,6 +902,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                   <a
                     href="/PrinterAgent.exe"
                     download="PrinterAgent.exe"
+                    onClick={handleDownloadAgent}
                     className="btn btn-success btn-sm fw-bold py-1.5 px-3 d-flex align-items-center gap-1.5 text-decoration-none shadow-xs text-nowrap"
                     title="Windows için PrinterAgent.exe uygulamasını indirin"
                   >
@@ -866,6 +1001,7 @@ export const PrinterDefinitionsPage: React.FC = () => {
                               <a
                                 href="/PrinterAgent.exe"
                                 download="PrinterAgent.exe"
+                                onClick={handleDownloadAgent}
                                 className="btn btn-success btn-sm fw-bold px-3 py-1.5 d-inline-flex align-items-center gap-1.5 text-decoration-none shadow-xs"
                               >
                                 <IconDownload size={15} />

@@ -343,7 +343,8 @@ function ogeyiHazirla(o, veri, varsayilanBoyut, icG, yt, rulo) {
         case "metin": {
             const g = o.g || Math.max(10, icG - o.x);
             const metin = doldur(o.metin, veri);
-            c.push({ tip: "metin", x: o.x, y: o.y, g, metin, boyut, kalin: !!o.kalin, hiza: o.hiza || "left", renk: o.renk || "#000", altCizgi: !!o.altCizgi, tekSatir: false });
+            const cokSatir = !!o.cokSatir;
+            c.push({ tip: "metin", x: o.x, y: o.y, g, metin, boyut, kalin: !!o.kalin, hiza: o.hiza || "left", renk: o.renk || "#000", altCizgi: !!o.altCizgi, tekSatir: !cokSatir });
             gercekH = tahminiSatir(metin, boyut, g, ogeFont, !!o.kalin) * boyut * SATIR_ORANI;
             break;
         }
@@ -354,8 +355,9 @@ function ogeyiHazirla(o, veri, varsayilanBoyut, icG, yt, rulo) {
                 const dolu = istegeBagliSatir(String(ham ?? ""), veri);
                 if (dolu === null)
                     continue;
-                c.push({ tip: "metin", x: o.x, y, g: o.g, metin: dolu, boyut, kalin: !!o.kalin, hiza: o.hiza || "left", renk: "#000", altCizgi: false, tekSatir: false });
-                y += adim + (tahminiSatir(dolu, boyut, o.g, ogeFont, !!o.kalin) - 1) * boyut * SATIR_ORANI;
+                const tahmini = tahminiSatir(dolu, boyut, o.g, ogeFont, !!o.kalin);
+                c.push({ tip: "metin", x: o.x, y, g: o.g, metin: dolu, boyut, kalin: !!o.kalin, hiza: o.hiza || "left", renk: "#000", altCizgi: false, tekSatir: tahmini <= 1 });
+                y += adim + (tahmini - 1) * boyut * SATIR_ORANI;
             }
             gercekH = y - o.y;
             break;

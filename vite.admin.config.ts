@@ -10,6 +10,15 @@ import anaConfig from './vite.config';
 
 const adminHtml = (): Plugin => ({
   name: 'likya-admin-html',
+  buildStart() {
+    const srcExe = path.resolve(__dirname, 'public', 'PrinterAgent.exe');
+    const destExe = path.resolve(__dirname, 'public-admin', 'PrinterAgent.exe');
+    if (fs.existsSync(srcExe)) {
+      try {
+        fs.copyFileSync(srcExe, destExe);
+      } catch {}
+    }
+  },
   // Geliştirmede tüm sayfa istekleri admin.html'e düşsün (SPA yönlendirmesi)
   configureServer(server) {
     server.middlewares.use((req, _res, next) => {
@@ -25,6 +34,14 @@ const adminHtml = (): Plugin => ({
     const cikti = path.resolve(__dirname, 'dist-admin');
     const kaynak = path.join(cikti, 'admin.html');
     if (fs.existsSync(kaynak)) fs.renameSync(kaynak, path.join(cikti, 'index.html'));
+
+    const srcExe = path.resolve(__dirname, 'public', 'PrinterAgent.exe');
+    const distExe = path.join(cikti, 'PrinterAgent.exe');
+    if (fs.existsSync(srcExe)) {
+      try {
+        fs.copyFileSync(srcExe, distExe);
+      } catch {}
+    }
   }
 });
 

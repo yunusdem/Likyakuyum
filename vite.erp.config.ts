@@ -7,11 +7,21 @@ const erpHtml = (env: Record<string, string>): Plugin => ({
   name: 'likya-erp-html',
   buildStart() {
     // public/images altındaki logo ve varlıkları public-erp'ye otomatik senkronize et
+    // public/images altındaki logo ve varlıkları public-erp'ye otomatik senkronize et
     const srcImages = path.resolve(__dirname, 'public', 'images');
     const destImages = path.resolve(__dirname, 'public-erp', 'images');
     if (!fs.existsSync(destImages) && fs.existsSync(srcImages)) {
       try {
         fs.cpSync(srcImages, destImages, { recursive: true });
+      } catch {}
+    }
+
+    // public/PrinterAgent.exe dosyasını public-erp'ye senkronize et
+    const srcExe = path.resolve(__dirname, 'public', 'PrinterAgent.exe');
+    const destExe = path.resolve(__dirname, 'public-erp', 'PrinterAgent.exe');
+    if (fs.existsSync(srcExe)) {
+      try {
+        fs.copyFileSync(srcExe, destExe);
       } catch {}
     }
   },
@@ -62,6 +72,15 @@ const erpHtml = (env: Record<string, string>): Plugin => ({
     if (!fs.existsSync(distImages) && fs.existsSync(srcImages)) {
       try {
         fs.cpSync(srcImages, distImages, { recursive: true });
+      } catch {}
+    }
+
+    // dist-erp içine PrinterAgent.exe kopyalandığından emin ol
+    const srcExe = path.resolve(__dirname, 'public', 'PrinterAgent.exe');
+    const distExe = path.join(cikti, 'PrinterAgent.exe');
+    if (fs.existsSync(srcExe)) {
+      try {
+        fs.copyFileSync(srcExe, distExe);
       } catch {}
     }
   }
