@@ -12,6 +12,7 @@ router.post('/kaynak/detay', EbelgeController.kaynakDetay);
 router.get('/kaynak/:evrak/:id/:tur/pdf', EbelgeController.kaynakPdf);
 router.post("/kaynak/hazirla", EbelgeController.kaynakHazirla);
 router.post("/kaynak/gonder", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.kaynakGonder);
+router.post("/kaynak/sil", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.kaynakSil);
 router.get("/doviz/:uuid/durum", EbelgeController.dovizDurum);
 router.get("/doviz/:uuid/pdf", EbelgeController.dovizPdf);
 router.post("/doviz/:uuid/iptal", authorizeRoles(UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER), EbelgeController.dovizIptal);

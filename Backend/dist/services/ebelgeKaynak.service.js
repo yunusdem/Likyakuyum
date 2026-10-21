@@ -10,6 +10,10 @@ import { EbelgeService } from "./ebelge.service.js";
 import { hesapla } from "./ice/ubl/invoiceBuilder.js";
 import { ApiError } from "../utils/ApiError.js";
 import { kaynakFisPdf, eDovizBelgePdf } from './ebelgeKaynakPdf.js';
+import { SarrafFisService } from "./sarrafFis.service.js";
+import { DovizFisService } from "./dovizFis.service.js";
+import { PerakendeService } from "./perakende.service.js";
+import { TicariSatisSqlRepository } from "../models/ticariSatisSql.repository.js";
 const temiz = (v) => String(v ?? "").trim();
 export const kaynakParmakizi = (kaynak) => createHash("sha256").update(JSON.stringify(kaynak)).digest("hex");
 /** Uses the ERP's invoice-line view; never derives gold tax bases from raw gram/currency rows. */
@@ -381,6 +385,21 @@ export class EbelgeKaynakService {
         if (sarrafMi(k))
             return this.sarrafHazirla(k, kullanici, ctx);
         throw ApiError.badRequest("Bilinmeyen kaynak belge türü.");
+    }
+    /**
+     * Kaynak listesinden fiş silme: GİB'e gitmemiş fiş kendi ekranındaki silme yoluyla (vezne / stok / cari etkisi geri
+     * alınarak) silinir; gönderilmiş / kuyruktaki fiş her türde aynı kilitle (ebelgeGonderimKilidi) engellenir.
+     */
+    static async sil(k, tur, kullaniciId, ctx) {
+        if (tur === "sarraf")
+            return SarrafFisService.deleteFis(k.belgeId, kullaniciId, ctx);
+        if (tur === "doviz") {
+            await DovizFisService.deleteFis(k.belgeId, ctx, kullaniciId);
+            return;
+        }
+        if (tur === "perakende")
+            return PerakendeService.deleteInvoice(k.belgeId, ctx);
+        return TicariSatisSqlRepository.sil(k.belgeId, ctx);
     }
     static async gonder(k, parmakizi, senaryo, kullanici, ctx) {
         if (dovizMi(k))

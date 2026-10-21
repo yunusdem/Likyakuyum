@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { EVRAK_TURU_PERAKENDE, gibeGonderildiyseEngelle } from "./ebelgeGonderimKilidi.js";
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
 import { ticariFisHesapla, GECERLI_KDV_ORANLARI, birimAdiDuzelt } from "../services/ticari/ticariHesap.js";
@@ -319,6 +320,8 @@ export class TicariSatisSqlRepository {
     }
     static async sil(id, ctx) {
         const pool = await TicariStokSqlRepository.havuz(ctx);
+        // GİB'e gönderilmiş (e-Belge giden kaydı gönderildi/kuyrukta) fiş hiçbir ekrandan silinemez — döviz fişiyle aynı kural
+        await gibeGonderildiyseEngelle(pool, EVRAK_TURU_PERAKENDE, id, "ticari satış fişi");
         const tx = new sql.Transaction(pool);
         await tx.begin();
         try {

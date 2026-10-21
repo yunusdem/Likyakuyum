@@ -12,6 +12,7 @@ import { env } from "../config/env.config.js";
 import { kurulumBaglantisiniKaydet, kurulumDbContext, kurulumHavuzu } from "./kurulum/kurulumDb.js";
 import { KurulumLisansService } from "./kurulum/kurulumLisans.service.js";
 import { kurulumKartOnbelleginiTemizle, sifreDamgasi } from "./kurulum/kurulumKart.js";
+import { kullaniciKapalilari } from "./gorunum/kullaniciGorunum.service.js";
 export class AuthService {
     /**
      * Müşteri no ile giriş (docs/GIRIS_VE_EBELGE_DUZENLEME.md G2-G7): firma, müşteri no + seçilen firmaId ile merkezde
@@ -115,9 +116,9 @@ export class AuthService {
         const user = await UserSqlRepository.findById(userId, ctx);
         if (!user)
             throw ApiError.unauthorized("Kullanıcı kartınız bulunamadı. Lütfen yeniden giriş yapın.");
-        return this.oturumAc(user, { ...ctx, firmaId: 0 }).tokens;
+        return (await this.oturumAc(user, { ...ctx, firmaId: 0 })).tokens;
     }
-    static oturumAc(user, dbContext, merkez, sid) {
+    static async oturumAc(user, dbContext, merkez, sid) {
         // DB kullanıcı adı / şifresi token'a yazılmaz; authenticate bağlantıyı firmaId'den çözer.
         // Kurulumda şifre damgası: şifre değişince bu jeton reddedilir (services/kurulum/kurulumKart.ts)
         const tokens = generateAuthTokens({
@@ -131,8 +132,10 @@ export class AuthService {
             ...(sid && { sid }),
             ...(env.KURULUM_MODU && { sd: AuthService.kurulumSifreDamgasi(user) }),
         });
+        // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G2/G5): yöneticiye kapalı kod yok
+        const gorunumKapali = await kullaniciKapalilari(user.id, AuthService.gorunumYoneticisi(user, merkez), dbContext).catch(() => []);
         return {
-            user: { ...UserSqlRepository.toDto(user), ...(merkez && { merkez }) },
+            user: { ...UserSqlRepository.toDto(user), ...(merkez && { merkez }), gorunumKapali },
             tokens,
             baglanti: { dbServer: dbContext.dbServer, dbName: dbContext.dbName },
         };
@@ -272,11 +275,19 @@ export class AuthService {
         if (!user) {
             throw ApiError.notFound(ResponseMessages.USER_NOT_FOUND);
         }
-        if (env.KURULUM_MODU)
-            return { ...UserSqlRepository.toDto(user), merkez: await this.kurulumOturumBilgisi(user) };
-        // Merkez açıksa: firma dondurulmuş/pasif/lisansı bitmiş ya da kullanıcı kapatılmışsa 401 → istemci girişe döner
-        const baglam = await MerkezGirisService.baglam({ ...dbContext, username: user.username });
-        return { ...UserSqlRepository.toDto(user), ...(baglam && { merkez: await MerkezGirisService.oturumBilgisi(baglam) }) };
+        const merkez = env.KURULUM_MODU
+            ? await this.kurulumOturumBilgisi(user)
+            : // Merkez açıksa: firma dondurulmuş/pasif/lisansı bitmiş ya da kullanıcı kapatılmışsa 401 → istemci girişe döner
+                await MerkezGirisService.baglam({ ...dbContext, username: user.username }).then((b) => (b ? MerkezGirisService.oturumBilgisi(b) : undefined));
+        // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G2/G5)
+        const gorunumKapali = await kullaniciKapalilari(user.id, AuthService.gorunumYoneticisi(user, merkez), dbContext).catch(() => []);
+        return { ...UserSqlRepository.toDto(user), ...(merkez && { merkez }), gorunumKapali };
+    }
+    /** Görünümden muaf / görünümü yöneten kullanıcı: merkez açıkken firma yöneticisi, değilse sistem yöneticisi (G5) */
+    static gorunumYoneticisi(user, merkez) {
+        if (merkez && !env.KURULUM_MODU)
+            return !!merkez.firmaYoneticisi;
+        return !!user.isSysAdmin || user.role === "admin";
     }
     /**
      * Kullanıcının kendi şifresini değiştirmesi. Merkez açıksa şifre merkezde (bcrypt) doğrulanır ve yazılır,

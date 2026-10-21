@@ -1,3 +1,5 @@
+import sql from "mssql";
+import { getDbPool } from "../config/mssql.config.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -65,6 +67,60 @@ export class TanimlarController {
         return ApiResponse.ok(res, "Ülkeler listelendi.", lookups.ulkeList || []);
     });
     /**
+     * POST /api/v1/tanimlar/ulkeler
+     */
+    static saveUlke = asyncHandler(async (req, res) => {
+        const dbContext = TanimlarController.getDbContext(req);
+        const { ad, kod } = req.body;
+        if (!ad || !String(ad).trim()) {
+            throw ApiError.badRequest("Ülke adı zorunludur.");
+        }
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        const cleanAd = String(ad).trim();
+        const cleanKod = kod ? String(kod).trim().toUpperCase() : null;
+        const targetId = req.body.id || (req.params?.id ? Number(req.params.id) : null);
+        if (targetId && Number(targetId) > 0) {
+            await pool.request()
+                .input("id", sql.Int, Number(targetId))
+                .input("ad", sql.NVarChar(255), cleanAd)
+                .input("kod", sql.NVarChar(50), cleanKod)
+                .query(`
+          UPDATE [dbo].[TODVZ_ULKE]
+          SET [AD] = @ad, [KOD] = @kod
+          WHERE [ULKE_ID] = @id;
+        `);
+            return ApiResponse.ok(res, "Ülke başarıyla güncellendi.", { id: Number(targetId), ad: cleanAd, kod: cleanKod });
+        }
+        let savedItem;
+        try {
+            const insRes = await pool.request()
+                .input("ad", sql.NVarChar(255), cleanAd)
+                .input("kod", sql.NVarChar(50), cleanKod)
+                .query(`
+          INSERT INTO [dbo].[TODVZ_ULKE] ([AD], [KOD])
+          VALUES (@ad, @kod);
+          SELECT SCOPE_IDENTITY() as newId;
+        `);
+            const newId = insRes.recordset[0]?.newId;
+            savedItem = { id: Number(newId), ad: cleanAd, kod: cleanKod };
+        }
+        catch (err) {
+            // If ULKE_ID is not an IDENTITY column, insert with MAX + 1
+            const maxRes = await pool.request().query(`SELECT ISNULL(MAX([ULKE_ID]), 0) + 1 as nextId FROM [dbo].[TODVZ_ULKE]`);
+            const nextId = Number(maxRes.recordset[0]?.nextId || 1);
+            await pool.request()
+                .input("id", sql.Int, nextId)
+                .input("ad", sql.NVarChar(255), cleanAd)
+                .input("kod", sql.NVarChar(50), cleanKod)
+                .query(`
+          INSERT INTO [dbo].[TODVZ_ULKE] ([ULKE_ID], [AD], [KOD])
+          VALUES (@id, @ad, @kod);
+        `);
+            savedItem = { id: nextId, ad: cleanAd, kod: cleanKod };
+        }
+        return ApiResponse.created(res, "Ülke başarıyla kaydedildi.", savedItem);
+    });
+    /**
      * GET /api/v1/tanimlar/uyruklar
      * (TODVZ_TABLO_MADDESI or TODVZ_ULKE)
      */
@@ -98,8 +154,8 @@ export class TanimlarController {
     });
     /**
      * GET /api/v1/tanimlar/posta-kodlari
-     * TODVZ_TABLO_MADDESI (TUR = 4) — canlı veritabanında doğrulandı (11.09.2026);
-     * bu TUR şu an bu veritabanında boş (referans satırı girilmemiş).
+     * TODVZ_TABLO_MADDESI (TUR = 1; eski program posta kodunu burada tutar, TUR = 4 geçiş satırları) —
+     * canlı veritabanında doğrulandı (20.10.2026).
      */
     static getPostaKodlari = asyncHandler(async (req, res) => {
         const dbContext = TanimlarController.getDbContext(req);

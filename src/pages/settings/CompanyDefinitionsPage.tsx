@@ -26,6 +26,7 @@ import {
   IconRefresh,
   IconBinoculars,
   IconDownload,
+  IconEdit,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "components/common/ERPToolbar";
@@ -242,6 +243,10 @@ export const CompanyDefinitionsPage: React.FC = () => {
     columns: LookupColumn<any>[];
     filterFn: (item: any, term: string) => boolean;
     onSelect: (item: any) => void;
+    onAddNew?: () => void;
+    addNewLabel?: string;
+    onEdit?: (item: any) => void;
+    editLabel?: string;
   }>({
     show: false,
     title: "",
@@ -251,18 +256,46 @@ export const CompanyDefinitionsPage: React.FC = () => {
     columns: [],
     filterFn: () => true,
     onSelect: () => { },
+    onAddNew: undefined,
+    addNewLabel: "Yeni Kayıt",
+    onEdit: undefined,
+    editLabel: "Düzenle",
   });
 
-  const ensureLookups = async (): Promise<CariLookups> => {
+  // Yeni Kayıt / Düzenleme Modalı (Vergi Dairesi, İl, İlçe, Ülke)
+  const [newRecordModal, setNewRecordModal] = useState<{
+    show: boolean;
+    type: "vergiDairesi" | "il" | "ilce" | "ulke" | null;
+    isEdit?: boolean;
+    editId?: number | null;
+    title: string;
+    ad: string;
+    kod: string;
+    saving: boolean;
+    error: string | null;
+  }>({
+    show: false,
+    type: null,
+    isEdit: false,
+    editId: null,
+    title: "",
+    ad: "",
+    kod: "",
+    saving: false,
+    error: null,
+  });
+
+  const ensureLookups = async (forceRefresh: boolean = false): Promise<CariLookups> => {
     if (
-      lookups.vergiDairesiList.length > 0 ||
+      !forceRefresh &&
+      (lookups.vergiDairesiList.length > 0 ||
       lookups.ilList.length > 0 ||
-      lookups.paraList.length > 0
+      lookups.paraList.length > 0)
     ) {
       return lookups;
     }
     try {
-      const data = await CariService.getLookups().catch(() => null);
+      const data = await CariService.getLookups(forceRefresh).catch(() => null);
       if (data) {
         setLookups(data);
         return data;
@@ -271,6 +304,148 @@ export const CompanyDefinitionsPage: React.FC = () => {
       console.error("Lookups yüklenemedi:", err);
     }
     return lookups;
+  };
+
+  const handleOpenEditRecordModal = (
+    type: "vergiDairesi" | "il" | "ilce" | "ulke",
+    item: any
+  ) => {
+    const titles = {
+      vergiDairesi: "Vergi Dairesi Düzenle",
+      il: "İl / Şehir Düzenle",
+      ilce: "İlçe Düzenle",
+      ulke: "Ülke Düzenle",
+    };
+    setNewRecordModal({
+      show: true,
+      type,
+      isEdit: true,
+      editId: item.id,
+      title: titles[type] || "Kayıt Düzenle",
+      ad: item.ad || "",
+      kod: item.kod || "",
+      saving: false,
+      error: null,
+    });
+  };
+
+  const handleSaveNewRecord = async () => {
+    if (!newRecordModal.ad || !newRecordModal.ad.trim()) {
+      setNewRecordModal((prev) => ({ ...prev, error: "Lütfen bir tanım adı giriniz." }));
+      return;
+    }
+
+    setNewRecordModal((prev) => ({ ...prev, saving: true, error: null }));
+    try {
+      const cleanAd = newRecordModal.ad.trim();
+      const cleanKod = newRecordModal.kod ? newRecordModal.kod.trim() : null;
+      const isEditing = Boolean(newRecordModal.isEdit && newRecordModal.editId);
+      const targetId = isEditing ? newRecordModal.editId! : undefined;
+
+      let savedItem: LookupItem;
+      let fieldName: keyof TodvzTanimDto;
+      let labelName: string;
+
+      if (newRecordModal.type === "vergiDairesi") {
+        savedItem = await CariService.saveTabloMaddesi({
+          id: targetId,
+          tur: 0,
+          ad: cleanAd,
+          kod: cleanKod,
+        });
+        fieldName = "VERGI_DAIRESI_ID";
+        labelName = "Vergi Dairesi";
+      } else if (newRecordModal.type === "il") {
+        savedItem = await CariService.saveTabloMaddesi({
+          id: targetId,
+          tur: 3,
+          ad: cleanAd,
+          kod: cleanKod,
+        });
+        fieldName = "IL_ID";
+        labelName = "İl";
+      } else if (newRecordModal.type === "ilce") {
+        savedItem = await CariService.saveTabloMaddesi({
+          id: targetId,
+          tur: 2,
+          ad: cleanAd,
+          kod: cleanKod,
+        });
+        fieldName = "ILCE_ID";
+        labelName = "İlçe";
+      } else if (newRecordModal.type === "ulke") {
+        savedItem = await CariService.saveUlke({
+          id: targetId,
+          ad: cleanAd,
+          kod: cleanKod,
+        });
+        fieldName = "ULKE_ID";
+        labelName = "Ülke";
+      } else {
+        throw new Error("Geçersiz kayıt türü.");
+      }
+
+      // Re-fetch lookups from backend so all dropdowns/modals have the latest data
+      const updatedLookups = await ensureLookups(true);
+
+      // Refresh currently open LookupModal items immediately so user sees the change right away
+      if (newRecordModal.type === "vergiDairesi") {
+        setLookupModalConfig((prev) => ({
+          ...prev,
+          items: updatedLookups.vergiDairesiList || [],
+        }));
+      } else if (newRecordModal.type === "il") {
+        setLookupModalConfig((prev) => ({
+          ...prev,
+          items: updatedLookups.ilList || [],
+        }));
+      } else if (newRecordModal.type === "ilce") {
+        const list = formData.IL_ID
+          ? (updatedLookups.ilceList || []).filter((x: any) => !x.ustId || x.ustId === formData.IL_ID || Number(x.ustId) === Number(formData.IL_ID))
+          : updatedLookups.ilceList || [];
+        setLookupModalConfig((prev) => ({
+          ...prev,
+          items: list.length > 0 ? list : updatedLookups.ilceList || [],
+        }));
+      } else if (newRecordModal.type === "ulke") {
+        setLookupModalConfig((prev) => ({
+          ...prev,
+          items: updatedLookups.ulkeList || [],
+        }));
+      }
+
+      if (!isEditing) {
+        // Auto-select on new record creation and close lookup modal
+        handleChange(fieldName, savedItem.id);
+        setLookupModalConfig((prev) => ({ ...prev, show: false }));
+        setAlertSuccess(`✅ Yeni ${labelName} (${savedItem.ad}) başarıyla veritabanına kaydedildi ve seçildi.`);
+      } else {
+        // If formData was using this item, update it
+        if (formData[fieldName] === savedItem.id) {
+          handleChange(fieldName, savedItem.id);
+        }
+        setAlertSuccess(`✅ ${labelName} (${savedItem.ad}) başarıyla güncellendi.`);
+      }
+
+      setNewRecordModal({
+        show: false,
+        type: null,
+        isEdit: false,
+        editId: null,
+        title: "",
+        ad: "",
+        kod: "",
+        saving: false,
+        error: null,
+      });
+    } catch (err: any) {
+      console.error("Yeni kayıt kaydetme hatası:", err);
+      setNewRecordModal((prev) => ({
+        ...prev,
+        saving: false,
+        error: err.response?.data?.message || err.message || "Kayıt kaydedilirken bir hata oluştu.",
+      }));
+    }
   };
 
   const ensureHesaplar = async (): Promise<HesapItem[]> => {
@@ -406,6 +581,22 @@ export const CompanyDefinitionsPage: React.FC = () => {
         handleChange("VERGI_DAIRESI_ID", it.id);
         setLookupModalConfig((prev) => ({ ...prev, show: false }));
       },
+      onAddNew: () => {
+        setNewRecordModal({
+          show: true,
+          type: "vergiDairesi",
+          isEdit: false,
+          editId: null,
+          title: "Yeni Vergi Dairesi Ekle",
+          ad: "",
+          kod: "",
+          saving: false,
+          error: null,
+        });
+      },
+      addNewLabel: "Yeni Kayıt",
+      onEdit: (it) => handleOpenEditRecordModal("vergiDairesi", it),
+      editLabel: "Düzenle",
     });
   };
 
@@ -428,6 +619,22 @@ export const CompanyDefinitionsPage: React.FC = () => {
         handleChange("IL_ID", it.id);
         setLookupModalConfig((prev) => ({ ...prev, show: false }));
       },
+      onAddNew: () => {
+        setNewRecordModal({
+          show: true,
+          type: "il",
+          isEdit: false,
+          editId: null,
+          title: "Yeni İl Ekle",
+          ad: "",
+          kod: "",
+          saving: false,
+          error: null,
+        });
+      },
+      addNewLabel: "Yeni Kayıt",
+      onEdit: (it) => handleOpenEditRecordModal("il", it),
+      editLabel: "Düzenle",
     });
   };
 
@@ -453,6 +660,22 @@ export const CompanyDefinitionsPage: React.FC = () => {
         handleChange("ILCE_ID", it.id);
         setLookupModalConfig((prev) => ({ ...prev, show: false }));
       },
+      onAddNew: () => {
+        setNewRecordModal({
+          show: true,
+          type: "ilce",
+          isEdit: false,
+          editId: null,
+          title: "Yeni İlçe Ekle",
+          ad: "",
+          kod: "",
+          saving: false,
+          error: null,
+        });
+      },
+      addNewLabel: "Yeni Kayıt",
+      onEdit: (it) => handleOpenEditRecordModal("ilce", it),
+      editLabel: "Düzenle",
     });
   };
 
@@ -476,6 +699,22 @@ export const CompanyDefinitionsPage: React.FC = () => {
         handleChange("ULKE_ID", it.id);
         setLookupModalConfig((prev) => ({ ...prev, show: false }));
       },
+      onAddNew: () => {
+        setNewRecordModal({
+          show: true,
+          type: "ulke",
+          isEdit: false,
+          editId: null,
+          title: "Yeni Ülke Ekle",
+          ad: "",
+          kod: "",
+          saving: false,
+          error: null,
+        });
+      },
+      addNewLabel: "Yeni Kayıt",
+      onEdit: (it) => handleOpenEditRecordModal("ulke", it),
+      editLabel: "Düzenle",
     });
   };
 
@@ -2900,7 +3139,138 @@ export const CompanyDefinitionsPage: React.FC = () => {
           columns={lookupModalConfig.columns}
           filterFn={lookupModalConfig.filterFn}
           onSelect={lookupModalConfig.onSelect}
+          onAddNew={lookupModalConfig.onAddNew}
+          addNewLabel={lookupModalConfig.addNewLabel || "Yeni Kayıt"}
+          onEdit={lookupModalConfig.onEdit}
+          editLabel={lookupModalConfig.editLabel || "Düzenle"}
         />
+
+        {/* Yeni Kayıt / Düzenleme Ekleme Modalı (Vergi Dairesi, İl, İlçe, Ülke) */}
+        <Modal
+          show={newRecordModal.show}
+          onHide={() => !newRecordModal.saving && setNewRecordModal((prev) => ({ ...prev, show: false }))}
+          centered
+          backdrop="static"
+          keyboard={!newRecordModal.saving}
+        >
+          <Modal.Header closeButton={!newRecordModal.saving} className="bg-light py-2">
+            <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
+              {newRecordModal.isEdit ? (
+                <IconEdit size={18} className="text-warning" />
+              ) : (
+                <IconBuildingStore size={18} className="text-primary" />
+              )}
+              <span>{newRecordModal.title}</span>
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body className="py-3">
+            {newRecordModal.error && (
+              <Alert variant="danger" className="py-2 px-3 small mb-3">
+                <IconAlertCircle size={16} className="me-1" />
+                {newRecordModal.error}
+              </Alert>
+            )}
+
+            <Form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveNewRecord();
+              }}
+            >
+              <Form.Group className="mb-3">
+                <Form.Label className="fw-semibold small">
+                  {newRecordModal.type === "vergiDairesi"
+                    ? "Vergi Dairesi Adı"
+                    : newRecordModal.type === "il"
+                    ? "İl / Şehir Adı"
+                    : newRecordModal.type === "ilce"
+                    ? "İlçe Adı"
+                    : "Ülke Adı"}{" "}
+                  <span className="text-danger">*</span>
+                </Form.Label>
+                <Form.Control
+                  type="text"
+                  autoFocus
+                  disabled={newRecordModal.saving}
+                  value={newRecordModal.ad}
+                  onChange={(e) => setNewRecordModal((prev) => ({ ...prev, ad: e.target.value }))}
+                  placeholder={
+                    newRecordModal.type === "vergiDairesi"
+                      ? "Örn: Kadıköy Vergi Dairesi"
+                      : newRecordModal.type === "il"
+                      ? "Örn: Muğla"
+                      : newRecordModal.type === "ilce"
+                      ? "Örn: Fethiye"
+                      : "Örn: Türkiye"
+                  }
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label className="fw-semibold small">
+                  {newRecordModal.type === "vergiDairesi"
+                    ? "Vergi Dairesi Kodu"
+                    : newRecordModal.type === "il"
+                    ? "Plaka Kodu"
+                    : newRecordModal.type === "ilce"
+                    ? "İlçe Kodu"
+                    : "Ülke Kodu"}{" "}
+                  <span className="text-muted fw-normal">(İsteğe Bağlı)</span>
+                </Form.Label>
+                <Form.Control
+                  type="text"
+                  disabled={newRecordModal.saving}
+                  value={newRecordModal.kod}
+                  onChange={(e) => setNewRecordModal((prev) => ({ ...prev, kod: e.target.value }))}
+                  placeholder={
+                    newRecordModal.type === "vergiDairesi"
+                      ? "Örn: 34250"
+                      : newRecordModal.type === "il"
+                      ? "Örn: 48"
+                      : newRecordModal.type === "ilce"
+                      ? "Örn: 01"
+                      : "Örn: TR"
+                  }
+                />
+              </Form.Group>
+
+              {newRecordModal.type === "ilce" && formData.IL_ID && (
+                <div className="small text-muted p-2 rounded bg-light border mb-2">
+                  <strong>Bağlı Olduğu İl:</strong> {getIlName(formData.IL_ID)}
+                </div>
+              )}
+            </Form>
+          </Modal.Body>
+          <Modal.Footer className="py-2 bg-light d-flex justify-content-end gap-2">
+            <Button
+              variant="outline-secondary"
+              size="sm"
+              disabled={newRecordModal.saving}
+              onClick={() => setNewRecordModal((prev) => ({ ...prev, show: false }))}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              variant={newRecordModal.isEdit ? "warning" : "success"}
+              size="sm"
+              disabled={newRecordModal.saving || !newRecordModal.ad.trim()}
+              onClick={handleSaveNewRecord}
+              className={`d-flex align-items-center gap-1.5 fw-bold ${newRecordModal.isEdit ? "text-dark" : "text-white"}`}
+            >
+              {newRecordModal.saving ? (
+                <>
+                  <Spinner size="sm" animation="border" />
+                  <span>{newRecordModal.isEdit ? "Güncelleniyor..." : "Kaydediliyor..."}</span>
+                </>
+              ) : (
+                <>
+                  {newRecordModal.isEdit ? <IconEdit size={16} /> : <IconCheck size={16} />}
+                  <span>{newRecordModal.isEdit ? "Değişiklikleri Güncelle" : "Veritabanına Kaydet"}</span>
+                </>
+              )}
+            </Button>
+          </Modal.Footer>
+        </Modal>
       </div>
     </Tab.Container>
   );

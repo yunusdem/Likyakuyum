@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Modal, Form, InputGroup, Table, Button, Spinner, Badge } from "react-bootstrap";
-import { IconSearch, IconBinoculars, IconX, IconCheck, IconPlus } from "@tabler/icons-react";
+import { IconSearch, IconBinoculars, IconX, IconCheck, IconPlus, IconEdit } from "@tabler/icons-react";
 import { highlightText } from "./HighlightText";
 import { isCtrlNEvent, triggerGlobalNewRecord } from "../../utils/keyboardShortcuts";
 
@@ -26,6 +26,8 @@ export interface LookupModalProps<T> {
   onSelect: (item: T) => void;
   onAddNew?: () => void;
   addNewLabel?: string;
+  onEdit?: (item: T) => void;
+  editLabel?: string;
   isItemDisabled?: (item: T) => boolean;
   renderDetail?: (item: T) => React.ReactNode;
   searchByCodeOnly?: boolean;
@@ -50,6 +52,8 @@ function LookupModalContent<T extends Record<string, any>>({
   onSelect,
   onAddNew,
   addNewLabel = "Yeni Kayıt",
+  onEdit,
+  editLabel = "Düzenle",
   isItemDisabled,
   renderDetail,
   searchByCodeOnly = false,
@@ -59,14 +63,34 @@ function LookupModalContent<T extends Record<string, any>>({
 }: LookupModalProps<T>) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    item: T;
+    index: number;
+  } | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
   useEffect(() => {
     if (show) {
       setSearchTerm(initialSearchTerm || "");
+      setContextMenu(null);
     }
   }, [show, initialSearchTerm]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClose = () => setContextMenu(null);
+    window.addEventListener("click", handleClose);
+    window.addEventListener("contextmenu", handleClose);
+    window.addEventListener("scroll", handleClose, true);
+    return () => {
+      window.removeEventListener("click", handleClose);
+      window.removeEventListener("contextmenu", handleClose);
+      window.removeEventListener("scroll", handleClose, true);
+    };
+  }, [contextMenu]);
 
   const getItemId = useCallback((it: any): string => {
     if (!it) return "";
@@ -330,7 +354,7 @@ function LookupModalContent<T extends Record<string, any>>({
         {/* Info Banner */}
         <div className="d-flex align-items-center justify-content-between mb-2 px-1 text-muted small">
           <span>
-            💡 <strong>İpucu:</strong> Satıra çift tıklayarak, <strong>Enter</strong> basarak veya <strong>Seç</strong> butonuyla doğrudan forma aktarabilirsiniz. (Yukarı/Aşağı tuşları ile gezinebilirsiniz)
+            💡 <strong>İpucu:</strong> Çift tıklayarak veya <strong>Seç</strong> butonuyla doğrudan aktarabilirsiniz.{onEdit ? " Düzenlemek için satıra sağ tıklayabilirsiniz." : ""}
           </span>
           {displayItems.length > 0 && selectedIndex >= 0 && selectedIndex < displayItems.length && (
             <Badge bg="primary" className="py-1 px-2">
@@ -426,6 +450,19 @@ function LookupModalContent<T extends Record<string, any>>({
                       ref={(el) => { rowRefs.current[index] = el; }}
                       onClick={() => !isDisabled && handleRowClick(index, item)}
                       onDoubleClick={() => !isDisabled && handleRowDoubleClick(item)}
+                      onContextMenu={(e) => {
+                        if (isDisabled) return;
+                        if (!onEdit) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSelectedIndex(index);
+                        setContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          item,
+                          index,
+                        });
+                      }}
                       className={`${isSelected && !isDisabled ? "lookup-selected-row fw-semibold" : isDisabled ? "text-muted" : ""} ${customRowClass}`.trim()}
                       style={{
                         cursor: isDisabled ? "not-allowed" : "pointer",
@@ -434,7 +471,7 @@ function LookupModalContent<T extends Record<string, any>>({
                         color: customRowStyle?.color,
                         ...customRowStyle,
                       }}
-                      title={isDisabled ? "Bu ürün bu tabloda seçilemez" : undefined}
+                      title={isDisabled ? "Bu ürün bu tabloda seçilemez" : onEdit ? "Seçmek için çift tıklayın, düzenlemek için sağ tıklayın" : undefined}
                     >
                       <td
                         className="text-center small"
@@ -528,6 +565,54 @@ function LookupModalContent<T extends Record<string, any>>({
           </Button>
         </div>
       </Modal.Footer>
+
+      {/* Sağ Tık Düzenleme Menüsü */}
+      {contextMenu && onEdit && (
+        <div
+          style={{
+            position: "fixed",
+            top: `${Math.max(10, Math.min(contextMenu.y, window.innerHeight - 80))}px`,
+            left: `${Math.max(10, Math.min(contextMenu.x, window.innerWidth - 180))}px`,
+            zIndex: 10999,
+            minWidth: "150px",
+            backgroundColor: "#ffffff",
+            borderRadius: "8px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.2)",
+            border: "1px solid #cbd5e1",
+            padding: "4px",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            role="button"
+            tabIndex={0}
+            className="d-flex align-items-center gap-2 px-3 py-2 rounded text-dark"
+            style={{
+              cursor: "pointer",
+              fontSize: "13px",
+              fontWeight: 500,
+              userSelect: "none",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.backgroundColor = "#e0f2fe";
+              (e.currentTarget as HTMLElement).style.color = "#0369a1";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+              (e.currentTarget as HTMLElement).style.color = "";
+            }}
+            onClick={() => {
+              const targetItem = contextMenu.item;
+              setContextMenu(null);
+              onEdit(targetItem);
+            }}
+          >
+            <IconEdit size={16} className="text-primary" />
+            <span>{editLabel}</span>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

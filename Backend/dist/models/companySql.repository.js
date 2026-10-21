@@ -39,40 +39,54 @@ export class CompanySqlRepository {
             const n = Number(v);
             return !isNaN(n) && n > 0 ? n : null;
         };
-        // 1. Check & Ensure POSTA_KODU_ID in TODVZ_TABLO_MADDESI (TUR = 4)
-        if (copy.POSTA_KODU_ID !== undefined && copy.POSTA_KODU_ID !== null) {
+        // 1. Posta kodu — eski masaüstü program kodu TODVZ_TABLO_MADDESI'nde TUR=1 altında, AD alanında tutar
+        // (KOD boş). 20.10.2026 öncesi bu uygulama TUR=4'e yazmıştı; okurken ikisi birlikte aranır,
+        // yeni satır eski programla uyumlu olsun diye TUR=1'e KOD=AD=kod şeklinde eklenir.
+        const postaKoduCoz = async (kodMetni) => {
+            const kod = kodMetni.trim().slice(0, 20);
+            if (!kod)
+                return null;
+            const bul = await pool
+                .request()
+                .input("kod", sql.VarChar(20), kod)
+                .query(`
+          SELECT TOP 1 [TABLO_MADDESI_ID] FROM [dbo].[TODVZ_TABLO_MADDESI]
+          WHERE [TUR] IN (1, 4) AND (LTRIM(RTRIM(ISNULL([KOD], ''))) = @kod OR LTRIM(RTRIM(ISNULL([AD], ''))) = @kod)
+          ORDER BY CASE WHEN [TUR] = 1 THEN 0 ELSE 1 END, [TABLO_MADDESI_ID]
+        `);
+            if (bul.recordset && bul.recordset.length > 0)
+                return bul.recordset[0].TABLO_MADDESI_ID;
+            const ekle = await pool
+                .request()
+                .input("kod", sql.VarChar(20), kod)
+                .query(`
+          INSERT INTO [dbo].[TODVZ_TABLO_MADDESI] (TUR, KOD, AD) VALUES (1, @kod, @kod);
+          SELECT SCOPE_IDENTITY() AS newId;
+        `);
+            return ekle.recordset[0]?.newId || null;
+        };
+        // 1a. Ekrandan metin geldiyse (POSTA_KODU) ID buradan türetilir; boş metin = posta kodu silindi.
+        const postaKoduMetni = copy.POSTA_KODU;
+        delete copy.POSTA_KODU;
+        if (postaKoduMetni !== undefined) {
+            try {
+                copy.POSTA_KODU_ID = await postaKoduCoz(String(postaKoduMetni ?? ""));
+            }
+            catch {
+                copy.POSTA_KODU_ID = null;
+            }
+        }
+        else if (copy.POSTA_KODU_ID !== undefined && copy.POSTA_KODU_ID !== null) {
+            // 1b. Yalnız sayı geldiyse: gerçek ID ise korunur, değilse posta kodu metni sayılır.
             const pkId = toValidId(copy.POSTA_KODU_ID);
             if (pkId) {
                 try {
                     const pkCheck = await pool.request().query(`
             SELECT TOP 1 [TABLO_MADDESI_ID] FROM [dbo].[TODVZ_TABLO_MADDESI] WHERE [TABLO_MADDESI_ID] = ${pkId}
           `);
-                    if (pkCheck.recordset && pkCheck.recordset.length > 0) {
-                        copy.POSTA_KODU_ID = pkCheck.recordset[0].TABLO_MADDESI_ID;
-                    }
-                    else {
-                        const pkStr = String(pkId);
-                        const findByKod = await pool
-                            .request()
-                            .input("kod", sql.VarChar(20), pkStr)
-                            .query(`
-                SELECT TOP 1 [TABLO_MADDESI_ID] FROM [dbo].[TODVZ_TABLO_MADDESI] WHERE [TUR] = 4 AND ([KOD] = @kod OR [AD] = @kod)
-              `);
-                        if (findByKod.recordset && findByKod.recordset.length > 0) {
-                            copy.POSTA_KODU_ID = findByKod.recordset[0].TABLO_MADDESI_ID;
-                        }
-                        else {
-                            const insPk = await pool
-                                .request()
-                                .input("kod", sql.VarChar(20), pkStr)
-                                .input("ad", sql.VarChar(100), pkStr)
-                                .query(`
-                  INSERT INTO [dbo].[TODVZ_TABLO_MADDESI] (TUR, KOD, AD) VALUES (4, @kod, @ad);
-                  SELECT SCOPE_IDENTITY() AS newId;
-                `);
-                            copy.POSTA_KODU_ID = insPk.recordset[0]?.newId || null;
-                        }
-                    }
+                    copy.POSTA_KODU_ID = pkCheck.recordset && pkCheck.recordset.length > 0
+                        ? pkCheck.recordset[0].TABLO_MADDESI_ID
+                        : await postaKoduCoz(String(pkId));
                 }
                 catch {
                     copy.POSTA_KODU_ID = null;

@@ -1,0 +1,50 @@
+import sql from "mssql";
+import { getDbPool } from "../config/mssql.config.js";
+import { ApiError } from "../utils/ApiError.js";
+/**
+ * Fiş GİB'e gönderilmiş mi: e-Belge › Kaynak ekranındaki "Gönderildi" rozetiyle aynı kural.
+ * Giden kaydı (KAYNAK_FIS_ID = "<evrakTuru>:<belgeId>:…") gönderilmiş ya da sonucu beklenen (kuyrukta) ise,
+ * ya da kaynak sonuç kaydı gönderilmedi/hata dışında bir durumdaysa fiş gönderilmiş sayılır ve silinemez.
+ * Eski satır alanları (E_BELGE_DURUMU, E_FATURA_DURUMU) tek başına gönderildi sayılmaz (ekranda "Kontrol gerekli").
+ * Sarraf evrakTuru 0, Perakende / Ticari 98, Döviz 99 (ebelgeKaynak.repository ile aynı).
+ */
+export async function gibeGonderildiMi(pool, evrakTuru, belgeId) {
+    const r = await pool.request().input("K", sql.VarChar(60), `${evrakTuru}:${belgeId}:%`).query(`
+    SELECT CASE WHEN (OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_GIDEN]
+        WHERE KAYNAK_FIS_ID LIKE @K AND GONDERIM_DURUMU IN ('GONDERILDI','KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR')))
+      OR (OBJECT_ID('dbo.TODVZ_EBELGE_KAYNAK', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_KAYNAK]
+        WHERE ANAHTAR LIKE @K AND DURUM NOT IN ('GONDERILMEDI','HATA')))
+      THEN 1 ELSE 0 END AS G`);
+    return Number(r.recordset?.[0]?.G) === 1;
+}
+/** Gönderilmiş fişi silme girişiminde fırlatılır — her fiş türünde aynı mesaj. */
+export async function gibeGonderildiyseEngelle(pool, evrakTuru, belgeId, fisAdi) {
+    if (await gibeGonderildiMi(pool, evrakTuru, belgeId))
+        throw ApiError.badRequest(`GİB'e gönderilmiş ${fisAdi} silinemez.`);
+}
+export const EVRAK_TURU_SARRAF = 0;
+export const EVRAK_TURU_PERAKENDE = 98;
+export const EVRAK_TURU_DOVIZ = 99;
+/** Kaynak kimliğinden silinecek fişin türü; Perakende ve Ticari aynı tabloda (FIS_KAYNAGI 1 = Ticari) */
+export async function kaynakSilTuru(k, ctx) {
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
+    const yok = ApiError.notFound("Fiş bulunamadı; daha önce silinmiş olabilir.");
+    // Eski silme yordamları olmayan fişte hata vermez: kayıt burada denetlenir ki ekran "silindi" demesin
+    if (k.evrakTuru === EVRAK_TURU_SARRAF) {
+        if (!(await pool.request().input("ID", sql.Int, k.belgeId).query(`SELECT 1 AS V FROM dbo.TODVZ_SARRAF_FISI WHERE SARRAF_FISI_ID = @ID`)).recordset.length)
+            throw yok;
+        return "sarraf";
+    }
+    if (k.evrakTuru === EVRAK_TURU_DOVIZ) {
+        if (!(await pool.request().input("ID", sql.Int, k.belgeId).query(`SELECT 1 AS V FROM dbo.TODVZ_FIS WHERE FIS_ID = @ID`)).recordset.length)
+            throw yok;
+        return "doviz";
+    }
+    if (k.evrakTuru !== EVRAK_TURU_PERAKENDE)
+        throw ApiError.badRequest("Bilinmeyen kaynak belge türü.");
+    const r = await pool.request().input("ID", sql.Int, k.belgeId)
+        .query(`SELECT ISNULL(FIS_KAYNAGI, 0) AS K FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @ID`);
+    if (!r.recordset.length)
+        throw yok;
+    return Number(r.recordset[0].K) === 1 ? "ticari" : "perakende";
+}

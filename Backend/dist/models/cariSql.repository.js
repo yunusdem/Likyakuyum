@@ -330,21 +330,24 @@ export class CariSqlRepository {
                 pool.request().query("SELECT ISTATISTIK_ID as id, KOD as kod, ACIKLAMA as ad, FIS_TIPI as fisTipi FROM [dbo].[TODVZ_ISTATISTIK] ORDER BY KOD ASC"),
             ]);
             const items = tabloMaddeleri.recordset || [];
-            // TUR eşlemesi 11.09.2026 tarihinde canlı veritabanında
-            // (SELECT TUR, COUNT(*), MIN(AD), MAX(AD) ... GROUP BY TUR) doğrulandı:
-            // 0=Vergi Dairesi ("...VERGİ DAİRESİ"), 2=İlçe ("ACIPAYAM".."ZARA"),
-            // 3=İl ("ADANA".."YOZGAT"), 5=Hukuki Yapı ("01-Gerçek Kişi T.C.".."Yerel Yönetimlerin..."),
-            // 8=Sektör ("BANKA".."TURİZM"), 9=Meslek ("...TURİZMCİ".."ZİRAATCI").
-            // TUR=4 (Posta Kodu için ayrılmış aralık) o sorguda hiç satır döndürmedi; yani bu
-            // veritabanında posta kodu referans verisi şu an gerçekten boş — uydurma satır eklenmedi.
+            // TUR eşlemesi canlı veritabanında doğrulandı (11.09.2026 ve 20.10.2026):
+            // 0=Vergi Dairesi, 1=Posta Kodu (eski masaüstü program kodu AD alanına yazar, KOD boş),
+            // 2=İlçe, 3=İl (KOD alanında plaka yalnız birkaç satırda dolu), 5=Hukuki Yapı,
+            // 8=Sektör, 9=Meslek. TUR=4 eski programda kullanılmaz; yalnız bu uygulamanın
+            // 20.10.2026 öncesi eklediği posta kodu satırları orada olabilir, o yüzden ikisi birlikte okunur.
             // 1. İller (TODVZ_TABLO_MADDESI TUR = 3)
             const ilList = items.filter((x) => x.tur === 3);
             // 2. İlçeler (TODVZ_TABLO_MADDESI TUR = 2) — gerçek TABLO_MADDESI_ID üzerinden;
             // uydurma liste kullanılmaz (sahte ID gerçek tabloda bulunamadığı için kayıtta sessizce NULL'a düşerdi).
             const ilceList = items.filter((x) => x.tur === 2);
-            // 3. Posta Kodları (TODVZ_TABLO_MADDESI TUR = 4) — gerçek TABLO_MADDESI_ID üzerinden,
-            // uydurma/sabit kod değil; POSTA_KODU_ID yabancı anahtarı bu tablodaki gerçek ID'yi bekler.
-            const postaKoduList = items.filter((x) => x.tur === 4);
+            // 3. Posta Kodları (TUR = 1, eski program; TUR = 4 geçiş satırları) — kod metni KOD boşsa AD'den alınır,
+            // böylece ekranlar tek alandan (kod) eşleştirir.
+            const postaKoduList = items
+                .filter((x) => x.tur === 1 || x.tur === 4)
+                .map((x) => {
+                const kod = String(x.kod ?? "").trim() || String(x.ad ?? "").trim();
+                return { ...x, kod, ad: String(x.ad ?? "").trim() || kod };
+            });
             // 4. Vergi Daireleri (TODVZ_TABLO_MADDESI TUR = 0)
             const vergiDairesiList = items.filter((x) => x.tur === 0);
             // 5. Meslekler (TODVZ_TABLO_MADDESI TUR = 9)

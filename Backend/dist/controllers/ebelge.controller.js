@@ -5,6 +5,10 @@ import { EbelgeService } from "../services/ebelge.service.js";
 import { EbelgeKaynakService } from "../services/ebelgeKaynak.service.js";
 import { EbelgeKuyrukService } from "../services/ebelgeKuyruk.service.js";
 import { kopyaKaydet } from "../services/firmaKlasoru.js";
+import { kaynakSilTuru } from "../models/ebelgeGonderimKilidi.js";
+import { kayitDuzeltmeYetkisi } from "../services/yetki/menuYetkiKatalogu.js";
+import { kayitErisimi } from "../services/yetki/fisYetkileri.js";
+import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
 import { EbelgeKodRepository } from "../models/ebelgeKod.repository.js";
 import { EbelgeTaslakRepository } from "../models/ebelgeTaslak.repository.js";
@@ -56,6 +60,21 @@ export class EbelgeController {
             throw ApiError.badRequest("Kaynak belge gönderim bilgileri geçersiz.");
         const p = parsed.data;
         return ApiResponse.ok(res, "Kaynak belge gönderildi.", await EbelgeKaynakService.gonder(p, p.parmakizi, p.senaryo, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req)));
+    });
+    /** POST /kaynak/sil — GİB'e gitmemiş kaynak fişi siler (fiş türünün kendi silme / yetki kuralıyla) */
+    static kaynakSil = asyncHandler(async (req, res) => {
+        const parsed = ebelgeKaynakKimlikSchema.safeParse(req.body);
+        if (!parsed.success)
+            throw ApiError.badRequest("Kaynak belge kimliği geçersiz.");
+        const k = parsed.data;
+        const ctx = EbelgeController.getDbContext(req);
+        const tur = await kaynakSilTuru(k, ctx);
+        await kayitDuzeltmeYetkisi(req, tur);
+        await kayitErisimi(req, tur === "sarraf" || tur === "doviz" ? tur : "fatura", k.belgeId);
+        const kullaniciId = Number(req.user?.userId || 0) || 1;
+        await EbelgeKaynakService.sil(k, tur, kullaniciId, ctx);
+        notifyVezneBakiyeDegisti({ type: `${tur}_delete`, id: k.belgeId });
+        return ApiResponse.ok(res, "Fiş silindi.", { belgeId: k.belgeId, tur });
     });
     static dovizDurum = asyncHandler(async (req, res) => {
         const uuid = String(req.params.uuid || "").trim();

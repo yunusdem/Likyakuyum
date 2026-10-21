@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { EVRAK_TURU_DOVIZ, gibeGonderildiMi } from "./ebelgeGonderimKilidi.js";
 import crypto from "crypto";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
@@ -2197,18 +2198,15 @@ export class DovizFisSqlRepository {
         return savedRecord;
     }
     /**
-     * Get single Döviz Fişi by ID with lines
-     */
-    /**
-     * Fiş GİB'e gönderilmiş mi: eski masaüstü satır alanı (E_BELGE_DURUMU=1) ya da web e-Belge giden kaydı (99:<fisId>:% GONDERILDI)
+     * Fiş GİB'e gönderilmiş mi: Kaynak ekranındaki "Gönderildi" ile aynı kural — e-Belge giden kaydı (99:<fisId>:...) gönderilmiş
+     * ya da sonucu beklenen (kuyrukta) olan fiş. Eski satır alanı E_BELGE_DURUMU tek başına gönderildi sayılmaz (ekranda "Kontrol gerekli").
      */
     static async gibeGonderildiMi(pool, id) {
-        const r = await pool.request().input("ID", sql.Int, id).input("K", sql.VarChar(60), `99:${id}:%`).query(`
-      SELECT CASE WHEN EXISTS (SELECT 1 FROM [dbo].[TODVZ_FIS_SATIRI] WHERE FIS_ID = @ID AND ISNULL(E_BELGE_DURUMU, 0) = 1) THEN 1
-        WHEN OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_GIDEN] WHERE KAYNAK_FIS_ID LIKE @K AND GONDERIM_DURUMU = 'GONDERILDI') THEN 1
-        ELSE 0 END AS G`);
-        return Number(r.recordset?.[0]?.G) === 1;
+        return gibeGonderildiMi(pool, EVRAK_TURU_DOVIZ, id);
     }
+    /**
+     * Get single Döviz Fişi by ID with lines
+     */
     static async findById(id, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         const fisRes = await pool.request().input("ID", sql.Int, id).query(`
@@ -2429,6 +2427,9 @@ export class DovizFisSqlRepository {
      */
     static async deleteFis(id, dbContext, kullaniciId = 1) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        // Eski silme yordamı olmayan fişte hata vermez; kayıt yoksa burada söylenir
+        if (!(await pool.request().input("ID", sql.Int, id).query(`SELECT 1 AS V FROM [dbo].[TODVZ_FIS] WHERE FIS_ID = @ID`)).recordset.length)
+            throw ApiError.notFound("Döviz fişi bulunamadı; daha önce silinmiş olabilir.");
         if (await DovizFisSqlRepository.gibeGonderildiMi(pool, id))
             throw ApiError.badRequest("GİB'e gönderilmiş döviz fişi silinemez.");
         // Fişin işçilik hesabına yazılmış kasa kaydı (kayıtta "Döviz Fişi İşçilik - Fiş No: <seri no>") fiş silinince kalmasın (rapor denetimi 01.10.2026)
@@ -2440,31 +2441,43 @@ export class DovizFisSqlRepository {
                 .query(`IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE ACIKLAMA = @A`)
                 .catch((e) => logger.warn("Döviz fişi işçilik kaydı silinemedi:", e?.message));
         };
-        try {
-            const procCheck = await pool.request().query(`
-        SELECT 1 FROM sys.procedures WHERE name = 'SODVZ_FIS_SIL'
-      `);
-            if (procCheck.recordset?.length > 0) {
+        // Eski silme yordamı (SODVZ_FIS_SIL), fiş tarihi firma tanımındaki e-Döviz başlangıç tarihinden (E_DOVIZ_FIS_BASLANGIC_TARIHI_1..4)
+        // sonraysa "GİB için hazırlanmış fişi silemezsiniz" der; eski programda e-Döviz döneminde fiş silinmez, yalnız GİB'de iptal edilir.
+        // Burada gerçek gönderim yukarıdaki kilitle denetlendi: GİB'e gitmemiş fiş silinebilir. Başlangıç tarihleri TEK işlem içinde
+        // kaldırılıp yordam çağrılır ve geri yazılır; başka oturumlar ara değeri görmez (işlem bitmeden okuyamaz / eski değeri görür),
+        // yordam hata verirse işlem geri alınır ve tarihler olduğu gibi kalır. Yordamın kendi işi (vezne bakiyesi, TODVZ_LOG_FIS) değişmez.
+        const procCheck = await pool.request().query(`
+      SELECT 1 FROM sys.procedures WHERE name = 'SODVZ_FIS_SIL'
+    `);
+        if (procCheck.recordset?.length > 0) {
+            const tarihSutunlari = ["E_DOVIZ_FIS_BASLANGIC_TARIHI_1", "E_DOVIZ_FIS_BASLANGIC_TARIHI_2", "E_DOVIZ_FIS_BASLANGIC_TARIHI_3", "E_DOVIZ_FIS_BASLANGIC_TARIHI_4"];
+            const varOlan = (await pool.request().query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_TANIM') AND name IN (${tarihSutunlari.map((t) => `'${t}'`).join(", ")})`))
+                .recordset.map((r) => String(r.name));
+            const cagri = `EXEC [dbo].[SODVZ_FIS_SIL] @FIS_ID = @FIS_ID, @KULLANICI_ID = @KULLANICI_ID, @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR, @IPTAL_ET = @IPTAL_ET;`;
+            const sarmal = varOlan.length
+                ? `SET XACT_ABORT ON; BEGIN TRAN;
+          DECLARE @ESKI TABLE (${varOlan.map((t, i) => `t${i} datetime NULL`).join(", ")});
+          UPDATE [dbo].[TODVZ_TANIM] SET ${varOlan.map((t) => `${t} = NULL`).join(", ")}
+            OUTPUT ${varOlan.map((t) => `deleted.${t}`).join(", ")} INTO @ESKI;
+          ${cagri}
+          UPDATE T SET ${varOlan.map((t, i) => `${t} = E.t${i}`).join(", ")} FROM [dbo].[TODVZ_TANIM] T, @ESKI E;
+          COMMIT;`
+                : cagri;
+            try {
                 const req = pool.request();
                 req.input("FIS_ID", sql.Int, id);
                 req.input("KULLANICI_ID", sql.Int, kullaniciId || 1);
                 req.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, 1);
                 req.input("IPTAL_ET", sql.Bit, 0);
-                await req.query(`
-          EXEC [dbo].[SODVZ_FIS_SIL]
-            @FIS_ID = @FIS_ID,
-            @KULLANICI_ID = @KULLANICI_ID,
-            @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR,
-            @IPTAL_ET = @IPTAL_ET;
-        `);
-                await iscilikKaydiniSil();
-                return true;
+                await req.query(sarmal);
             }
-        }
-        catch (procErr) {
-            const msg = procErr?.originalError?.message || procErr?.message || String(procErr);
-            logger.error("SODVZ_FIS_SIL error:", procErr);
-            throw ApiError.badRequest(msg);
+            catch (procErr) {
+                const msg = procErr?.originalError?.message || procErr?.message || String(procErr);
+                logger.error("SODVZ_FIS_SIL error:", procErr);
+                throw ApiError.badRequest(msg);
+            }
+            await iscilikKaydiniSil();
+            return true;
         }
         // Yedek yol (eski silme yordamı yoksa): fişin vezne etkisi kaydetme kuralıyla geri alınır, sonra satırlar ve başlık silinir
         await pool.request().input("ID", sql.Int, id).query(`

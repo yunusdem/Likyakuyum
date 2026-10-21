@@ -291,4 +291,27 @@ export class CariService {
     FastLookupCache.invalidate("cariKartlar");
     return res.success;
   }
+
+  public static async saveTabloMaddesi(payload: { id?: number | null; tur: number; ad: string; kod?: string | null }): Promise<LookupItem> {
+    const res = await apiClient.post<any>("/tanimlar/tablo-maddesi", payload);
+    const data = (res.data as any)?.data ?? res.data;
+    FastLookupCache.invalidate("cariLookups");
+    return {
+      id: Number(data.id),
+      ad: data.ad,
+      kod: data.kod,
+      tur: data.tur,
+    };
+  }
+
+  public static async saveUlke(payload: { id?: number | null; ad: string; kod?: string | null }): Promise<LookupItem> {
+    const res = await apiClient.post<any>("/tanimlar/ulkeler", payload);
+    const data = (res.data as any)?.data ?? res.data;
+    FastLookupCache.invalidate("cariLookups");
+    return {
+      id: Number(data.id),
+      ad: data.ad,
+      kod: data.kod,
+    };
+  }
 }

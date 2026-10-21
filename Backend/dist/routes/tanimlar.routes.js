@@ -7,6 +7,8 @@ router.get("/tablo-maddesi", TanimlarController.getTabloMaddeleri);
 router.post("/tablo-maddesi", TanimlarController.saveTabloMaddesi);
 router.delete("/tablo-maddesi/:id", TanimlarController.deleteTabloMaddesi);
 router.get("/ulkeler", TanimlarController.getUlkeler);
+router.post("/ulkeler", TanimlarController.saveUlke);
+router.put("/ulkeler/:id", TanimlarController.saveUlke);
 router.get("/uyruklar", TanimlarController.getUyruklar);
 router.get("/iller", TanimlarController.getIller);
 router.get("/ilceler", TanimlarController.getIlceler);

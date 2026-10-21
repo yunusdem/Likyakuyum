@@ -3,6 +3,7 @@ import authRoutes from "./auth.routes.js";
 import userRoutes from "./user.routes.js";
 import companyRoutes from "./company.routes.js";
 import girisSirasiRoutes from "./girisSirasi.routes.js";
+import kullaniciGorunumRoutes from "./kullaniciGorunum.routes.js";
 import vezneRoutes from "./vezne.routes.js";
 import yaziciRoutes from "./yazici.routes.js";
 import paraRoutes from "./para.routes.js";
@@ -75,6 +76,8 @@ apiRouter.use("/auth", authRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);
 apiRouter.use("/giris-sirasi", girisSirasiRoutes);
+// Kullanıcı görünümü: yöneticinin çalışana kapattığı modüller (docs/KULLANICI_GORUNUM_YOL_HARITASI.md)
+apiRouter.use("/kullanici-gorunum", kullaniciGorunumRoutes);
 apiRouter.use("/ayar", ayarRoutes);
 apiRouter.use("/ayarlar-tanim", ayarRoutes);
 apiRouter.use("/iskonto", iskontoRoutes);

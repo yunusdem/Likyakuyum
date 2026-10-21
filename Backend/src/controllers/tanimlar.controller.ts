@@ -1,4 +1,6 @@
 import { Request, Response } from "express";
+import sql from "mssql";
+import { getDbPool } from "../config/mssql.config.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -72,6 +74,63 @@ export class TanimlarController {
     const dbContext = TanimlarController.getDbContext(req);
     const lookups = await CariSqlRepository.getLookups(dbContext);
     return ApiResponse.ok(res, "Ülkeler listelendi.", lookups.ulkeList || []);
+  });
+
+  /**
+   * POST /api/v1/tanimlar/ulkeler
+   */
+  public static saveUlke = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = TanimlarController.getDbContext(req);
+    const { ad, kod } = req.body;
+    if (!ad || !String(ad).trim()) {
+      throw ApiError.badRequest("Ülke adı zorunludur.");
+    }
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    const cleanAd = String(ad).trim();
+    const cleanKod = kod ? String(kod).trim().toUpperCase() : null;
+    const targetId = req.body.id || (req.params?.id ? Number(req.params.id) : null);
+
+    if (targetId && Number(targetId) > 0) {
+      await pool.request()
+        .input("id", sql.Int, Number(targetId))
+        .input("ad", sql.NVarChar(255), cleanAd)
+        .input("kod", sql.NVarChar(50), cleanKod)
+        .query(`
+          UPDATE [dbo].[TODVZ_ULKE]
+          SET [AD] = @ad, [KOD] = @kod
+          WHERE [ULKE_ID] = @id;
+        `);
+      return ApiResponse.ok(res, "Ülke başarıyla güncellendi.", { id: Number(targetId), ad: cleanAd, kod: cleanKod });
+    }
+
+    let savedItem: { id: number; ad: string; kod: string | null };
+    try {
+      const insRes = await pool.request()
+        .input("ad", sql.NVarChar(255), cleanAd)
+        .input("kod", sql.NVarChar(50), cleanKod)
+        .query(`
+          INSERT INTO [dbo].[TODVZ_ULKE] ([AD], [KOD])
+          VALUES (@ad, @kod);
+          SELECT SCOPE_IDENTITY() as newId;
+        `);
+      const newId = insRes.recordset[0]?.newId;
+      savedItem = { id: Number(newId), ad: cleanAd, kod: cleanKod };
+    } catch (err: any) {
+      // If ULKE_ID is not an IDENTITY column, insert with MAX + 1
+      const maxRes = await pool.request().query(`SELECT ISNULL(MAX([ULKE_ID]), 0) + 1 as nextId FROM [dbo].[TODVZ_ULKE]`);
+      const nextId = Number(maxRes.recordset[0]?.nextId || 1);
+      await pool.request()
+        .input("id", sql.Int, nextId)
+        .input("ad", sql.NVarChar(255), cleanAd)
+        .input("kod", sql.NVarChar(50), cleanKod)
+        .query(`
+          INSERT INTO [dbo].[TODVZ_ULKE] ([ULKE_ID], [AD], [KOD])
+          VALUES (@id, @ad, @kod);
+        `);
+      savedItem = { id: nextId, ad: cleanAd, kod: cleanKod };
+    }
+
+    return ApiResponse.created(res, "Ülke başarıyla kaydedildi.", savedItem);
   });
 
   /**
