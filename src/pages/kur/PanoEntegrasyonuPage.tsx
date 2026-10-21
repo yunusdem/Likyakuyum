@@ -136,9 +136,9 @@ const PanoKarti: React.FC<{
                 <Kopyala metin={pano.anahtar} />
               </InputGroup>
 
-              <AdresSatiri ad="JSON" adres={pano.adresler!.json} aciklama="Yazılım entegrasyonu için (alanlar: kod, ad, alis, satis, alisYazi, satisYazi)" />
+              <AdresSatiri ad="JSON" adres={pano.adresler!.json} aciklama="Yazılım entegrasyonu için (satır alanları: kod, alis, satis, alisYazi, satisYazi)" />
               <AdresSatiri ad="XML" adres={pano.adresler!.xml} aciklama="XML okuyan pano programları için" />
-              <AdresSatiri ad="TXT" adres={pano.adresler!.txt} aciklama="Satır başına KOD;AD;ALIŞ;SATIŞ (Türkçe sayı biçimi)" />
+              <AdresSatiri ad="TXT" adres={pano.adresler!.txt} aciklama="Satır başına KOD;ALIŞ;SATIŞ (Türkçe sayı biçimi)" />
               <AdresSatiri ad="HTML" adres={pano.adresler!.html} aciklama="Girişsiz pano sayfası: TV / Android kutu tarayıcısında tam ekran açın" />
             </Col>
             <Col lg={5}>

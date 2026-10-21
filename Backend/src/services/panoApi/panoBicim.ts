@@ -82,7 +82,10 @@ export const guncellemeZamani = (d = new Date()): string => {
   return tr.toISOString().slice(0, 19) + "+03:00";
 };
 
-export const json = (v: PanoApiVerisi): string => JSON.stringify(v);
+/** Dışarı verilen satır: yalnız kod + alış/satış (sayı ve Türkçe yazı). Ad, firma, pano no, zaman verilmez (kullanıcı kararı 21.10.2026). */
+const disSatir = (s: PanoApiSatiri) => ({ kod: s.kod, alis: s.alis, satis: s.satis, alisYazi: s.alisYazi, satisYazi: s.satisYazi });
+
+export const json = (v: PanoApiVerisi): string => JSON.stringify({ satirlar: v.satirlar.map(disSatir) });
 
 const xmlKacis = (s: string): string =>
   String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -92,16 +95,16 @@ export const xml = (v: PanoApiVerisi): string => {
   const satirlar = v.satirlar
     .map(
       (s) =>
-        `  <satir kod="${xmlKacis(s.kod)}" ad="${xmlKacis(s.ad)}" alis="${sayi(s.alis)}" satis="${sayi(s.satis)}" alisYazi="${xmlKacis(s.alisYazi)}" satisYazi="${xmlKacis(s.satisYazi)}"/>`
+        `  <satir kod="${xmlKacis(s.kod)}" alis="${sayi(s.alis)}" satis="${sayi(s.satis)}" alisYazi="${xmlKacis(s.alisYazi)}" satisYazi="${xmlKacis(s.satisYazi)}"/>`
     )
     .join("\n");
-  return `<?xml version="1.0" encoding="utf-8"?>\n<pano firma="${xmlKacis(v.firma)}" no="${xmlKacis(v.pano)}" guncelleme="${v.guncelleme}">\n${satirlar}\n</pano>\n`;
+  return `<?xml version="1.0" encoding="utf-8"?>\n<pano>\n${satirlar}\n</pano>\n`;
 };
 
-/** Satır başına KOD;AD;ALIS;SATIS — noktalı virgül alanlardan çıkarılır (P12) */
+/** Satır başına KOD;ALIS;SATIS — noktalı virgül koddan çıkarılır (P12) */
 export const txt = (v: PanoApiVerisi): string => {
   const temiz = (s: string) => s.replace(/[;\r\n]+/g, " ").trim();
-  return v.satirlar.map((s) => `${temiz(s.kod)};${temiz(s.ad)};${s.alisYazi};${s.satisYazi}`).join("\r\n") + "\r\n";
+  return v.satirlar.map((s) => `${temiz(s.kod)};${s.alisYazi};${s.satisYazi}`).join("\r\n") + "\r\n";
 };
 
 /** Hata gövdesi: JSON nesne, XML/TXT tek satır */
@@ -198,20 +201,15 @@ td.yukari{color:#4ade80}td.asagi{color:#f87171}
 <script>
 (function(){
   var ADRES=${JSON.stringify(jsonAdresi)}, SN=${sn};
-  var onceki={};
+  // Satır adları ve firma ilk çizimden kalır; JSON yalnız kod + fiyat verir, kod eşlemesiyle hücreler güncellenir
+  var satirlar={};
   function saat(){var d=new Date(),p=function(n){return (n<10?"0":"")+n};document.getElementById("saat").textContent=p(d.getDate())+"."+p(d.getMonth()+1)+"."+d.getFullYear()+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());}
   function metin(s){return String(s==null?"":s)}
+  function yon(td,yeni,eski){td.className=td.className.replace(/ (yukari|asagi)/g,"");if(eski!=null&&yeni!=null&&yeni!==eski)td.className+=yeni>eski?" yukari":" asagi";}
   function ciz(v){
-    var tb=document.getElementById("satirlar"),h="";
-    for(var i=0;i<v.satirlar.length;i++){var s=v.satirlar[i],o=onceki[s.kod]||{},ya="",ys="";
-      if(o.alis!=null&&s.alis!=null&&s.alis!==o.alis)ya=s.alis>o.alis?" yukari":" asagi";
-      if(o.satis!=null&&s.satis!=null&&s.satis!==o.satis)ys=s.satis>o.satis?" yukari":" asagi";
-      h+='<tr><td class="k"></td><td class="f a'+ya+'"></td><td class="f s'+ys+'"></td></tr>';
-      onceki[s.kod]={alis:s.alis,satis:s.satis};}
-    tb.innerHTML=h;
-    var trs=tb.getElementsByTagName("tr");
-    for(var j=0;j<v.satirlar.length;j++){var c=trs[j].getElementsByTagName("td"),r=v.satirlar[j];c[0].textContent=metin(r.ad||r.kod);c[1].textContent=metin(r.alisYazi);c[2].textContent=metin(r.satisYazi);}
-    document.getElementById("firma").textContent=metin(v.firma);
+    for(var i=0;i<v.satirlar.length;i++){var s=v.satirlar[i],r=satirlar[s.kod];if(!r)continue;
+      yon(r.a,s.alis,r.alis);yon(r.s,s.satis,r.satis);
+      r.a.textContent=metin(s.alisYazi);r.s.textContent=metin(s.satisYazi);r.alis=s.alis;r.satis=s.satis;}
     document.getElementById("durum").textContent="";
   }
   function cek(){
@@ -223,7 +221,7 @@ td.yukari{color:#4ade80}td.asagi{color:#f87171}
     x.send();
   }
   var ilk=document.getElementById("satirlar").getElementsByTagName("tr");
-  for(var i=0;i<ilk.length;i++){var c=ilk[i].getElementsByTagName("td");onceki[ilk[i].getAttribute("data-kod")]={alis:null,satis:null};}
+  for(var i=0;i<ilk.length;i++){var c=ilk[i].getElementsByTagName("td");satirlar[ilk[i].getAttribute("data-kod")]={a:c[1],s:c[2],alis:null,satis:null};}
   saat();setInterval(saat,1000);setInterval(cek,SN*1000);
 })();
 </script>
