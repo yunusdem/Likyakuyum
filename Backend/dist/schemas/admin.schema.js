@@ -37,6 +37,8 @@ export const adminGuncelleSchema = z.object({
         .refine((b) => b.adSoyad !== undefined || b.durum !== undefined, { message: "Değiştirilecek alan yok" }),
 });
 export const adminIdSchema = z.object({ params: idParam });
+// Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): firma + pano kimliği
+export const adminFirmaPanoSchema = z.object({ params: idParam.extend({ panoId: z.coerce.number().int().positive() }) });
 // ---------------------------------------------------------------- Firmalar ---
 const secmeli = (azami) => z.string().trim().max(azami).nullish();
 const gun = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-AA-GG biçiminde olmalıdır").refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), "Geçersiz tarih");

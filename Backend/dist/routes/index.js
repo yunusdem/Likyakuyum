@@ -37,6 +37,8 @@ import iskontoRoutes from "./iskonto.routes.js";
 import ebankaRoutes from "./ebanka.routes.js";
 import gibRoutes from "./gib.routes.js";
 import piyasaRoutes from "./piyasa.routes.js";
+import acikPanoRoutes from "./acikPano.routes.js";
+import panoEntegrasyonRoutes from "./panoEntegrasyon.routes.js";
 import hizliSatisRoutes from "./hizliSatis.routes.js";
 import posRoutes from "./pos.routes.js";
 import { PosController } from "../controllers/pos.controller.js";
@@ -72,6 +74,8 @@ apiRouter.use("/admin", adminRoutes);
 apiRouter.use("/destek", destekRoutes);
 // Tanıtım sitesi iletişim formu (giriş yok; docs/ILETISIM_FORMU_YOL_HARITASI.md)
 apiRouter.use("/iletisim", iletisimRoutes);
+// Pano Entegrasyonu açık uçları (docs/PANO_API_YOL_HARITASI.md): oturumsuz, anahtar adreste; HTML sayfası app.ts'te
+apiRouter.use("/acik", acikPanoRoutes);
 apiRouter.use("/auth", authRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);
@@ -123,6 +127,7 @@ apiRouter.use("/tanimlar", tanimlarRoutes);
 apiRouter.use("/gib", gibRoutes);
 apiRouter.use("/kur", kurRoutes);
 apiRouter.use("/piyasa", kapi("/piyasa"), piyasaRoutes);
+apiRouter.use("/pano-entegrasyonu", kapi("/pano-entegrasyonu"), panoEntegrasyonRoutes);
 apiRouter.use("/pano", kapi("/pano"), panoRoutes);
 apiRouter.use("/kur/pano-tanimi", kapi("/pano"), panoRoutes);
 apiRouter.use("/banknot", banknotRoutes);

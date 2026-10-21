@@ -125,6 +125,9 @@ const envSchema = z.object({
     MERKEZ_ADRESI: z.string().default("https://likyakuyum.com"),
     // Kurulumda arayüz (Vite build çıktısı) bu klasörden sunulur; boşsa sunulmaz
     ARAYUZ_KLASORU: z.string().default(""),
+    // Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): LED panoya verilen açık adreslerin başı (https://likyakuyum.com gibi).
+    // Boşsa isteğin geldiği sunucu adı kullanılır (yönetim paneli başka alan adındaysa yanlış olur).
+    PANO_ACIK_KOK: z.string().default(""),
     // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md). Firmanın POS modu admin panelinden gelir; bu değer yalnızca
     // admin veritabanı hiç yapılandırılmamış sunucuda (yerel geliştirme) kullanılır. Canlı mod buradan AÇILAMAZ.
     POS_MOD_YEDEK: z.enum(["kapali", "test"]).default("kapali"),
