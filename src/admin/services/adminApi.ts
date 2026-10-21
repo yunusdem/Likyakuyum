@@ -308,6 +308,21 @@ export interface Sayfali<T> {
 
 // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md, 3.5)
 export type PosMod = "kapali" | "test" | "canli";
+
+/** Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): firma panosu + açık veri anahtarı */
+export interface PanoAnahtarSatiri {
+  panoId: number;
+  panoNo: string;
+  firmaAdi: string;
+  satirSayisi: number;
+  anahtar: string | null;
+  adresler: { json: string; xml: string; txt: string; html: string } | null;
+  onbellekSn: number;
+  olusturan: string | null;
+  olusturmaTarihi: string | null;
+  sonErisim: string | null;
+  istekSayisi: number;
+}
 export type PosDogrulamaSonucu = "GECTI" | "KALDI";
 
 /** Şifre sunucudan hiçbir zaman geri dönmez; yalnızca tanımlı olup olmadığı bilinir. */
@@ -701,6 +716,11 @@ export const adminApi = {
   posDeneme: (firmaId: number, veri: PosDenemeGirdi) => istek<PosDenemeIslemi>("POST", `/firmalar/${firmaId}/pos/deneme`, veri),
   posDenemeIslemi: (firmaId: number, posIslemId: number) => istek<PosDenemeIslemi>("GET", `/firmalar/${firmaId}/pos/deneme/${posIslemId}`),
   posDenemeIptal: (firmaId: number, posIslemId: number) => istek<PosDenemeIslemi>("POST", `/firmalar/${firmaId}/pos/deneme/${posIslemId}/iptal`),
+  // Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md)
+  panoAnahtarlari: (firmaId: number) => istek<PanoAnahtarSatiri[]>("GET", `/firmalar/${firmaId}/pano-anahtarlari`),
+  panoAnahtarUret: (firmaId: number, panoId: number) => istek<PanoAnahtarSatiri>("POST", `/firmalar/${firmaId}/pano-anahtarlari/${panoId}`),
+  panoAnahtarIptal: (firmaId: number, panoId: number) => istek<PanoAnahtarSatiri>("DELETE", `/firmalar/${firmaId}/pano-anahtarlari/${panoId}`),
+  panoOnbellekYaz: (firmaId: number, panoId: number, sn: number) => istek<PanoAnahtarSatiri>("PUT", `/firmalar/${firmaId}/pano-anahtarlari/${panoId}/onbellek`, { sn }),
   posDenemeElle: (firmaId: number, posIslemId: number, alindi: boolean) =>
     istek<PosDenemeIslemi>("POST", `/firmalar/${firmaId}/pos/deneme/${posIslemId}/elle`, { alindi }),
 

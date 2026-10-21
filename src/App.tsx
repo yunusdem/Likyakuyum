@@ -22,6 +22,7 @@ import CariHareketPage from "./pages/cari/CariHareketPage";
 import CariHareketListPage from "./pages/cari/CariHareketListPage";
 import KurFiyatListesiPage from "./pages/kur/KurFiyatListesiPage";
 import PanoTanimiPage from "./pages/kur/PanoTanimiPage";
+import PanoEntegrasyonuPage from "./pages/kur/PanoEntegrasyonuPage";
 import PanoPage from "./pages/kur/PanoPage";
 import TvKatalogPage from "./pages/katalog/TvKatalogPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
@@ -465,6 +466,8 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="kur/merkez-saklananlar" element={<Navigate to="/kur/merkez-bankasi-saklananlar" replace />} />
               <Route path="kur/pano-tanimi" element={<PanoTanimiPage />} />
               <Route path="tanimlar/pano-tanimi" element={<PanoTanimiPage />} />
+              {/* Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): pano başına açık veri anahtarı, yalnız yönetici */}
+              <Route path="kur/pano-entegrasyonu" element={<PanoEntegrasyonuPage />} />
               <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
               <Route path="masak" element={<MasakListsPage />} />
               {/* Eski "Belge / Fiş PDF" adresleri e-Belge ana sayfasına gider */}

@@ -46,6 +46,8 @@ export const adminGuncelleSchema = z.object({
 });
 
 export const adminIdSchema = z.object({ params: idParam });
+// Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): firma + pano kimliği
+export const adminFirmaPanoSchema = z.object({ params: idParam.extend({ panoId: z.coerce.number().int().positive() }) });
 
 // ---------------------------------------------------------------- Firmalar ---
 

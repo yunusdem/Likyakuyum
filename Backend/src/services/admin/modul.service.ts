@@ -41,6 +41,8 @@ export const API_MODULLERI: Record<string, string[]> = {
   "/pano": ["kur", "ust:kur"],
   // Piyasa (canlı fiyat panosu): yalnız üst çubuktaki kısayoldan açılır
   "/piyasa": ["ust:piyasa"],
+  // Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): Kur › Pano Entegrasyonu sayfası; açık uçlar (/acik) kapısızdır, firma/modül denetimi serviste
+  "/pano-entegrasyonu": ["kur:kur/pano-entegrasyonu"],
   // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md): dört modülün hızlı satış maddesi, üst kısayol, düzen ekranı ve
   // fatura sınırının durduğu Firma Tanımları. Satışın kendisi her modülün kendi API'siyle kaydedilir.
   "/hizli-satis": [

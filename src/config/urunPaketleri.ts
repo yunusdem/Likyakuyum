@@ -97,6 +97,8 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
   // C- Kur
   [["kur:kur/anlik-fiyat-listesi", "kur:kur/saklanan-fiyat-listesi", "kur:kur/merkez-bankasi-kurlari", "kur:kur/merkez-bankasi-saklananlar"], [D, G, K]],
   [["kur:kur/pano", "kur:kur/pano-tanimi"], [D, G, K, C]],
+  // Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): pano ile aynı paketler, firmalarda kapalı başlar
+  [["kur:kur/pano-entegrasyonu"], [D, G, K, C]],
 
   // D- Cari
   [

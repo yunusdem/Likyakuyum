@@ -55,6 +55,8 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "U- Pano Tanımı", link: "kur/pano-tanimi" },
       { id: uuid(), name: "V- Merkez Bankası Kurları", link: "kur/merkez-bankasi-kurlari" },
       { id: uuid(), name: "Y- Merkez Bankası Saklananlar", link: "kur/merkez-bankasi-saklananlar" },
+      // Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): pano başına açık veri anahtarı, firma bazında açılır
+      { id: uuid(), name: "Z- Pano Entegrasyonu", link: "kur/pano-entegrasyonu" },
     ],
   },
 
@@ -89,6 +91,8 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "D- Pano Tanımı", link: "kur/pano-tanimi" },
       { id: uuid(), name: "E- Merkez Bankası Kurları", link: "kur/merkez-bankasi-kurlari" },
       { id: uuid(), name: "F- Merkez Bankası Saklananlar", link: "kur/merkez-bankasi-saklananlar" },
+      // Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): pano başına açık veri anahtarı, firma bazında açılır
+      { id: uuid(), name: "G- Pano Entegrasyonu", link: "kur/pano-entegrasyonu" },
     ],
   },
 

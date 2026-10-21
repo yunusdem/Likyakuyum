@@ -9,6 +9,7 @@ import { globalRateLimiter } from "./middlewares/rateLimiter.middleware.js";
 import { requestLoggerMiddleware } from "./middlewares/requestLogger.middleware.js";
 import { notFoundMiddleware, errorHandlerMiddleware } from "./middlewares/error.middleware.js";
 import apiRouter from "./routes/index.js";
+import { AcikPanoController } from "./controllers/acikPano.controller.js";
 
 export const createApp = (): Application => {
   const app = express();
@@ -39,6 +40,10 @@ export const createApp = (): Application => {
     app.use(express.static(arayuz, { index: "index.html", maxAge: "1h" }));
     app.get(/^(?!\/api\/|\/uploads\/).*/, (req, res) => res.sendFile(path.join(arayuz, "index.html")));
   }
+
+  // Pano Entegrasyonu: girişsiz HTML pano (docs/PANO_API_YOL_HARITASI.md, P4). API öneki dışında, kurulum arayüzünden önce
+  // bağlanmaz: kurulum (exe) modunda bu özellik yok (P13), bulutta arayüz ayrı sunucudan gelir.
+  app.get("/acik/pano/:anahtar", AcikPanoController.sayfa);
 
   // Root & Health Check Endpoint
   app.get("/", (req, res) => {
