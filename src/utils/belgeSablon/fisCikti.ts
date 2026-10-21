@@ -1,5 +1,6 @@
 import { BelgeService, type FisCiktisi } from "../../services/belgeService";
 import { sablonHtml, type SablonHtmlSonucu } from "./htmlCiz";
+import { parseDecimal, parseKur } from "../numericInput";
 
 /**
  * Yazıcıya giden fişin HTML'i — firmanın şablonuyla (docs/FIS_TASARIM_YOL_HARITASI.md).
@@ -21,12 +22,82 @@ export async function dovizFisHtml(girdi: Record<string, any>): Promise<FisHtml>
 }
 
 /**
- * Döviz fişleri: Fiş içindeki tüm döviz satırlarını tek fişte toplar ve döner.
- * F10 ve F9'da tek fişte tüm döviz satırları gözükür.
+ * Belge numarasını (veya seri noyu) sondaki sayısal basamakları artırarak ardışık üretir.
+ * Örn: EDA2026000000001 -> EDA2026000000002, A000000010 -> A000000011
+ */
+export function incrementDocNo(docNo: string, offset: number): string {
+  if (!docNo || offset === 0) return docNo || "";
+  let lastNonDigit = -1;
+  for (let i = docNo.length - 1; i >= 0; i--) {
+    const ch = docNo[i];
+    if (ch < "0" || ch > "9") {
+      lastNonDigit = i;
+      break;
+    }
+  }
+  if (lastNonDigit === docNo.length - 1) {
+    return docNo;
+  }
+  const prefix = docNo.slice(0, lastNonDigit + 1);
+  const digits = docNo.slice(lastNonDigit + 1);
+  const num = parseInt(digits, 10);
+  if (isNaN(num)) return docNo;
+  const nextNum = num + offset;
+  const nextDigits = String(nextNum).padStart(digits.length, "0");
+  return prefix + nextDigits;
+}
+
+/**
+ * Döviz fişleri: Fiş içindeki her bir döviz satırı için ayrı bir fiş üretir.
+ * Çoklu ürün/satır olduğunda her bir ürün ayrı bir fişte çıkar.
  */
 export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisHtml[]> {
-  const tek = await dovizFisHtml(girdi);
-  return [tek];
+  const lines = Array.isArray(girdi.lines) ? girdi.lines : [];
+  if (lines.length === 0) {
+    const tek = await dovizFisHtml(girdi);
+    return [tek];
+  }
+
+  const baseSeri = String(girdi.seriNo || "");
+  const baseBelge = String(girdi.belgeNo || "");
+  const isSatim = Number(girdi.tip) === 1;
+
+  const fisler: FisHtml[] = [];
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx];
+    const miktar = parseDecimal(line.miktar);
+    const kur = parseKur(line.kur);
+    const tutar = line.tutar !== undefined && line.tutar !== null ? parseDecimal(line.tutar) : miktar * kur;
+    const bmv = parseDecimal(line.bmv);
+    const kmv = parseDecimal(line.kmv);
+    const komisyon = parseDecimal(line.komisyon);
+    const masraf = bmv + kmv + komisyon;
+    const sonToplam = isSatim ? tutar + masraf : tutar - masraf;
+
+    // Satıra ait seriNo ve belgeNo varsa onları kullan; yoksa ana fişinkinden sırayla türet
+    const satirSeriNo = line.seriNo || (baseSeri ? incrementDocNo(baseSeri, idx) : "");
+    const satirBelgeNo = line.belgeNo || (baseBelge ? incrementDocNo(baseBelge, idx) : "");
+    const satirGuid = line.ettn || line.guid || girdi.guid;
+
+    const tekilGirdi = {
+      ...girdi,
+      seriNo: satirSeriNo,
+      belgeNo: satirBelgeNo,
+      guid: satirGuid,
+      lines: [{ ...line, miktar, kur, tutar, seriNo: satirSeriNo, belgeNo: satirBelgeNo }],
+      toplamTutar: tutar,
+      totalMasraf: masraf,
+      sonToplam: sonToplam,
+      odemeTutari: sonToplam,
+      bsmvTutari: bmv,
+      kmvTutari: kmv,
+      komisyonTutari: komisyon,
+    };
+
+    const tek = await dovizFisHtml(tekilGirdi);
+    fisler.push(tek);
+  }
+  return fisler;
 }
 
 /** Sarraf fişi: ekranın yazdırma anındaki görüntüsü (SarrafFisiPrintModal'ın aldığı alanlar). */
@@ -36,12 +107,44 @@ export async function sarrafFisHtml(girdi: Record<string, any>, bicim: FisBicimi
 }
 
 /**
- * Sarraf fişleri: Fiş içindeki tüm ürün/hareket satırlarını tek fişte toplar ve döner.
- * F10 ve F9'da tek fişte tüm ürünler gözükür.
+ * Sarraf fişleri: Fiş içindeki her bir ürün/hareket satırı için ayrı bir fiş üretir.
+ * Çoklu ürün/satır olduğunda her bir ürün ayrı bir fişte çıkar.
  */
 export async function sarrafFisleriHtml(girdi: Record<string, any>, bicim: FisBicimi): Promise<FisHtml[]> {
-  const tek = await sarrafFisHtml(girdi, bicim);
-  return [tek];
+  const satirlar = Array.isArray(girdi.satirlar) ? girdi.satirlar : [];
+  if (satirlar.length <= 1) {
+    const tek = await sarrafFisHtml(girdi, bicim);
+    return [tek];
+  }
+
+  const baseFisNo = String(girdi.fisNo || girdi.belgeNo || "");
+  const baseSeriNo = String(girdi.seriNo || "");
+
+  const fisler: FisHtml[] = [];
+  for (let idx = 0; idx < satirlar.length; idx++) {
+    const s = satirlar[idx];
+    const tutar = parseDecimal(s.tutar);
+    const hasGram = parseDecimal(s.hasGram) || parseDecimal(s.has);
+
+    const satirFisNo = s.fisNo || s.belgeNo || (baseFisNo ? incrementDocNo(baseFisNo, idx) : "");
+    const satirSeriNo = s.seriNo || (baseSeriNo ? incrementDocNo(baseSeriNo, idx) : "");
+
+    const tekilGirdi = {
+      ...girdi,
+      fisNo: satirFisNo,
+      belgeNo: satirFisNo,
+      seriNo: satirSeriNo,
+      satirlar: [s],
+      toplamTutar: tutar,
+      toplamHas: hasGram,
+      odenenTutar: tutar,
+      kalanTutar: 0,
+    };
+
+    const tek = await sarrafFisHtml(tekilGirdi, bicim);
+    fisler.push(tek);
+  }
+  return fisler;
 }
 
 /** Perakende fişi / fatura: kayıtlı fatura ya da kayıt yükü. */
@@ -51,12 +154,40 @@ export async function perakendeFisHtml(fatura: Record<string, any>, bicim: FisBi
 }
 
 /**
- * Perakende fişleri: Fiş içindeki tüm ürün satırlarını tek fişte toplar ve döner.
- * F10 ve F9'da tek fişte tüm ürünler gözükür.
+ * Perakende fişleri: Fiş içindeki her bir ürün satırı için ayrı bir fiş üretir.
+ * Çoklu ürün/satır olduğunda her bir ürün ayrı bir fişte çıkar.
  */
 export async function perakendeFisleriHtml(fatura: Record<string, any>, bicim: FisBicimi): Promise<FisHtml[]> {
-  const tek = await perakendeFisHtml(fatura, bicim);
-  return [tek];
+  const satirlar = Array.isArray(fatura.satirlar) ? fatura.satirlar : [];
+  if (satirlar.length <= 1) {
+    const tek = await perakendeFisHtml(fatura, bicim);
+    return [tek];
+  }
+
+  const baseFaturaNo = String(fatura.faturaNo || "");
+
+  const fisler: FisHtml[] = [];
+  for (let idx = 0; idx < satirlar.length; idx++) {
+    const s = satirlar[idx];
+    const tutar = parseDecimal(s.toplamTutar) || parseDecimal(s.tutar) || (parseDecimal(s.miktar || 1) * parseDecimal(s.birimFiyat || 0));
+    const kdv = parseDecimal(s.kdvTutari);
+    const araToplam = tutar - kdv;
+
+    const satirFaturaNo = s.faturaNo || (baseFaturaNo ? incrementDocNo(baseFaturaNo, idx) : "");
+
+    const tekilFatura = {
+      ...fatura,
+      faturaNo: satirFaturaNo,
+      satirlar: [s],
+      araToplam: araToplam > 0 ? araToplam : tutar,
+      toplamKdv: kdv,
+      genelToplam: tutar,
+    };
+
+    const tek = await perakendeFisHtml(tekilFatura, bicim);
+    fisler.push(tek);
+  }
+  return fisler;
 }
 
 /** Ticari satış fişi: kayıtlı fiş ya da ekrandaki fiş (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17). */

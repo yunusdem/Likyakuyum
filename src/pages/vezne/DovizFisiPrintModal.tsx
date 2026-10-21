@@ -16,7 +16,12 @@ export interface PrintLineItem {
   tutar: number | string;
   usdKarsiligi?: number | string;
   bmv?: number | string;
+  kmv?: number | string;
+  kmvOrani?: number | string;
   komisyon?: number | string;
+  seriNo?: string;
+  belgeNo?: string;
+  ettn?: string;
 }
 
 export interface DovizFisiPrintModalProps {

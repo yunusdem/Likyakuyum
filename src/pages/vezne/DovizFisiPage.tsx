@@ -71,7 +71,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { getUrunTipiInfo } from "./SarrafFisiPage";
 import { triggerSilentPrint } from "../../services/silentPrintService";
-import { dovizFisHtml, dovizFisleriHtml } from "../../utils/belgeSablon/fisCikti";
+import { dovizFisHtml, dovizFisleriHtml, incrementDocNo } from "../../utils/belgeSablon/fisCikti";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
@@ -110,6 +110,9 @@ interface GridLineItem {
   kmvOrani: number | string;
   kmv: number | string;
   tutar: number | string;
+  seriNo?: string;
+  belgeNo?: string;
+  ettn?: string;
 }
 
 const parseMiktar = (val: any): number => parseDecimal(val);
@@ -1530,6 +1533,9 @@ export const DovizFisiPage: React.FC = () => {
               kmvOrani: rawKmvOrani != null && Number(rawKmvOrani) > 0 ? String(rawKmvOrani) : "",
               kmv: parsedKmv,
               tutar: s.tutar != null ? Number(s.tutar).toFixed(tlKurusSayisi) : "",
+              seriNo: s.seriNo || "",
+              belgeNo: s.belgeNo || "",
+              ettn: s.ettn || "",
             };
           })
         );
@@ -2690,11 +2696,6 @@ export const DovizFisiPage: React.FC = () => {
 
     let targetIdx = activeRowIndex >= 0 && activeRowIndex < lines.length ? activeRowIndex : 0;
     const currentRow = lines[targetIdx];
-    const isCurrentEmpty =
-      !currentRow ||
-      (!currentRow.paraId &&
-        (!currentRow.paraKodu || currentRow.paraKodu.trim() === "") &&
-        (!currentRow.miktar || currentRow.miktar === ""));
 
     const statKod = (istatistikKodu || "").trim();
     const activeStat = statKod ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === statKod))) : null;
@@ -2718,7 +2719,7 @@ export const DovizFisiPage: React.FC = () => {
       komisyonOrani: komOrani,
     });
 
-    if (isCurrentEmpty && currentRow) {
+    if (currentRow) {
       setLines((prev) =>
         prev.map((r, i) =>
           i === targetIdx
@@ -3840,6 +3841,9 @@ export const DovizFisiPage: React.FC = () => {
             kmv: Number(parseDecimal(l.kmv || "0")) || 0,
             kdvOrani: 0,
             kdv: 0,
+            seriNo: l.seriNo || undefined,
+            belgeNo: l.belgeNo || undefined,
+            ettn: l.ettn || undefined,
           };
         }),
       };
@@ -3868,7 +3872,7 @@ export const DovizFisiPage: React.FC = () => {
         detayCariTipi,
         vezneKod,
         istatistikKodu,
-        lines: lines.map((l) => ({
+        lines: (saved.satirlar && saved.satirlar.length > 0 ? saved.satirlar : lines).map((l: any, idx: number) => ({
           paraKodu: l.paraKodu,
           paraAdi: l.paraAdi,
           miktar: l.miktar,
@@ -3878,6 +3882,9 @@ export const DovizFisiPage: React.FC = () => {
           kmv: l.kmv,
           kmvOrani: l.kmvOrani,
           komisyon: l.komisyon,
+          seriNo: l.seriNo || (saved.seriNo ? incrementDocNo(saved.seriNo, idx) : ""),
+          belgeNo: l.belgeNo || (saved.belgeNo ? incrementDocNo(saved.belgeNo, idx) : ""),
+          ettn: l.ettn,
         })),
         toplamTutar: totalTutar,
         totalMasraf: totalMasraf,
@@ -4372,7 +4379,7 @@ export const DovizFisiPage: React.FC = () => {
       detayCariTipi,
       vezneKod,
       istatistikKodu,
-      lines: lines.map((l) => ({
+      lines: lines.map((l: any, idx: number) => ({
         paraKodu: l.paraKodu,
         paraAdi: l.paraAdi,
         miktar: l.miktar,
@@ -4382,6 +4389,9 @@ export const DovizFisiPage: React.FC = () => {
         kmv: l.kmv,
         kmvOrani: l.kmvOrani,
         komisyon: l.komisyon,
+        seriNo: l.seriNo || (seriNo ? incrementDocNo(seriNo, idx) : ""),
+        belgeNo: l.belgeNo || (belgeNo ? incrementDocNo(belgeNo, idx) : ""),
+        ettn: l.ettn,
       })),
       toplamTutar: totalTutar,
       totalMasraf: totalMasraf,
@@ -4446,7 +4456,7 @@ export const DovizFisiPage: React.FC = () => {
       detayCariTipi,
       vezneKod,
       istatistikKodu,
-      lines: lines.map((l) => ({
+      lines: lines.map((l: any, idx: number) => ({
         paraKodu: l.paraKodu,
         paraAdi: l.paraAdi,
         miktar: l.miktar,
@@ -4456,6 +4466,9 @@ export const DovizFisiPage: React.FC = () => {
         kmv: l.kmv,
         kmvOrani: l.kmvOrani,
         komisyon: l.komisyon,
+        seriNo: l.seriNo || (seriNo ? incrementDocNo(seriNo, idx) : ""),
+        belgeNo: l.belgeNo || (belgeNo ? incrementDocNo(belgeNo, idx) : ""),
+        ettn: l.ettn,
       })),
       toplamTutar: totalTutar,
       totalMasraf: totalMasraf,
@@ -5965,20 +5978,8 @@ export const DovizFisiPage: React.FC = () => {
                               const val = e.target.value.toUpperCase();
                               handleLineFieldChange(row.id, "paraKodu", val);
                             }}
-                            onDoubleClick={() => {
-                              const term = (row.paraKodu || "").trim();
-                              lastModalCallerRef.current = "paraGrid";
-                              lastParaModalRowIndexRef.current = idx;
-                              setParaModalRowId(row.id);
-                              setParaSearchTerm(term);
-                              if (paraList.length === 0) {
-                                apiClient.get<ParaItem[]>("/para")
-                                  .then((r) => {
-                                    if (r.data && r.data.length > 0) setParaList(r.data);
-                                  })
-                                  .catch(() => { });
-                              }
-                              setShowParaModal(true);
+                            onDoubleClick={(e) => {
+                              e.currentTarget.select();
                             }}
                             onKeyDown={(e) => handleCellKeyDown(e, idx, "kod")}
                           />
@@ -6034,7 +6035,21 @@ export const DovizFisiPage: React.FC = () => {
                             setActiveRowIndex(idx);
                             cleanupEmptyRows(idx);
                           }}
-                          onChange={(e) => handleLineFieldChange(row.id, "miktar", e.target.value)}
+                          onChange={(e) => {
+                            const input = e.target;
+                            let rawVal = input.value;
+                            if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
+                              rawVal = rawVal.replace(/^0+/, "") || "0";
+                            }
+                            const isAtEnd = (input.selectionStart ?? rawVal.length) >= rawVal.length - 1;
+                            const formatted = formatMiktar(rawVal);
+                            handleLineFieldChange(row.id, "miktar", formatted);
+                            if (isAtEnd) {
+                              requestAnimationFrame(() => {
+                                input.setSelectionRange(formatted.length, formatted.length);
+                              });
+                            }
+                          }}
                           onBlur={(e) => {
                             const val = e.target.value.trim();
                             if (val !== "") {
@@ -7622,14 +7637,19 @@ export const DovizFisiPage: React.FC = () => {
         vezneKod={printSnapshot?.vezneKod ?? vezneKod}
         vezne={vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null)}
         istatistikKodu={printSnapshot?.istatistikKodu ?? istatistikKodu}
-        lines={printSnapshot?.lines ?? lines.map((l) => ({
+        lines={printSnapshot?.lines ?? lines.map((l: any, idx: number) => ({
           paraKodu: l.paraKodu,
           paraAdi: l.paraAdi,
           miktar: l.miktar,
           kur: l.kur,
           tutar: l.tutar,
           bmv: l.bmv,
+          kmv: l.kmv,
+          kmvOrani: l.kmvOrani,
           komisyon: l.komisyon,
+          seriNo: l.seriNo || (seriNo ? incrementDocNo(seriNo, idx) : ""),
+          belgeNo: l.belgeNo || (belgeNo ? incrementDocNo(belgeNo, idx) : ""),
+          ettn: l.ettn,
         }))}
         toplamTutar={printSnapshot?.toplamTutar ?? totalTutar}
         totalMasraf={printSnapshot?.totalMasraf ?? totalMasraf}
@@ -7708,6 +7728,8 @@ export const DovizFisiPage: React.FC = () => {
         kurKurusSayisi={kurKurusSayisi}
         dovizKurusSayisi={dovizKurusSayisi}
         tlKurusSayisi={tlKurusSayisi}
+        initialParaKod={lines[activeRowIndex]?.paraKodu}
+        initialKur={lines[activeRowIndex]?.kur}
       />
 
       {/* F9) Para Sayma (Banknot Say) Modalı */}

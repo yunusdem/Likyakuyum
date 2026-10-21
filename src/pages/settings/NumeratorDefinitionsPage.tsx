@@ -245,8 +245,8 @@ export const NumeratorDefinitionsPage: React.FC = () => {
           ...r,
           [field]: val,
           isActive: true, // Editing any field automatically activates the numerator
-          uzunluk: r.uzunluk !== "" && r.uzunluk !== undefined ? r.uzunluk : defUzunluk,
-          onuneSifirKoy: r.onuneSifirKoy !== undefined ? r.onuneSifirKoy : true,
+          uzunluk: field === "uzunluk" ? val : (r.uzunluk !== "" && r.uzunluk !== undefined ? r.uzunluk : defUzunluk),
+          onuneSifirKoy: field === "onuneSifirKoy" ? Boolean(val) : (r.onuneSifirKoy ?? true),
           isDirty: true,
         };
       })
@@ -303,7 +303,7 @@ export const NumeratorDefinitionsPage: React.FC = () => {
             baslangic: cleanBaslangic,
             bitis: cleanBitis,
             uzunluk: cleanUzunluk,
-            onuneSifirKoy: row.onuneSifirKoy !== false,
+            onuneSifirKoy: Boolean(row.onuneSifirKoy),
           });
           savedCount++;
         } else if (row.existingId) {
@@ -787,14 +787,19 @@ export const NumeratorDefinitionsPage: React.FC = () => {
                           padding: 0,
                           textAlign: "center",
                           verticalAlign: "middle",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => {
+                          handleFieldChange(row.tur, "onuneSifirKoy", !row.onuneSifirKoy);
                         }}
                       >
                         <input
                           type="checkbox"
                           checked={row.onuneSifirKoy}
                           onChange={(e) => handleFieldChange(row.tur, "onuneSifirKoy", e.target.checked)}
+                          onClick={(e) => e.stopPropagation()}
                           style={{
-                            cursor: isRowActive ? "pointer" : "default",
+                            cursor: "pointer",
                             width: "14px",
                             height: "14px",
                             margin: "0 auto",

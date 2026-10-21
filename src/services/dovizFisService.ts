@@ -23,6 +23,7 @@ export interface DovizFisSatiriModel {
   bankaHesabiId?: number | null;
   seriNo?: string;
   belgeNo?: string;
+  ettn?: string;
 }
 
 export interface DovizFisModel {
