@@ -43,9 +43,8 @@ import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import SarrafFisiPrintModal from "./SarrafFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
-import { triggerSilentPrint } from "../../services/silentPrintService";
-import { sarrafFisHtml } from "../../utils/belgeSablon/fisCikti";
-import { extractPlainTextFromFis } from "../../utils/belgeSablon/yazdir";
+import { sarrafFisHtml, sarrafFisleriHtml } from "../../utils/belgeSablon/fisCikti";
+import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -2270,18 +2269,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const isPos = targetPrinter ? targetPrinter.belgeYaziciModu !== 0 : resolved.recommendedPrintType === "POS";
         const copiesToUse = targetCopies || resolved.kopyaSayisi || 1;
 
-        // Fiş firmanın şablonundan basılır
+        // Fiş firmanın şablonundan basılır (çoklu satır varsa her satır için bir fiş)
         try {
-          const fisCikti = await sarrafFisHtml(snapObj, isPos ? "80" : "A4");
-          const plainText = extractPlainTextFromFis(fisCikti);
-          const sonuc = await triggerSilentPrint({
-            html: fisCikti.html,
-            text: plainText,
+          const fisCikti = await sarrafFisleriHtml(snapObj, isPos ? "80" : "A4");
+          const sonuc = await fisiYazdir(fisCikti, {
             printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
             copies: copiesToUse,
             isPos,
-            title: `Sarraf_Fisi_${result.fisNo || fisNo || "Yazdir"}`,
-            allowBrowserFallback: false,
           });
           if (!sonuc.success) {
             printSuccess = false;
@@ -2303,8 +2297,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         showNotif("success", `Fiş ${result.yeniKayit ? "kaydedildi" : "güncellendi"} — ${result.fisNo || result.sarrafFisiId}`);
       }
       if (await ebFis.kaydedildi(result.sarrafFisiId)) return;
-      if (andPrint) {
-        // Yazdırılınca aynı fişte kalınır, fiş temizlenmez
+      if (isDuzeltmeMode && andPrint) {
+        // Düzeltme sayfasında F10 ile kaydedilip yazdırılınca aynı fişte kalınır, sayfa sıfırlanmaz
         if (result.sarrafFisiId) {
           setFisId(result.sarrafFisiId);
         }
@@ -2312,7 +2306,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setFisNo(result.fisNo);
         }
       } else {
-        // Yalnızca standart kayıtta yeni fişe geç
+        // Kayıt sayfasında veya standart kayıtta sayfa sıfırlansın / temizlensin
         resetForm();
       }
       const bak = await SarrafFisService.getVezneBakiye(vezneId).catch(() => bakiyeler);
@@ -4870,16 +4864,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const isPos = resolved.recommendedPrintType === "POS";
     try {
-      const fisCikti = await sarrafFisHtml(snapObj, isPos ? "80" : "A4");
-      const plainText = extractPlainTextFromFis(fisCikti);
-      const sonuc = await triggerSilentPrint({
-        html: fisCikti.html,
-        text: plainText,
+      const fisCikti = await sarrafFisleriHtml(snapObj, isPos ? "80" : "A4");
+      const sonuc = await fisiYazdir(fisCikti, {
         printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
         copies: resolved.kopyaSayisi || 1,
         isPos,
-        title: `Sarraf_Fisi_${fisNo || "Yazdir"}`,
-        allowBrowserFallback: false,
       });
       if (sonuc.success) {
         showNotif("success", "✅ Fiş doğrudan yazıcıya gönderildi.");

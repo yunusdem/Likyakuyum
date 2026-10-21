@@ -21,8 +21,8 @@ export interface DovizFisGirdisi {
   unvan?: string; vergiKimlikNo?: string; detayIl?: string; detayIlce?: string; detayUyruk?: string;
   detayPasaportNo?: string; detayMeslek?: string; detayCariTipi?: string; vezneKod?: string; istatistikKodu?: string;
   guid?: string;
-  lines: { paraKodu?: string; paraAdi?: string; miktar?: number | string; kur?: number | string; tutar?: number | string }[];
-  toplamTutar?: number | null; odemeTutari?: number | null; bsmvTutari?: number | null; komisyonTutari?: number | null;
+  lines: { paraKodu?: string; paraAdi?: string; miktar?: number | string; kur?: number | string; tutar?: number | string; bmv?: number | string; kmv?: number | string; komisyon?: number | string }[];
+  toplamTutar?: number | null; totalMasraf?: number | null; sonToplam?: number | null; odemeTutari?: number | null; bsmvTutari?: number | null; kmvTutari?: number | null; komisyonTutari?: number | null;
   giseUsdKuru?: number | null;
   dovizKurusSayisi?: number | null; kurKurusSayisi?: number | null; tlKurusSayisi?: number | null;
 }
@@ -37,7 +37,7 @@ export interface DovizFisVerisi {
   firma: FirmaKimlik & { vdVkn: string; mersisSicil: string };
   musteri: { unvan: string; ilceSehir: string; uyruk: string; ulkeKodu: string; pasaportNo: string; kimlikNo: string; vergiDairesi: string; musteriTuru: string; meslek: string };
   satirlar: DovizFisSatiri[];
-  toplam: { tl: number; bsmv: number; bsmvVar: boolean; komisyon: number; genel: number; yaziyla: string };
+  toplam: { tl: number; tutar: number; bsmv: number; bsmvVar: boolean; komisyon: number; kmv: number; masraf: number; sonToplam: number; genel: number; yaziyla: string };
   basamak: { doviz: number; kur: number; tl: number };
   qr: string; erisimAdresi: string; onizleme: boolean; iptal: boolean;
 }
@@ -113,9 +113,19 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
     .filter(s => s.miktar > 0 && s.kur > 0);
 
   const tl = satirlar.reduce((t, s) => t + s.tl, 0);
+  const tutar = g.toplamTutar !== undefined && g.toplamTutar !== null ? sayiOku(g.toplamTutar) : tl;
   const bsmv = satim ? (g.bsmvTutari !== undefined && g.bsmvTutari !== null ? sayiOku(g.bsmvTutari) : yuvarla(tl * 0.002)) : 0;
-  const genel = satim ? tl + bsmv : (g.odemeTutari !== undefined && g.odemeTutari !== null ? sayiOku(g.odemeTutari) : tl);
   const komisyon = sayiOku(g.komisyonTutari);
+  const kmv = sayiOku(g.kmvTutari);
+  const masraf = g.totalMasraf !== undefined && g.totalMasraf !== null
+    ? sayiOku(g.totalMasraf)
+    : yuvarla(bsmv + komisyon + kmv);
+  const sonToplam = g.sonToplam !== undefined && g.sonToplam !== null
+    ? sayiOku(g.sonToplam)
+    : (g.odemeTutari !== undefined && g.odemeTutari !== null
+      ? sayiOku(g.odemeTutari)
+      : (satim ? yuvarla(tutar + masraf) : yuvarla(tutar - masraf)));
+  const genel = sonToplam;
 
   const belgeNo = kodBuyuk(yazi(kayit.belgeNo) || yazi(g.belgeNo) || yazi(g.seriNo));
   const ettn = kodBuyuk(yazi(kayit.ettn) || yazi(g.guid));
@@ -153,7 +163,7 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
       mersisSicil: [firma.mersis, firma.ticaretSicilNo].filter(Boolean).join(" / "),
     },
     musteri, satirlar,
-    toplam: { tl, bsmv, bsmvVar: satim && bsmv > 0, komisyon, genel, yaziyla: fisYaziyla(genel) },
+    toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
     basamak, qr, erisimAdresi, onizleme: false, iptal: false,
   };
 }

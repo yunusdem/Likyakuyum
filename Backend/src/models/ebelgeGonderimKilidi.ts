@@ -10,13 +10,29 @@ import { ApiError } from "../utils/ApiError.js";
  * Sarraf evrakTuru 0, Perakende / Ticari 98, Döviz 99 (ebelgeKaynak.repository ile aynı).
  */
 export async function gibeGonderildiMi(pool: sql.ConnectionPool, evrakTuru: number, belgeId: number): Promise<boolean> {
-  const r = await pool.request().input("K", sql.VarChar(60), `${evrakTuru}:${belgeId}:%`).query(`
-    SELECT CASE WHEN (OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_GIDEN]
-        WHERE KAYNAK_FIS_ID LIKE @K AND GONDERIM_DURUMU IN ('GONDERILDI','KUYRUKTA','GONDERILIYOR','BELIRSIZ','ONAYLANIYOR')))
-      OR (OBJECT_ID('dbo.TODVZ_EBELGE_KAYNAK', 'U') IS NOT NULL AND EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_KAYNAK]
-        WHERE ANAHTAR LIKE @K AND DURUM NOT IN ('GONDERILMEDI','HATA')))
-      THEN 1 ELSE 0 END AS G`);
-  return Number(r.recordset?.[0]?.G) === 1;
+  try {
+    const r = await pool.request().input("K", sql.VarChar(60), `${evrakTuru}:${belgeId}:%`).query(`
+      DECLARE @G BIT = 0;
+      IF OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') IS NOT NULL
+      BEGIN
+        EXEC sp_executesql N'SELECT @G = CASE WHEN EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_GIDEN]
+          WHERE KAYNAK_FIS_ID LIKE @K AND GONDERIM_DURUMU IN (''GONDERILDI'',''KUYRUKTA'',''GONDERILIYOR'',''BELIRSIZ'',''ONAYLANIYOR''))
+          THEN 1 ELSE 0 END', N'@K VARCHAR(60), @G BIT OUTPUT', @K, @G OUTPUT;
+      END;
+
+      IF @G = 0 AND OBJECT_ID('dbo.TODVZ_EBELGE_KAYNAK', 'U') IS NOT NULL
+      BEGIN
+        EXEC sp_executesql N'SELECT @G = CASE WHEN EXISTS (SELECT 1 FROM [dbo].[TODVZ_EBELGE_KAYNAK]
+          WHERE ANAHTAR LIKE @K AND DURUM NOT IN (''GONDERILMEDI'',''HATA''))
+          THEN 1 ELSE 0 END', N'@K VARCHAR(60), @G BIT OUTPUT', @K, @G OUTPUT;
+      END;
+
+      SELECT @G AS G;
+    `);
+    return Number(r.recordset?.[0]?.G) === 1;
+  } catch {
+    return false;
+  }
 }
 
 /** Gönderilmiş fişi silme girişiminde fırlatılır — her fiş türünde aynı mesaj. */

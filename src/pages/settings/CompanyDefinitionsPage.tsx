@@ -46,6 +46,7 @@ import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 import KurKomisyonTablosu, { type KurKomisyonTablosuRef } from "../../components/kur/KurKomisyonTablosu";
 import KurKaynakSecici, { type KurKaynakSeciciRef } from "../../components/kur/KurKaynakSecici";
 import FaturaSiniriAlani, { type FaturaSiniriAlaniRef } from "../hizliSatis/FaturaSiniriAlani";
+import FisAktarmaModal from "../vezne/FisAktarmaModal";
 
 export const CompanyDefinitionsPage: React.FC = () => {
   // Lisansta olmayan ürüne ait ayarlar (kuyum: işçilik, üretim, sarrafiye; döviz: e-Döviz fişi) gösterilmez, değerleri korunur
@@ -96,6 +97,8 @@ export const CompanyDefinitionsPage: React.FC = () => {
     ALTIN_VERGI_SINIRI_PARA_ID: null,
     TL_VERGI_SINIRI: null,
     SERMAYE_HESABI_ID: null,
+    FIS_AKTARILACAK_HESAP_ID: null,
+    FIS_AKTARMA_HESABI: "",
     BELGE_DIZINI: "",
     CARI_KOD_SIRA_NO: null,
     CARI_KOD_BASINA_SIFIR: false,
@@ -234,6 +237,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
   const [cariKartlar, setCariKartlar] = useState<CariKartItem[]>([]);
   const [hesapList, setHesapList] = useState<HesapItem[]>([]);
   const [iskontoList, setIskontoList] = useState<IskontoItem[]>([]);
+  const [showFisAktarmaModal, setShowFisAktarmaModal] = useState<boolean>(false);
   const [lookupModalConfig, setLookupModalConfig] = useState<{
     show: boolean;
     title: string;
@@ -811,6 +815,66 @@ export const CompanyDefinitionsPage: React.FC = () => {
       });
     } catch (err) {
       console.error("Sermaye hesabı lookup hatası:", err);
+    }
+  };
+
+  const openFisAktarmaHesabiLookup = async () => {
+    try {
+      const [hesaplar, cariler] = await Promise.all([
+        ensureHesaplar(),
+        ensureCariKartlar(),
+      ]);
+      const combined = [
+        ...hesaplar.map((h) => ({
+          id: h.hesapId,
+          kod: h.kod,
+          unvan: h.ad,
+          tur: "Hesap Kartı",
+        })),
+        ...cariler.map((c) => ({
+          id: c.id,
+          kod: c.kod,
+          unvan: c.ad,
+          tur: "Cari Kart",
+        })),
+      ];
+      setLookupModalConfig({
+        show: true,
+        title: "Fiş Aktarılacak Hesap / Cari Seçimi",
+        items: combined,
+        selectedId: formData.FIS_AKTARILACAK_HESAP_ID,
+        columns: [
+          {
+            header: "Tür",
+            render: (it) => <Badge bg={it.tur === "Cari Kart" ? "info" : "primary"}>{it.tur}</Badge>,
+            width: "110px",
+          },
+          {
+            header: "Kod",
+            render: (it) => <span className="font-monospace fw-bold">{it.kod}</span>,
+            width: "120px",
+          },
+          {
+            header: "Tanım / Ünvan",
+            render: (it) => <span className="fw-medium">{it.unvan}</span>,
+          },
+        ],
+        filterFn: (it, term) => {
+          const t = term.toLowerCase();
+          return (
+            (it.kod && it.kod.toLowerCase().includes(t)) ||
+            (it.unvan && it.unvan.toLowerCase().includes(t)) ||
+            (it.tur && it.tur.toLowerCase().includes(t))
+          );
+        },
+        onSelect: (it) => {
+          handleChange("FIS_AKTARILACAK_HESAP_ID", it.id);
+          handleChange("FIS_AKTARMA_HESABI", it.unvan || it.kod);
+          setLookupModalConfig((prev) => ({ ...prev, show: false }));
+        },
+      });
+    } catch (err) {
+      console.error("Fiş aktarma hesabı lookup hatası:", err);
     }
   };
 
@@ -2273,6 +2337,49 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             </Form.Group>
                           </Col>
 
+                          <Col xs={12}>
+                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Fiş Aktarma Hesabı:</Form.Label>
+                              <Col>
+                                <InputGroup size="sm" className="flex-nowrap" style={{ maxWidth: "260px" }}>
+                                  <div
+                                    className="form-control form-control-sm bg-white text-truncate text-secondary text-start"
+                                    style={{ fontSize: "0.82rem" }}
+                                    title={formData.FIS_AKTARMA_HESABI || getHesapName(formData.FIS_AKTARILACAK_HESAP_ID)}
+                                  >
+                                    {formData.FIS_AKTARMA_HESABI || getHesapName(formData.FIS_AKTARILACAK_HESAP_ID) || "Hesap / Cari Seçiniz"}
+                                  </div>
+                                  <Button
+                                    variant="outline-primary"
+                                    onClick={openFisAktarmaHesabiLookup}
+                                    title="Listeden Seç (Dürbün - Fiş Aktarılacak Hesap/Cari)"
+                                    className="d-flex align-items-center px-2 flex-shrink-0"
+                                  >
+                                    <IconBinoculars size={16} />
+                                  </Button>
+                                </InputGroup>
+                              </Col>
+                            </Form.Group>
+                          </Col>
+
+                          <Col xs={12}>
+                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
+                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Diğer Veritabanı:</Form.Label>
+                              <Col>
+                                <Form.Control
+                                  type="text"
+                                  size="sm"
+                                  value={formData.DIGER_VERITABANI_ADI || ""}
+                                  onChange={(e) => handleChange("DIGER_VERITABANI_ADI", e.target.value)}
+                                  placeholder="Örn: LIKYA_RESMI"
+                                  className="bg-white border font-monospace text-start"
+                                  style={{ maxWidth: "260px" }}
+                                  title="Aktarma yapılacak diğer veritabanı adı"
+                                />
+                              </Col>
+                            </Form.Group>
+                          </Col>
+
                           {ozellik.kuyum && (
                             <Col xs={12}>
                               <Form.Group as={Row} className="mb-2 align-items-center g-2">
@@ -3090,6 +3197,28 @@ export const CompanyDefinitionsPage: React.FC = () => {
               </Tab.Content>
             )}
           </Card.Body>
+          <Card.Footer className="bg-white py-2 px-3 border-top d-flex justify-content-between align-items-center">
+            <div className="text-secondary small">
+              {formData.FIS_AKTARMA_HESABI ? (
+                <span>
+                  Fiş Aktarma Hesabı: <strong className="text-dark">{formData.FIS_AKTARMA_HESABI}</strong>
+                  {formData.DIGER_VERITABANI_ADI ? ` (Hedef: ${formData.DIGER_VERITABANI_ADI})` : ""}
+                </span>
+              ) : (
+                <span className="text-muted">Fiş aktarımı için Muhasebe sekmesinden hedef hesabı tanımlayabilirsiniz.</span>
+              )}
+            </div>
+            <Button
+              variant="outline-primary"
+              size="sm"
+              className="d-flex align-items-center gap-1.5 fw-semibold shadow-2xs"
+              onClick={() => setShowFisAktarmaModal(true)}
+              title="Döviz Fişi Aktarma Modalı"
+            >
+              <IconArrowsExchange size={16} />
+              <span>Fiş Aktarma</span>
+            </Button>
+          </Card.Footer>
         </Card>
 
         {/* GİB Çoklu Posta Kutusu Seçim Modalı */}
@@ -3271,6 +3400,12 @@ export const CompanyDefinitionsPage: React.FC = () => {
             </Button>
           </Modal.Footer>
         </Modal>
+
+        {/* Fiş Aktarma Modalı */}
+        <FisAktarmaModal
+          show={showFisAktarmaModal}
+          onClose={() => setShowFisAktarmaModal(false)}
+        />
       </div>
     </Tab.Container>
   );

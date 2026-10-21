@@ -9,6 +9,8 @@ router.get("/", DovizFisController.getFisList);
 router.get("/istatistikler", DovizFisController.getIstatistikler);
 router.get("/kayitsiz-musteriler", DovizFisController.getKayitsizMusteriler);
 router.get("/vezne-bakiye/:vezneId", DovizFisController.getVezneBakiye);
+router.get("/aktarma/onizleme", DovizFisController.getAktarmaOnizleme);
+router.post("/aktarma/calistir", kayitYetkisi("doviz", kimlikVar()), DovizFisController.calistirAktarma);
 router.get("/:id", DovizFisController.getFisById);
 router.post("/kaydet", kayitYetkisi("doviz", kimlikVar("fisId")), DovizFisController.saveFis);
 router.delete("/:id", kayitYetkisi("doviz", kimlikVar()), DovizFisController.deleteFis);

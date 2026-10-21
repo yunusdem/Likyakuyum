@@ -280,6 +280,81 @@ export class DovizFisService {
       }
     });
   }
+
+  public static async getAktarmaOnizleme(params: {
+    ilkTarih: string;
+    sonTarih: string;
+    dizaynKodu?: string | number;
+    hedefVeritabani?: string;
+    kaynakHesapId?: number | null;
+    kaynakHesapUnvan?: string;
+  }): Promise<DovizFisAktarmaOnizlemeResult> {
+    const res = await apiClient.get<DovizFisAktarmaOnizlemeResult>("/doviz-fis/aktarma/onizleme", {
+      params,
+    });
+    return res.data;
+  }
+
+  public static async calistirAktarma(payload: {
+    fisIdler: number[];
+    ilkTarih?: string;
+    sonTarih?: string;
+    dizaynKodu?: string | number;
+    hedefVeritabani?: string;
+    hedefHesapId?: number;
+    hedefHesapUnvan?: string;
+    kaynakHesapId?: number | null;
+    kaynakHesapUnvan?: string;
+  }): Promise<DovizFisAktarmaCalistirResult> {
+    const res = await apiClient.post<DovizFisAktarmaCalistirResult>("/doviz-fis/aktarma/calistir", payload);
+    return res.data;
+  }
+}
+
+export interface DovizFisAktarmaItem {
+  fisId: number;
+  seriNo: string;
+  belgeNo: string;
+  tarih: string;
+  zaman?: string;
+  tip: number; // 0: Alış, 1: Satış
+  tipLabel: string;
+  istatistikId?: number | null;
+  dizaynKodu?: string;
+  istatistikKodu?: string;
+  cariKartId?: number | null;
+  unvan: string;
+  tutar: number;
+  dahaOnceAktarildi: boolean;
+  hedefteMevcut: boolean;
+  hedefDurumu: "YENI" | "GUNCELLEME";
+  hedefFisId?: number | null;
+}
+
+export interface DovizFisAktarmaOnizlemeResult {
+  hedefVeritabani: string;
+  hedefHesap: {
+    id: number;
+    kod?: string;
+    unvan: string;
+  } | null;
+  ozet: {
+    toplamFisSayisi: number;
+    yeniEklenecekSayisi: number;
+    guncellenecekSayisi: number;
+    zatenAktarilmisSayisi: number;
+    toplamTutarTl: number;
+  };
+  fisler: DovizFisAktarmaItem[];
+}
+
+export interface DovizFisAktarmaCalistirResult {
+  toplamIstek: number;
+  aktarilanSayisi: number;
+  yeniEklenenSayisi: number;
+  guncellenenSayisi: number;
+  hatalar: Array<{ fisId: number; hata: string }>;
+  message?: string;
 }
 
 export interface KayitsizMusteriItem {

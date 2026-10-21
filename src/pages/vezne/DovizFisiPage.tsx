@@ -53,6 +53,7 @@ import { FastLookupCache } from "../../services/fastLookupCache";
 import { TlHesabiModal } from "./TlHesabiModal";
 import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
+import { FisAktarmaModal } from "./FisAktarmaModal";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { apiClient } from "../../services/apiClient";
@@ -70,8 +71,8 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { getUrunTipiInfo } from "./SarrafFisiPage";
 import { triggerSilentPrint } from "../../services/silentPrintService";
-import { dovizFisHtml } from "../../utils/belgeSablon/fisCikti";
-import { extractPlainTextFromFis } from "../../utils/belgeSablon/yazdir";
+import { dovizFisHtml, dovizFisleriHtml } from "../../utils/belgeSablon/fisCikti";
+import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { ebelgeService } from "../../services/ebelgeService";
@@ -421,6 +422,7 @@ export const DovizFisiPage: React.FC = () => {
   const [showDetayModal, setShowDetayModal] = useState<boolean>(false);
   const [showGumrukModal, setShowGumrukModal] = useState<boolean>(false);
   const [showArbitrajModal, setShowArbitrajModal] = useState<boolean>(false);
+  const [showFisAktarmaModal, setShowFisAktarmaModal] = useState<boolean>(false);
   const [arbitrajActiveInfo, setArbitrajActiveInfo] = useState<{ girisKod: string; cikisKod: string; parite: number; islemYonu: string } | null>(null);
   const [istatistikSearchTerm, setIstatistikSearchTerm] = useState<string>("");
   const [tcknDogrulandi, setTcknDogrulandi] = useState<boolean | null>(null);
@@ -3878,6 +3880,8 @@ export const DovizFisiPage: React.FC = () => {
           komisyon: l.komisyon,
         })),
         toplamTutar: totalTutar,
+        totalMasraf: totalMasraf,
+        sonToplam: sonToplam,
         odemeTutari: sonToplam,
         bsmvTutari: calculatedBsmv,
         kmvTutari: totalKmv,
@@ -3911,18 +3915,13 @@ export const DovizFisiPage: React.FC = () => {
         }
 
         // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; docs/FIS_TASARIM_YOL_HARITASI.md).
-        // Kayıt yapılmıştır: yazdırma hatası kaydı geri almaz, yalnızca bildirilir.
+        // Çoklu satır/fiş varsa hepsi sırayla yazdırılır.
         try {
-          const fisCikti = await dovizFisHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
-          const plainText = extractPlainTextFromFis(fisCikti);
-          const sonuc = await triggerSilentPrint({
-            html: fisCikti.html,
-            text: plainText,
+          const fisCikti = await dovizFisleriHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
+          const sonuc = await fisiYazdir(fisCikti, {
             printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
             copies: copiesToUse,
             isPos,
-            title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || currentSnapshot.fisId || ""}`,
-            allowBrowserFallback: false,
           });
           if (!sonuc.success) yazdirmaHatasi = sonuc.message;
         } catch (printErr: any) {
@@ -3938,14 +3937,14 @@ export const DovizFisiPage: React.FC = () => {
         setNotification({
           type: "success",
           message: isDuzeltmeMode
-            ? `✅ Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Güncellendi.${andDirectPrint ? " Doğrudan yazıcıya iletildi." : ""} Sayfa temizlendi.`
+            ? `✅ Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Güncellendi.${andDirectPrint ? " Doğrudan yazıcıya iletildi." : ""}`
             : `✅ Döviz Fişi (${saved.seriNo || saved.belgeNo || saved.fisId}) Başarıyla Kaydedildi.${andDirectPrint ? " Doğrudan yazıcıya iletildi." : ""} Yeni fiş kaydına geçildi.`,
         });
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
       if (await ebFis.kaydedildi(saved.fisId)) return;
-      if (andDirectPrint) {
-        // Yazdırılınca aynı fişte kalınır, fiş temizlenmez
+      if (isDuzeltmeMode && andDirectPrint) {
+        // Düzeltme sayfasında F10 ile kaydedilip yazdırılınca aynı fişte kalınır, sayfa sıfırlanmaz
         if (saved.fisId) {
           setFisId(saved.fisId);
         }
@@ -3956,8 +3955,9 @@ export const DovizFisiPage: React.FC = () => {
           setSeriNo(saved.seriNo);
         }
       } else {
-        // Normal kayıtta temizle
+        // Kayıt sayfasında veya normal kayıtta sayfa sıfırlansın / temizlensin
         resetForm();
+        setArbitrajActiveInfo(null);
         applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
         focusTipSelect();
       }
@@ -4384,6 +4384,8 @@ export const DovizFisiPage: React.FC = () => {
         komisyon: l.komisyon,
       })),
       toplamTutar: totalTutar,
+      totalMasraf: totalMasraf,
+      sonToplam: sonToplam,
       odemeTutari: sonToplam,
       bsmvTutari: calculatedBsmv,
       kmvTutari: totalKmv,
@@ -4400,16 +4402,11 @@ export const DovizFisiPage: React.FC = () => {
     });
 
     try {
-      const fisCikti = await dovizFisHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
-      const plainText = extractPlainTextFromFis(fisCikti);
-      const sonuc = await triggerSilentPrint({
-        html: fisCikti.html,
-        text: plainText,
+      const fisCikti = await dovizFisleriHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
+      const sonuc = await fisiYazdir(fisCikti, {
         printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
         copies: resolved.kopyaSayisi || 1,
         isPos: true,
-        title: `Doviz_Fisi_${currentSnapshot.seriNo || currentSnapshot.belgeNo || "Yazdir"}`,
-        allowBrowserFallback: false,
       });
       if (sonuc.success) {
         setNotification({
@@ -4456,11 +4453,16 @@ export const DovizFisiPage: React.FC = () => {
         kur: l.kur,
         tutar: l.tutar,
         bmv: l.bmv,
+        kmv: l.kmv,
+        kmvOrani: l.kmvOrani,
         komisyon: l.komisyon,
       })),
       toplamTutar: totalTutar,
+      totalMasraf: totalMasraf,
+      sonToplam: sonToplam,
       odemeTutari: sonToplam,
       bsmvTutari: calculatedBsmv,
+      kmvTutari: totalKmv,
       komisyonTutari: totalKomisyon,
       giseUsdKuru: usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 1,
     });
@@ -4485,8 +4487,10 @@ export const DovizFisiPage: React.FC = () => {
     istatistikKodu,
     lines,
     totalTutar,
+    totalMasraf,
     sonToplam,
     calculatedBsmv,
+    totalKmv,
     totalKomisyon,
     kurTuru,
   ]);
@@ -6277,6 +6281,16 @@ export const DovizFisiPage: React.FC = () => {
                 >
                   Ctrl+N) Yeni Kayıt
                 </Button>
+                <Button
+                  size="sm"
+                  variant="light"
+                  className="px-2 py-0.5 border text-primary fw-bold"
+                  style={{ fontSize: "11.5px" }}
+                  onClick={() => setShowFisAktarmaModal(true)}
+                  title="Fiş Aktarma (Diğer Alana Fişleri Aktar)"
+                >
+                  Fiş Aktarma
+                </Button>
               </div>
             </Col>
 
@@ -7450,6 +7464,15 @@ export const DovizFisiPage: React.FC = () => {
         onApplyToFis={handleApplyArbitrajToDovizFis}
       />
 
+      {/* Fiş Aktarma Modalı */}
+      <FisAktarmaModal
+        show={showFisAktarmaModal}
+        onClose={() => setShowFisAktarmaModal(false)}
+        onSuccess={() => {
+          if (vezneId) fetchVezneBalances(vezneId);
+        }}
+      />
+
       {/* Gümrük Beyanname Modal */}
       <Modal
         show={showGumrukModal}
@@ -7609,8 +7632,11 @@ export const DovizFisiPage: React.FC = () => {
           komisyon: l.komisyon,
         }))}
         toplamTutar={printSnapshot?.toplamTutar ?? totalTutar}
+        totalMasraf={printSnapshot?.totalMasraf ?? totalMasraf}
+        sonToplam={printSnapshot?.sonToplam ?? sonToplam}
         odemeTutari={printSnapshot?.odemeTutari ?? sonToplam}
         bsmvTutari={printSnapshot?.bsmvTutari ?? calculatedBsmv}
+        kmvTutari={printSnapshot?.kmvTutari ?? totalKmv}
         komisyonTutari={printSnapshot?.komisyonTutari ?? totalKomisyon}
         giseUsdKuru={printSnapshot?.giseUsdKuru ?? (() => {
           const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");

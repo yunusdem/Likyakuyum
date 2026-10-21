@@ -77,9 +77,19 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
     })
         .filter(s => s.miktar > 0 && s.kur > 0);
     const tl = satirlar.reduce((t, s) => t + s.tl, 0);
+    const tutar = g.toplamTutar !== undefined && g.toplamTutar !== null ? sayiOku(g.toplamTutar) : tl;
     const bsmv = satim ? (g.bsmvTutari !== undefined && g.bsmvTutari !== null ? sayiOku(g.bsmvTutari) : yuvarla(tl * 0.002)) : 0;
-    const genel = satim ? tl + bsmv : (g.odemeTutari !== undefined && g.odemeTutari !== null ? sayiOku(g.odemeTutari) : tl);
     const komisyon = sayiOku(g.komisyonTutari);
+    const kmv = sayiOku(g.kmvTutari);
+    const masraf = g.totalMasraf !== undefined && g.totalMasraf !== null
+        ? sayiOku(g.totalMasraf)
+        : yuvarla(bsmv + komisyon + kmv);
+    const sonToplam = g.sonToplam !== undefined && g.sonToplam !== null
+        ? sayiOku(g.sonToplam)
+        : (g.odemeTutari !== undefined && g.odemeTutari !== null
+            ? sayiOku(g.odemeTutari)
+            : (satim ? yuvarla(tutar + masraf) : yuvarla(tutar - masraf)));
+    const genel = sonToplam;
     const belgeNo = kodBuyuk(yazi(kayit.belgeNo) || yazi(g.belgeNo) || yazi(g.seriNo));
     const ettn = kodBuyuk(yazi(kayit.ettn) || yazi(g.guid));
     const tarihHam = yazi(g.tarih);
@@ -113,7 +123,7 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
             mersisSicil: [firma.mersis, firma.ticaretSicilNo].filter(Boolean).join(" / "),
         },
         musteri, satirlar,
-        toplam: { tl, bsmv, bsmvVar: satim && bsmv > 0, komisyon, genel, yaziyla: fisYaziyla(genel) },
+        toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
         basamak, qr, erisimAdresi, onizleme: false, iptal: false,
     };
 }

@@ -4,7 +4,7 @@ import { IconPrinter, IconX } from "@tabler/icons-react";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
-import { dovizFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
+import { dovizFisHtml, dovizFisleriHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 
@@ -43,8 +43,11 @@ export interface DovizFisiPrintModalProps {
   guid?: string;
   lines: PrintLineItem[];
   toplamTutar?: number;
+  totalMasraf?: number;
+  sonToplam?: number;
   odemeTutari?: number;
   bsmvTutari?: number;
+  kmvTutari?: number;
   komisyonTutari?: number;
   giseUsdKuru?: number;
   dovizKurusSayisi?: number;
@@ -69,7 +72,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
   // Fiş HTML'i: pencere her açıldığında ekranın o anki görüntüsüyle şablondan üretilir.
   const { fis, hata } = useSablonluFis(show, "doviz", () => {
     const { show: _s, onHide: _o, autoPrint: _a, vezne: _v, ...girdi } = propsRef.current;
-    return dovizFisHtml(girdi);
+    return dovizFisleriHtml(girdi);
   });
 
   // Load printers and resolve effective printer based on vezne/user/tip
@@ -89,7 +92,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
       });
   }, [show, tip, vezne, user]);
 
-  const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
+  const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
     if (!hazir || isPrinting) return;
     setIsPrinting(true);
     try {
@@ -148,13 +151,20 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [show, handlePrint, onHide]);
 
+  const toplamFisSayisi = Array.isArray(fis) ? fis.length : (fis ? 1 : 0);
+
   return (
     <Modal show={show && (!autoPrint || !!hata)} onHide={onHide} size="lg" centered backdrop="static">
       <Modal.Header closeButton className="bg-light py-2 px-3">
         <div className="d-flex align-items-center justify-content-between w-100 me-2 flex-wrap gap-2">
           <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2 mb-0">
             <IconPrinter size={18} className="text-primary" />
-            e-Döviz Fişi ({isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ"} - 80mm)
+            <span>e-Döviz Fişi ({isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ"} - 80mm)</span>
+            {toplamFisSayisi > 1 && (
+              <span className="badge bg-primary ms-1 fs-xs px-2 py-0.5">
+                {toplamFisSayisi} Fiş
+              </span>
+            )}
           </Modal.Title>
           <div className="d-flex align-items-center gap-2">
             <span className="text-secondary small fw-bold">Yazıcı:</span>
@@ -196,7 +206,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
             </>
           ) : (
             <>
-              <IconPrinter size={16} /> Yazdır (F8 / Termal Çıktı)
+              <IconPrinter size={16} /> Yazdır (F10{toplamFisSayisi > 1 ? ` - ${toplamFisSayisi} Fiş` : ""})
             </>
           )}
         </Button>

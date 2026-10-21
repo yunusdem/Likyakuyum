@@ -6,6 +6,7 @@ import { bankaHesabiDenetle, dovizKurDenetle, komisyonDenetle } from "../service
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
+import { DovizFisSqlRepository } from "../models/dovizFisSql.repository.js";
 export class DovizFisController {
     static getDbContext(req) {
         return {
@@ -403,5 +404,50 @@ export class DovizFisController {
             // Return empty array gracefully if table is not populated
             return ApiResponse.ok(res, "Kayıtsız müşteriler listelendi.", []);
         }
+    });
+    /**
+     * GET /api/v1/doviz-fis/aktarma/onizleme
+     */
+    static getAktarmaOnizleme = asyncHandler(async (req, res) => {
+        const dbContext = DovizFisController.getDbContext(req);
+        const ilkTarih = String(req.query.ilkTarih || "").trim();
+        const sonTarih = String(req.query.sonTarih || "").trim();
+        const dizaynKodu = req.query.dizaynKodu !== undefined ? String(req.query.dizaynKodu).trim() : null;
+        const hedefVeritabani = req.query.hedefVeritabani !== undefined ? String(req.query.hedefVeritabani).trim() : undefined;
+        const kaynakHesapId = req.query.kaynakHesapId ? Number(req.query.kaynakHesapId) : undefined;
+        const kaynakHesapUnvan = req.query.kaynakHesapUnvan ? String(req.query.kaynakHesapUnvan).trim() : undefined;
+        if (!ilkTarih || !sonTarih) {
+            throw ApiError.badRequest("Lütfen başlangıç ve bitiş tarihlerini belirtiniz.");
+        }
+        const onizleme = await DovizFisSqlRepository.getAktarmaOnizleme({
+            ilkTarih,
+            sonTarih,
+            dizaynKodu,
+            hedefVeritabani,
+            kaynakHesapId,
+            kaynakHesapUnvan,
+        }, dbContext);
+        return ApiResponse.ok(res, "Fiş aktarma önizlemesi getirildi.", onizleme);
+    });
+    /**
+     * POST /api/v1/doviz-fis/aktarma/calistir
+     */
+    static calistirAktarma = asyncHandler(async (req, res) => {
+        const dbContext = DovizFisController.getDbContext(req);
+        const { ilkTarih, sonTarih, dizaynKodu, hedefVeritabani, hedefHesapId, hedefHesapUnvan, kaynakHesapId, kaynakHesapUnvan, secilenFisIdler, fisIdler, } = req.body;
+        const ids = secilenFisIdler || fisIdler;
+        const kullaniciId = req.user?.kullaniciId || req.user?.id || 1;
+        const sonuc = await DovizFisSqlRepository.calistirAktarma({
+            ilkTarih: String(ilkTarih || "").trim(),
+            sonTarih: String(sonTarih || "").trim(),
+            dizaynKodu: dizaynKodu !== undefined ? String(dizaynKodu).trim() : null,
+            hedefVeritabani: hedefVeritabani ? String(hedefVeritabani).trim() : undefined,
+            hedefHesapId: hedefHesapId ? Number(hedefHesapId) : undefined,
+            hedefHesapUnvan: hedefHesapUnvan ? String(hedefHesapUnvan).trim() : undefined,
+            kaynakHesapId: kaynakHesapId ? Number(kaynakHesapId) : undefined,
+            kaynakHesapUnvan: kaynakHesapUnvan ? String(kaynakHesapUnvan).trim() : undefined,
+            secilenFisIdler: Array.isArray(ids) ? ids.map(Number) : undefined,
+        }, dbContext, Number(kullaniciId) || 1);
+        return ApiResponse.ok(res, sonuc.message, sonuc);
     });
 }

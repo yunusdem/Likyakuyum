@@ -6,7 +6,7 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { VezneItem } from "../../services/cashDeskService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
-import { perakendeFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
+import { perakendeFisHtml, perakendeFisleriHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 
@@ -54,9 +54,9 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   }, [show, tip, vezne, user]);
 
   const { fis, hata } = useSablonluFis(show && yaziciHazir && !!fatura, `${printType}|${fatura?.faturaId ?? ""}|${fatura?.faturaNo ?? ""}`,
-    () => perakendeFisHtml(faturaRef.current as any, printType === "POS" ? "80" : "A4"));
+    () => perakendeFisleriHtml(faturaRef.current as any, printType === "POS" ? "80" : "A4"));
 
-  const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
+  const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
     if (!hazir || isPrinting) return;
     setIsPrinting(true);
     try {
@@ -124,7 +124,14 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
               <IconPrinter size={20} />
             </div>
             <div>
-              <h6 className="mb-0 fw-bold">Perakende Fişi / Fatura</h6>
+              <h6 className="mb-0 fw-bold d-flex align-items-center gap-2">
+                Perakende Fişi / Fatura
+                {Array.isArray(fis) && fis.length > 1 && (
+                  <span className="badge bg-primary fs-xs px-2 py-0.5">
+                    {fis.length} Fiş
+                  </span>
+                )}
+              </h6>
               <small className="text-muted">
                 No: <strong className="text-dark">{fatura.faturaNo}</strong>
               </small>
@@ -186,7 +193,7 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
           ) : (
             <>
               <IconPrinter size={16} className="me-1" />
-              Yazdır (F10)
+              Yazdır (F10{Array.isArray(fis) && fis.length > 1 ? ` - ${fis.length} Fiş` : ""})
             </>
           )}
         </Button>

@@ -21,6 +21,10 @@ export class CompanySqlRepository {
             ALTER TABLE [dbo].[TODVZ_TANIM] ADD [KATALOG_URUN_SURESI] INT NULL CONSTRAINT DF_TODVZ_TANIM_KATALOG_URUN_SURESI DEFAULT(5);
           IF COL_LENGTH('dbo.TODVZ_TANIM', 'KATALOG_RESIM_SURESI') IS NULL
             ALTER TABLE [dbo].[TODVZ_TANIM] ADD [KATALOG_RESIM_SURESI] INT NULL CONSTRAINT DF_TODVZ_TANIM_KATALOG_RESIM_SURESI DEFAULT(3);
+          IF COL_LENGTH('dbo.TODVZ_TANIM', 'FIS_AKTARILACAK_HESAP_ID') IS NULL
+            ALTER TABLE [dbo].[TODVZ_TANIM] ADD [FIS_AKTARILACAK_HESAP_ID] INT NULL;
+          IF COL_LENGTH('dbo.TODVZ_TANIM', 'FIS_AKTARMA_HESABI') IS NULL
+            ALTER TABLE [dbo].[TODVZ_TANIM] ADD [FIS_AKTARMA_HESABI] VARCHAR(50) NULL;
         `);
       } catch (colErr: any) {
         // Ignored if table alteration permissions are restricted
@@ -226,8 +230,8 @@ export class CompanySqlRepository {
       }
     }
 
-    // 7. Validate SERMAYE_HESABI_ID & URETIM_HESABI_ID
-    const hesapFields: (keyof TodvzTanimEntity)[] = ["SERMAYE_HESABI_ID", "URETIM_HESABI_ID"];
+    // 7. Validate SERMAYE_HESABI_ID, URETIM_HESABI_ID & FIS_AKTARILACAK_HESAP_ID
+    const hesapFields: (keyof TodvzTanimEntity)[] = ["SERMAYE_HESABI_ID", "URETIM_HESABI_ID", "FIS_AKTARILACAK_HESAP_ID"];
     for (const hf of hesapFields) {
       const hId = toValidId(copy[hf]);
       if (hId) {
@@ -555,6 +559,8 @@ export class CompanySqlRepository {
         { name: "DIGER_VERITABANI_ADI", type: sql.VarChar, len: 200 },
         { name: "ORTAK_ALAN", type: sql.Bit },
         { name: "FISLERI_AKTARILACAK_ALAN", type: sql.Bit },
+        { name: "FIS_AKTARILACAK_HESAP_ID", type: sql.Int },
+        { name: "FIS_AKTARMA_HESABI", type: sql.VarChar, len: 50 },
         { name: "BELGE_YAZICI_MODU", type: sql.TinyInt },
         { name: "DONEM_ONAY_TARIHI", type: sql.DateTime },
         { name: "DONEM_ONAY_GUN_SAYISI", type: sql.Int },

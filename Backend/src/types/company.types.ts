@@ -25,6 +25,8 @@ export interface TodvzTanimEntity {
   DOVIZ_VERGI_SINIRI: number | null; // float
   DOVIZ_VERGI_SINIRI_PARA_ID: number | null; // int
   SERMAYE_HESABI_ID: number | null; // int
+  FIS_AKTARILACAK_HESAP_ID?: number | null; // int
+  FIS_AKTARMA_HESABI?: string | null; // varchar(50)
   BELGE_DIZINI: string | null; // varchar(200)
   CARI_KOD_SIRA_NO: number | null; // int
   CARI_KOD_BASINA_SIFIR: boolean | null; // bit

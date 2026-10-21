@@ -51,7 +51,7 @@ export const TicariFisPrintModal: React.FC<TicariFisPrintModalProps> = ({ show, 
   const { fis, hata } = useSablonluFis(show && yaziciHazir && !!fatura, `${printType}|${fatura?.faturaId ?? ""}|${fatura?.faturaNo ?? ""}`,
     () => ticariFisHtml(faturaRef.current as any, printType === "POS" ? "80" : "A4"));
 
-  const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
+  const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
     if (!hazir) return;
     await fisiYazdir(hazir, {
       printerId: selectedPrinterId,

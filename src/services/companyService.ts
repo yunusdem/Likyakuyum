@@ -27,6 +27,8 @@ export interface TodvzTanimDto {
   DOVIZ_VERGI_SINIRI?: number | null;
   DOVIZ_VERGI_SINIRI_PARA_ID?: number | null;
   SERMAYE_HESABI_ID?: number | null;
+  FIS_AKTARILACAK_HESAP_ID?: number | null;
+  FIS_AKTARMA_HESABI?: string | null;
   BELGE_DIZINI?: string | null;
   CARI_KOD_SIRA_NO?: number | null;
   CARI_KOD_BASINA_SIFIR?: boolean | null;
@@ -165,6 +167,8 @@ export const defaultCompanyTanim: TodvzTanimDto = {
   DOVIZ_VERGI_SINIRI: 5000,
   DOVIZ_VERGI_SINIRI_PARA_ID: 2,
   SERMAYE_HESABI_ID: 1,
+  FIS_AKTARILACAK_HESAP_ID: null,
+  FIS_AKTARMA_HESABI: "",
   BELGE_DIZINI: "",
   CARI_KOD_SIRA_NO: null,
   CARI_KOD_BASINA_SIFIR: false,

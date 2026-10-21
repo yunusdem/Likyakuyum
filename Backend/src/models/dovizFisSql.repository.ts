@@ -359,6 +359,50 @@ export class DovizFisSqlRepository {
             [ONUNE_SIFIR_KOY] BIT NOT NULL DEFAULT(1)
           );
         END
+
+        IF OBJECT_ID('dbo.TODVZ_EBELGE_KAYNAK', 'U') IS NULL
+        BEGIN
+          CREATE TABLE [dbo].[TODVZ_EBELGE_KAYNAK] (
+            [ANAHTAR] VARCHAR(80) NOT NULL PRIMARY KEY,
+            [BELGE_NO] VARCHAR(40) NOT NULL,
+            [DURUM] VARCHAR(30) NOT NULL,
+            [HATA] NVARCHAR(2000) NULL,
+            [TARIH] DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+          );
+        END
+
+        IF OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') IS NULL
+        BEGIN
+          CREATE TABLE [dbo].[TODVZ_EBELGE_GIDEN] (
+            [UUID] VARCHAR(60) NOT NULL PRIMARY KEY,
+            [BELGE_NO] VARCHAR(40) NOT NULL,
+            [BELGE_TURU] VARCHAR(20) NOT NULL DEFAULT 'EFatura',
+            [PROFIL] VARCHAR(40) NULL,
+            [FATURA_TIPI] VARCHAR(30) NULL,
+            [TASLAK_MI] BIT NOT NULL DEFAULT 1,
+            [ALICI_VKN] VARCHAR(11) NULL,
+            [ALICI_ALIAS] NVARCHAR(150) NULL,
+            [ALICI_UNVAN] NVARCHAR(300) NULL,
+            [DUZENLEME_TARIHI] DATETIME NULL,
+            [TUTAR] FLOAT NULL,
+            [PARA_BIRIMI] VARCHAR(10) NULL,
+            [GONDERIM_DURUMU] VARCHAR(20) NOT NULL DEFAULT 'HAZIRLANDI',
+            [SEMA_GECERLI] BIT NULL,
+            [SCHEMATRON_GECERLI] BIT NULL,
+            [ICE_RESPONSE_CODE] VARCHAR(20) NULL,
+            [ICE_RESPONSE_MESAJ] NVARCHAR(1000) NULL,
+            [GIB_STATU_KODU] INT NULL,
+            [GIB_STATU_ACIKLAMA] NVARCHAR(500) NULL,
+            [KAYNAK_FIS_ID] VARCHAR(60) NULL,
+            [XML_ICERIK] NVARCHAR(MAX) NULL,
+            [OLUSTURAN] NVARCHAR(50) NULL,
+            [OLUSTURMA_TARIHI] DATETIME NOT NULL DEFAULT GETDATE(),
+            [GONDEREN] NVARCHAR(50) NULL,
+            [GONDERIM_TARIHI] DATETIME NULL,
+            [IPTAL_TARIHI] DATETIME NULL,
+            [IPTAL_EDEN] NVARCHAR(50) NULL
+          );
+        END
       `);
 
       // 4. Stored Procedure: SODVZ_NUMERATOR_URET
@@ -2429,6 +2473,7 @@ export class DovizFisSqlRepository {
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<DovizFisModel | null> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    await DovizFisSqlRepository.ensureTablesAndProceduresExist(pool);
 
     const fisRes = await pool.request().input("ID", sql.Int, id).query(`
       SELECT 
@@ -2851,4 +2896,775 @@ export class DovizFisSqlRepository {
       return { tl: 0, usd: 0, eur: 0, bakiyeler: [] };
     }
   }
+
+  /**
+   * Auto-ensure columns for Fiş Aktarma on both source and target databases
+   */
+  public static async ensureAktarmaSchema(pool: sql.ConnectionPool, targetDb?: string): Promise<void> {
+    const dbPrefix = targetDb && targetDb.trim() ? `[${targetDb.trim().replace(/[\[\]]/g, "")}].` : "";
+    try {
+      await pool.request().query(`
+        IF COL_LENGTH('${dbPrefix}dbo.TODVZ_TANIM', 'FIS_AKTARILACAK_HESAP_ID') IS NULL
+        BEGIN
+          BEGIN TRY
+            ALTER TABLE ${dbPrefix}[dbo].[TODVZ_TANIM] ADD [FIS_AKTARILACAK_HESAP_ID] INT NULL;
+          END TRY BEGIN CATCH END CATCH
+        END;
+
+        IF COL_LENGTH('${dbPrefix}dbo.TODVZ_TANIM', 'FIS_AKTARMA_HESABI') IS NULL
+        BEGIN
+          BEGIN TRY
+            ALTER TABLE ${dbPrefix}[dbo].[TODVZ_TANIM] ADD [FIS_AKTARMA_HESABI] VARCHAR(50) NULL;
+          END TRY BEGIN CATCH END CATCH
+        END;
+
+        IF COL_LENGTH('${dbPrefix}dbo.TODVZ_FIS', 'AKTARILDI') IS NULL
+        BEGIN
+          BEGIN TRY
+            ALTER TABLE ${dbPrefix}[dbo].[TODVZ_FIS] ADD [AKTARILDI] BIT NOT NULL CONSTRAINT DF_${targetDb ? targetDb.replace(/\W/g, "") : "DVZ"}_AKTARILDI DEFAULT(0);
+          END TRY BEGIN CATCH END CATCH
+        END;
+
+        IF COL_LENGTH('${dbPrefix}dbo.TODVZ_FIS', 'AKTARIM_TARIHI') IS NULL
+        BEGIN
+          BEGIN TRY
+            ALTER TABLE ${dbPrefix}[dbo].[TODVZ_FIS] ADD [AKTARIM_TARIHI] DATETIME NULL;
+          END TRY BEGIN CATCH END CATCH
+        END;
+
+        IF COL_LENGTH('${dbPrefix}dbo.TODVZ_FIS', 'KAYNAK_FIS_ID') IS NULL
+        BEGIN
+          BEGIN TRY
+            ALTER TABLE ${dbPrefix}[dbo].[TODVZ_FIS] ADD [KAYNAK_FIS_ID] INT NULL;
+          END TRY BEGIN CATCH END CATCH
+        END;
+      `);
+    } catch (e: any) {
+      // Ignored if permissions are restricted
+    }
+  }
+
+  /**
+   * Preview receipts to be transferred based on date range and design/statistic code
+   */
+  public static async getAktarmaOnizleme(
+    params: {
+      ilkTarih: string;
+      sonTarih: string;
+      dizaynKodu?: string | number | null;
+      hedefVeritabani?: string;
+      kaynakHesapId?: number | null;
+      kaynakHesapUnvan?: string;
+    },
+    dbContext?: { dbServer?: string; dbName?: string }
+  ): Promise<{
+    fisler: any[];
+    kaynakFisler: any[];
+    ozet: {
+      toplamFisSayisi: number;
+      yeniEklenecekSayisi: number;
+      guncellenecekSayisi: number;
+      zatenAktarilmisSayisi: number;
+      toplamTutarTl: number;
+    };
+    toplamFisSayisi: number;
+    toplamTutar: number;
+    hedefVeritabani: string;
+    hedefHesap: {
+      id: number;
+      kod?: string;
+      unvan: string;
+    } | null;
+    hedefHesapId: number | null;
+    hedefHesapAdi: string;
+    hedefHesapKodu: string;
+  }> {
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    await DovizFisSqlRepository.ensureAktarmaSchema(pool);
+
+    // 1. Get definitions to check configured target database and target account
+    const tanimRes = await pool.request().query("SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM]");
+    const tanim = tanimRes.recordset?.[0] || {};
+
+    let targetDb = (params.hedefVeritabani || tanim.DIGER_VERITABANI_ADI || "").trim().replace(/[\[\]]/g, "");
+    if (targetDb) {
+      const dbCheck = await pool.request().input("dbName", sql.VarChar(100), targetDb).query("SELECT 1 FROM sys.databases WHERE name = @dbName");
+      if (!dbCheck.recordset || dbCheck.recordset.length === 0) {
+        // Target database doesn't exist on server, fall back to current DB
+        targetDb = "";
+      } else {
+        await DovizFisSqlRepository.ensureAktarmaSchema(pool, targetDb);
+      }
+    }
+
+    const targetDbPrefix = targetDb ? `[${targetDb}].` : "";
+
+    // 2. Resolve target account details
+    let hedefHesapId: number | null = tanim.FIS_AKTARILACAK_HESAP_ID ? Number(tanim.FIS_AKTARILACAK_HESAP_ID) : null;
+    let hedefHesapAdi = (tanim.FIS_AKTARMA_HESABI || "").trim();
+    let hedefHesapKodu = "";
+
+    if (hedefHesapId) {
+      try {
+        // Önce TODVZ_CARI_KART tablosunda ara (Kolon: AD)
+        const cRes = await pool.request().query(`
+          SELECT TOP 1 CARI_KART_ID, KOD, AD FROM ${targetDbPrefix}[dbo].[TODVZ_CARI_KART] WHERE CARI_KART_ID = ${hedefHesapId}
+        `);
+        if (cRes.recordset && cRes.recordset.length > 0) {
+          hedefHesapKodu = (cRes.recordset[0].KOD || "").trim();
+          hedefHesapAdi = (cRes.recordset[0].AD || "").trim();
+        } else {
+          const hRes = await pool.request().query(`
+            SELECT TOP 1 HESAP_ID, KOD, AD FROM ${targetDbPrefix}[dbo].[TODVZ_HESAP] WHERE HESAP_ID = ${hedefHesapId}
+          `);
+          if (hRes.recordset && hRes.recordset.length > 0) {
+            hedefHesapKodu = (hRes.recordset[0].KOD || "").trim();
+            hedefHesapAdi = (hRes.recordset[0].AD || "").trim();
+          }
+        }
+      } catch (e) {
+        try {
+          const sRes = await pool.request().query(`
+            SELECT TOP 1 CARI_KART_ID, KOD, AD FROM [dbo].[TODVZ_CARI_KART] WHERE CARI_KART_ID = ${hedefHesapId}
+          `);
+          if (sRes.recordset && sRes.recordset.length > 0) {
+            hedefHesapKodu = (sRes.recordset[0].KOD || "").trim();
+            hedefHesapAdi = (sRes.recordset[0].AD || "").trim();
+          }
+        } catch { }
+      }
+    }
+
+    // 3. Query source receipts
+    const req = pool.request();
+    req.input("ILK_TARIH", sql.VarChar(10), params.ilkTarih);
+    req.input("SON_TARIH", sql.VarChar(10), params.sonTarih);
+
+    let query = `
+      SELECT 
+        F.FIS_ID AS fisId,
+        F.TIP AS tip,
+        CASE WHEN F.TIP = 1 THEN 'Satış' ELSE 'Alış' END AS tipLabel,
+        CONVERT(VARCHAR(10), F.TARIH, 120) AS tarih,
+        CONVERT(VARCHAR(8), F.ZAMAN, 108) AS zaman,
+        F.SERI_NO AS seriNo,
+        F.BELGE_NO AS belgeNo,
+        F.GELIS_NEDENI AS gelisNedeni,
+        F.KUR_TURU AS kurTuru,
+        F.CARI_KART_ID AS cariKartId,
+        F.BANKA_HESABI_ID AS bankaHesabiId,
+        F.UNVAN AS unvan,
+        F.VERGI_KIMLIK_NO AS vergiKimlikNo,
+        F.TOPLAM_TUTAR AS toplamTutar,
+        F.ODEME_TUTARI AS odemeTutari,
+        ISNULL(F.AKTARILDI, 0) AS aktarildi,
+        F.AKTARIM_TARIHI AS aktarimTarihi,
+        F.ISTATISTIK_ID AS istatistikId,
+        ISNULL(IST.KOD, '') AS istatistikKodu,
+        ISNULL(IST.ACIKLAMA, '') AS istatistikAdi,
+        ISNULL(IST.FIS_DIZAYN_TIPI, 0) AS dizaynTipi,
+        F.GUID AS guid,
+        (SELECT COUNT(*) FROM [dbo].[TODVZ_FIS_SATIRI] S WHERE S.FIS_ID = F.FIS_ID) AS satirSayisi
+      FROM [dbo].[TODVZ_FIS] F
+      LEFT JOIN [dbo].[TODVZ_ISTATISTIK] IST ON IST.ISTATISTIK_ID = F.ISTATISTIK_ID
+      WHERE ISNULL(F.IPTAL, 0) = 0
+        AND CAST(F.TARIH AS DATE) >= CAST(@ILK_TARIH AS DATE)
+        AND CAST(F.TARIH AS DATE) <= CAST(@SON_TARIH AS DATE)
+    `;
+
+    if (params.kaynakHesapId || (params.kaynakHesapUnvan && params.kaynakHesapUnvan.trim() !== "")) {
+      const conds: string[] = [];
+      if (params.kaynakHesapId) {
+        req.input("KAYNAK_HESAP_ID", sql.Int, Number(params.kaynakHesapId));
+        conds.push("(F.CARI_KART_ID = @KAYNAK_HESAP_ID OR F.BANKA_HESABI_ID = @KAYNAK_HESAP_ID)");
+      }
+      if (params.kaynakHesapUnvan && params.kaynakHesapUnvan.trim() !== "") {
+        req.input("KAYNAK_UNVAN", sql.VarChar(200), params.kaynakHesapUnvan.trim());
+        conds.push("(F.UNVAN = @KAYNAK_UNVAN OR F.UNVAN LIKE '%' + @KAYNAK_UNVAN + '%')");
+      }
+      if (conds.length > 0) {
+        query += ` AND (${conds.join(" OR ")})`;
+      }
+    }
+
+    if (params.dizaynKodu !== undefined && params.dizaynKodu !== null && params.dizaynKodu !== "" && params.dizaynKodu !== "all") {
+      const dNum = Number(params.dizaynKodu);
+      req.input("DIZAYN_VAL", sql.VarChar(50), String(params.dizaynKodu).trim());
+      if (!isNaN(dNum)) {
+        req.input("DIZAYN_NUM", sql.Int, dNum);
+        query += ` AND (IST.FIS_DIZAYN_TIPI = @DIZAYN_NUM OR UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL))))`;
+      } else {
+        query += ` AND UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL)))`;
+      }
+    }
+
+    query += ` ORDER BY F.TARIH ASC, F.FIS_ID ASC`;
+
+    const fisRes = await req.query(query);
+    const rawFisler = fisRes.recordset || [];
+
+    // 4. For each slip, check if it already exists in target DB or target account
+    const kaynakFisler: any[] = [];
+    let toplamTutar = 0;
+
+    for (const f of rawFisler) {
+      const tutarNum = Number(f.toplamTutar || f.odemeTutari || 0);
+      toplamTutar += tutarNum;
+
+      let hedefteVar = false;
+      let targetFisId: number | null = null;
+
+      try {
+        const checkReq = pool.request();
+        checkReq.input("SOURCE_FIS_ID", sql.Int, f.fisId);
+        checkReq.input("SERI_NO", sql.VarChar(20), f.seriNo || "");
+        checkReq.input("BELGE_NO", sql.VarChar(50), f.belgeNo || "");
+        checkReq.input("TARIH", sql.VarChar(10), f.tarih);
+
+        // Hedef fiş kontrolü:
+        // Eğer hedef veritabanı farklıysa, orada KAYNAK_FIS_ID veya SERI_NO+BELGE_NO ile ara.
+        // Eğer hedef veritabanı aynıysa, kendi kendini bulmaması için FIS_ID <> SOURCE_FIS_ID şartı zorunludur!
+        const targetCheckSql = targetDbPrefix
+          ? `SELECT TOP 1 FIS_ID FROM ${targetDbPrefix}[dbo].[TODVZ_FIS]
+             WHERE (KAYNAK_FIS_ID = @SOURCE_FIS_ID)
+                OR (SERI_NO = @SERI_NO AND BELGE_NO = @BELGE_NO AND CAST(TARIH AS DATE) = CAST(@TARIH AS DATE))`
+          : `SELECT TOP 1 FIS_ID FROM [dbo].[TODVZ_FIS]
+             WHERE (KAYNAK_FIS_ID = @SOURCE_FIS_ID AND FIS_ID <> @SOURCE_FIS_ID)`;
+
+        const cRes = await checkReq.query(targetCheckSql);
+
+        if (cRes.recordset && cRes.recordset.length > 0) {
+          hedefteVar = true;
+          targetFisId = Number(cRes.recordset[0].FIS_ID);
+        }
+      } catch (e) {
+        // Target DB query issue
+      }
+
+      const dahaOnceAktarildi = Boolean(f.aktarildi) || hedefteVar;
+
+      kaynakFisler.push({
+        ...f,
+        toplamTutar: Number(f.toplamTutar || 0),
+        odemeTutari: Number(f.odemeTutari || 0),
+        tutar: tutarNum,
+        dizaynKodu: f.dizaynTipi !== undefined ? String(f.dizaynTipi) : undefined,
+        dahaOnceAktarildi,
+        hedefteMevcut: hedefteVar,
+        hedefDurumu: hedefteVar ? "GUNCELLEME" : "YENI",
+        targetFisId,
+        durum: hedefteVar ? "GUNCELLEME" : "YENI_KAYIT",
+        durumLabel: hedefteVar ? "Güncellenecek" : "Yeni Kayıt Eklenecek",
+      });
+    }
+
+    const yeniEklenecekSayisi = kaynakFisler.filter((x) => x.hedefDurumu === "YENI").length;
+    const guncellenecekSayisi = kaynakFisler.filter((x) => x.hedefDurumu === "GUNCELLEME").length;
+    const zatenAktarilmisSayisi = kaynakFisler.filter((x) => x.dahaOnceAktarildi).length;
+
+    return {
+      fisler: kaynakFisler,
+      kaynakFisler,
+      ozet: {
+        toplamFisSayisi: kaynakFisler.length,
+        yeniEklenecekSayisi,
+        guncellenecekSayisi,
+        zatenAktarilmisSayisi,
+        toplamTutarTl: toplamTutar,
+      },
+      toplamFisSayisi: kaynakFisler.length,
+      toplamTutar,
+      hedefVeritabani: targetDb,
+      hedefHesap: hedefHesapId
+        ? {
+            id: hedefHesapId,
+            kod: hedefHesapKodu,
+            unvan: hedefHesapAdi || hedefHesapKodu,
+          }
+        : null,
+      hedefHesapId,
+      hedefHesapAdi,
+      hedefHesapKodu,
+    };
+  }
+
+  /**
+   * Execute receipt transfer to target database and account
+   */
+  public static async calistirAktarma(
+    payload: {
+      ilkTarih?: string;
+      sonTarih?: string;
+      dizaynKodu?: string | number | null;
+      hedefVeritabani?: string;
+      hedefHesapId?: number | null;
+      hedefHesapUnvan?: string;
+      kaynakHesapId?: number | null;
+      kaynakHesapUnvan?: string;
+      secilenFisIdler?: number[];
+    },
+    dbContext?: { dbServer?: string; dbName?: string },
+    kullaniciId: number = 1
+  ): Promise<{
+    success: boolean;
+    aktarilanToplam: number;
+    yeniKayit: number;
+    guncellenen: number;
+    message: string;
+    toplamIstek?: number;
+    aktarilanSayisi?: number;
+    yeniEklenenSayisi?: number;
+    guncellenenSayisi?: number;
+    hatalar?: Array<{ fisId: number; hata: string }>;
+  }> {
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    await DovizFisSqlRepository.ensureAktarmaSchema(pool);
+
+    // 1. Resolve definitions and target DB
+    const tanimRes = await pool.request().query("SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM]");
+    const tanim = tanimRes.recordset?.[0] || {};
+
+    let targetDb = (payload.hedefVeritabani || tanim.DIGER_VERITABANI_ADI || "").trim().replace(/[\[\]]/g, "");
+    if (targetDb) {
+      const dbCheck = await pool.request().input("dbName", sql.VarChar(100), targetDb).query("SELECT 1 FROM sys.databases WHERE name = @dbName");
+      if (!dbCheck.recordset || dbCheck.recordset.length === 0) {
+        targetDb = "";
+      } else {
+        await DovizFisSqlRepository.ensureAktarmaSchema(pool, targetDb);
+      }
+    }
+
+    const targetDbPrefix = targetDb ? `[${targetDb}].` : "";
+
+    // 2. Resolve target account
+    const hedefHesapId = payload.hedefHesapId || tanim.FIS_AKTARILACAK_HESAP_ID;
+    let targetUnvan = (payload.hedefHesapUnvan || tanim.FIS_AKTARMA_HESABI || "").trim();
+    let targetVkn = "";
+    let targetCariKartId: number | null = null;
+    let targetBankaHesabiId: number | null = null;
+
+    if (hedefHesapId) {
+      try {
+        // Önce CARI_KART tablosunda ara (Kolon: AD)
+        const cRes = await pool.request().query(`
+          SELECT TOP 1 CARI_KART_ID, KOD, AD, VERGI_KIMLIK_NO 
+          FROM ${targetDbPrefix}[dbo].[TODVZ_CARI_KART] 
+          WHERE CARI_KART_ID = ${hedefHesapId}
+        `);
+        if (cRes.recordset && cRes.recordset.length > 0) {
+          targetCariKartId = Number(cRes.recordset[0].CARI_KART_ID);
+          targetUnvan = (cRes.recordset[0].AD || targetUnvan).trim();
+          targetVkn = (cRes.recordset[0].VERGI_KIMLIK_NO || "").trim();
+        } else {
+          // Kasa/Banka HESAP tablosunda ara
+          const hRes = await pool.request().query(`
+            SELECT TOP 1 HESAP_ID, KOD, AD 
+            FROM ${targetDbPrefix}[dbo].[TODVZ_HESAP] 
+            WHERE HESAP_ID = ${hedefHesapId}
+          `);
+          if (hRes.recordset && hRes.recordset.length > 0) {
+            targetBankaHesabiId = Number(hRes.recordset[0].HESAP_ID);
+            targetUnvan = (hRes.recordset[0].AD || hRes.recordset[0].KOD || targetUnvan).trim();
+          }
+        }
+      } catch {
+        // Fall back to source DB
+        try {
+          const cRes = await pool.request().query(`
+            SELECT TOP 1 CARI_KART_ID, KOD, AD, VERGI_KIMLIK_NO 
+            FROM [dbo].[TODVZ_CARI_KART] 
+            WHERE CARI_KART_ID = ${hedefHesapId}
+          `);
+          if (cRes.recordset && cRes.recordset.length > 0) {
+            targetCariKartId = Number(cRes.recordset[0].CARI_KART_ID);
+            targetUnvan = (cRes.recordset[0].AD || targetUnvan).trim();
+            targetVkn = (cRes.recordset[0].VERGI_KIMLIK_NO || "").trim();
+          } else {
+            const sRes = await pool.request().query(`
+              SELECT TOP 1 HESAP_ID, KOD, AD FROM [dbo].[TODVZ_HESAP] WHERE HESAP_ID = ${hedefHesapId}
+            `);
+            if (sRes.recordset && sRes.recordset.length > 0) {
+              targetBankaHesabiId = Number(sRes.recordset[0].HESAP_ID);
+              targetUnvan = (sRes.recordset[0].AD || targetUnvan).trim();
+            }
+          }
+        } catch { }
+      }
+    }
+
+    // Ünvan varsa ve targetCariKartId henüz boşsa, cari kartı ünvan veya kod ile de bulmayı dene:
+    if (!targetCariKartId && targetUnvan) {
+      try {
+        const uReq = pool.request();
+        uReq.input("UNVAN_SEARCH", sql.VarChar(200), targetUnvan);
+        const cByUnvan = await uReq.query(`
+          SELECT TOP 1 CARI_KART_ID, KOD, AD, VERGI_KIMLIK_NO 
+          FROM ${targetDbPrefix}[dbo].[TODVZ_CARI_KART] 
+          WHERE AD = @UNVAN_SEARCH OR AD LIKE '%' + @UNVAN_SEARCH + '%' OR KOD = @UNVAN_SEARCH
+        `);
+        if (cByUnvan.recordset && cByUnvan.recordset.length > 0) {
+          targetCariKartId = Number(cByUnvan.recordset[0].CARI_KART_ID);
+          targetUnvan = (cByUnvan.recordset[0].AD || targetUnvan).trim();
+          targetVkn = (cByUnvan.recordset[0].VERGI_KIMLIK_NO || "").trim();
+        }
+      } catch { }
+    }
+
+    if (!targetUnvan) {
+      targetUnvan = "FİŞ AKTARMA HESABI";
+    }
+
+    // 3. Find source slips to transfer
+    const req = pool.request();
+
+    let query = `
+      SELECT F.*, IST.KOD AS ISTATISTIK_KOD, IST.FIS_DIZAYN_TIPI AS DIZAYN_TIPI
+      FROM [dbo].[TODVZ_FIS] F
+      LEFT JOIN [dbo].[TODVZ_ISTATISTIK] IST ON IST.ISTATISTIK_ID = F.ISTATISTIK_ID
+      WHERE ISNULL(F.IPTAL, 0) = 0
+    `;
+
+    if (payload.secilenFisIdler && payload.secilenFisIdler.length > 0) {
+      const ids = payload.secilenFisIdler.filter((x) => !isNaN(Number(x))).map(Number);
+      if (ids.length > 0) {
+        query += ` AND F.FIS_ID IN (${ids.join(",")})`;
+      }
+    } else {
+      if (payload.ilkTarih && String(payload.ilkTarih).trim() !== "") {
+        req.input("ILK_TARIH", sql.VarChar(10), String(payload.ilkTarih).trim());
+        query += ` AND CAST(F.TARIH AS DATE) >= CAST(@ILK_TARIH AS DATE)`;
+      }
+      if (payload.sonTarih && String(payload.sonTarih).trim() !== "") {
+        req.input("SON_TARIH", sql.VarChar(10), String(payload.sonTarih).trim());
+        query += ` AND CAST(F.TARIH AS DATE) <= CAST(@SON_TARIH AS DATE)`;
+      }
+      if (payload.dizaynKodu !== undefined && payload.dizaynKodu !== null && payload.dizaynKodu !== "" && payload.dizaynKodu !== "all") {
+        const dNum = Number(payload.dizaynKodu);
+        req.input("DIZAYN_VAL", sql.VarChar(50), String(payload.dizaynKodu).trim());
+        if (!isNaN(dNum)) {
+          req.input("DIZAYN_NUM", sql.Int, dNum);
+          query += ` AND (IST.FIS_DIZAYN_TIPI = @DIZAYN_NUM OR UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL))))`;
+        } else {
+          query += ` AND UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL)))`;
+        }
+      }
+      if (payload.kaynakHesapId || (payload.kaynakHesapUnvan && payload.kaynakHesapUnvan.trim() !== "")) {
+        const conds: string[] = [];
+        if (payload.kaynakHesapId) {
+          req.input("KAYNAK_HESAP_ID", sql.Int, Number(payload.kaynakHesapId));
+          conds.push("(F.CARI_KART_ID = @KAYNAK_HESAP_ID OR F.BANKA_HESABI_ID = @KAYNAK_HESAP_ID)");
+        }
+        if (payload.kaynakHesapUnvan && payload.kaynakHesapUnvan.trim() !== "") {
+          req.input("KAYNAK_UNVAN", sql.VarChar(200), payload.kaynakHesapUnvan.trim());
+          conds.push("(F.UNVAN = @KAYNAK_UNVAN OR F.UNVAN LIKE '%' + @KAYNAK_UNVAN + '%')");
+        }
+        if (conds.length > 0) {
+          query += ` AND (${conds.join(" OR ")})`;
+        }
+      }
+    }
+
+    query += ` ORDER BY F.TARIH ASC, F.FIS_ID ASC`;
+
+    const sourceRes = await req.query(query);
+    const sourceSlips = sourceRes.recordset || [];
+
+    if (sourceSlips.length === 0) {
+      return {
+        success: true,
+        toplamIstek: 0,
+        aktarilanSayisi: 0,
+        yeniEklenenSayisi: 0,
+        guncellenenSayisi: 0,
+        hatalar: [],
+        aktarilanToplam: 0,
+        yeniKayit: 0,
+        guncellenen: 0,
+        message: "Seçilen kriterlere uygun aktarılacak fiş bulunamadı.",
+      };
+    }
+
+    // 4. Perform transfer in transaction
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    let yeniKayit = 0;
+    let guncellenen = 0;
+
+    try {
+      for (const slip of sourceSlips) {
+        // Fetch source lines
+        const linesReq = new sql.Request(transaction);
+        linesReq.input("FIS_ID", sql.Int, slip.FIS_ID);
+        const linesRes = await linesReq.query(`
+          SELECT * FROM [dbo].[TODVZ_FIS_SATIRI] WHERE FIS_ID = @FIS_ID ORDER BY SATIR_NO ASC
+        `);
+        const sourceLines = linesRes.recordset || [];
+
+        // Check if exists in target
+        const checkReq = new sql.Request(transaction);
+        checkReq.input("SOURCE_FIS_ID", sql.Int, slip.FIS_ID);
+        checkReq.input("SERI_NO", sql.VarChar(20), slip.SERI_NO || "");
+        checkReq.input("BELGE_NO", sql.VarChar(50), slip.BELGE_NO || "");
+        checkReq.input("TARIH", sql.DateTime, slip.TARIH);
+
+        const targetCheckSql = targetDbPrefix
+          ? `SELECT TOP 1 FIS_ID FROM ${targetDbPrefix}[dbo].[TODVZ_FIS]
+             WHERE (KAYNAK_FIS_ID = @SOURCE_FIS_ID)
+                OR (SERI_NO = @SERI_NO AND BELGE_NO = @BELGE_NO AND CAST(TARIH AS DATE) = CAST(@TARIH AS DATE))`
+          : `SELECT TOP 1 FIS_ID FROM [dbo].[TODVZ_FIS]
+             WHERE (KAYNAK_FIS_ID = @SOURCE_FIS_ID AND FIS_ID <> @SOURCE_FIS_ID)`;
+
+        const existingRes = await checkReq.query(targetCheckSql);
+
+        let targetFisId: number | null = null;
+        if (existingRes.recordset && existingRes.recordset.length > 0) {
+          targetFisId = Number(existingRes.recordset[0].FIS_ID);
+        }
+
+        if (targetFisId) {
+          // UPDATE EXISTING IN TARGET
+          const updateReq = new sql.Request(transaction);
+          updateReq.input("TARGET_FIS_ID", sql.Int, targetFisId);
+          updateReq.input("TIP", sql.TinyInt, slip.TIP);
+          updateReq.input("TARIH", sql.DateTime, slip.TARIH);
+          updateReq.input("ZAMAN", sql.DateTime, slip.ZAMAN);
+          updateReq.input("SERI_NO", sql.VarChar(20), slip.SERI_NO || "");
+          updateReq.input("BELGE_NO", sql.VarChar(50), slip.BELGE_NO || "");
+          updateReq.input("GELIS_NEDENI", sql.VarChar(200), slip.GELIS_NEDENI || "Fiş Aktarımı");
+          updateReq.input("KUR_TURU", sql.TinyInt, slip.KUR_TURU ?? 0);
+          updateReq.input("CARI_KART_ID", sql.Int, targetCariKartId);
+          updateReq.input("BANKA_HESABI_ID", sql.Int, targetBankaHesabiId || slip.BANKA_HESABI_ID || null);
+          updateReq.input("UNVAN", sql.VarChar(200), targetUnvan || slip.UNVAN);
+          updateReq.input("VERGI_KIMLIK_NO", sql.VarChar(50), targetVkn || slip.VERGI_KIMLIK_NO || "");
+          updateReq.input("TOPLAM_TUTAR", sql.Float, slip.TOPLAM_TUTAR || 0);
+          updateReq.input("YUVARLAMA", sql.Float, slip.YUVARLAMA || 0);
+          updateReq.input("ODEME_TUTARI", sql.Float, slip.ODEME_TUTARI || 0);
+          updateReq.input("MERKEZ_USD_KURU", sql.Float, slip.MERKEZ_USD_KURU || 1.0);
+          updateReq.input("GISE_USD_KURU", sql.Float, slip.GISE_USD_KURU || 1.0);
+          updateReq.input("KAYNAK_FIS_ID", sql.Int, slip.FIS_ID);
+          updateReq.input("KULLANICI_ID", sql.Int, kullaniciId);
+
+          await updateReq.query(`
+            UPDATE ${targetDbPrefix}[dbo].[TODVZ_FIS] SET
+              TIP = @TIP,
+              TARIH = @TARIH,
+              ZAMAN = @ZAMAN,
+              SERI_NO = @SERI_NO,
+              BELGE_NO = @BELGE_NO,
+              GELIS_NEDENI = @GELIS_NEDENI,
+              KUR_TURU = @KUR_TURU,
+              CARI_KART_ID = @CARI_KART_ID,
+              BANKA_HESABI_ID = @BANKA_HESABI_ID,
+              UNVAN = @UNVAN,
+              VERGI_KIMLIK_NO = @VERGI_KIMLIK_NO,
+              TOPLAM_TUTAR = @TOPLAM_TUTAR,
+              YUVARLAMA = @YUVARLAMA,
+              ODEME_TUTARI = @ODEME_TUTARI,
+              MERKEZ_USD_KURU = @MERKEZ_USD_KURU,
+              GISE_USD_KURU = @GISE_USD_KURU,
+              KAYNAK_FIS_ID = @KAYNAK_FIS_ID,
+              GUNCELLEYEN_ID = @KULLANICI_ID,
+              GUNCELLEME_ZAMANI = GETDATE()
+            WHERE FIS_ID = @TARGET_FIS_ID
+          `);
+
+          // Delete old lines in target and re-insert
+          const delLinesReq = new sql.Request(transaction);
+          delLinesReq.input("TARGET_FIS_ID", sql.Int, targetFisId);
+          await delLinesReq.query(`DELETE FROM ${targetDbPrefix}[dbo].[TODVZ_FIS_SATIRI] WHERE FIS_ID = @TARGET_FIS_ID`);
+
+          for (const line of sourceLines) {
+            const insLineReq = new sql.Request(transaction);
+            insLineReq.input("FIS_ID", sql.Int, targetFisId);
+            insLineReq.input("SATIR_NO", sql.Int, line.SATIR_NO);
+            insLineReq.input("PARA_ID", sql.Int, line.PARA_ID);
+            insLineReq.input("MIKTAR", sql.Float, line.MIKTAR);
+            insLineReq.input("KUR", sql.Float, line.KUR);
+            insLineReq.input("ISCILIK", sql.Float, line.ISCILIK || 0);
+            insLineReq.input("GISE_KURU", sql.Float, line.GISE_KURU || 1.0);
+            insLineReq.input("TUTAR", sql.Float, line.TUTAR);
+            insLineReq.input("KOMISYON_ORANI", sql.Float, line.KOMISYON_ORANI || 0);
+            insLineReq.input("KOMISYON", sql.Float, line.KOMISYON || 0);
+            insLineReq.input("BMV_ORANI", sql.Float, line.BMV_ORANI || 0);
+            insLineReq.input("BMV", sql.Float, line.BMV || 0);
+            insLineReq.input("KMV_ORANI", sql.Float, line.KMV_ORANI || 0);
+            insLineReq.input("KMV", sql.Float, line.KMV || 0);
+            insLineReq.input("KDV_ORANI", sql.Float, line.KDV_ORANI || 0);
+            insLineReq.input("KDV", sql.Float, line.KDV || 0);
+            insLineReq.input("BANKA_HESABI_ID", sql.Int, line.BANKA_HESABI_ID || null);
+            insLineReq.input("SERI_NO", sql.VarChar(20), line.SERI_NO || "");
+            insLineReq.input("BELGE_NO", sql.VarChar(50), line.BELGE_NO || "");
+
+            await insLineReq.query(`
+              INSERT INTO ${targetDbPrefix}[dbo].[TODVZ_FIS_SATIRI] (
+                FIS_ID, SATIR_NO, PARA_ID, MIKTAR, KUR, ISCILIK, GISE_KURU, TUTAR,
+                KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, KMV_ORANI, KMV, KDV_ORANI, KDV,
+                BANKA_HESABI_ID, SERI_NO, BELGE_NO, ETTN
+              ) VALUES (
+                @FIS_ID, @SATIR_NO, @PARA_ID, @MIKTAR, @KUR, @ISCILIK, @GISE_KURU, @TUTAR,
+                @KOMISYON_ORANI, @KOMISYON, @BMV_ORANI, @BMV, @KMV_ORANI, @KMV, @KDV_ORANI, @KDV,
+                @BANKA_HESABI_ID, @SERI_NO, @BELGE_NO, NEWID()
+              )
+            `);
+          }
+
+          guncellenen++;
+        } else {
+          // INSERT NEW INTO TARGET
+          const insReq = new sql.Request(transaction);
+          insReq.input("VEZNE_ID", sql.Int, slip.VEZNE_ID || 1);
+          insReq.input("TIP", sql.TinyInt, slip.TIP);
+          insReq.input("TARIH", sql.DateTime, slip.TARIH);
+          insReq.input("ZAMAN", sql.DateTime, slip.ZAMAN);
+          insReq.input("SERI_NO", sql.VarChar(20), slip.SERI_NO || "");
+          insReq.input("BELGE_NO", sql.VarChar(50), slip.BELGE_NO || "");
+          insReq.input("GELIS_NEDENI", sql.VarChar(200), slip.GELIS_NEDENI || "Fiş Aktarımı");
+          insReq.input("KUR_TURU", sql.TinyInt, slip.KUR_TURU ?? 0);
+          insReq.input("ISTATISTIK_ID", sql.Int, slip.ISTATISTIK_ID || null);
+          insReq.input("CARI_KART_ID", sql.Int, targetCariKartId);
+          insReq.input("BANKA_HESABI_ID", sql.Int, targetBankaHesabiId || slip.BANKA_HESABI_ID || null);
+          insReq.input("UNVAN", sql.VarChar(200), targetUnvan || slip.UNVAN);
+          insReq.input("KISILIK_TIPI", sql.TinyInt, slip.KISILIK_TIPI ?? 0);
+          insReq.input("UYRUK_ID", sql.Int, slip.UYRUK_ID || null);
+          insReq.input("ULKE_ID", sql.Int, slip.ULKE_ID || null);
+          insReq.input("HUKUKI_YAPI_ID", sql.Int, slip.HUKUKI_YAPI_ID || null);
+          insReq.input("VERGI_DAIRESI_ID", sql.Int, slip.VERGI_DAIRESI_ID || null);
+          insReq.input("VERGI_KIMLIK_NO", sql.VarChar(50), targetVkn || slip.VERGI_KIMLIK_NO || "");
+          insReq.input("BABA_ADI", sql.VarChar(100), slip.BABA_ADI || null);
+          insReq.input("ADRES", sql.VarChar(500), slip.ADRES || null);
+          insReq.input("ILCE_ID", sql.Int, slip.ILCE_ID || null);
+          insReq.input("POSTA_KODU_ID", sql.Int, slip.POSTA_KODU_ID || null);
+          insReq.input("IL_ID", sql.Int, slip.IL_ID || null);
+          insReq.input("VEKIL_TURU", sql.TinyInt, slip.VEKIL_TURU ?? null);
+          insReq.input("VEKIL_KISILIK_TIPI", sql.TinyInt, slip.VEKIL_KISILIK_TIPI ?? null);
+          insReq.input("VEKIL_ADI", sql.VarChar(100), slip.VEKIL_ADI || null);
+          insReq.input("VEKIL_KIMLIK_NO", sql.VarChar(50), slip.VEKIL_KIMLIK_NO || null);
+          insReq.input("TOPLAM_TUTAR", sql.Float, slip.TOPLAM_TUTAR || 0);
+          insReq.input("YUVARLAMA", sql.Float, slip.YUVARLAMA || 0);
+          insReq.input("ODEME_TUTARI", sql.Float, slip.ODEME_TUTARI || 0);
+          insReq.input("PASAPORT_NO", sql.VarChar(50), slip.PASAPORT_NO || null);
+          insReq.input("EPOSTA", sql.VarChar(100), slip.EPOSTA || null);
+          insReq.input("TELEFON_NO", sql.VarChar(50), slip.TELEFON_NO || null);
+          insReq.input("DOGUM_TARIHI", sql.DateTime, slip.DOGUM_TARIHI || null);
+          insReq.input("KIMLIK_SERI_NO", sql.VarChar(50), slip.KIMLIK_SERI_NO || null);
+          insReq.input("ANNE_ADI", sql.VarChar(100), slip.ANNE_ADI || null);
+          insReq.input("DOGUM_YERI", sql.VarChar(100), slip.DOGUM_YERI || null);
+          insReq.input("MESLEK_ID", sql.Int, slip.MESLEK_ID || null);
+          insReq.input("KIMLIK_GECERLILIK_TARIHI", sql.DateTime, slip.KIMLIK_GECERLILIK_TARIHI || null);
+          insReq.input("KIMLIK_BELGE_TURU", sql.TinyInt, slip.KIMLIK_BELGE_TURU ?? 0);
+          insReq.input("DERNEK_AMACI", sql.VarChar(200), slip.DERNEK_AMACI || null);
+          insReq.input("YETKILI_KISI", sql.VarChar(200), slip.YETKILI_KISI || null);
+          insReq.input("YETKILI_KISI_ID", sql.Int, slip.YETKILI_KISI_ID || null);
+          insReq.input("BELGE_TURU", sql.TinyInt, slip.BELGE_TURU ?? 0);
+          insReq.input("KMV_UYGULAMA_SEKLI", sql.TinyInt, slip.KMV_UYGULAMA_SEKLI || 0);
+          insReq.input("KIMLIK_KAYNAGI", sql.VarChar(100), slip.KIMLIK_KAYNAGI || null);
+          insReq.input("POSTA_KODU", sql.VarChar(20), slip.POSTA_KODU || null);
+          insReq.input("ILCE", sql.VarChar(100), slip.ILCE || null);
+          insReq.input("IL", sql.VarChar(100), slip.IL || null);
+          insReq.input("MERKEZ_USD_KURU", sql.Float, slip.MERKEZ_USD_KURU || 1.0);
+          insReq.input("GISE_USD_KURU", sql.Float, slip.GISE_USD_KURU || 1.0);
+          insReq.input("KAYNAK_FIS_ID", sql.Int, slip.FIS_ID);
+          insReq.input("KULLANICI_ID", sql.Int, kullaniciId);
+
+          const insRes = await insReq.query(`
+            INSERT INTO ${targetDbPrefix}[dbo].[TODVZ_FIS] (
+              VEZNE_ID, TIP, TARIH, ZAMAN, SERI_NO, BELGE_NO, GELIS_NEDENI, KUR_TURU,
+              ISTATISTIK_ID, CARI_KART_ID, BANKA_HESABI_ID, UNVAN, KISILIK_TIPI, UYRUK_ID,
+              ULKE_ID, HUKUKI_YAPI_ID, VERGI_DAIRESI_ID, VERGI_KIMLIK_NO, BABA_ADI, ADRES,
+              ILCE_ID, POSTA_KODU_ID, IL_ID, VEKIL_TURU, VEKIL_KISILIK_TIPI, VEKIL_ADI,
+              VEKIL_KIMLIK_NO, TOPLAM_TUTAR, YUVARLAMA, ODEME_TUTARI, PASAPORT_NO, EPOSTA,
+              TELEFON_NO, DOGUM_TARIHI, KIMLIK_SERI_NO, ANNE_ADI, DOGUM_YERI, MESLEK_ID,
+              KIMLIK_GECERLILIK_TARIHI, KIMLIK_BELGE_TURU, DERNEK_AMACI, YETKILI_KISI,
+              YETKILI_KISI_ID, BELGE_TURU, E_FATURA_ETTN, KMV_UYGULAMA_SEKLI, KIMLIK_KAYNAGI,
+              POSTA_KODU, ILCE, IL, IS_ARBITRAJ, MERKEZ_USD_KURU, GISE_USD_KURU, KAYNAK_FIS_ID,
+              AKTARILDI, EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI, GUID
+            ) VALUES (
+              @VEZNE_ID, @TIP, @TARIH, @ZAMAN, @SERI_NO, @BELGE_NO, @GELIS_NEDENI, @KUR_TURU,
+              @ISTATISTIK_ID, @CARI_KART_ID, @BANKA_HESABI_ID, @UNVAN, @KISILIK_TIPI, @UYRUK_ID,
+              @ULKE_ID, @HUKUKI_YAPI_ID, @VERGI_DAIRESI_ID, @VERGI_KIMLIK_NO, @BABA_ADI, @ADRES,
+              @ILCE_ID, @POSTA_KODU_ID, @IL_ID, @VEKIL_TURU, @VEKIL_KISILIK_TIPI, @VEKIL_ADI,
+              @VEKIL_KIMLIK_NO, @TOPLAM_TUTAR, @YUVARLAMA, @ODEME_TUTARI, @PASAPORT_NO, @EPOSTA,
+              @TELEFON_NO, @DOGUM_TARIHI, @KIMLIK_SERI_NO, @ANNE_ADI, @DOGUM_YERI, @MESLEK_ID,
+              @KIMLIK_GECERLILIK_TARIHI, @KIMLIK_BELGE_TURU, @DERNEK_AMACI, @YETKILI_KISI,
+              @YETKILI_KISI_ID, @BELGE_TURU, NEWID(), @KMV_UYGULAMA_SEKLI, @KIMLIK_KAYNAGI,
+              @POSTA_KODU, @ILCE, @IL, 0, @MERKEZ_USD_KURU, @GISE_USD_KURU, @KAYNAK_FIS_ID,
+              0, @KULLANICI_ID, GETDATE(), @KULLANICI_ID, GETDATE(), NEWID()
+            );
+            SELECT SCOPE_IDENTITY() AS newFisId;
+          `);
+
+          const newTargetFisId = Number(insRes.recordset?.[0]?.newFisId);
+
+          for (const line of sourceLines) {
+            const insLineReq = new sql.Request(transaction);
+            insLineReq.input("FIS_ID", sql.Int, newTargetFisId);
+            insLineReq.input("SATIR_NO", sql.Int, line.SATIR_NO);
+            insLineReq.input("PARA_ID", sql.Int, line.PARA_ID);
+            insLineReq.input("MIKTAR", sql.Float, line.MIKTAR);
+            insLineReq.input("KUR", sql.Float, line.KUR);
+            insLineReq.input("ISCILIK", sql.Float, line.ISCILIK || 0);
+            insLineReq.input("GISE_KURU", sql.Float, line.GISE_KURU || 1.0);
+            insLineReq.input("TUTAR", sql.Float, line.TUTAR);
+            insLineReq.input("KOMISYON_ORANI", sql.Float, line.KOMISYON_ORANI || 0);
+            insLineReq.input("KOMISYON", sql.Float, line.KOMISYON || 0);
+            insLineReq.input("BMV_ORANI", sql.Float, line.BMV_ORANI || 0);
+            insLineReq.input("BMV", sql.Float, line.BMV || 0);
+            insLineReq.input("KMV_ORANI", sql.Float, line.KMV_ORANI || 0);
+            insLineReq.input("KMV", sql.Float, line.KMV || 0);
+            insLineReq.input("KDV_ORANI", sql.Float, line.KDV_ORANI || 0);
+            insLineReq.input("KDV", sql.Float, line.KDV || 0);
+            insLineReq.input("BANKA_HESABI_ID", sql.Int, line.BANKA_HESABI_ID || null);
+            insLineReq.input("SERI_NO", sql.VarChar(20), line.SERI_NO || "");
+            insLineReq.input("BELGE_NO", sql.VarChar(50), line.BELGE_NO || "");
+
+            await insLineReq.query(`
+              INSERT INTO ${targetDbPrefix}[dbo].[TODVZ_FIS_SATIRI] (
+                FIS_ID, SATIR_NO, PARA_ID, MIKTAR, KUR, ISCILIK, GISE_KURU, TUTAR,
+                KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, KMV_ORANI, KMV, KDV_ORANI, KDV,
+                BANKA_HESABI_ID, SERI_NO, BELGE_NO, ETTN
+              ) VALUES (
+                @FIS_ID, @SATIR_NO, @PARA_ID, @MIKTAR, @KUR, @ISCILIK, @GISE_KURU, @TUTAR,
+                @KOMISYON_ORANI, @KOMISYON, @BMV_ORANI, @BMV, @KMV_ORANI, @KMV, @KDV_ORANI, @KDV,
+                @BANKA_HESABI_ID, @SERI_NO, @BELGE_NO, NEWID()
+              )
+            `);
+          }
+
+          yeniKayit++;
+        }
+
+        // Mark source slip as transferred
+        const markReq = new sql.Request(transaction);
+        markReq.input("SOURCE_FIS_ID", sql.Int, slip.FIS_ID);
+        await markReq.query(`
+          UPDATE [dbo].[TODVZ_FIS]
+          SET AKTARILDI = 1, AKTARIM_TARIHI = GETDATE()
+          WHERE FIS_ID = @SOURCE_FIS_ID
+        `);
+      }
+
+      await transaction.commit();
+
+      const aktarilanToplam = yeniKayit + guncellenen;
+      return {
+        success: true,
+        toplamIstek: aktarilanToplam,
+        aktarilanSayisi: aktarilanToplam,
+        yeniEklenenSayisi: yeniKayit,
+        guncellenenSayisi: guncellenen,
+        hatalar: [],
+        aktarilanToplam,
+        yeniKayit,
+        guncellenen,
+        message: `✅ Başarılı: ${aktarilanToplam} adet döviz fişi aktarıldı (${yeniKayit} yeni kayıt, ${guncellenen} güncelleme). Fişler "${targetUnvan}" hesabına işlendi.`,
+      };
+    } catch (err: any) {
+      await transaction.rollback();
+      logger.error("Fiş aktarma işlem hatası:", err);
+      throw ApiError.internal(`Fiş aktarımı sırasında bir hata oluştu: ${err.message}`);
+    }
+  }
 }
+
+

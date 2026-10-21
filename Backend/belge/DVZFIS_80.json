@@ -52,7 +52,7 @@
       ] },
     { "id": "ettn", "ad": "ETTN", "zorunlu": true, "tip": "metin", "kosul": "{{ettn}}", "daralt": true, "x": 0, "y": 278, "g": 209.77, "metin": "ETTN : {{ettn}}", "boyut": 7.1, "kalin": true },
 
-    { "id": "doviz-kutusu", "tip": "kutu", "x": 0, "y": 291, "g": 209.77, "h": 80, "kalinlik": 0.75 },
+    { "id": "doviz-kutusu", "tip": "kutu", "x": 0, "y": 291, "g": 209.77, "h": 92, "kalinlik": 0.75 },
     { "id": "doviz-baslik-alis", "tip": "metin", "kosul": "!{{satim}}", "x": 2, "y": 293, "g": 205.77, "metin": "SATIN ALINAN DÖVİZE/EFEKTİFE AİT BİLGİLER", "boyut": 7.5, "kalin": true, "hiza": "center" },
     { "id": "doviz-baslik-satis", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 293, "g": 205.77, "metin": "SATILAN DÖVİZE/EFEKTİFE AİT BİLGİLER", "boyut": 7.5, "kalin": true, "hiza": "center" },
     { "id": "doviz-kutusu-cizgi", "tip": "cizgi", "x1": 0, "y1": 303, "x2": 209.77, "y2": 303, "kalinlik": 0.75 },
@@ -64,27 +64,32 @@
         ["TL Karşılığı", "{{s.tl|tl}} TL"],
         { "etiket": "ABD Doları Karşılığı", "deger": "{{s.usd|sayi}} USD", "kosul": "{{s.usdVar}}" }
       ] },
-    { "id": "bsmv", "ad": "BSMV", "zorunlu": true, "tip": "tablo", "kosul": "{{toplam.bsmvVar}}", "daralt": true, "x": 2, "y": 345, "g": 205.77, "etiketG": 124, "satirH": 10, "boyut": 7.5,
-      "cerceve": "yok", "hizaDeger": "right", "kalinDeger": true, "satirlar": [["BSMV", "{{toplam.bsmv|tl}} TL"]] },
-    { "id": "toplam-cizgi", "tip": "cizgi", "x1": 2, "y1": 356, "x2": 207.77, "y2": 356, "kalinlik": 0.75 },
-    { "id": "toplam", "ad": "Toplam tutar", "zorunlu": true, "tip": "tablo", "x": 2, "y": 357, "g": 205.77, "etiketG": 100, "satirH": 12, "boyut": 8.6,
-      "cerceve": "yok", "hizaDeger": "right", "satirlar": [["Toplam Tutar", "{{toplam.genel|tl}} TL", true]] },
+    { "id": "toplam-bilgileri", "ad": "Toplam ve masraf bilgileri", "zorunlu": true, "tip": "tablo", "x": 2, "y": 345, "g": 205.77, "etiketG": 110, "satirH": 10, "boyut": 7.5,
+      "cerceve": "yok", "hizaDeger": "right", "kalinDeger": true, "daralt": true,
+      "satirlar": [
+        ["Toplam Tutar", "{{toplam.tutar|tl}} TL"],
+        ["Toplam Masraf", "{{toplam.masraf|tl}} TL"],
+        { "etiket": "BSMV", "deger": "{{toplam.bsmv|tl}} TL", "kosul": "{{toplam.bsmvVar}}" }
+      ] },
+    { "id": "toplam-cizgi", "tip": "cizgi", "x1": 2, "y1": 376, "x2": 207.77, "y2": 376, "kalinlik": 0.75 },
+    { "id": "toplam", "ad": "Son toplam", "zorunlu": true, "tip": "tablo", "x": 2, "y": 378, "g": 205.77, "etiketG": 100, "satirH": 12, "boyut": 8.6,
+      "cerceve": "yok", "hizaDeger": "right", "satirlar": [["Son Toplam", "{{toplam.sonToplam|tl}} TL", true]] },
 
-    { "id": "alt-kutu-alis", "tip": "kutu", "kosul": "!{{satim}}", "x": 0, "y": 375, "g": 209.77, "h": 34, "kalinlik": 0.75 },
-    { "id": "alt-alis-ulke", "tip": "tablo", "kosul": "!{{satim}}", "x": 2, "y": 377, "g": 205.77, "etiketG": 110, "satirH": 9.5, "boyut": 7.5,
+    { "id": "alt-kutu-alis", "tip": "kutu", "kosul": "!{{satim}}", "x": 0, "y": 395, "g": 209.77, "h": 34, "kalinlik": 0.75 },
+    { "id": "alt-alis-ulke", "tip": "tablo", "kosul": "!{{satim}}", "x": 2, "y": 397, "g": 205.77, "etiketG": 110, "satirH": 9.5, "boyut": 7.5,
       "cerceve": "yok", "hizaDeger": "right", "kalinDeger": true, "satirlar": [["Geldiği Ülke", "{{geldigiUlke}}"]] },
-    { "id": "alt-alis-komisyon", "tip": "tablo", "kosul": "!{{satim}}", "x": 2, "y": 386.5, "g": 205.77, "etiketG": 120, "satirH": 9.5, "boyut": 7.5,
+    { "id": "alt-alis-komisyon", "tip": "tablo", "kosul": "!{{satim}}", "x": 2, "y": 406.5, "g": 205.77, "etiketG": 120, "satirH": 9.5, "boyut": 7.5,
       "cerceve": "yok", "hizaDeger": "right", "satirlar": [["Komisyon      :    {{toplam.komisyon|tl}}", "Vezne adı : {{vezne}}"]] },
-    { "id": "yaziyla-alis", "ad": "Yazıyla (alım)", "tip": "metin", "kosul": "!{{satim}}", "x": 2, "y": 397, "g": 205.77, "metin": "Yazıyla {{toplam.yaziyla}}", "boyut": 7.5, "kalin": true },
+    { "id": "yaziyla-alis", "ad": "Yazıyla (alım)", "tip": "metin", "kosul": "!{{satim}}", "x": 2, "y": 417, "g": 205.77, "metin": "Yazıyla {{toplam.yaziyla}}", "boyut": 7.5, "kalin": true },
 
-    { "id": "alt-kutu-satis", "tip": "kutu", "kosul": "{{satim}}", "x": 0, "y": 375, "g": 209.77, "h": 67, "kalinlik": 0.75 },
-    { "id": "alt-satis-komisyon", "tip": "tablo", "kosul": "{{satim}}", "x": 2, "y": 377, "g": 205.77, "etiketG": 110, "satirH": 9.5, "boyut": 7.5,
+    { "id": "alt-kutu-satis", "tip": "kutu", "kosul": "{{satim}}", "x": 0, "y": 395, "g": 209.77, "h": 67, "kalinlik": 0.75 },
+    { "id": "alt-satis-komisyon", "tip": "tablo", "kosul": "{{satim}}", "x": 2, "y": 397, "g": 205.77, "etiketG": 110, "satirH": 9.5, "boyut": 7.5,
       "cerceve": "yok", "hizaDeger": "right", "kalinDeger": true, "satirlar": [["Komisyon", "{{toplam.komisyon|tl}}"]] },
-    { "id": "yaziyla-satis", "ad": "Yazıyla (satım)", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 387.5, "g": 205.77, "metin": "Yazıyla #{{toplam.yaziyla}}#", "boyut": 7.5, "kalin": true },
-    { "id": "kmv-notu", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 397.5, "g": 205.77, "metin": "Kmv kura dahil değildir.", "boyut": 6.75 },
-    { "id": "alt-satis-ulke", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 406, "g": 205.77, "metin": "Ülke Kodu: {{musteri.ulkeKodu}}  Uyruk:: {{musteri.uyruk}}  Vezne adı : {{vezne}}", "boyut": 7.5 },
-    { "id": "satis-dayanagi", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 416, "g": 205.77, "metin": "Satışın Dayanağı    {{satisDayanagi}}", "boyut": 7.5 },
-    { "id": "alt-satis-ap", "tip": "tablo", "kosul": "{{satim}}", "x": 2, "y": 427, "g": 205.77, "etiketG": 120, "satirH": 12, "boyut": 8.25,
+    { "id": "yaziyla-satis", "ad": "Yazıyla (satım)", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 407.5, "g": 205.77, "metin": "Yazıyla #{{toplam.yaziyla}}#", "boyut": 7.5, "kalin": true },
+    { "id": "kmv-notu", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 417.5, "g": 205.77, "metin": "Kmv kura dahil değildir.", "boyut": 6.75 },
+    { "id": "alt-satis-ulke", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 426, "g": 205.77, "metin": "Ülke Kodu: {{musteri.ulkeKodu}}  Uyruk:: {{musteri.uyruk}}  Vezne adı : {{vezne}}", "boyut": 7.5 },
+    { "id": "satis-dayanagi", "tip": "metin", "kosul": "{{satim}}", "x": 2, "y": 436, "g": 205.77, "metin": "Satışın Dayanağı    {{satisDayanagi}}", "boyut": 7.5 },
+    { "id": "alt-satis-ap", "tip": "tablo", "kosul": "{{satim}}", "x": 2, "y": 447, "g": 205.77, "etiketG": 120, "satirH": 12, "boyut": 8.25,
       "cerceve": "yok", "hizaDeger": "right", "satirlar": [["A.P.: {{toplam.genel|tl}}", "P.U.: 0,00", true]] }
   ]
 }

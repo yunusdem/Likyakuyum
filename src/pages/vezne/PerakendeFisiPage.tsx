@@ -88,9 +88,8 @@ import { PerakendeFisiPrintModal } from "./PerakendeFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { CompanyService } from "../../services/companyService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
-import { triggerSilentPrint } from "../../services/silentPrintService";
-import { perakendeFisHtml } from "../../utils/belgeSablon/fisCikti";
-import { extractPlainTextFromFis } from "../../utils/belgeSablon/yazdir";
+import { perakendeFisHtml, perakendeFisleriHtml } from "../../utils/belgeSablon/fisCikti";
+import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
 import { KurService } from "../../services/kurService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -4425,16 +4424,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     });
     const isPos = resolved.recommendedPrintType === "POS";
     try {
-      const fisCikti = await perakendeFisHtml(previewFatura, isPos ? "80" : "A4");
-      const plainText = extractPlainTextFromFis(fisCikti);
-      const sonuc = await triggerSilentPrint({
-        html: fisCikti.html,
-        text: plainText,
+      const fisCikti = await perakendeFisleriHtml(previewFatura, isPos ? "80" : "A4");
+      const sonuc = await fisiYazdir(fisCikti, {
         printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
         copies: resolved.kopyaSayisi || 1,
         isPos,
-        title: `Perakende_Fisi_${faturaNo || "Yazdir"}`,
-        allowBrowserFallback: false,
       });
       if (sonuc.success) {
         showSuccess("✅ Fiş doğrudan yazıcıya gönderildi.");
@@ -4771,19 +4765,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           printers,
         });
         const isPos = resolved.recommendedPrintType === "POS";
-        // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; docs/FIS_TASARIM_YOL_HARITASI.md).
-        // Kayıt yapılmıştır: yazdırma hatası kaydı geri almaz, yalnızca bildirilir.
+        // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; çoklu satır varsa hepsi yazdırılır).
         try {
-          const fisCikti = await perakendeFisHtml(result || payload, isPos ? "80" : "A4");
-          const plainText = extractPlainTextFromFis(fisCikti);
-          const sonuc = await triggerSilentPrint({
-            html: fisCikti.html,
-            text: plainText,
+          const fisCikti = await perakendeFisleriHtml(result || payload, isPos ? "80" : "A4");
+          const sonuc = await fisiYazdir(fisCikti, {
             printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
             copies: resolved.kopyaSayisi || 1,
             isPos,
-            title: `Perakende_Fisi_${result?.faturaNo || payload?.faturaNo || "Yazdir"}`,
-            allowBrowserFallback: false,
           });
           if (!sonuc.success) {
             printSuccess = false;
@@ -4843,7 +4831,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         }
         if (await ebFis.kaydedildi(result?.faturaId, true)) return;
         if (withPrint) {
-          // Yazdırılınca aynı fişte kalınır, fiş temizlenmez
+          // Düzeltme modunda F10 ile yazdırılınca aynı fişte kalınır, sayfa sıfırlanmaz
           if (result?.faturaId) {
             setCurrentFaturaId(Number(result.faturaId));
           }
@@ -4860,13 +4848,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       } else {
         if (await ebFis.kaydedildi(result?.faturaId, true)) return;
         if (withPrint) {
-          // Yazdırılınca aynı fişte kalınır, fiş temizlenmez
-          if (result?.faturaId) {
-            setCurrentFaturaId(Number(result.faturaId));
-          }
-          if (result?.faturaNo) {
-            setFaturaNo(result.faturaNo);
-          }
+          handleReset();
           if (printSuccess) {
             showSuccess("✅ Fiş başarıyla kaydedildi ve doğrudan yazıcıya gönderildi.");
           }

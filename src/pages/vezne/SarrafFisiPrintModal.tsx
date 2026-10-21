@@ -4,7 +4,7 @@ import { IconPrinter, IconX, IconReceipt, IconFileText } from "@tabler/icons-rea
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
-import { sarrafFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
+import { sarrafFisHtml, sarrafFisleriHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 
@@ -109,10 +109,10 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
   // Kâğıt türü yazıcıdan belli olunca (ve kullanıcı değiştirdikçe) şablondan üretilir.
   const { fis, hata } = useSablonluFis(show && yaziciHazir, printType, () => {
     const { show: _s, onHide: _o, autoPrint: _a, vezne: _v, ...girdi } = propsRef.current;
-    return sarrafFisHtml(girdi, printType === "POS" ? "80" : "A4");
+    return sarrafFisleriHtml(girdi, printType === "POS" ? "80" : "A4");
   });
 
-  const handlePrint = useCallback(async (hazir: FisHtml | null = fis) => {
+  const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
     if (!hazir || isPrinting) return;
     setIsPrinting(true);
     try {
@@ -169,13 +169,22 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [show, handlePrint, onHide]);
 
+  const toplamFisSayisi = Array.isArray(fis) ? fis.length : (fis ? 1 : 0);
+
   return (
     <Modal show={show && (!autoPrint || !!hata)} onHide={onHide} size="lg" centered className="sarraf-print-modal">
       <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom d-print-none">
         <div className="d-flex align-items-center justify-content-between w-100 me-3 flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2">
             <IconReceipt size={20} className="text-primary" />
-            <h6 className="mb-0 fw-bold">{fisTuruBaslik}</h6>
+            <h6 className="mb-0 fw-bold">
+              {fisTuruBaslik}
+              {toplamFisSayisi > 1 && (
+                <span className="badge bg-primary ms-2 fs-xs px-2 py-0.5">
+                  {toplamFisSayisi} Fiş
+                </span>
+              )}
+            </h6>
           </div>
 
           <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -220,7 +229,7 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
               ) : (
                 <>
                   <IconPrinter size={15} className="me-1" />
-                  Yazdır (F10)
+                  Yazdır (F10{toplamFisSayisi > 1 ? ` - ${toplamFisSayisi} Fiş` : ""})
                 </>
               )}
             </Button>
@@ -251,7 +260,7 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
               ) : (
                 <>
                   <IconPrinter size={15} className="me-1" />
-                  Yazdır (F10)
+                  Yazdır (F10{toplamFisSayisi > 1 ? ` - ${toplamFisSayisi} Fiş` : ""})
                 </>
               )}
             </Button>
