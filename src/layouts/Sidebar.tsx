@@ -11,6 +11,7 @@ import {
 import { MenuItemType } from "types/menuTypes";
 
 import CustomToggle, { CustomToggleLevel2 } from "./SidebarMenuToggle";
+import LogoutConfirmModal from "../components/common/LogoutConfirmModal";
 import {
   IconX,
   IconChevronRight,
@@ -275,6 +276,8 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   const currentPath = location.pathname;
   const { handleCollapsed, collapsed } = useMenu();
   const { user, logout } = useAuth();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Kurulum (exe) sürümünde Lisans ve Sürüm sayfasının düğmesi gösterilir
   const [kurulumSurumu, setKurulumSurumu] = useState(false);
   useEffect(() => {
@@ -734,10 +737,20 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
 
   const displayName = user?.fullName || user?.username || "Admin";
 
-  const handleLogout = async (e: React.MouseEvent) => {
+  const handleLogout = (e: React.MouseEvent) => {
     e.preventDefault();
-    await logout();
-    navigate("/login", { replace: true });
+    setShowLogoutConfirm(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      setShowLogoutConfirm(false);
+      navigate("/login", { replace: true });
+    } catch {
+      setIsLoggingOut(false);
+    }
   };
 
   const handleLinkClick = (e: React.MouseEvent, to: string) => {
@@ -1502,6 +1515,13 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
       </div>
         </Fragment>
       )}
+
+      <LogoutConfirmModal
+        show={showLogoutConfirm}
+        onHide={() => !isLoggingOut && setShowLogoutConfirm(false)}
+        onConfirm={handleConfirmLogout}
+        isLoading={isLoggingOut}
+      />
     </div>
   );
 };

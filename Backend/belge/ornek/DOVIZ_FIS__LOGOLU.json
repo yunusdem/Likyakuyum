@@ -335,52 +335,44 @@
       ]
     },
     {
-      "id": "toplam-bilgileri",
-      "ad": "Toplam ve masraf bilgileri",
+      "id": "bsmv",
+      "ad": "BSMV",
       "zorunlu": true,
       "tip": "tablo",
+      "kosul": "{{toplam.bsmvVar}}",
+      "daralt": true,
       "x": 2,
       "y": 385,
       "g": 205.77,
-      "etiketG": 110,
+      "etiketG": 124,
       "satirH": 10,
       "boyut": 7.5,
       "cerceve": "yok",
       "hizaDeger": "right",
       "kalinDeger": true,
-      "daralt": true,
       "satirlar": [
         [
-          "Toplam Tutar",
-          "{{toplam.tutar|tl}} TL"
-        ],
-        [
-          "Toplam Masraf",
-          "{{toplam.masraf|tl}} TL"
-        ],
-        {
-          "etiket": "BSMV",
-          "deger": "{{toplam.bsmv|tl}} TL",
-          "kosul": "{{toplam.bsmvVar}}"
-        }
+          "BSMV",
+          "{{toplam.bsmv|tl}} TL"
+        ]
       ]
     },
     {
       "id": "toplam-cizgi",
       "tip": "cizgi",
       "x1": 2,
-      "y1": 416,
+      "y1": 396,
       "x2": 207.77,
-      "y2": 416,
+      "y2": 396,
       "kalinlik": 0.75
     },
     {
       "id": "toplam",
-      "ad": "Son toplam",
+      "ad": "Toplam tutar",
       "zorunlu": true,
       "tip": "tablo",
       "x": 2,
-      "y": 418,
+      "y": 397,
       "g": 205.77,
       "etiketG": 100,
       "satirH": 12,
@@ -389,8 +381,8 @@
       "hizaDeger": "right",
       "satirlar": [
         [
-          "Son Toplam",
-          "{{toplam.sonToplam|tl}} TL",
+          "Toplam Tutar",
+          "{{toplam.genel|tl}} TL",
           true
         ]
       ]
@@ -400,7 +392,7 @@
       "tip": "kutu",
       "kosul": "!{{satim}}",
       "x": 0,
-      "y": 435,
+      "y": 415,
       "g": 209.77,
       "h": 34,
       "kalinlik": 0.75
@@ -410,7 +402,7 @@
       "tip": "tablo",
       "kosul": "!{{satim}}",
       "x": 2,
-      "y": 437,
+      "y": 417,
       "g": 205.77,
       "etiketG": 110,
       "satirH": 9.5,
@@ -430,7 +422,7 @@
       "tip": "tablo",
       "kosul": "!{{satim}}",
       "x": 2,
-      "y": 446.5,
+      "y": 426.5,
       "g": 205.77,
       "etiketG": 120,
       "satirH": 9.5,
@@ -450,7 +442,7 @@
       "tip": "metin",
       "kosul": "!{{satim}}",
       "x": 2,
-      "y": 457,
+      "y": 437,
       "g": 205.77,
       "metin": "Yazıyla {{toplam.yaziyla}}",
       "boyut": 7.5,

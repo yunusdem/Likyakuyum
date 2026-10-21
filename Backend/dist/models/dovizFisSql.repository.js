@@ -565,16 +565,13 @@ export class DovizFisSqlRepository {
                   SET @NO = @SERI_NO;
                   WHILE @SATIR_NO < @SATIR_SAYISI
                   BEGIN
-                    UPDATE #TODVZ_ISKELE_FIS_SATIRI SET SERI_NO = @NO WHERE SATIR_NO = @SATIR_NO;
+                    UPDATE #TODVZ_ISKELE_FIS_SATIRI SET SERI_NO = @NO WHERE SATIR_NO = @SATIR_NO AND (SERI_NO IS NULL OR LEN(RTRIM(SERI_NO)) = 0);
                     SET @SATIR_NO = @SATIR_NO + 1;
-                    IF @SATIR_NO % @CIKTI_SATIR_SAYISI = 0
-                    BEGIN
-                      SET @SAYAC = @SAYAC + 1;
-                      DECLARE @RAW_SERI_STR VARCHAR(30) = CAST(@SAYAC AS VARCHAR(30));
-                      IF @ONUNE_SIFIR_KOY = 1 AND LEN(@RAW_SERI_STR) < @SERI_DIGIT_LEN
-                        SET @RAW_SERI_STR = REPLICATE('0', @SERI_DIGIT_LEN - LEN(@RAW_SERI_STR)) + @RAW_SERI_STR;
-                      SET @NO = ISNULL(@PREFIX_SERI, '') + @RAW_SERI_STR;
-                    END;
+                    SET @SAYAC = @SAYAC + 1;
+                    DECLARE @RAW_SERI_STR VARCHAR(30) = CAST(@SAYAC AS VARCHAR(30));
+                    IF @ONUNE_SIFIR_KOY = 1 AND LEN(@RAW_SERI_STR) < @SERI_DIGIT_LEN
+                      SET @RAW_SERI_STR = REPLICATE('0', @SERI_DIGIT_LEN - LEN(@RAW_SERI_STR)) + @RAW_SERI_STR;
+                    SET @NO = ISNULL(@PREFIX_SERI, '') + @RAW_SERI_STR;
                   END;
                 END;
               END;
@@ -641,16 +638,13 @@ export class DovizFisSqlRepository {
                   SET @NO = @BELGE_NO;
                   WHILE @SATIR_NO < @SATIR_SAYISI
                   BEGIN
-                    UPDATE #TODVZ_ISKELE_FIS_SATIRI SET BELGE_NO = @NO WHERE SATIR_NO = @SATIR_NO;
+                    UPDATE #TODVZ_ISKELE_FIS_SATIRI SET BELGE_NO = @NO WHERE SATIR_NO = @SATIR_NO AND (BELGE_NO IS NULL OR LEN(RTRIM(BELGE_NO)) = 0);
                     SET @SATIR_NO = @SATIR_NO + 1;
-                    IF @SATIR_NO % @CIKTI_SATIR_SAYISI = 0
-                    BEGIN
-                      SET @SAYAC = @SAYAC + 1;
-                      DECLARE @RAW_BELGE_STR VARCHAR(30) = CAST(@SAYAC AS VARCHAR(30));
-                      IF @ONUNE_SIFIR_KOY = 1 AND LEN(@RAW_BELGE_STR) < @BELGE_DIGIT_LEN
-                        SET @RAW_BELGE_STR = REPLICATE('0', @BELGE_DIGIT_LEN - LEN(@RAW_BELGE_STR)) + @RAW_BELGE_STR;
-                      SET @NO = ISNULL(@PREFIX_BELGE, '') + @RAW_BELGE_STR;
-                    END;
+                    SET @SAYAC = @SAYAC + 1;
+                    DECLARE @RAW_BELGE_STR VARCHAR(30) = CAST(@SAYAC AS VARCHAR(30));
+                    IF @ONUNE_SIFIR_KOY = 1 AND LEN(@RAW_BELGE_STR) < @BELGE_DIGIT_LEN
+                      SET @RAW_BELGE_STR = REPLICATE('0', @BELGE_DIGIT_LEN - LEN(@RAW_BELGE_STR)) + @RAW_BELGE_STR;
+                    SET @NO = ISNULL(@PREFIX_BELGE, '') + @RAW_BELGE_STR;
                   END;
                 END;
               END;
@@ -1213,8 +1207,9 @@ export class DovizFisSqlRepository {
                 kdvOrani,
                 kdv,
                 bankaHesabiId: toValidId(s.bankaHesabiId),
-                seriNo: s.seriNo || seriNo || null,
-                belgeNo: s.belgeNo || belgeNo || null,
+                seriNo: s.seriNo || null,
+                belgeNo: s.belgeNo || null,
+                ettn: s.ettn || null,
             };
         });
         const bsmvTotal = tip === 0 ? 0 : items.reduce((acc, r) => acc + (r.bmv || 0), 0);
@@ -1377,6 +1372,7 @@ export class DovizFisSqlRepository {
             procReq.input("YAZICI_ID", sql.Int, toValidId(dto.yaziciId));
             procReq.input("IN_GUID", sql.UniqueIdentifier, guid);
             procReq.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, dto.degisiklikTakipVar ? 1 : 0);
+            procReq.input("ROW_COUNT", sql.Int, items.length > 0 ? items.length : 1);
             // Row Parameter definitions
             const rowValuesSql = [];
             items.forEach((item, idx) => {
@@ -1395,8 +1391,9 @@ export class DovizFisSqlRepository {
                 const kdv = item.kdv;
                 const pId = item.paraId || defaultParaId;
                 const bankaId = item.bankaHesabiId;
-                const satirSeri = (item.seriNo || seriNo || "").slice(0, 20);
-                const satirBelge = (item.belgeNo || belgeNo || "").slice(0, 50);
+                const satirSeri = (item.seriNo || "").slice(0, 20);
+                const satirBelge = (item.belgeNo || "").slice(0, 50);
+                const satirEttn = (item.ettn && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(item.ettn)) ? item.ettn : null;
                 rowValuesSql.push(`(
           @IN_GUID,
           ${idx},
@@ -1416,7 +1413,8 @@ export class DovizFisSqlRepository {
           ${kdv.toFixed(4)},
           ${bankaId ? bankaId : "NULL"},
           ${satirSeri ? `'${satirSeri.replace(/'/g, "''")}'` : "NULL"},
-          ${satirBelge ? `'${satirBelge.replace(/'/g, "''")}'` : "NULL"}
+          ${satirBelge ? `'${satirBelge.replace(/'/g, "''")}'` : "NULL"},
+          ${satirEttn ? `'${satirEttn}'` : "NEWID()"}
         )`);
             });
             // Combined SQL Script Execution: Temporary Table + Dynamic Foreign Key Validation + Stored Procedure Call
@@ -1454,7 +1452,7 @@ export class DovizFisSqlRepository {
         INSERT INTO #TODVZ_ISKELE_FIS_SATIRI (
           [GUID], [SATIR_NO], [MIKTAR], [PARA_ID], [KUR], [ISCILIK], [GISE_KURU], [TUTAR],
           [KOMISYON_ORANI], [KOMISYON], [BMV_ORANI], [BMV], [KMV_ORANI], [KMV], [KDV_ORANI], [KDV],
-          [BANKA_HESABI_ID], [SERI_NO], [BELGE_NO]
+          [BANKA_HESABI_ID], [SERI_NO], [BELGE_NO], [ETTN]
         ) VALUES ${rowValuesSql.join(",\n")};
 
         DECLARE @P_FIS_ID INT = @FIS_ID_IN;
@@ -1672,7 +1670,7 @@ export class DovizFisSqlRepository {
           BEGIN
             -- 1. Hedef yazıcı ID ile SODVZ_NUMERATOR_URET çağrısı
             BEGIN TRY
-              EXEC @GEN_RET = SODVZ_NUMERATOR_URET @CALC_NUM_TUR, @GEN_SERI_NO OUTPUT, @CALC_YAZICI_ID, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+              EXEC @GEN_RET = SODVZ_NUMERATOR_URET @CALC_NUM_TUR, @GEN_SERI_NO OUTPUT, @CALC_YAZICI_ID, @ROW_COUNT, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
             END TRY
             BEGIN CATCH
             END CATCH;
@@ -1681,7 +1679,7 @@ export class DovizFisSqlRepository {
             IF (@GEN_SERI_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_SERI_NO))) = 0) AND @CALC_YAZICI_ID IS NOT NULL
             BEGIN
               BEGIN TRY
-                EXEC @GEN_RET = SODVZ_NUMERATOR_URET @CALC_NUM_TUR, @GEN_SERI_NO OUTPUT, NULL, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+                EXEC @GEN_RET = SODVZ_NUMERATOR_URET @CALC_NUM_TUR, @GEN_SERI_NO OUTPUT, NULL, @ROW_COUNT, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
               END TRY
               BEGIN CATCH
               END CATCH;
@@ -1694,7 +1692,7 @@ export class DovizFisSqlRepository {
               DECLARE @BASE_YAZICI_ID INT = NULL;
               SELECT TOP 1 @BASE_YAZICI_ID = YAZICI_ID FROM TODVZ_NUMERATOR WHERE TUR = @BASE_TUR ORDER BY CASE WHEN YAZICI_ID IS NOT NULL THEN 0 ELSE 1 END;
               BEGIN TRY
-                EXEC @GEN_RET = SODVZ_NUMERATOR_URET @BASE_TUR, @GEN_SERI_NO OUTPUT, @BASE_YAZICI_ID, 1, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+                EXEC @GEN_RET = SODVZ_NUMERATOR_URET @BASE_TUR, @GEN_SERI_NO OUTPUT, @BASE_YAZICI_ID, @ROW_COUNT, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
               END TRY
               BEGIN CATCH
               END CATCH;
@@ -1749,11 +1747,50 @@ export class DovizFisSqlRepository {
               SET @P_SERI_NO = @FALLBACK_ONEK + '000000001';
             END;
           END;
+        END;
 
-          -- Geçici tablodaki satırların SERI_NO alanını da güncelle
-          UPDATE #TODVZ_ISKELE_FIS_SATIRI 
-          SET SERI_NO = @P_SERI_NO 
-          WHERE SERI_NO IS NULL OR LEN(LTRIM(RTRIM(SERI_NO))) = 0;
+        -- Geçici tablodaki satırların SERI_NO alanını ardışık olarak dağıt
+        IF @P_SERI_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@P_SERI_NO))) > 0
+        BEGIN
+          DECLARE @D_SERI VARCHAR(30) = '';
+          DECLARE @PR_SERI VARCHAR(30) = '';
+          DECLARE @PS_IDX INT = 1;
+          WHILE @PS_IDX <= LEN(RTRIM(@P_SERI_NO))
+          BEGIN
+            DECLARE @CHS CHAR(1) = SUBSTRING(RTRIM(@P_SERI_NO), @PS_IDX, 1);
+            IF @CHS LIKE '[0-9]'
+              SET @D_SERI = @D_SERI + @CHS;
+            ELSE IF LEN(@D_SERI) = 0
+              SET @PR_SERI = @PR_SERI + @CHS;
+            SET @PS_IDX = @PS_IDX + 1;
+          END;
+
+          DECLARE @SERI_DLEN INT = LEN(@D_SERI);
+          DECLARE @SERI_VAL BIGINT = ISNULL(TRY_CAST(@D_SERI AS BIGINT), 1);
+          IF @SERI_VAL IS NULL SET @SERI_VAL = 1;
+
+          DECLARE @CURR_SATIR_SERI INT = 0;
+          WHILE @CURR_SATIR_SERI < @ROW_COUNT
+          BEGIN
+            DECLARE @LINE_SERI VARCHAR(30) = '';
+            IF @SERI_DLEN > 0
+            BEGIN
+              DECLARE @S_NUM_STR VARCHAR(30) = CAST((@SERI_VAL + @CURR_SATIR_SERI) AS VARCHAR(30));
+              IF LEN(@S_NUM_STR) < @SERI_DLEN
+                SET @S_NUM_STR = REPLICATE('0', @SERI_DLEN - LEN(@S_NUM_STR)) + @S_NUM_STR;
+              SET @LINE_SERI = @PR_SERI + @S_NUM_STR;
+            END
+            ELSE
+            BEGIN
+              SET @LINE_SERI = @P_SERI_NO;
+            END;
+
+            UPDATE #TODVZ_ISKELE_FIS_SATIRI 
+            SET SERI_NO = @LINE_SERI 
+            WHERE SATIR_NO = @CURR_SATIR_SERI AND (SERI_NO IS NULL OR LEN(LTRIM(RTRIM(SERI_NO))) = 0);
+
+            SET @CURR_SATIR_SERI = @CURR_SATIR_SERI + 1;
+          END;
         END;
 
         -- 12.2. Belge No Otomatik Atama:
@@ -1791,7 +1828,7 @@ export class DovizFisSqlRepository {
           BEGIN
             -- 1. Hedef Belge Numaratörü ile SODVZ_NUMERATOR_URET çağrısı
             BEGIN TRY
-              EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @TARGET_BELGE_TUR, @GEN_BELGE_NO OUTPUT, @CALC_YAZICI_ID, 1, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
+              EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @TARGET_BELGE_TUR, @GEN_BELGE_NO OUTPUT, @CALC_YAZICI_ID, @ROW_COUNT, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
             END TRY
             BEGIN CATCH
             END CATCH;
@@ -1800,7 +1837,7 @@ export class DovizFisSqlRepository {
             IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0)
             BEGIN
               BEGIN TRY
-                EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @TARGET_BELGE_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
+                EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @TARGET_BELGE_TUR, @GEN_BELGE_NO OUTPUT, NULL, @ROW_COUNT, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
               END TRY
               BEGIN CATCH
               END CATCH;
@@ -1810,7 +1847,7 @@ export class DovizFisSqlRepository {
             IF (@GEN_BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(@GEN_BELGE_NO))) = 0) AND @TARGET_BELGE_TUR <> @STD_BELGE_NUM_TUR
             BEGIN
               BEGIN TRY
-                EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @STD_BELGE_NUM_TUR, @GEN_BELGE_NO OUTPUT, NULL, 1, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
+                EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @STD_BELGE_NUM_TUR, @GEN_BELGE_NO OUTPUT, NULL, @ROW_COUNT, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
               END TRY
               BEGIN CATCH
               END CATCH;
@@ -1851,7 +1888,7 @@ export class DovizFisSqlRepository {
               SET @GEN_BELGE_NO = ISNULL(@NUM_ONEK, '') + @RAW_NUM_STR;
 
               UPDATE TODVZ_NUMERATOR
-              SET BASLANGIC = @NUM_BASLANGIC + 1
+              SET BASLANGIC = @NUM_BASLANGIC + @ROW_COUNT
               WHERE TUR = @FOUND_B_TUR;
             END;
           END;
@@ -1903,19 +1940,54 @@ export class DovizFisSqlRepository {
               SET @P_BELGE_NO = @FALLBACK_B_ONEK + '0000000000001';
             END;
           END;
-
-          -- Geçici tablodaki satırların BELGE_NO alanını güncelle
-          UPDATE #TODVZ_ISKELE_FIS_SATIRI 
-          SET BELGE_NO = @P_BELGE_NO 
-          WHERE BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(BELGE_NO))) = 0;
-        END
-        ELSE
-        BEGIN
-          -- Kullanıcı elle belge no girdiyse geçici tablodaki satırlara uygula
-          UPDATE #TODVZ_ISKELE_FIS_SATIRI 
-          SET BELGE_NO = @P_BELGE_NO 
-          WHERE BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(BELGE_NO))) = 0;
         END;
+
+        -- Geçici tablodaki satırların BELGE_NO alanını ardışık olarak dağıt
+        IF @P_BELGE_NO IS NOT NULL AND LEN(LTRIM(RTRIM(@P_BELGE_NO))) > 0
+        BEGIN
+          DECLARE @D_BELGE VARCHAR(30) = '';
+          DECLARE @PR_BELGE VARCHAR(30) = '';
+          DECLARE @PB_IDX INT = 1;
+          WHILE @PB_IDX <= LEN(RTRIM(@P_BELGE_NO))
+          BEGIN
+            DECLARE @CHB CHAR(1) = SUBSTRING(RTRIM(@P_BELGE_NO), @PB_IDX, 1);
+            IF @CHB LIKE '[0-9]'
+              SET @D_BELGE = @D_BELGE + @CHB;
+            ELSE IF LEN(@D_BELGE) = 0
+              SET @PR_BELGE = @PR_BELGE + @CHB;
+            SET @PB_IDX = @PB_IDX + 1;
+          END;
+
+          DECLARE @BELGE_DLEN INT = LEN(@D_BELGE);
+          DECLARE @BELGE_VAL BIGINT = ISNULL(TRY_CAST(@D_BELGE AS BIGINT), 1);
+          IF @BELGE_VAL IS NULL SET @BELGE_VAL = 1;
+
+          DECLARE @CURR_SATIR_BELGE INT = 0;
+          WHILE @CURR_SATIR_BELGE < @ROW_COUNT
+          BEGIN
+            DECLARE @LINE_BELGE VARCHAR(50) = '';
+            IF @BELGE_DLEN > 0
+            BEGIN
+              DECLARE @B_NUM_STR VARCHAR(30) = CAST((@BELGE_VAL + @CURR_SATIR_BELGE) AS VARCHAR(30));
+              IF LEN(@B_NUM_STR) < @BELGE_DLEN
+                SET @B_NUM_STR = REPLICATE('0', @BELGE_DLEN - LEN(@B_NUM_STR)) + @B_NUM_STR;
+              SET @LINE_BELGE = @PR_BELGE + @B_NUM_STR;
+            END
+            ELSE
+            BEGIN
+              SET @LINE_BELGE = @P_BELGE_NO;
+            END;
+
+            UPDATE #TODVZ_ISKELE_FIS_SATIRI 
+            SET BELGE_NO = @LINE_BELGE 
+            WHERE SATIR_NO = @CURR_SATIR_BELGE AND (BELGE_NO IS NULL OR LEN(LTRIM(RTRIM(BELGE_NO))) = 0);
+
+            SET @CURR_SATIR_BELGE = @CURR_SATIR_BELGE + 1;
+          END;
+        END;
+
+        -- Her satır için benzersiz ETTN oluşturulduğundan emin ol
+        UPDATE #TODVZ_ISKELE_FIS_SATIRI SET ETTN = NEWID() WHERE ETTN IS NULL;
 
         -- 13. Geçici Tablodaki Satırların Para ID ve Banka ID Kontrolü
         IF OBJECT_ID('TODVZ_PARA') IS NOT NULL
@@ -2320,6 +2392,7 @@ export class DovizFisSqlRepository {
                 bankaHesabiId: s.BANKA_HESABI_ID || null,
                 seriNo: s.SERI_NO || "",
                 belgeNo: s.BELGE_NO || "",
+                ettn: s.ETTN ? String(s.ETTN).trim() : undefined,
             };
         });
         const tip = Number(row.TIP) || 0;

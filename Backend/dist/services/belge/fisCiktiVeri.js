@@ -8,9 +8,61 @@
 import { ticariFisHesapla, yuvarla2 } from "../ticari/ticariHesap.js";
 const yazi = (v) => (v === null || v === undefined ? "" : String(v).trim());
 export const sayiOku = (v) => {
+    if (v === null || v === undefined || v === "")
+        return 0;
     if (typeof v === "number")
         return Number.isFinite(v) ? v : 0;
-    const n = parseFloat(String(v ?? "").replace(/,/g, "."));
+    const str = String(v).trim().replace(/\s/g, "");
+    if (!str)
+        return 0;
+    // 1. Hem nokta hem virgül içeriyorsa
+    if (str.includes(",") && str.includes(".")) {
+        const lastComma = str.lastIndexOf(",");
+        const lastDot = str.lastIndexOf(".");
+        if (lastComma > lastDot) {
+            // Türkçe: "500.000,50" -> noktalar binlik, virgül ondalık
+            const clean = str.replace(/\./g, "").replace(",", ".");
+            const num = parseFloat(clean);
+            return Number.isFinite(num) ? num : 0;
+        }
+        else {
+            // İngilizce: "500,000.50" -> virgüller binlik, nokta ondalık
+            const clean = str.replace(/,/g, "");
+            const num = parseFloat(clean);
+            return Number.isFinite(num) ? num : 0;
+        }
+    }
+    // 2. Sadece virgül içeriyorsa ("5000,50" veya "9,00")
+    if (str.includes(",")) {
+        const parts = str.split(",");
+        if (parts.length > 2) {
+            const clean = str.replace(/,/g, "");
+            const num = parseFloat(clean);
+            return Number.isFinite(num) ? num : 0;
+        }
+        const clean = str.replace(",", ".");
+        const num = parseFloat(clean);
+        return Number.isFinite(num) ? num : 0;
+    }
+    // 3. Sadece nokta içeriyorsa ("9.000", "50.000", "1.000.000")
+    if (str.includes(".")) {
+        const dotParts = str.split(".");
+        // Birden fazla nokta varsa ("1.000.000") kesinlikle binlik ayracıdır
+        if (dotParts.length > 2) {
+            const clean = str.replace(/\./g, "");
+            const num = parseFloat(clean);
+            return Number.isFinite(num) ? num : 0;
+        }
+        // Tek nokta: 1-3 basamak . 3 basamak ise ("9.000", "50.000", "500.000") ve başı 0 değilse binlik ayracıdır!
+        if (dotParts[0].length >= 1 && dotParts[0].length <= 3 && dotParts[0] !== "0" && dotParts[1].length === 3) {
+            const clean = str.replace(/\./g, "");
+            const num = parseFloat(clean);
+            return Number.isFinite(num) ? num : 0;
+        }
+        const num = parseFloat(str);
+        return Number.isFinite(num) ? num : 0;
+    }
+    const n = parseFloat(str);
     return Number.isFinite(n) ? n : 0;
 };
 const buyuk = (s) => s.toLocaleUpperCase("tr-TR");

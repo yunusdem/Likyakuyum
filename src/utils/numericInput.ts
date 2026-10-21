@@ -22,14 +22,26 @@ export function onlyDecimal(val: string | number | undefined | null): string {
 /**
  * Değer girildikten sonra tüm binlik basamakları (yüzler, binler, milyonlar, milyarlar) nokta '.' ile ayırır.
  * Örnek: "1000000" -> "1.000.000", "500000" -> "500.000", "5000" -> "5.000"
- * Kullanıcı virgül girmeden ASLA otomatik virgül veya kuruş (,00) koymaz.
+ * Kesinlikle binlik ayracı olarak virgül koymaz; sadece kullanıcı virgül girerse kuruş/ondalık olarak korur.
+ * Örnek: "5000000,50" -> "5.000.000,50"
  */
 export function formatWithThousandDot(val: string | number | undefined | null): string {
   if (val === undefined || val === null || val === "") return "";
-  const s = String(val).trim().replace(/\s/g, "");
+  let s: string;
+  if (typeof val === "number") {
+    if (isNaN(val)) return "";
+    s = String(val);
+    if (s.includes(".")) {
+      const [intPart, decPart] = s.split(".");
+      const formattedInt = intPart.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+      return decPart ? `${formattedInt},${decPart}` : formattedInt;
+    }
+    return s.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  }
+  s = String(val).trim().replace(/\s/g, "");
   if (!s) return "";
 
-  // 1. Kullanıcı virgül girmişse: virgül ondalık ayırıcıdır, tam kısmı binlik nokta ile formatla, virgül ve sonrasını koru
+  // 1. Kullanıcı virgül girmişse (ondalık ayracı: 5000000,50 -> 5.000.000,50)
   if (s.includes(",")) {
     const parts = s.split(",");
     const intDigits = parts[0].replace(/\D/g, "");
@@ -38,13 +50,14 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
     return parts.length > 1 ? `${formattedInt},${decPart}` : formattedInt;
   }
 
-  // 2. Başında 0. veya . olan ondalık girişler (örn: "0.25", ".5")
-  if (s.startsWith("0.") || s.startsWith(".")) {
-    const decPart = s.replace(/^0?\./, "").replace(/[^0-9]/g, "");
-    return s.includes(",") ? `0,${decPart}` : `0.${decPart}`;
+  // 2. Başında , olan ondalık girişler (,50 -> 0,50)
+  if (s.startsWith(",")) {
+    const decPart = s.slice(1).replace(/[^0-9]/g, "");
+    return `0,${decPart}`;
   }
 
-  // 3. Düz rakamlar ve nokta içeren binlik girişler (örn: "50000" -> "50.000", silerken "50.00" -> "5.000", "5.00" -> "500")
+  // 3. Normal tamsayı veya nokta içeren binlik girişler:
+  // Sadece rakamları al ve her 3 basamakta bir nokta (.) koy (kesinlikle virgül yapma)
   const rawDigits = s.replace(/\D/g, "");
   if (!rawDigits) return "";
   return rawDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -52,20 +65,11 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
 
 /**
  * Miktar alanları için temizleme ve metin yönetimi.
- * Kullanıcı girdisini kesmez, sınırlandırmaz.
- * Kullanıcı virgül girmeden ASLA otomatik virgül koymaz.
+ * Binlik basamakları (yüzler, binler, milyonlar) nokta '.' ile ayırır.
+ * Örnek: "5000000" -> "5.000.000", "5000000,50" -> "5.000.000,50", "5000" -> "5.000"
  */
 export function formatMiktar(val: string | number | undefined | null): string {
-  if (val === undefined || val === null || val === "") return "";
-  if (typeof val === "number") {
-    if (isNaN(val)) return "";
-    return String(val);
-  }
-  const s = String(val).trim();
-  if (s.includes(",")) {
-    return formatWithThousandDot(s);
-  }
-  return s;
+  return formatWithThousandDot(val);
 }
 
 /**

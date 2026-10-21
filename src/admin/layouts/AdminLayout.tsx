@@ -20,6 +20,7 @@ import {
 } from "@tabler/icons-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { adminApi, DestekOzet } from "../services/adminApi";
+import LogoutConfirmModal from "../../components/common/LogoutConfirmModal";
 
 const MENU = [
   { yol: "/", baslik: "Pano", ikon: <IconLayoutDashboard size={18} />, tam: true },
@@ -43,6 +44,8 @@ const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
   const kilitli = !!admin?.sifreDegismeli;
   const [destek, setDestek] = useState<DestekOzet | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Destek sayacı: okunmamış talep/sistem kaydı + taslak bildirim (30 sn'de bir; K13)
   useEffect(() => {
@@ -60,9 +63,19 @@ const AdminLayout: React.FC = () => {
     };
   }, [kilitli]);
 
-  const cikisYap = async () => {
-    await cikis();
-    navigate("/giris", { replace: true });
+  const cikisYap = () => {
+    setShowConfirm(true);
+  };
+
+  const handleConfirmCikis = async () => {
+    try {
+      setIsLoggingOut(true);
+      await cikis();
+      setShowConfirm(false);
+      navigate("/giris", { replace: true });
+    } catch {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -115,6 +128,13 @@ const AdminLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+
+      <LogoutConfirmModal
+        show={showConfirm}
+        onHide={() => !isLoggingOut && setShowConfirm(false)}
+        onConfirm={handleConfirmCikis}
+        isLoading={isLoggingOut}
+      />
     </div>
   );
 };

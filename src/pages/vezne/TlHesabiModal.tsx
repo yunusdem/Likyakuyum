@@ -3,6 +3,7 @@ import { Modal, Form, Button, InputGroup } from "react-bootstrap";
 import { IconCalculator, IconX, IconCheck, IconBinoculars } from "@tabler/icons-react";
 import { ParaItem } from "./DovizFisiPage";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import { parseDecimal, formatMiktar, parseKur } from "../../utils/numericInput";
 
 interface TlHesabiModalProps {
   show: boolean;
@@ -20,6 +21,8 @@ interface TlHesabiModalProps {
   kurKurusSayisi?: number;
   dovizKurusSayisi?: number;
   tlKurusSayisi?: number;
+  initialParaKod?: string;
+  initialKur?: string | number;
 }
 
 export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
@@ -33,8 +36,10 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
   kurKurusSayisi = 6,
   dovizKurusSayisi = 2,
   tlKurusSayisi = 2,
+  initialParaKod,
+  initialKur,
 }) => {
-  const [tlMiktariStr, setTlMiktariStr] = useState<string>("0.00");
+  const [tlMiktariStr, setTlMiktariStr] = useState<string>("0");
   const [selectedParaKod, setSelectedParaKod] = useState<string>("USD");
   const [kurStr, setKurStr] = useState<string>("1.000000");
   const [showParaLookup, setShowParaLookup] = useState<boolean>(false);
@@ -47,15 +52,26 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
   // Modal açıldığında varsayılan para ve kur hazırla, TL miktarı inputuna odaklan
   useEffect(() => {
     if (show) {
-      setTlMiktariStr("0.00");
+      setTlMiktariStr("0");
+      const rowPara = (initialParaKod && initialParaKod.trim())
+        ? paralar.find((p) => p.kod.toUpperCase() === initialParaKod.trim().toUpperCase())
+        : null;
+
       const initialPara =
+        rowPara ||
         paralar.find((p) => p.kod.toUpperCase() === "USD") ||
         paralar.find((p) => p.kod.toUpperCase() !== "TL" && p.kod.toUpperCase() !== "TRY") ||
         paralar[0];
 
       if (initialPara) {
         setSelectedParaKod(initialPara.kod);
-        const rate = resolveCurrencyRate(initialPara, tip, kurTuru);
+        let rate = 0;
+        const kurInputVal = initialKur !== undefined && initialKur !== null ? String(initialKur) : "";
+        if (rowPara && kurInputVal && parseKur(kurInputVal) > 0) {
+          rate = parseKur(kurInputVal);
+        } else {
+          rate = resolveCurrencyRate(initialPara, tip, kurTuru);
+        }
         setKurStr(rate > 0 ? rate.toFixed(kurKurusSayisi) : "1.000000");
       }
 
@@ -66,7 +82,7 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
         }
       }, 100);
     }
-  }, [show, paralar, tip, kurTuru, resolveCurrencyRate, kurKurusSayisi]);
+  }, [show, paralar, tip, kurTuru, resolveCurrencyRate, kurKurusSayisi, initialParaKod, initialKur]);
 
   const selectedPara = paralar.find(
     (p) => p.kod.toUpperCase() === selectedParaKod.toUpperCase().trim()
@@ -84,13 +100,8 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
     }, 100);
   };
 
-  // Sayısal parser
-  const parseNum = (val: string): number => {
-    return parseFloat(val.replace(/,/g, ".")) || 0;
-  };
-
-  const tlMiktariNum = parseNum(tlMiktariStr);
-  const kurNum = parseNum(kurStr);
+  const tlMiktariNum = parseDecimal(tlMiktariStr);
+  const kurNum = parseKur(kurStr);
 
   // Formül: Miktar = TL Miktarı / Kur
   const miktarNum = kurNum > 0 ? tlMiktariNum / kurNum : 0;
@@ -234,10 +245,25 @@ export const TlHesabiModal: React.FC<TlHesabiModalProps> = ({
                   }}
                   value={tlMiktariStr}
                   onChange={(e) => {
-                    let val = e.target.value.replace(/[^0-9.,]/g, "");
-                    const parts = val.split(/[.,]/);
-                    if (parts.length > 2) val = parts[0] + "." + parts.slice(1).join("");
-                    setTlMiktariStr(val);
+                    const input = e.target;
+                    let rawVal = input.value;
+                    if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
+                      rawVal = rawVal.replace(/^0+/, "") || "0";
+                    }
+                    const isAtEnd = (input.selectionStart ?? rawVal.length) >= rawVal.length - 1;
+                    const formatted = formatMiktar(rawVal);
+                    setTlMiktariStr(formatted);
+                    if (isAtEnd) {
+                      requestAnimationFrame(() => {
+                        input.setSelectionRange(formatted.length, formatted.length);
+                      });
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const val = e.target.value.trim();
+                    if (val !== "") {
+                      setTlMiktariStr(formatMiktar(val));
+                    }
                   }}
                   onFocus={(e) => e.target.select()}
                   onKeyDown={(e) => {
