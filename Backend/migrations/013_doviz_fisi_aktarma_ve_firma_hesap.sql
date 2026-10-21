@@ -77,6 +77,27 @@ BEGIN
     BEGIN
         ALTER TABLE dbo.TODVZ_FIS ADD KAYNAK_FIS_ID INT NULL;
     END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns 
+        WHERE object_id = OBJECT_ID('dbo.TODVZ_FIS') AND name = 'UNVAN'
+    )
+    BEGIN
+        ALTER TABLE dbo.TODVZ_FIS ADD UNVAN VARCHAR(100) NULL;
+    END;
+END;
+GO
+
+-- TODVZ_ISTATISTIK FIS_DIZAYN_TIPI Kolonu Kontrolü
+IF OBJECT_ID('dbo.TODVZ_ISTATISTIK', 'U') IS NOT NULL
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns 
+        WHERE object_id = OBJECT_ID('dbo.TODVZ_ISTATISTIK') AND name = 'FIS_DIZAYN_TIPI'
+    )
+    BEGIN
+        ALTER TABLE dbo.TODVZ_ISTATISTIK ADD FIS_DIZAYN_TIPI INT NULL;
+    END;
 END;
 GO
 
@@ -156,13 +177,13 @@ BEGIN
             END;
         END;
 
-        -- Hedef hesap cari kartı bul (varsa)
+        -- Hedef hesap cari kartı bul (varsa - TODVZ_CARI_KART tablosunda isim kolonu AD'dir)
         DECLARE @HedefCariId INT = NULL;
         IF @HedefHesapKodu IS NOT NULL AND OBJECT_ID('dbo.TODVZ_CARI_KART', 'U') IS NOT NULL
         BEGIN
             SELECT TOP 1 @HedefCariId = CARI_KART_ID 
             FROM dbo.TODVZ_CARI_KART 
-            WHERE KOD = @HedefHesapKodu OR UNVAN = @HedefHesapKodu;
+            WHERE KOD = @HedefHesapKodu OR AD = @HedefHesapKodu;
         END;
 
         -- 2. Tarih aralığını normalize et (gün başı ve sonu)
@@ -261,14 +282,14 @@ BEGIN
                     ISTATISTIK_ID, CARI_KART_ID, UNVAN, KISILIK_TIPI, UYRUK_ID, ULKE_ID,
                     PASAPORT_NO, VERGI_DAIRESI_ID, VERGI_KIMLIK_NO, BABA_ADI, ADRES,
                     TOPLAM_TUTAR, ODEME_TUTARI, BANKA_HESABI_ID, KMV_UYGULAMA_SEKLI,
-                    KULLANICI_ID, KAYNAK_FIS_ID, AKTARIM_TARIHI
+                    EKLEYEN_ID, KAYNAK_FIS_ID, AKTARIM_TARIHI
                 )
                 SELECT 
                     kaynak.VEZNE_ID, kaynak.TIP, kaynak.TARIH, kaynak.ZAMAN, kaynak.SERI_NO, kaynak.BELGE_NO, kaynak.GELIS_NEDENI, kaynak.KUR_TURU,
                     kaynak.ISTATISTIK_ID, COALESCE(@HedefCariId, kaynak.CARI_KART_ID), COALESCE(@HedefHesapKodu, kaynak.UNVAN), kaynak.KISILIK_TIPI, kaynak.UYRUK_ID, kaynak.ULKE_ID,
                     kaynak.PASAPORT_NO, kaynak.VERGI_DAIRESI_ID, kaynak.VERGI_KIMLIK_NO, kaynak.BABA_ADI, kaynak.ADRES,
                     kaynak.TOPLAM_TUTAR, kaynak.ODEME_TUTARI, kaynak.BANKA_HESABI_ID, kaynak.KMV_UYGULAMA_SEKLI,
-                    kaynak.KULLANICI_ID, @CurrFisId, GETDATE()
+                    ISNULL(kaynak.EKLEYEN_ID, 1), @CurrFisId, GETDATE()
                 FROM dbo.TODVZ_FIS kaynak
                 WHERE kaynak.FIS_ID = @CurrFisId;
 
