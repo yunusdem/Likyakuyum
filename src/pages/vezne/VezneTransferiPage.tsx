@@ -43,7 +43,7 @@ import {
 } from "../../services/vezneIzlemeService";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
 import { useAuth } from "../../context/AuthContext";
-import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
+import { onlyDecimal, blockNonNumericKeys, parseDecimal } from "../../utils/numericInput";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 interface VezneBakiyeDropdownProps {
@@ -219,6 +219,7 @@ export const VezneTransferiPage: React.FC = () => {
   const [showParaModal, setShowParaModal] = useState<boolean>(false);
   const [activeRowIdForPara, setActiveRowIdForPara] = useState<string | null>(null);
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
+  const [isF5Pending, setIsF5Pending] = useState<boolean>(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState<boolean>(false);
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
   const [showParaSayModal, setShowParaSayModal] = useState<boolean>(false);
@@ -532,15 +533,13 @@ export const VezneTransferiPage: React.FC = () => {
       await fetchIzlemeData();
       if (transferId) {
         await loadTransferById(transferId);
-      } else if (!isDuzeltmeMode) {
-        resetForm();
       }
     } catch (err) {
       console.error("Yenileme hatası:", err);
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [fetchIzlemeData, transferId, isDuzeltmeMode, loadTransferById, resetForm]);
+  }, [fetchIzlemeData, transferId, loadTransferById]);
 
   // Navigation handlers (|◀, ◀, ▶, ▶|)
   const handleNavigate = async (action: "first" | "prev" | "next" | "last") => {
@@ -803,9 +802,73 @@ export const VezneTransferiPage: React.FC = () => {
     }
   }, [notification]);
 
-  // Toplu Transfer (F5): Veren veznenin Vezne İzleme'deki canlı bakiyelerini transfer satırlarına yükler
+  // Toplu Transfer (F5): Veren veznenin bakiyelerini transfer satırlarına yükler
+  const executeTopluTransferForVezne = useCallback(
+    async (targetVezneId: number, targetVezneAd?: string) => {
+      if (!targetVezneId || targetVezneId <= 0) return;
+
+      try {
+        let bakiyeler: { paraId: number; paraKodu: string; paraAdi: string; miktar: number }[] = [];
+        const izlemeRes = await VezneIzlemeService.getIzlemeData().catch(() => null);
+        if (izlemeRes && izlemeRes.rows && izlemeRes.rows.length > 0) {
+          setIzlemeRows(izlemeRes.rows);
+          bakiyeler = izlemeRes.rows
+            .map((r) => ({
+              paraId: r.paraId,
+              paraKodu: r.paraKodu,
+              paraAdi: r.paraAdi,
+              miktar: r.bakiyeler[targetVezneId] ?? 0,
+            }))
+            .filter((b) => b.miktar !== 0);
+        }
+
+        // Eğer izleme verisinde bakiye bulunamazsa doğrudan SQL tablosundan sorgula
+        if (!bakiyeler || bakiyeler.length === 0) {
+          bakiyeler = await VezneTransferiService.getVezneBakiyeler(targetVezneId);
+        }
+
+        if (!bakiyeler || bakiyeler.length === 0) {
+          setNotification({
+            type: "warning",
+            message: `${targetVezneAd || "Veren veznede"} aktarılacak bakiye bulunamadı.`,
+          });
+          return;
+        }
+
+        const newLines: TransferGridRow[] = bakiyeler.map((b, idx) => ({
+          id: `bakiye-row-${idx}-${b.paraId}`,
+          satirNo: idx + 1,
+          paraId: b.paraId,
+          paraKodu: b.paraKodu,
+          paraAdi: b.paraAdi,
+          miktar: b.miktar,
+        }));
+
+        setLines(newLines);
+        setNotification({
+          type: "success",
+          message: `${targetVezneAd || "Veren"} veznesindeki ${bakiyeler.length} adet bakiye transfer satırlarına yüklendi.`,
+        });
+
+        setTimeout(() => {
+          const firstMiktarInput = rowInputRefs.current["miktar-0"] || rowInputRefs.current["kod-0"];
+          firstMiktarInput?.focus();
+          firstMiktarInput?.select();
+        }, 100);
+      } catch (err: any) {
+        console.error("Toplu transfer hatası:", err);
+        setNotification({
+          type: "danger",
+          message: `Toplu transfer yüklenirken hata oluştu: ${err?.message || "Bilinmeyen hata"}`,
+        });
+      }
+    },
+    []
+  );
+
   const handleTopluTransfer = useCallback(async () => {
     if (!verenVezneId || verenVezneId <= 0) {
+      setIsF5Pending(true);
       setNotification({
         type: "warning",
         message: "Lütfen önce Veren Vezneyi seçiniz.",
@@ -814,58 +877,8 @@ export const VezneTransferiPage: React.FC = () => {
       return;
     }
 
-    try {
-      let bakiyeler: { paraId: number; paraKodu: string; paraAdi: string; miktar: number }[] = [];
-      const izlemeRes = await VezneIzlemeService.getIzlemeData().catch(() => null);
-      if (izlemeRes && izlemeRes.rows && izlemeRes.rows.length > 0) {
-        setIzlemeRows(izlemeRes.rows);
-        bakiyeler = izlemeRes.rows
-          .map((r) => ({
-            paraId: r.paraId,
-            paraKodu: r.paraKodu,
-            paraAdi: r.paraAdi,
-            miktar: r.bakiyeler[verenVezneId] ?? 0,
-          }))
-          .filter((b) => b.miktar !== 0);
-      } else {
-        bakiyeler = await VezneTransferiService.getVezneBakiyeler(verenVezneId);
-      }
-
-      if (!bakiyeler || bakiyeler.length === 0) {
-        setNotification({
-          type: "warning",
-          message: `${verenVezneAd || "Veren veznede"} aktarılacak bakiye bulunamadı.`,
-        });
-        return;
-      }
-
-      const newLines: TransferGridRow[] = bakiyeler.map((b, idx) => ({
-        id: `bakiye-row-${idx}-${b.paraId}`,
-        satirNo: idx + 1,
-        paraId: b.paraId,
-        paraKodu: b.paraKodu,
-        paraAdi: b.paraAdi,
-        miktar: b.miktar,
-      }));
-
-      setLines(newLines);
-      setNotification({
-        type: "success",
-        message: `${verenVezneAd} veznesindeki ${bakiyeler.length} adet bakiye transfer satırlarına yüklendi.`,
-      });
-
-      setTimeout(() => {
-        const firstMiktarInput = rowInputRefs.current["miktar-0"] || rowInputRefs.current["kod-0"];
-        firstMiktarInput?.focus();
-        firstMiktarInput?.select();
-      }, 100);
-    } catch (e: any) {
-      setNotification({
-        type: "danger",
-        message: e?.message || "Toplu bakiye getirilemedi.",
-      });
-    }
-  }, [verenVezneId, verenVezneAd]);
+    await executeTopluTransferForVezne(verenVezneId, verenVezneAd);
+  }, [verenVezneId, verenVezneAd, executeTopluTransferForVezne]);
 
   // Para Say (F9) integration
   const paraSayCurrencies: ParaSaymaCurrencyItem[] = lines
@@ -920,9 +933,10 @@ export const VezneTransferiPage: React.FC = () => {
       return;
     }
 
-    const validLines = lines.filter(
-      (l) => l.paraId > 0 && l.miktar !== "" && !isNaN(Number(l.miktar)) && Number(l.miktar) !== 0
-    );
+    const validLines = lines.filter((l) => {
+      const val = typeof l.miktar === "number" ? l.miktar : parseDecimal(l.miktar);
+      return l.paraId > 0 && !isNaN(val) && val !== 0;
+    });
     if (validLines.length === 0) {
       setNotification({
         type: "warning",
@@ -947,7 +961,7 @@ export const VezneTransferiPage: React.FC = () => {
           paraId: l.paraId,
           paraKodu: l.paraKodu,
           paraAdi: l.paraAdi,
-          miktar: Number(l.miktar),
+          miktar: typeof l.miktar === "number" ? l.miktar : parseDecimal(l.miktar),
         })),
       };
 
@@ -1130,24 +1144,40 @@ export const VezneTransferiPage: React.FC = () => {
         return;
       }
 
+      const key = e.key;
+      const isF1 = key === "F1" || e.code === "F1" || e.keyCode === 112;
+      const isF4 = key === "F4" || e.code === "F4" || e.keyCode === 115;
+      const isF5 = key === "F5" || e.code === "F5" || e.keyCode === 116;
+      const isF9 = key === "F9" || e.code === "F9" || e.keyCode === 120;
+      const isF10 = key === "F10" || e.code === "F10" || e.keyCode === 121;
+
+      // Tarayıcının varsayılan F5 yenilemesini sayfa genelinde her durumda önle
+      if (isF5) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
       if (showVerenVezneModal || showParaModal || showSearchModal || showParaSayModal || showPrintModal || showDeleteConfirmModal) {
         return;
       }
 
-      if (e.key === "F1") {
+      if (isF1) {
         e.preventDefault();
+        e.stopPropagation();
         handleSave();
-      } else if (e.key === "F4") {
+      } else if (isF4) {
         e.preventDefault();
+        e.stopPropagation();
         resetForm();
-      } else if (e.key === "F5") {
-        e.preventDefault();
+      } else if (isF5) {
         handleTopluTransfer();
-      } else if (e.key === "F9") {
+      } else if (isF9) {
         e.preventDefault();
+        e.stopPropagation();
         handleOpenParaSay();
-      } else if (e.key === "F10") {
+      } else if (isF10) {
         e.preventDefault();
+        e.stopPropagation();
         handleSave(true);
       }
     };
@@ -1219,6 +1249,7 @@ export const VezneTransferiPage: React.FC = () => {
     <div className="vezne-transferi-container w-100 pb-2">
       {/* Top ERP Toolbar */}
       <ERPToolbar
+        disableShortcuts={true}
         hideBottomBar={true}
         onNew={resetForm}
         onSave={() => handleSave(false)}
@@ -1612,6 +1643,10 @@ export const VezneTransferiPage: React.FC = () => {
           setVerenVezneKod(item.kod);
           setVerenVezneAd(item.ad);
           setShowVerenVezneModal(false);
+          if (isF5Pending) {
+            setIsF5Pending(false);
+            executeTopluTransferForVezne(item.id, item.ad);
+          }
         }}
       />
 

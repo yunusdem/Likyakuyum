@@ -673,7 +673,7 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
           disabled={disabled}
           onClick={onRefresh || (() => window.location.reload())}
           className="erp-tb-btn erp-tb-btn-secondary"
-          title="Yenile (F5)"
+          title={disableShortcuts ? "Yenile" : "Yenile (F5)"}
           aria-label="Yenile"
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
