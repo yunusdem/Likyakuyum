@@ -191,6 +191,17 @@ export function doldur(metin: string, veri: Record<string, any>): string {
 
 export const yerTutucuVar = (m: string) => /\{\{[^}]+\}\}/.test(m);
 
+/**
+ * Satırın değerindeki bir yer tutucu veride açıkça `null` ise satır "yok" sayılır ve basılmaz (koşul yazılmasa bile).
+ * Veri katmanı bunu, belgede anlamı olmayan bilgi için kullanır: ör. alış fişinde `toplam.kmv` null'dur, firma şablonunda
+ * koşulsuz bir KMV satırı olsa da alışta çıkmaz. Olmayan (undefined) alan yine boş basılır, satır gizlenmez.
+ */
+export function satirYok(deger: string, veri: Record<string, any>): boolean {
+  let yok = false;
+  String(deger ?? "").replace(/\{\{\s*([\w.]+)\s*(?:\|[^}]*)?\}\}/g, (m, yol: string) => { if (alanOku(veri, yol) === null) yok = true; return m; });
+  return yok;
+}
+
 /** Koşul: doldurulunca boş, "0", "false" ise tutmaz; `!` ile başlarsa tersi. */
 export function kosulGecti(kosul: string | undefined, veri: Record<string, any>): boolean {
   if (!kosul || !String(kosul).trim()) return true;
@@ -463,7 +474,7 @@ function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: n
       break;
     }
     case "tablo": {
-      const satirlar = o.satirlar.map(satirAc).filter(s => kosulGecti(s.kosul, veri))
+      const satirlar = o.satirlar.map(satirAc).filter(s => kosulGecti(s.kosul, veri) && !satirYok(s.deger, veri))
         .map(s => ({ etiket: doldur(s.etiket, veri), deger: doldur(s.deger, veri), kalin: s.kalin }));
       gercekH = tabloSatirlari(o, satirlar, o.y, varsayilanBoyut, c);
       break;
@@ -486,7 +497,7 @@ function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: n
       }
       dizi.forEach((kayit, i) => {
         const bag = { ...veri, s: kayit, sira: i + 1 };
-        const satirlar = (o.satirlar || []).map(satirAc).filter(s => kosulGecti(s.kosul, bag))
+        const satirlar = (o.satirlar || []).map(satirAc).filter(s => kosulGecti(s.kosul, bag) && !satirYok(s.deger, bag))
           .map(s => ({ etiket: doldur(s.etiket, bag), deger: doldur(s.deger, bag), kalin: s.kalin }));
         if (i > 0) y += o.aralik ?? 0;
         y += tabloSatirlari(etiketli, satirlar, y, varsayilanBoyut, c);

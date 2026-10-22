@@ -44,7 +44,7 @@ export interface DovizFisVerisi {
   firma: FirmaKimlik & { vdVkn: string; mersisSicil: string };
   musteri: { unvan: string; ilceSehir: string; uyruk: string; ulkeKodu: string; pasaportNo: string; kimlikNo: string; vergiDairesi: string; musteriTuru: string; meslek: string };
   satirlar: DovizFisSatiri[];
-  toplam: { tl: number; tutar: number; bsmv: number; bsmvVar: boolean; komisyon: number; kmv: number; kmvVar: boolean; masraf: number; sonToplam: number; genel: number; yaziyla: string };
+  toplam: { tl: number; tutar: number; bsmv: number; bsmvVar: boolean; komisyon: number; kmv: number | null; kmvVar: boolean; masraf: number; sonToplam: number; genel: number; yaziyla: string };
   basamak: { doviz: number; kur: number; tl: number };
   qr: string; erisimAdresi: string; onizleme: boolean; iptal: boolean;
 }
@@ -176,8 +176,10 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
   const tutar = g.toplamTutar !== undefined && g.toplamTutar !== null ? sayiOku(g.toplamTutar) : tl;
   const bsmv = satim ? (g.bsmvTutari !== undefined && g.bsmvTutari !== null ? sayiOku(g.bsmvTutari) : yuvarla(tl * 0.002)) : 0;
   const komisyon = sayiOku(g.komisyonTutari);
-  // Firma ayarı 1 - Uygulanmasın: satırda KMV gelse bile hesaba girmez, fişte KMV satırı ve notu basılmaz.
-  const kmv = firma.kmvSekli === 1 ? 0 : sayiOku(g.kmvTutari);
+  // KMV yalnız satış fişinde doğar; alış fişinde ve firma ayarı 1 - Uygulanmasın iken "yok" (null): hesaba girmez ve
+  // şablondaki KMV satırı koşulsuz bile olsa basılmaz (sablonCekirdek `satirYok`). Firma şablonuna bakmadan koddan gizlenir.
+  const kmvYok = !satim || firma.kmvSekli === 1;
+  const kmv = kmvYok ? 0 : sayiOku(g.kmvTutari);
   // KMV kura dahilse (firma ayarı 2) tutarın içindedir: masrafa ve son toplama eklenmez, fişte yalnız bilgi olarak basılır.
   const kmvDahil = firma.kmvSekli === 2;
   const masraf = g.totalMasraf !== undefined && g.totalMasraf !== null
@@ -231,7 +233,7 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
       mersisSicil: [firma.mersis, firma.ticaretSicilNo].filter(Boolean).join(" / "),
     },
     musteri, satirlar,
-    toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv, kmvVar: satim && kmv > 0, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
+    toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv: kmvYok ? null : kmv, kmvVar: satim && kmv > 0, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
     basamak, qr, erisimAdresi, onizleme: false, iptal: false,
   };
 }
