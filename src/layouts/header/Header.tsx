@@ -99,6 +99,11 @@ const quickActions = [
     icon: <IconBuildingBank size={16} strokeWidth={2.4} style={{ color: "#1e293b" }} />,
   },
   {
+    title: "V. Transfer",
+    to: "/vezne/transfer-kayit",
+    icon: <IconCash size={16} strokeWidth={2.4} style={{ color: "#0d9488" }} />,
+  },
+  {
     title: "C. Hareket",
     to: "/cari/hareket-kayit",
     icon: <IconArrowsExchange size={16} strokeWidth={2.4} style={{ color: "#6d28d9" }} />,

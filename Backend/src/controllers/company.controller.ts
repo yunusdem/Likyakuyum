@@ -6,8 +6,119 @@ import { ApiError } from "../utils/ApiError.js";
 import fs from "node:fs";
 import path from "node:path";
 import { altKlasorAdiDenetle, firmaDosyasi, firmaKlasoruOnbellekTemizle, firmaKoku, klasorListele } from "../services/firmaKlasoru.js";
+import { getDbPool } from "../config/mssql.config.js";
+import { getAdminPool, adminYapilandirildiMi } from "../config/adminDb.config.js";
+import sql from "mssql";
 
 export class CompanyController {
+  /**
+   * GET /api/v1/company/alanlar
+   * Returns list of areas/databases for the active company/customer
+   */
+  public static getAlanlar = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = {
+      dbServer: req.user?.dbServer || (req.query.dbServer as string),
+      dbName: req.user?.dbName || (req.query.dbName as string),
+    };
+    const currentDb = (dbContext.dbName || "").trim().toLowerCase();
+    const currentFirmaId = req.user?.firmaId;
+
+    const alanListesi: Array<{
+      id: string | number;
+      kod: string;
+      unvan: string;
+      dbName: string;
+      aciklama?: string;
+    }> = [];
+
+    const eklenenDbSet = new Set<string>();
+
+    // 1. Try to fetch from ADM_FIRMA (merkez veritabanı)
+    try {
+      if (adminYapilandirildiMi()) {
+        const adminPool = await getAdminPool();
+        let musteriNo: string | null = null;
+        if (currentFirmaId) {
+          const curRes = await adminPool
+            .request()
+            .input("fid", sql.Int, currentFirmaId)
+            .query("SELECT MUSTERI_NO FROM dbo.ADM_FIRMA WHERE FIRMA_ID = @fid");
+          musteriNo = curRes.recordset[0]?.MUSTERI_NO || null;
+        }
+
+        if (!musteriNo && req.query.musteriNo) {
+          musteriNo = String(req.query.musteriNo).trim().toUpperCase();
+        }
+
+        let q = "SELECT FIRMA_ID, FIRMA_KODU, UNVAN, DB_NAME, MUSTERI_NO FROM dbo.ADM_FIRMA WHERE DURUM = 'AKTIF'";
+        const reqAdm = adminPool.request();
+        if (musteriNo) {
+          q += " AND MUSTERI_NO = @mno";
+          reqAdm.input("mno", sql.VarChar(50), musteriNo);
+        }
+        const admRes = await reqAdm.query(q);
+
+        for (const row of admRes.recordset) {
+          const dbLower = (row.DB_NAME || "").trim().toLowerCase();
+          if (dbLower) {
+            eklenenDbSet.add(dbLower);
+            alanListesi.push({
+              id: row.FIRMA_ID,
+              kod: (row.FIRMA_KODU || "").trim(),
+              unvan: (row.UNVAN || row.DB_NAME || "").trim(),
+              dbName: (row.DB_NAME || "").trim(),
+              aciklama: dbLower === currentDb ? "Mevcut Alan" : "Çalışma Alanı / Şube",
+            });
+          }
+        }
+      }
+    } catch (admErr: any) {
+      // Ignored if ADM_FIRMA is unavailable
+    }
+
+    // 2. Query sys.databases on current server instance ONLY if no areas found via ADM_FIRMA (e.g. standalone setup)
+    if (alanListesi.length === 0) {
+      try {
+        const pool = await getDbPool(dbContext.dbServer, dbContext.dbName);
+        const sysRes = await pool.request().query<{ name: string }>(
+          "SELECT name FROM sys.databases WHERE database_id > 4 AND state_desc = 'ONLINE' AND name NOT IN ('master', 'tempdb', 'model', 'msdb', 'LIKYA_ADMIN')"
+        );
+        for (const r of sysRes.recordset) {
+          const dbName = (r.name || "").trim();
+          const dbLower = dbName.toLowerCase();
+          if (!eklenenDbSet.has(dbLower)) {
+            eklenenDbSet.add(dbLower);
+            let unvan = dbName;
+            try {
+              const checkTanim = await pool.request().query(
+                `SELECT TOP 1 FIRMA_ADI, SUBE_ADI FROM [${dbName}].[dbo].[TODVZ_TANIM]`
+              );
+              if (checkTanim.recordset && checkTanim.recordset.length > 0) {
+                const fAdi = (checkTanim.recordset[0].FIRMA_ADI || "").trim();
+                const sAdi = (checkTanim.recordset[0].SUBE_ADI || "").trim();
+                unvan = [fAdi, sAdi].filter(Boolean).join(" - ") || dbName;
+              }
+            } catch {
+              // Ignored
+            }
+
+            alanListesi.push({
+              id: dbName,
+              kod: dbName,
+              unvan: unvan,
+              dbName: dbName,
+              aciklama: dbLower === currentDb ? "Mevcut Veritabanı" : "Veritabanı",
+            });
+          }
+        }
+      } catch (sysErr: any) {
+        // Ignored
+      }
+    }
+
+    return ApiResponse.ok(res, "Alanlar başarıyla listelendi.", alanListesi);
+  });
+
   /**
    * GET /api/v1/company/definitions
    */

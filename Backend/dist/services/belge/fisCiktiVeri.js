@@ -132,10 +132,13 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
     const tutar = g.toplamTutar !== undefined && g.toplamTutar !== null ? sayiOku(g.toplamTutar) : tl;
     const bsmv = satim ? (g.bsmvTutari !== undefined && g.bsmvTutari !== null ? sayiOku(g.bsmvTutari) : yuvarla(tl * 0.002)) : 0;
     const komisyon = sayiOku(g.komisyonTutari);
-    const kmv = sayiOku(g.kmvTutari);
+    // Firma ayarı 1 - Uygulanmasın: satırda KMV gelse bile hesaba girmez, fişte KMV satırı ve notu basılmaz.
+    const kmv = firma.kmvSekli === 1 ? 0 : sayiOku(g.kmvTutari);
+    // KMV kura dahilse (firma ayarı 2) tutarın içindedir: masrafa ve son toplama eklenmez, fişte yalnız bilgi olarak basılır.
+    const kmvDahil = firma.kmvSekli === 2;
     const masraf = g.totalMasraf !== undefined && g.totalMasraf !== null
         ? sayiOku(g.totalMasraf)
-        : yuvarla(bsmv + komisyon + kmv);
+        : yuvarla(bsmv + komisyon + (kmvDahil ? 0 : kmv));
     const sonToplam = g.sonToplam !== undefined && g.sonToplam !== null
         ? sayiOku(g.sonToplam)
         : (g.odemeTutari !== undefined && g.odemeTutari !== null
@@ -148,6 +151,7 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
     const tarih = /^\d{4}-\d{2}-\d{2}/.test(tarihHam) ? tarihHam.slice(0, 10).split("-").reverse().join("/") : tarihHam;
     const saat = yazi(g.saat).slice(0, 5);
     const tipAdi = satim ? "SATIM" : "ALIM";
+    const kmvNotu = !satim || firma.kmvSekli === 1 ? "" : kmvDahil ? "Kmv kura dahildir." : "Kmv kura dahil değildir.";
     const kimlik = yazi(g.vergiKimlikNo) || "11111111111";
     const musteri = {
         unvan: yazi(g.unvan) || "İsim beyan edilmemiştir",
@@ -168,22 +172,28 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
         belgeNo, ettn, tarih, saat, seri: "EDOVIZBELGE",
         subeKodu, dosyaNo: firma.dosyaNo, subeNo: firma.dosyaNo ? `${subeKodu} - ${firma.dosyaNo}` : subeKodu,
         istatistikNo: yazi(g.istatistikKodu), vezne: yazi(g.vezneKod) || "01",
-        geldigiUlke: "Türkiye", satisDayanagi: firma.satisDayanagi || "32 SAYILI KARAR GEREĞİ",
+        geldigiUlke: yazi(g.geldigiUlke) || (g.gelisNedeni && !satim ? yazi(g.gelisNedeni) : "Türkiye"),
+        satisDayanagi: (satim && g.gelisNedeni ? yazi(g.gelisNedeni) : (firma.satisDayanagi || "32 SAYILI KARAR GEREĞİ")),
+        gelisNedeni: yazi(g.gelisNedeni) || "",
+        isArbitraj: Boolean(g.isArbitraj || (g.gelisNedeni && String(g.gelisNedeni).toLowerCase().includes("arbitraj"))),
+        kmvDahil, kmvNotu,
         firma: {
             ...firma,
             vdVkn: [firma.vergiDairesi, firma.vkn].filter(Boolean).join(" / "),
             mersisSicil: [firma.mersis, firma.ticaretSicilNo].filter(Boolean).join(" / "),
         },
         musteri, satirlar,
-        toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
+        toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv, kmvVar: satim && kmv > 0, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
         basamak, qr, erisimAdresi, onizleme: false, iptal: false,
     };
 }
 /** Boş firma (veritabanı okunamazsa); kuruş varsayılanları DovizFisiPrintModal ile aynı. */
 export const bosFirma = () => ({
     unvan: "", adres: "", ilce: "", sehir: "", telefon: "", web: "", eposta: "", vergiDairesi: "", vkn: "",
-    mersis: "", ticaretSicilNo: "", subeKodu: "", subeAdi: "", dosyaNo: "", satisDayanagi: "", basamak: { doviz: 2, kur: 4, tl: 2 },
+    mersis: "", ticaretSicilNo: "", subeKodu: "", subeAdi: "", dosyaNo: "", satisDayanagi: "", basamak: { doviz: 2, kur: 4, tl: 2 }, kmvSekli: 3,
 });
+/** KMV uygulama şekli: 1 / 2 / 3 dışındaki her değer (0, boş) DovizFisiPage'deki gibi 3 - kurdan hariç sayılır. */
+const kmvSekliOku = (v) => (Number(v) === 1 ? 1 : Number(v) === 2 ? 2 : 3);
 /** TODVZ_TANIM satırından (ad sütunları birleştirilmiş) firma kimliği. */
 export function firmaKimlikOku(r) {
     if (!r)
@@ -194,6 +204,7 @@ export function firmaKimlikOku(r) {
         mersis: yazi(r.MERSIS_NO), ticaretSicilNo: yazi(r.TICARET_SICIL_NO), subeKodu: yazi(r.SUBE_KODU), subeAdi: yazi(r.SUBE_ADI), dosyaNo: yazi(r.DOSYA_NO),
         satisDayanagi: yazi(r.SATISIN_DAYANAGI),
         basamak: { doviz: kurusAyari(r.DOVIZ_KURUS_SAYISI, 2), kur: kurusAyari(r.KUR_KURUS_SAYISI, 4), tl: kurusAyari(r.TL_KURUS_SAYISI, 2) },
+        kmvSekli: kmvSekliOku(r.KMV_UYGULAMA_SEKLI),
     };
 }
 const tr = (n, hane = 2) => Number(n || 0).toLocaleString("tr-TR", { minimumFractionDigits: hane, maximumFractionDigits: hane });

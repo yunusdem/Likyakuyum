@@ -12,11 +12,13 @@ import {
   IconScale,
   IconUser,
   IconFileText,
+  IconPrinter,
 } from "@tabler/icons-react";
 import { KurRowItem } from "../../services/kurService";
 import { CariKartItem, CariService } from "../../services/cariService";
 import { StatisticItem, StatisticService } from "../../services/statisticService";
 import { TodvzTanimDto } from "../../services/companyService";
+import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 
 export interface ArbitrajCurrencyItem {
   id: number;
@@ -66,20 +68,22 @@ export interface ArbitrajDetayModel {
 
 export interface ArbitrajApplyResult {
   islemYonu: "alis" | "satis";
-  girisPara: ArbitrajCurrencyItem;
-  girisMiktar: number;
-  girisKur: number;
-  cikisPara: ArbitrajCurrencyItem;
-  cikisMiktar: number;
-  cikisKur: number;
-  parite: number;
-  pariteYonu: "carp" | "bol";
-  aciklama: string;
+  toplamTl?: number;
+  girisPara?: ArbitrajCurrencyItem;
+  girisMiktar?: number;
+  girisKur?: number;
+  cikisPara?: ArbitrajCurrencyItem;
+  cikisMiktar?: number;
+  cikisKur?: number;
+  parite?: number;
+  pariteYonu?: "carp" | "bol";
+  aciklama?: string;
   cariId: number | null;
   cariUnvan: string;
   cariKodu?: string;
   vknTckn?: string;
   istatistikKodu?: string;
+  lines?: any[];
   allLines?: ArbitrajModalLine[];
   detay?: ArbitrajDetayModel;
 }
@@ -125,10 +129,11 @@ interface ArbitrajModalProps {
   initialDetay?: ArbitrajDetayModel;
   pageType: "doviz" | "sarraf";
   onApplyToFis?: (result: ArbitrajApplyResult) => void;
-  onSaveDirect?: (result: ArbitrajApplyResult) => Promise<boolean | void>;
+  onSaveDirect?: (result: ArbitrajApplyResult, shouldPrint?: boolean) => Promise<boolean | void>;
   kurKurusSayisi?: number;
   dovizKurusSayisi?: number;
   tlKurusSayisi?: number;
+  savedArbitraj?: ArbitrajApplyResult | null;
 }
 
 export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
@@ -136,6 +141,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   onClose,
   fisTip = 0,
   hedefTlTutar = 0,
+  savedArbitraj = null,
   paralar = [],
   kurSatirlar = [],
   urunler = [],
@@ -158,8 +164,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   dovizKurusSayisi = 2,
   tlKurusSayisi = 2,
 }) => {
-  // Alıştayken Alış ("alis"), Satıştayken Satış ("satis") olarak birebir açılır
-  const targetIslemYonu: "alis" | "satis" = fisTip === 1 ? "satis" : "alis";
+  // Fişin tersi açılır: Arka alış (fisTip === 0) ise Satış ("satis"), arka satış (fisTip === 1) ise Alış ("alis") gelir
+  const targetIslemYonu: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
 
   // Form Header State
   const [islemYonu, setIslemYonu] = useState<"alis" | "satis">(targetIslemYonu);
@@ -222,6 +228,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const [lookupType, setLookupType] = useState<"cari" | "istatistik" | "currency" | null>(null);
   const [lookupSearchTerm, setLookupSearchTerm] = useState<string>("");
   const [activeLookupLineId, setActiveLookupLineId] = useState<string | null>(null);
+  const activeLookupLineIndexRef = useRef<number | null>(null);
 
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "danger"; text: string } | null>(null);
@@ -236,6 +243,50 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     const num = parseFloat(clean);
     return isNaN(num) ? 0 : num;
   }, []);
+
+  // Yeni boş satır üretici helper
+  const createBlankLine = useCallback(
+    (satirNo: number = 1): ArbitrajModalLine => ({
+      id: String(Date.now() + Math.random()),
+      satirNo,
+      paraId: 0,
+      kod: "",
+      ad: "",
+      miktar: "",
+      kur: "",
+      tutar: "",
+      komisyonOrani: "",
+      komisyon: "",
+      bmvOrani: "",
+      bmv: "",
+      kmvOrani: "",
+      kmv: "",
+      isMaden: false,
+      milyem: 1000,
+    }),
+    []
+  );
+
+  // Tablo içi hücre odaklama helper'ı (yeni satır render gecikmelerini de çözer)
+  const focusArbCell = useCallback((rowIndex: number, field: string) => {
+    let attempts = 0;
+    const tryFocus = () => {
+      const el = document.getElementById(`arb-cell-${rowIndex}-${field}`) as HTMLInputElement | null;
+      if (el) {
+        el.focus();
+        el.select();
+      } else if (attempts < 15) {
+        attempts++;
+        setTimeout(tryFocus, 25);
+      }
+    };
+    tryFocus();
+  }, []);
+
+  // Yeni boş satır ekle
+  const handleAddBlankLine = useCallback(() => {
+    setLines((prev) => [...prev, createBlankLine(prev.length + 1)]);
+  }, [createBlankLine]);
 
   // Sync / Load lists
   useEffect(() => {
@@ -454,69 +505,72 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       setActiveLookupLineId(null);
       setShowDetayModal(false);
 
-      // Alıştayken Alış, Satıştayken Satış olarak aç
-      const dir: "alis" | "satis" = fisTip === 1 ? "satis" : "alis";
-      setIslemYonu(dir);
-      setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
-      setCariId(selectedCariId);
-      setCariKodu(selectedCariKod || "");
-      setUnvan(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
-      setFormVknTckn(vknTckn || "");
+      if (
+        savedArbitraj &&
+        ((savedArbitraj.allLines && savedArbitraj.allLines.length > 0) ||
+          (savedArbitraj.lines && savedArbitraj.lines.length > 0))
+      ) {
+        // Kayıtlı arbitraj verisini otomatik yükle
+        const sourceLines: ArbitrajModalLine[] =
+          savedArbitraj.allLines && savedArbitraj.allLines.length > 0
+            ? savedArbitraj.allLines.map((l, idx) => ({ ...l, satirNo: idx + 1 }))
+            : (savedArbitraj.lines || []).map((l, idx) => ({
+                id: String(Date.now() + idx),
+                satirNo: idx + 1,
+                paraId: l.paraId || 0,
+                kod: l.kod || "",
+                ad: l.ad || "",
+                miktar: l.miktar !== undefined ? String(l.miktar) : "",
+                kur: l.kur !== undefined ? String(l.kur) : "",
+                tutar: l.tutar !== undefined ? String(l.tutar) : "",
+                komisyonOrani: l.komisyonOrani !== undefined ? String(l.komisyonOrani) : "",
+                komisyon: l.komisyon !== undefined ? String(l.komisyon) : "",
+                bmvOrani: l.bmvOrani !== undefined ? String(l.bmvOrani) : "",
+                bmv: l.bmv !== undefined ? String(l.bmv) : "",
+                kmvOrani: l.kmvOrani !== undefined ? String(l.kmvOrani) : "",
+                kmv: l.kmv !== undefined ? String(l.kmv) : "",
+                isMaden: l.isMaden || false,
+                milyem: l.milyem || 1000,
+              }));
+        setLines(sourceLines.length > 0 ? sourceLines : [createBlankLine(1)]);
+        if (savedArbitraj.islemYonu) {
+          setIslemYonu(savedArbitraj.islemYonu);
+          setGelisNedeni(savedArbitraj.islemYonu === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+        }
+        if (savedArbitraj.cariUnvan) setUnvan(savedArbitraj.cariUnvan);
+        if (savedArbitraj.vknTckn) setFormVknTckn(savedArbitraj.vknTckn);
+        if (savedArbitraj.istatistikKodu) setIstatistikKod(savedArbitraj.istatistikKodu);
+        if (savedArbitraj.cariId) setCariId(savedArbitraj.cariId);
+        if (savedArbitraj.cariKodu) setCariKodu(savedArbitraj.cariKodu);
+      } else {
+        // Fişin tersi açılır: Arka Alışsa Satış, Satışsa Alış
+        const dir: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
+        setIslemYonu(dir);
+        setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+        setCariId(selectedCariId);
+        setCariKodu(selectedCariKod || "");
+        setUnvan(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
+        setFormVknTckn(vknTckn || "");
 
-      // İstatistik belirle (Varsa Firma Tanımlarındaki Arbitraj istatistiği, yoksa aktarılan)
-      let initialStat = istatistikKodu || "9249";
-      if (dir === "alis" && companyDefinitions?.ARBITRAJ_ALIS_ISTATISTIK_ID) {
-        const foundStat = localStatList.find((s) => s.id === companyDefinitions.ARBITRAJ_ALIS_ISTATISTIK_ID);
-        if (foundStat?.kod) initialStat = foundStat.kod;
-      } else if (dir === "satis" && companyDefinitions?.ARBITRAJ_SATIS_ISTATISTIK_ID) {
-        const foundStat = localStatList.find((s) => s.id === companyDefinitions.ARBITRAJ_SATIS_ISTATISTIK_ID);
-        if (foundStat?.kod) initialStat = foundStat.kod;
-      }
-      setIstatistikKod(initialStat);
+        // İstatistik belirle (Varsa Firma Tanımlarındaki Arbitraj istatistiği, yoksa aktarılan)
+        let initialStat = istatistikKodu || "9249";
+        if (dir === "alis" && companyDefinitions?.ARBITRAJ_ALIS_ISTATISTIK_ID) {
+          const foundStat = localStatList.find((s) => s.id === companyDefinitions.ARBITRAJ_ALIS_ISTATISTIK_ID);
+          if (foundStat?.kod) initialStat = foundStat.kod;
+        } else if (dir === "satis" && companyDefinitions?.ARBITRAJ_SATIS_ISTATISTIK_ID) {
+          const foundStat = localStatList.find((s) => s.id === companyDefinitions.ARBITRAJ_SATIS_ISTATISTIK_ID);
+          if (foundStat?.kod) initialStat = foundStat.kod;
+        }
+        setIstatistikKod(initialStat);
 
-      // Default item
-      const defaultItem =
-        pageType === "sarraf"
-          ? (currencyList.find((c) => c.kod.toUpperCase() === "HAS") || currencyList[0])
-          : (currencyList.find((c) => c.kod.toUpperCase() === "EUR") || currencyList[0]);
-
-      if (defaultItem) {
-        const rate = getRateForItem(defaultItem, dir, 0);
-        const targetTl = Number(hedefTlTutar) > 0 ? Number(hedefTlTutar) : 0;
-        const calculatedMiktar = rate > 0 && targetTl > 0 ? targetTl / rate : 100;
-
-        const calc = calculateRow({
-          miktar: calculatedMiktar.toFixed(defaultItem.isMaden ? 3 : dovizKurusSayisi),
-          kur: rate.toFixed(kurKurusSayisi),
-          kod: defaultItem.kod,
-          currentDirection: dir,
-        });
-
-        setLines([
-          {
-            id: String(Date.now()),
-            satirNo: 1,
-            paraId: defaultItem.id,
-            kod: defaultItem.kod,
-            ad: defaultItem.ad,
-            miktar: calculatedMiktar.toFixed(defaultItem.isMaden ? 3 : dovizKurusSayisi),
-            kur: rate.toFixed(kurKurusSayisi),
-            tutar: calc.tutar,
-            komisyonOrani: calc.komisyonOrani,
-            komisyon: calc.komisyon,
-            bmvOrani: calc.bmvOrani,
-            bmv: calc.bmv,
-            kmvOrani: calc.kmvOrani,
-            kmv: calc.kmv,
-            isMaden: defaultItem.isMaden,
-            milyem: defaultItem.milyem || 1000,
-          },
-        ]);
+        // Satırlar ve tablo ilk satır otomatik boş olarak açılır
+        setLines([createBlankLine(1)]);
       }
     }
     prevShowRef.current = show;
   }, [
     show,
+    savedArbitraj,
     fisTip,
     hedefTlTutar,
     selectedCariId,
@@ -533,6 +587,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     calculateRow,
     companyDefinitions,
     localStatList,
+    createBlankLine,
   ]);
 
   // Modal açıldığında otomatik olarak Fiş Tipine (Alış / Satış) odaklan
@@ -722,8 +777,42 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     const rate = getRateForItem(item, islemYonu, kurTuru);
     const targetTl = Number(hedefTlTutar) > 0 ? Number(hedefTlTutar) : 0;
 
-    setLines((prev) =>
-      prev.map((l) => {
+    setLines((prev) => {
+      const exists = prev.some((l) => l.id === lineId);
+      if (!lineId || !exists) {
+        // Tablo boş veya satır bulunamadıysa yeni satır olarak ekle
+        const calcMiktar = rate > 0 && targetTl > 0 ? targetTl / rate : 100;
+        const calc = calculateRow({
+          miktar: calcMiktar.toFixed(item.isMaden ? 3 : dovizKurusSayisi),
+          kur: rate.toFixed(kurKurusSayisi),
+          kod: item.kod,
+          currentDirection: islemYonu,
+        });
+
+        return [
+          ...prev,
+          {
+            id: String(Date.now() + Math.random()),
+            satirNo: prev.length + 1,
+            paraId: item.id,
+            kod: item.kod,
+            ad: item.ad,
+            miktar: calcMiktar.toFixed(item.isMaden ? 3 : dovizKurusSayisi),
+            kur: rate.toFixed(kurKurusSayisi),
+            tutar: calc.tutar,
+            komisyonOrani: calc.komisyonOrani,
+            komisyon: calc.komisyon,
+            bmvOrani: calc.bmvOrani,
+            bmv: calc.bmv,
+            kmvOrani: calc.kmvOrani,
+            kmv: calc.kmv,
+            isMaden: item.isMaden,
+            milyem: item.milyem || 1000,
+          },
+        ];
+      }
+
+      return prev.map((l) => {
         if (l.id !== lineId) return l;
         const calcMiktar =
           rate > 0 && targetTl > 0 ? targetTl / rate : parseNum(l.miktar) > 0 ? parseNum(l.miktar) : 100;
@@ -752,8 +841,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           isMaden: item.isMaden,
           milyem: item.milyem || 1000,
         };
-      })
-    );
+      });
+    });
     setLookupType(null);
     setActiveLookupLineId(null);
   };
@@ -769,43 +858,22 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     setLookupType(null);
   };
 
-  // Add line
+  // Add line (opens currency lookup so user can pick the currency)
   const handleAddLine = () => {
-    const defaultItem = currencyList[0] || { id: 1, kod: "USD", ad: "AMERİKAN DOLARI" };
-    const rate = getRateForItem(defaultItem, islemYonu, kurTuru);
-    const calc = calculateRow({
-      miktar: "0",
-      kur: rate.toFixed(kurKurusSayisi),
-      kod: defaultItem.kod,
-      currentDirection: islemYonu,
-    });
-    setLines((prev) => [
-      ...prev,
-      {
-        id: String(Date.now()),
-        satirNo: prev.length + 1,
-        paraId: defaultItem.id,
-        kod: defaultItem.kod,
-        ad: defaultItem.ad,
-        miktar: "0",
-        kur: rate.toFixed(kurKurusSayisi),
-        tutar: "0.00",
-        komisyonOrani: calc.komisyonOrani,
-        komisyon: calc.komisyon,
-        bmvOrani: calc.bmvOrani,
-        bmv: calc.bmv,
-        kmvOrani: calc.kmvOrani,
-        kmv: calc.kmv,
-        isMaden: defaultItem.isMaden,
-        milyem: defaultItem.milyem || 1000,
-      },
-    ]);
+    setActiveLookupLineId(null);
+    setLookupSearchTerm("");
+    setLookupType("currency");
   };
 
   // Remove line
   const handleRemoveLine = (lineId: string) => {
-    if (lines.length <= 1) return;
-    setLines((prev) => prev.filter((l) => l.id !== lineId).map((l, idx) => ({ ...l, satirNo: idx + 1 })));
+    setLines((prev) => {
+      const filtered = prev.filter((l) => l.id !== lineId);
+      if (filtered.length === 0) {
+        return [createBlankLine(1)];
+      }
+      return filtered.map((l, idx) => ({ ...l, satirNo: idx + 1 }));
+    });
   };
 
   // Calculations for summary boxes:
@@ -859,22 +927,101 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     return parseFloat((sonToplam - hedef).toFixed(2));
   }, [sonToplam, hedefTlTutar]);
 
-  // Otomatik Dengele butonu: İlk satırın miktarını arka plan hedef TL tutarını karşılayacak şekilde ayarlar
+  // Arbitraj Dengesi (Arka Fiş Tutarı ile Alınıp Verilecek Net Tutar)
+  const netDenge = useMemo(() => {
+    const arkaTutar = Number(hedefTlTutar) || 0;
+    const isArkaAlis = fisTip === 0;
+
+    let netTutar = 0;
+    let tip: "alinacak" | "verilecek" | "esit" = "esit";
+
+    if (arkaTutar <= 0 && sonToplam <= 0) {
+      return {
+        arkaTutar,
+        netTutar: 0,
+        tip: "esit" as const,
+        label: "Alınıp Verilecek Tutar:",
+      };
+    }
+
+    const diff = sonToplam - arkaTutar;
+    if (Math.abs(diff) < 0.01) {
+      tip = "esit";
+      netTutar = 0;
+    } else if (isArkaAlis) {
+      if (diff > 0) {
+        tip = "alinacak";
+        netTutar = diff;
+      } else {
+        tip = "verilecek";
+        netTutar = Math.abs(diff);
+      }
+    } else {
+      if (diff > 0) {
+        tip = "verilecek";
+        netTutar = diff;
+      } else {
+        tip = "alinacak";
+        netTutar = Math.abs(diff);
+      }
+    }
+
+    return {
+      arkaTutar,
+      netTutar: parseFloat(netTutar.toFixed(2)),
+      tip,
+      label:
+        tip === "alinacak"
+          ? "Müşteriden Alınacak TL:"
+          : tip === "verilecek"
+          ? "Müşteriye Verilecek TL:"
+          : "Alınıp Verilecek Tutar:",
+    };
+  }, [hedefTlTutar, fisTip, sonToplam]);
+
+  // Otomatik Dengele butonu: Arka plan hedef TL tutarını tam karşılayacak şekilde satırı dengeler
   const handleAutoBalance = () => {
-    if (lines.length === 0 || Number(hedefTlTutar) <= 0) return;
+    if (Number(hedefTlTutar) <= 0) return;
     const targetTl = Number(hedefTlTutar);
-    const first = lines[0];
-    const k = parseNum(first.kur);
+    if (lines.length === 0) return;
+
+    // Hedef satır: Kuru olan ilk satır veya ilk satır
+    const targetLine = lines.find((l) => parseNum(l.kur) > 0) || lines[0];
+    const k = parseNum(targetLine.kur);
     if (k <= 0) return;
 
-    const newMiktar = (targetTl / k).toFixed(first.isMaden ? 3 : dovizKurusSayisi);
-    handleUpdateLine(first.id, "miktar", newMiktar);
+    // Diğer satırların son toplam katkısını hesapla
+    const otherLines = lines.filter((l) => l.id !== targetLine.id);
+    let otherSonToplam = 0;
+    for (const ol of otherLines) {
+      const olTutar = parseNum(ol.tutar);
+      const olKom = parseNum(ol.komisyon);
+      const olBmv = parseNum(ol.bmv);
+      const olKmv = parseNum(ol.kmv);
+      const olMasraf = isSatis ? olBmv + olKmv + olKom : olKom;
+      otherSonToplam += isSatis ? olTutar + olMasraf : olTutar - olMasraf;
+    }
+
+    const neededSonToplam = Math.max(0, targetTl - otherSonToplam);
+
+    const komOran = parseNum(targetLine.komisyonOrani) / 100;
+    const bmvOran = isSatis ? parseNum(targetLine.bmvOrani) / 100 : 0;
+    const kmvOran = isSatis ? parseNum(targetLine.kmvOrani) / 100 : 0;
+    const masrafMultiplier = isSatis ? (1 + bmvOran + kmvOran + komOran) : (1 - komOran);
+
+    const neededTutar = masrafMultiplier > 0 ? neededSonToplam / masrafMultiplier : neededSonToplam;
+    const calculatedMiktar = neededTutar / k;
+    const precision = targetLine.isMaden ? 3 : dovizKurusSayisi;
+    const miktarStr = calculatedMiktar.toFixed(precision);
+
+    handleUpdateLine(targetLine.id, "miktar", miktarStr);
   };
 
-  // Save / Apply Arbitraj
-  const handleSaveArbitraj = async () => {
-    if (lines.length === 0 || totalTutar <= 0) {
-      setSaveMessage({ type: "danger", text: "Lütfen geçerli bir satır ve tutar giriniz." });
+  // Save / Apply Arbitraj (shouldPrint: F10 ile basılırsa true, normal kaydet ile false)
+  const handleSaveArbitraj = async (shouldPrint: boolean = true) => {
+    const validLines = lines.filter((l) => (l.kod && l.kod.trim() !== "") || parseNum(l.tutar) > 0);
+    if (validLines.length === 0 || totalTutar <= 0) {
+      setSaveMessage({ type: "danger", text: "Lütfen geçerli bir döviz satırı ve tutar giriniz." });
       return;
     }
 
@@ -945,16 +1092,20 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     setSaveMessage(null);
 
     try {
-      if (onApplyToFis) {
+      if (onSaveDirect) {
+        await onSaveDirect(applyResult, shouldPrint);
+      } else if (onApplyToFis) {
         onApplyToFis(applyResult);
       }
-      if (onSaveDirect) {
-        await onSaveDirect(applyResult);
-      }
-      setSaveMessage({ type: "success", text: "Arbitraj başarıyla oluşturuldu ve aktarıldı!" });
+      setSaveMessage({
+        type: "success",
+        text: shouldPrint
+          ? "Arbitraj fişi başarıyla kaydedildi ve yazdırıldı!"
+          : "Arbitraj fişi başarıyla kaydedildi!",
+      });
       setTimeout(() => {
         onClose();
-      }, 400);
+      }, 350);
     } catch (err: any) {
       setSaveMessage({ type: "danger", text: err?.message || "Arbitraj kaydedilirken hata oluştu." });
     } finally {
@@ -962,18 +1113,36 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     }
   };
 
-  // Keyboard shortcut inside modal (ESC, F8, F1, F10)
+  // Keyboard shortcut inside modal (ESC, F8, F10)
   useEffect(() => {
-    if (!show || lookupType !== null) return;
+    if (!show) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 1) Eğer iç modal (Döviz, Cari, İstatistik arama veya F8 Detay Modalı) açıksa ESC yalnızca iç modalı kapatır!
+      if (lookupType !== null || showDetayModal) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (lookupType !== null) {
+            setLookupType(null);
+            const rIdx = activeLookupLineIndexRef.current;
+            if (rIdx !== null && rIdx !== undefined) {
+              setTimeout(() => focusArbCell(rIdx, "kod"), 50);
+            }
+          }
+          if (showDetayModal) {
+            setShowDetayModal(false);
+          }
+        }
+        return;
+      }
+
+      // 2) İç modal açık DEĞİLSE: ESC doğrudan ArbitrajModal'ı kapatır
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        if (showDetayModal) {
-          setShowDetayModal(false);
-        } else {
-          onClose();
-        }
+        onClose();
       } else if (e.key === "F8") {
         e.preventDefault();
         e.stopPropagation();
@@ -981,49 +1150,73 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       } else if (e.key === "F1" || e.key === "F10") {
         e.preventDefault();
         e.stopPropagation();
-        handleSaveArbitraj();
+        handleSaveArbitraj(true);
       }
     };
+
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [show, lookupType, showDetayModal, onClose, handleSaveArbitraj]);
+  }, [show, lookupType, showDetayModal, onClose, handleSaveArbitraj, focusArbCell]);
 
-  // Filtered Cari items for lookup
-  const filteredCariler = useMemo(() => {
-    if (!lookupSearchTerm.trim()) return localCariList.slice(0, 100);
-    const t = lookupSearchTerm.toLowerCase().trim();
-    return localCariList
-      .filter(
-        (c) =>
-          (c.kod || "").toLowerCase().includes(t) ||
-          (c.ad || "").toLowerCase().includes(t) ||
-          (c.vergiKimlikNo || "").toLowerCase().includes(t) ||
-          (c.telefon || "").toLowerCase().includes(t)
-      )
-      .slice(0, 100);
-  }, [localCariList, lookupSearchTerm]);
+  // LookupModal Kolon Tanımları (Döviz / Cari / İstatistik)
+  const currencyColumns: LookupColumn<ArbitrajCurrencyItem>[] = useMemo(() => [
+    {
+      header: "Kod",
+      width: "90px",
+      render: (p) => <span className="font-monospace fw-bold text-primary">{p.kod}</span>,
+    },
+    {
+      header: "Para / Döviz Adı",
+      render: (p) => <span className="fw-medium">{p.ad}</span>,
+    },
+    {
+      header: islemYonu === "satis" ? "Satış Kuru" : "Alış Kuru",
+      align: "right",
+      width: "120px",
+      render: (p) => {
+        const rate = islemYonu === "satis"
+          ? Number(p.efektifSatis || p.dovizSatis || 0)
+          : Number(p.efektifAlis || p.dovizAlis || 0);
+        return rate > 0
+          ? rate.toLocaleString("tr-TR", { minimumFractionDigits: kurKurusSayisi })
+          : "-";
+      },
+    },
+  ], [islemYonu, kurKurusSayisi]);
 
-  // Filtered Statistic items for lookup
-  const filteredStats = useMemo(() => {
-    if (!lookupSearchTerm.trim()) return localStatList.slice(0, 100);
-    const t = lookupSearchTerm.toLowerCase().trim();
-    return localStatList
-      .filter(
-        (s) =>
-          (s.kod || "").toLowerCase().includes(t) ||
-          ((s as any).aciklama || (s as any).ad || "").toLowerCase().includes(t)
-      )
-      .slice(0, 100);
-  }, [localStatList, lookupSearchTerm]);
+  const cariColumns: LookupColumn<CariKartItem>[] = useMemo(() => [
+    {
+      header: "Cari Kodu",
+      width: "120px",
+      render: (c) => <span className="font-monospace fw-bold text-primary">{c.kod}</span>,
+    },
+    {
+      header: "Ünvan / Ad",
+      render: (c) => <span className="fw-semibold">{c.ad}</span>,
+    },
+    {
+      header: "VKN / TCKN",
+      width: "130px",
+      render: (c) => <span className="font-monospace">{c.vergiKimlikNo || "-"}</span>,
+    },
+    {
+      header: "Telefon",
+      width: "120px",
+      render: (c) => <span>{c.telefon || "-"}</span>,
+    },
+  ], []);
 
-  // Filtered Currency items for lookup
-  const filteredCurrencies = useMemo(() => {
-    if (!lookupSearchTerm.trim()) return currencyList;
-    const t = lookupSearchTerm.toLowerCase().trim();
-    return currencyList.filter(
-      (c) => (c.kod || "").toLowerCase().includes(t) || (c.ad || "").toLowerCase().includes(t)
-    );
-  }, [currencyList, lookupSearchTerm]);
+  const istatistikColumns: LookupColumn<StatisticItem>[] = useMemo(() => [
+    {
+      header: "İstatistik Kodu",
+      width: "130px",
+      render: (s) => <span className="font-monospace fw-bold text-primary">{s.kod}</span>,
+    },
+    {
+      header: "Açıklama / Tanım",
+      render: (s) => <span>{(s as any).aciklama || (s as any).ad || (s as any).tanim || s.kod}</span>,
+    },
+  ], []);
 
   // Temalandırma - DovizFisiPage ile birebir renkler:
   const isSatis = islemYonu === "satis";
@@ -1038,11 +1231,15 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     <>
       <Modal
         show={show}
-        onHide={onClose}
+        onHide={() => {
+          if (lookupType !== null || showDetayModal) return;
+          onClose();
+        }}
         dialogClassName="modal-95w"
         size="xl"
         centered
         backdrop="static"
+        keyboard={false}
         enforceFocus={false}
         restoreFocus={false}
         onMouseDown={(e) => e.stopPropagation()}
@@ -1095,15 +1292,6 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
               >
                 {isSatis ? "SATIŞ" : "ALIŞ"}
               </div>
-            </div>
-
-            {/* Sağ Bilgi */}
-            <div className="d-flex align-items-center gap-2 text-white small">
-              {Number(hedefTlTutar) > 0 && (
-                <Badge bg="warning" text="dark" className="fw-bold px-2 py-1 shadow-2xs">
-                  Arka Fiş Tutar: {Number(hedefTlTutar).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
-                </Badge>
-              )}
             </div>
           </div>
         </Modal.Header>
@@ -1239,6 +1427,10 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                         type="text"
                         value={cariKodu}
                         onChange={(e) => setCariKodu(e.target.value)}
+                        onDoubleClick={() => {
+                          setLookupSearchTerm(cariKodu);
+                          setLookupType("cari");
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             setLookupSearchTerm(e.currentTarget.value);
@@ -1278,6 +1470,10 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                         type="text"
                         value={unvan}
                         onChange={(e) => setUnvan(e.target.value)}
+                        onDoubleClick={() => {
+                          setLookupSearchTerm(unvan === "İSİM BEYAN EDİLMEMİŞTİR" ? "" : unvan);
+                          setLookupType("cari");
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             setLookupSearchTerm(e.currentTarget.value);
@@ -1418,6 +1614,10 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                         type="text"
                         value={istatistikKod}
                         onChange={(e) => setIstatistikKod(e.target.value)}
+                        onDoubleClick={() => {
+                          setLookupSearchTerm(istatistikKod);
+                          setLookupType("istatistik");
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             setLookupSearchTerm(e.currentTarget.value);
@@ -1461,15 +1661,6 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                   {lines.length} Satır
                 </Badge>
               </div>
-              <Button
-                size="sm"
-                variant={isSatis ? "outline-danger" : "outline-success"}
-                className="py-0.5 px-2.5 fw-semibold d-flex align-items-center gap-1 bg-white"
-                style={{ fontSize: "11.5px" }}
-                onClick={handleAddLine}
-              >
-                <IconPlus size={14} /> Satır Ekle
-              </Button>
             </Card.Header>
             <div className="table-responsive" style={{ maxHeight: "260px" }}>
               <Table bordered hover size="sm" className="mb-0 align-middle text-nowrap">
@@ -1491,164 +1682,320 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((l, idx) => (
-                    <tr key={l.id}>
-                      <td className="text-center text-muted fw-bold small">{idx + 1}</td>
-                      <td>
-                        <InputGroup size="sm">
-                          <Form.Control
-                            size="sm"
-                            type="text"
-                            value={l.kod}
-                            onChange={(e) => handleUpdateLine(l.id, "kod", e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                setActiveLookupLineId(l.id);
-                                setLookupSearchTerm(e.currentTarget.value);
-                                setLookupType("currency");
-                              }
-                            }}
-                            placeholder="USD, EUR..."
-                            className="fw-bold font-monospace text-primary arbitraj-table-code-input"
-                            style={{ fontSize: "12px", height: "26px" }}
-                          />
-                          <Button
-                            variant="outline-secondary"
-                            size="sm"
-                            className="px-1.5 py-0 bg-white"
-                            onClick={() => {
-                              setActiveLookupLineId(l.id);
-                              setLookupSearchTerm(l.kod);
-                              setLookupType("currency");
-                            }}
-                            title="Döviz / Maden Seç (Dürbün)"
-                          >
-                            <IconBinoculars size={13} />
-                          </Button>
-                        </InputGroup>
-                      </td>
-                      <td>
-                        <Form.Control
-                          size="sm"
-                          type="text"
-                          value={l.ad || l.kod}
-                          onChange={(e) => handleUpdateLine(l.id, "ad", e.target.value)}
-                          className="fw-semibold small px-1.5"
-                          style={{ fontSize: "12px", height: "26px" }}
-                        />
-                      </td>
-                      <td>
-                        <Form.Control
-                          size="sm"
-                          type="text"
-                          className="text-end font-monospace fw-bold px-1.5"
-                          style={{ fontSize: "12px", height: "26px" }}
-                          value={l.miktar}
-                          onChange={(e) => handleUpdateLine(l.id, "miktar", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <Form.Control
-                          size="sm"
-                          type="text"
-                          className="text-end font-monospace fw-bold text-dark px-1.5"
-                          style={{ fontSize: "12px", height: "26px" }}
-                          value={l.kur}
-                          onChange={(e) => handleUpdateLine(l.id, "kur", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <Form.Control
-                          size="sm"
-                          type="text"
-                          className="text-end font-monospace fw-bold px-1.5"
-                          style={{ fontSize: "12px", height: "26px", color: isSatis ? "#dc2626" : "#16a34a" }}
-                          value={l.tutar}
-                          onChange={(e) => handleUpdateLine(l.id, "tutar", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <Form.Control
-                          size="sm"
-                          type="text"
-                          className="text-center font-monospace px-1"
-                          style={{ fontSize: "12px", height: "26px" }}
-                          value={l.komisyonOrani || ""}
-                          onChange={(e) => handleUpdateLine(l.id, "komisyonOrani", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <Form.Control
-                          size="sm"
-                          readOnly
-                          tabIndex={-1}
-                          className="text-end font-monospace px-1.5 bg-light"
-                          style={{ fontSize: "12px", height: "26px" }}
-                          value={l.komisyon || ""}
-                        />
-                      </td>
-                      {isSatis && (
-                        <td>
-                          <Form.Control
-                            size="sm"
-                            readOnly
-                            tabIndex={-1}
-                            className="text-center font-monospace px-1 bg-light"
-                            style={{ fontSize: "12px", height: "26px" }}
-                            value={l.bmvOrani || ""}
-                          />
-                        </td>
-                      )}
-                      {isSatis && (
-                        <td>
-                          <Form.Control
-                            size="sm"
-                            readOnly
-                            tabIndex={-1}
-                            className="text-end font-monospace px-1.5 bg-light"
-                            style={{ fontSize: "12px", height: "26px" }}
-                            value={l.bmv || ""}
-                          />
-                        </td>
-                      )}
-                      {isSatis && (
-                        <td>
-                          <Form.Control
-                            size="sm"
-                            readOnly
-                            tabIndex={-1}
-                            className="text-center font-monospace px-1 bg-light"
-                            style={{ fontSize: "12px", height: "26px" }}
-                            value={l.kmvOrani || ""}
-                          />
-                        </td>
-                      )}
-                      {isSatis && (
-                        <td>
-                          <Form.Control
-                            size="sm"
-                            readOnly
-                            tabIndex={-1}
-                            className="text-end font-monospace px-1.5 bg-light"
-                            style={{ fontSize: "12px", height: "26px" }}
-                            value={l.kmv || ""}
-                          />
-                        </td>
-                      )}
-                      <td className="text-center">
-                        <Button
-                          variant="outline-danger"
-                          size="sm"
-                          className="p-0.5 border-0"
-                          disabled={lines.length <= 1}
-                          onClick={() => handleRemoveLine(l.id)}
-                          title="Satırı Sil"
-                        >
-                          <IconTrash size={14} />
-                        </Button>
+                  {lines.length === 0 ? (
+                    <tr>
+                      <td colSpan={isSatis ? 13 : 9} className="text-center py-3 text-muted">
+                        Arbitraj tablosu boştur.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    lines.map((l, idx) => (
+                      <tr key={l.id}>
+                        <td className="text-center text-muted fw-bold small">{idx + 1}</td>
+                        <td>
+                          <InputGroup size="sm">
+                            <Form.Control
+                              id={`arb-cell-${idx}-kod`}
+                              size="sm"
+                              type="text"
+                              value={l.kod}
+                              onChange={(e) => handleUpdateLine(l.id, "kod", e.target.value.toUpperCase())}
+                              onDoubleClick={() => {
+                                setActiveLookupLineId(l.id);
+                                activeLookupLineIndexRef.current = idx;
+                                setLookupSearchTerm(l.kod);
+                                setLookupType("currency");
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
+                                  e.preventDefault();
+                                  if (idx >= lines.length - 1) {
+                                    handleAddBlankLine();
+                                    focusArbCell(idx + 1, "kod");
+                                  } else {
+                                    focusArbCell(idx + 1, "kod");
+                                  }
+                                  return;
+                                }
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  const typed = (l.kod || e.currentTarget.value || "").trim().toUpperCase();
+                                  if (!typed) {
+                                    focusArbCell(idx, "miktar");
+                                    return;
+                                  }
+                                  const matched = currencyList.filter(
+                                    (c) => (c.kod || "").toUpperCase().includes(typed)
+                                  );
+                                  if (matched.length === 1) {
+                                    handleSelectCurrencyForLine(l.id, matched[0]);
+                                    focusArbCell(idx, "miktar");
+                                  } else {
+                                    setActiveLookupLineId(l.id);
+                                    activeLookupLineIndexRef.current = idx;
+                                    setLookupSearchTerm(typed);
+                                    setLookupType("currency");
+                                  }
+                                } else if (e.key === "Tab" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "miktar");
+                                } else if (e.key === "ArrowRight") {
+                                  const el = e.currentTarget;
+                                  if (el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+                                    e.preventDefault();
+                                    focusArbCell(idx, "miktar");
+                                  }
+                                }
+                              }}
+                              placeholder="USD, EUR..."
+                              className="fw-bold font-monospace text-primary arbitraj-table-code-input"
+                              style={{ fontSize: "12px", height: "26px" }}
+                            />
+                            <Button
+                              variant="outline-secondary"
+                              size="sm"
+                              tabIndex={-1}
+                              className="px-1.5 py-0 bg-white"
+                              onClick={() => {
+                                setActiveLookupLineId(l.id);
+                                activeLookupLineIndexRef.current = idx;
+                                setLookupSearchTerm(l.kod);
+                                setLookupType("currency");
+                              }}
+                              title="Döviz / Maden Seç (Dürbün)"
+                            >
+                              <IconBinoculars size={13} />
+                            </Button>
+                          </InputGroup>
+                        </td>
+                        <td className="px-2 text-dark small fw-semibold text-truncate align-middle" style={{ maxWidth: "160px" }} title={l.ad || l.kod}>
+                          {l.ad || l.kod || "-"}
+                        </td>
+                        <td>
+                          <Form.Control
+                            id={`arb-cell-${idx}-miktar`}
+                            size="sm"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="text-end font-monospace fw-bold px-1.5"
+                            style={{ fontSize: "12px", height: "26px" }}
+                            value={l.miktar}
+                            onChange={(e) => handleUpdateLine(l.id, "miktar", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
+                                e.preventDefault();
+                                if (idx >= lines.length - 1) {
+                                  handleAddBlankLine();
+                                  focusArbCell(idx + 1, "kod");
+                                } else {
+                                  focusArbCell(idx + 1, "kod");
+                                }
+                                return;
+                              }
+                              if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+                                e.preventDefault();
+                                focusArbCell(idx, "kur");
+                              } else if (e.key === "ArrowLeft") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === 0 && el.selectionEnd === 0) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "kod");
+                                }
+                              } else if (e.key === "ArrowRight") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "kur");
+                                }
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <Form.Control
+                            id={`arb-cell-${idx}-kur`}
+                            size="sm"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="text-end font-monospace fw-bold text-dark px-1.5"
+                            style={{ fontSize: "12px", height: "26px" }}
+                            value={l.kur}
+                            onChange={(e) => handleUpdateLine(l.id, "kur", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
+                                e.preventDefault();
+                                if (idx >= lines.length - 1) {
+                                  handleAddBlankLine();
+                                  focusArbCell(idx + 1, "kod");
+                                } else {
+                                  focusArbCell(idx + 1, "kod");
+                                }
+                                return;
+                              }
+                              if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+                                e.preventDefault();
+                                focusArbCell(idx, "tutar");
+                              } else if (e.key === "ArrowLeft") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === 0 && el.selectionEnd === 0) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "miktar");
+                                }
+                              } else if (e.key === "ArrowRight") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "tutar");
+                                }
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <Form.Control
+                            id={`arb-cell-${idx}-tutar`}
+                            size="sm"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="text-end font-monospace fw-bold px-1.5"
+                            style={{ fontSize: "12px", height: "26px", color: isSatis ? "#dc2626" : "#16a34a" }}
+                            value={l.tutar}
+                            onChange={(e) => handleUpdateLine(l.id, "tutar", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
+                                e.preventDefault();
+                                if (idx >= lines.length - 1) {
+                                  handleAddBlankLine();
+                                  focusArbCell(idx + 1, "kod");
+                                } else {
+                                  focusArbCell(idx + 1, "kod");
+                                }
+                                return;
+                              }
+                              if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+                                e.preventDefault();
+                                focusArbCell(idx, "komisyonOrani");
+                              } else if (e.key === "ArrowLeft") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === 0 && el.selectionEnd === 0) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "kur");
+                                }
+                              } else if (e.key === "ArrowRight") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "komisyonOrani");
+                                }
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <Form.Control
+                            id={`arb-cell-${idx}-komisyonOrani`}
+                            size="sm"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="text-center font-monospace px-1"
+                            style={{ fontSize: "12px", height: "26px" }}
+                            value={l.komisyonOrani || ""}
+                            onChange={(e) => handleUpdateLine(l.id, "komisyonOrani", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+                                e.preventDefault();
+                                if (idx >= lines.length - 1) {
+                                  handleAddBlankLine();
+                                  focusArbCell(idx + 1, "kod");
+                                } else {
+                                  focusArbCell(idx + 1, "kod");
+                                }
+                              } else if (e.key === "ArrowLeft") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === 0 && el.selectionEnd === 0) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "tutar");
+                                }
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <Form.Control
+                            size="sm"
+                            readOnly
+                            tabIndex={-1}
+                            className="text-end font-monospace px-1.5 bg-light"
+                            style={{ fontSize: "12px", height: "26px" }}
+                            value={l.komisyon || ""}
+                          />
+                        </td>
+                        {isSatis && (
+                          <td>
+                            <Form.Control
+                              size="sm"
+                              readOnly
+                              tabIndex={-1}
+                              className="text-center font-monospace px-1 bg-light"
+                              style={{ fontSize: "12px", height: "26px" }}
+                              value={l.bmvOrani || ""}
+                            />
+                          </td>
+                        )}
+                        {isSatis && (
+                          <td>
+                            <Form.Control
+                              size="sm"
+                              readOnly
+                              tabIndex={-1}
+                              className="text-end font-monospace px-1.5 bg-light"
+                              style={{ fontSize: "12px", height: "26px" }}
+                              value={l.bmv || ""}
+                            />
+                          </td>
+                        )}
+                        {isSatis && (
+                          <td>
+                            <Form.Control
+                              size="sm"
+                              readOnly
+                              tabIndex={-1}
+                              className="text-center font-monospace px-1 bg-light"
+                              style={{ fontSize: "12px", height: "26px" }}
+                              value={l.kmvOrani || ""}
+                            />
+                          </td>
+                        )}
+                        {isSatis && (
+                          <td>
+                            <Form.Control
+                              size="sm"
+                              readOnly
+                              tabIndex={-1}
+                              className="text-end font-monospace px-1.5 bg-light"
+                              style={{ fontSize: "12px", height: "26px" }}
+                              value={l.kmv || ""}
+                            />
+                          </td>
+                        )}
+                        <td className="text-center">
+                          <Button
+                            variant="outline-danger"
+                            size="sm"
+                            className="p-0.5 border-0"
+                            onClick={() => handleRemoveLine(l.id)}
+                            title="Satırı Sil"
+                          >
+                            <IconTrash size={14} />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </Table>
             </div>
@@ -1658,67 +2005,98 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           <Card className="border shadow-2xs" style={{ borderColor: "#cbd5e1", backgroundColor: "#ffffff" }}>
             <Card.Body className="p-2.5">
               <Row className="g-2 align-items-center">
-                {/* Arbitraj Dengesi & Arka Fiş Eşitleme Butonu */}
-                <Col md={5}>
-                  <div className="d-flex align-items-center gap-2">
-                    <span className="small fw-semibold text-secondary">Arbitraj Dengesi:</span>
-                    {Number(hedefTlTutar) > 0 ? (
-                      Math.abs(farkTl) <= 0.05 ? (
-                        <Badge bg="success" className="px-2.5 py-1.5 fw-bold d-flex align-items-center gap-1">
-                          <IconCheck size={14} /> TL Dengesi %100 Eşitlendi
-                        </Badge>
-                      ) : (
-                        <div className="d-flex align-items-center gap-1.5">
-                          <Badge bg="warning" text="dark" className="px-2 py-1 fw-bold">
-                            Fark: {farkTl.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
-                          </Badge>
+                {/* Sol Sütun: 1. Satır: Arka Fiş Tutarı & 2. Satır: Müşteriden Alınacak / Müşteriye Verilecek */}
+                <Col md={6}>
+                  <div className="d-flex flex-column gap-1.5 p-2 rounded bg-light border" style={{ borderColor: "#e2e8f0" }}>
+                    {/* 1. Satır: Arka Fiş Tutarı */}
+                    <div className="d-flex align-items-center justify-content-between">
+                      <span className="small fw-bold text-secondary">
+                        Arka Fiş Tutarı ({fisTip === 0 ? "Alış / Ödenecek" : "Satış / Alınacak"}):
+                      </span>
+                      <span className="font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
+                        {Number(hedefTlTutar || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
+                      </span>
+                    </div>
+
+                    {/* 2. Satır: Alınacak / Verilecek Tutar (Fark) ve Dengeleme */}
+                    <div className="d-flex align-items-center justify-content-between pt-1 border-top" style={{ borderColor: "#cbd5e1" }}>
+                      <div className="d-flex align-items-center gap-1.5">
+                        <span
+                          className="small fw-bold"
+                          style={{
+                            color:
+                              netDenge.tip === "alinacak"
+                                ? "#dc2626"
+                                : netDenge.tip === "verilecek"
+                                ? "#16a34a"
+                                : "#475569",
+                          }}
+                        >
+                          {netDenge.label}
+                        </span>
+                        {netDenge.tip !== "esit" && (
                           <Button
                             size="sm"
                             variant="outline-primary"
-                            className="py-0 px-2 fw-semibold d-flex align-items-center gap-1"
-                            style={{ fontSize: "11px" }}
+                            className="py-0 px-1.5 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs"
+                            style={{ fontSize: "10.5px", height: "20px" }}
                             onClick={handleAutoBalance}
-                            title="Hedef TL tutarına göre miktarı otomatik dengele"
+                            title="Hedef TL tutarına göre miktarı otomatik dengele (Farkı sıfırla)"
                           >
-                            <IconScale size={13} /> Dengele
+                            <IconScale size={12} /> Dengele
                           </Button>
-                        </div>
-                      )
-                    ) : (
-                      <span className="text-muted small">Bağımsız Fiş</span>
-                    )}
+                        )}
+                      </div>
+                      <div>
+                        {netDenge.tip === "esit" ? (
+                          <Badge bg="success" className="px-2 py-1 fw-bold d-flex align-items-center gap-1">
+                            <IconCheck size={13} /> 0.00 TL (Tam Eşit)
+                          </Badge>
+                        ) : (
+                          <span
+                            className="font-monospace fw-bold"
+                            style={{
+                              fontSize: "13.5px",
+                              color: netDenge.tip === "alinacak" ? "#dc2626" : "#16a34a",
+                            }}
+                          >
+                            {netDenge.netTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </Col>
 
-                {/* Toplam Tutar, Toplam Masraf, Ödenecek / Alınacak TL */}
-                <Col md={7}>
-                  <div className="d-flex align-items-center justify-content-end gap-3 flex-wrap">
-                    <div className="d-flex align-items-center gap-1.5">
-                      <span className="small fw-bold text-secondary text-nowrap">Toplam Tutar:</span>
+                {/* Sağ Sütun: Toplam Tutar, Toplam Masraf, Ödenecek / Alınacak TL */}
+                <Col md={6}>
+                  <div className="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+                    <div className="d-flex align-items-center gap-1">
+                      <span className="small fw-bold text-secondary text-nowrap" style={{ fontSize: "11.5px" }}>Toplam Tutar:</span>
                       <Form.Control
                         size="sm"
                         readOnly
                         tabIndex={-1}
                         className="text-end font-monospace fw-bold bg-light"
-                        style={{ width: "120px", fontSize: "12.5px" }}
+                        style={{ width: "110px", fontSize: "12px" }}
                         value={`${totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL`}
                       />
                     </div>
 
-                    <div className="d-flex align-items-center gap-1.5">
-                      <span className="small fw-bold text-secondary text-nowrap">Toplam Masraf:</span>
+                    <div className="d-flex align-items-center gap-1">
+                      <span className="small fw-bold text-secondary text-nowrap" style={{ fontSize: "11.5px" }}>Toplam Masraf:</span>
                       <Form.Control
                         size="sm"
                         readOnly
                         tabIndex={-1}
                         className="text-end font-monospace fw-bold bg-light text-muted"
-                        style={{ width: "105px", fontSize: "12.5px" }}
+                        style={{ width: "95px", fontSize: "12px" }}
                         value={`${totalMasraf.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL`}
                       />
                     </div>
 
-                    <div className="d-flex align-items-center gap-1.5">
-                      <span className="small fw-bold text-nowrap" style={{ color: activeFisThemeText }}>
+                    <div className="d-flex align-items-center gap-1">
+                      <span className="small fw-bold text-nowrap" style={{ color: activeFisThemeText, fontSize: "12px" }}>
                         {isSatis ? "Alınacak TL:" : "Ödenecek TL:"}
                       </span>
                       <Form.Control
@@ -1727,8 +2105,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                         tabIndex={-1}
                         className="text-end font-monospace fw-bold"
                         style={{
-                          width: "135px",
-                          fontSize: "13px",
+                          width: "125px",
+                          fontSize: "12.5px",
                           borderColor: activeFisThemeBorder,
                           backgroundColor: activeFisThemeBg,
                           color: activeFisThemeText,
@@ -1756,24 +2134,37 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
               <span>[F8] Müşteri Detay</span>
             </Button>
             <span className="text-muted small">
-              <kbd>F8</kbd> Detay | <kbd>F10</kbd> Kaydet & Aktar | <kbd>ESC</kbd> Vazgeç
+              <kbd>F8</kbd> Detay | <kbd>F10</kbd> Kaydet & Yazdır | <kbd>ESC</kbd> Vazgeç
             </span>
           </div>
 
           <div className="d-flex align-items-center gap-2">
             <Button variant="secondary" size="sm" onClick={onClose} className="fw-semibold px-3">
-              <IconX size={15} className="me-1" /> [ESC] Vazgeç / Kapat
+              <IconX size={15} className="me-1" /> [ESC] Vazgeç
+            </Button>
+
+            <Button
+              variant="outline-primary"
+              size="sm"
+              className="fw-bold px-3 shadow-2xs d-flex align-items-center gap-1.5"
+              onClick={() => handleSaveArbitraj(false)}
+              disabled={isSaving || totalTutar <= 0}
+              title="Arbitraj fişini yazdırmadan doğrudan kaydet"
+            >
+              <IconDeviceFloppy size={16} />
+              <span>Kaydet</span>
             </Button>
 
             <Button
               variant={isSatis ? "danger" : "success"}
               size="sm"
               className="fw-bold px-4 shadow-2xs d-flex align-items-center gap-1.5"
-              onClick={handleSaveArbitraj}
+              onClick={() => handleSaveArbitraj(true)}
               disabled={isSaving || totalTutar <= 0}
+              title="Arbitraj fişini kaydet ve yazdır [F10]"
             >
-              <IconDeviceFloppy size={16} />
-              <span>[F10] Arbitraj Fişini Kaydet & Aktar</span>
+              <IconPrinter size={16} />
+              <span>[F10] Kaydet & Yazdır</span>
             </Button>
           </div>
         </Modal.Footer>
@@ -1786,6 +2177,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         size="lg"
         centered
         backdrop="static"
+        keyboard={false}
         style={{ zIndex: 1060 }}
       >
         <Modal.Header closeButton className="py-2 px-3 bg-light border-bottom">
@@ -2127,214 +2519,86 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         </Modal.Footer>
       </Modal>
 
-      {/* ─── ENTEGRE DÜRBÜN SEÇİM MODALI (POPUP OVERLAY) ─────────────────────────────────── */}
-      {lookupType && (
-        <Modal
-          show={true}
-          onHide={() => setLookupType(null)}
-          size="lg"
-          centered
-          backdrop="static"
-          enforceFocus={false}
-          restoreFocus={false}
-          style={{ zIndex: 1070 }}
-        >
-          <Modal.Header closeButton className="py-2 px-3 bg-light border-bottom">
-            <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
-              <IconBinoculars size={18} className="text-primary" />
-              <span>
-                {lookupType === "cari"
-                  ? "Cari Hesap Seçiniz"
-                  : lookupType === "istatistik"
-                  ? "İstatistik Kodu Seçiniz"
-                  : "Döviz / Maden Para Seçiniz"}
-              </span>
-            </Modal.Title>
-          </Modal.Header>
-          <Modal.Body className="p-3">
-            {/* Arama Kutusu */}
-            <InputGroup className="mb-2.5">
-              <InputGroup.Text className="bg-white">
-                <IconSearch size={16} className="text-secondary" />
-              </InputGroup.Text>
-              <Form.Control
-                autoFocus
-                placeholder="Aramak istediğiniz kodu, adı veya bilgiyi yazın..."
-                value={lookupSearchTerm}
-                onChange={(e) => setLookupSearchTerm(e.target.value)}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Escape") {
-                    setLookupType(null);
-                  }
-                }}
-              />
-            </InputGroup>
+      {/* ─── 1) DÖVİZ / PARA SEÇİM MODALI (LOOKUP MODAL) ────────────────────────────────── */}
+      <LookupModal<ArbitrajCurrencyItem>
+        show={lookupType === "currency"}
+        onHide={() => {
+          setLookupType(null);
+          const rIdx = activeLookupLineIndexRef.current;
+          if (rIdx !== null && rIdx !== undefined) {
+            setTimeout(() => focusArbCell(rIdx, "kod"), 50);
+          }
+        }}
+        title="Para / Döviz / Maden Seçimi"
+        items={currencyList}
+        columns={currencyColumns}
+        initialSearchTerm={lookupSearchTerm}
+        filterFn={(item, term) => {
+          const t = term.toLowerCase().trim();
+          if (!t) return true;
+          return (
+            (item.kod || "").toLowerCase().includes(t) ||
+            (item.ad || "").toLowerCase().includes(t)
+          );
+        }}
+        onSelect={(item) => {
+          const lineId = activeLookupLineId;
+          const rIdx = activeLookupLineIndexRef.current;
+          if (lineId) {
+            handleSelectCurrencyForLine(lineId, item);
+          }
+          setLookupType(null);
+          if (rIdx !== null && rIdx !== undefined) {
+            setTimeout(() => focusArbCell(rIdx, "miktar"), 50);
+          }
+        }}
+      />
 
-            {/* Sonuç Listesi */}
-            <div className="table-responsive" style={{ maxHeight: "350px", overflowY: "auto" }}>
-              <Table hover bordered size="sm" className="mb-0 align-middle">
-                {/* 1) CARİ TABLOSU */}
-                {lookupType === "cari" && (
-                  <>
-                    <thead className="bg-light text-secondary small">
-                      <tr>
-                        <th style={{ width: "120px" }}>Cari Kodu</th>
-                        <th>Ünvan / Ad</th>
-                        <th style={{ width: "130px" }}>VKN / TCKN</th>
-                        <th style={{ width: "120px" }}>Telefon</th>
-                        <th style={{ width: "70px" }}>İşlem</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredCariler.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="text-center py-3 text-muted">Eşleşen cari bulunamadı.</td>
-                        </tr>
-                      ) : (
-                        filteredCariler.map((c) => (
-                          <tr
-                            key={c.id}
-                            style={{ cursor: "pointer" }}
-                            onDoubleClick={() => handleSelectCari(c)}
-                          >
-                            <td className="fw-bold font-monospace text-primary">{c.kod}</td>
-                            <td className="fw-semibold">{c.ad}</td>
-                            <td className="font-monospace">{c.vergiKimlikNo || "-"}</td>
-                            <td>{c.telefon || "-"}</td>
-                            <td className="text-center">
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                className="py-0 px-2"
-                                style={{ fontSize: "11px" }}
-                                onClick={() => handleSelectCari(c)}
-                              >
-                                Seç
-                              </Button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </>
-                )}
+      {/* ─── 2) CARİ HESAP SEÇİM MODALI (LOOKUP MODAL) ──────────────────────────────────── */}
+      <LookupModal<CariKartItem>
+        show={lookupType === "cari"}
+        onHide={() => setLookupType(null)}
+        title="Cari Hesap Seçimi"
+        items={localCariList}
+        columns={cariColumns}
+        initialSearchTerm={lookupSearchTerm}
+        filterFn={(c, term) => {
+          const t = term.toLowerCase().trim();
+          if (!t) return true;
+          return (
+            (c.kod || "").toLowerCase().includes(t) ||
+            (c.ad || "").toLowerCase().includes(t) ||
+            (c.vergiKimlikNo || "").toLowerCase().includes(t) ||
+            (c.telefon || "").toLowerCase().includes(t)
+          );
+        }}
+        onSelect={(c) => {
+          handleSelectCari(c);
+          setLookupType(null);
+        }}
+      />
 
-                {/* 2) İSTATİSTİK TABLOSU */}
-                {lookupType === "istatistik" && (
-                  <>
-                    <thead className="bg-light text-secondary small">
-                      <tr>
-                        <th style={{ width: "130px" }}>İstatistik Kodu</th>
-                        <th>Açıklama / Tanım</th>
-                        <th style={{ width: "70px" }}>İşlem</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredStats.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} className="text-center py-3 text-muted">Eşleşen istatistik kodu bulunamadı.</td>
-                        </tr>
-                      ) : (
-                        filteredStats.map((s) => (
-                          <tr
-                            key={s.id || s.kod}
-                            style={{ cursor: "pointer" }}
-                            onDoubleClick={() => {
-                              setIstatistikKod(s.kod);
-                              setLookupType(null);
-                            }}
-                          >
-                            <td className="fw-bold font-monospace text-primary">{s.kod}</td>
-                            <td>{(s as any).aciklama || (s as any).ad || (s as any).tanim || s.kod}</td>
-                            <td className="text-center">
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                className="py-0 px-2"
-                                style={{ fontSize: "11px" }}
-                                onClick={() => {
-                                  setIstatistikKod(s.kod);
-                                  setLookupType(null);
-                                }}
-                              >
-                                Seç
-                              </Button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </>
-                )}
-
-                {/* 3) DÖVİZ / MADEN TABLOSU */}
-                {lookupType === "currency" && (
-                  <>
-                    <thead className="bg-light text-secondary small">
-                      <tr>
-                        <th style={{ width: "100px" }}>Kod</th>
-                        <th>Ad / Tanım</th>
-                        <th style={{ width: "120px" }} className="text-end">Alış Kuru</th>
-                        <th style={{ width: "120px" }} className="text-end">Satış Kuru</th>
-                        <th style={{ width: "70px" }}>İşlem</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredCurrencies.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="text-center py-3 text-muted">Eşleşen para/maden bulunamadı.</td>
-                        </tr>
-                      ) : (
-                        filteredCurrencies.map((item) => (
-                          <tr
-                            key={item.kod}
-                            style={{ cursor: "pointer" }}
-                            onDoubleClick={() => {
-                              if (activeLookupLineId) {
-                                handleSelectCurrencyForLine(activeLookupLineId, item);
-                              }
-                            }}
-                          >
-                            <td className="fw-bold font-monospace text-primary">{item.kod}</td>
-                            <td className="fw-semibold">{item.ad}</td>
-                            <td className="text-end font-monospace text-primary fw-bold">
-                              {Number(item.efektifAlis || item.dovizAlis || 0).toLocaleString("tr-TR", { minimumFractionDigits: 4 })}
-                            </td>
-                            <td className="text-end font-monospace text-danger fw-bold">
-                              {Number(item.efektifSatis || item.dovizSatis || 0).toLocaleString("tr-TR", { minimumFractionDigits: 4 })}
-                            </td>
-                            <td className="text-center">
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                className="py-0 px-2"
-                                style={{ fontSize: "11px" }}
-                                onClick={() => {
-                                  if (activeLookupLineId) {
-                                    handleSelectCurrencyForLine(activeLookupLineId, item);
-                                  }
-                                }}
-                              >
-                                Seç
-                              </Button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </>
-                )}
-              </Table>
-            </div>
-          </Modal.Body>
-          <Modal.Footer className="py-2 px-3 bg-light d-flex justify-content-end">
-            <Button variant="secondary" size="sm" onClick={() => setLookupType(null)}>
-              Kapat
-            </Button>
-          </Modal.Footer>
-        </Modal>
-      )}
+      {/* ─── 3) İSTATİSTİK KODU SEÇİM MODALI (LOOKUP MODAL) ─────────────────────────────── */}
+      <LookupModal<StatisticItem>
+        show={lookupType === "istatistik"}
+        onHide={() => setLookupType(null)}
+        title="İstatistik Kodu Seçimi"
+        items={statisticList}
+        columns={istatistikColumns}
+        initialSearchTerm={lookupSearchTerm}
+        filterFn={(s, term) => {
+          const t = term.toLowerCase().trim();
+          if (!t) return true;
+          return (
+            (s.kod || "").toLowerCase().includes(t) ||
+            ((s as any).aciklama || (s as any).ad || (s as any).tanim || "").toLowerCase().includes(t)
+          );
+        }}
+        onSelect={(s) => {
+          setIstatistikKod(s.kod);
+          setLookupType(null);
+        }}
+      />
     </>
   );
 };

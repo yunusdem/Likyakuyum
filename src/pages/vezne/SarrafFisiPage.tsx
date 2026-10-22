@@ -1089,6 +1089,24 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [selectedStatistic, setSelectedStatistic] = useState<StatisticItem | IstatistikSecimItem | null>(null);
   const [istatistikFisDizaynTipi, setIstatistikFisDizaynTipi] = useState<number | null>(null);
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
+
+  const isCokluSatirIzinli = useMemo(() => {
+    return (
+      companyDefinitions?.FISTE_COKLU_SATIR === true ||
+      (companyDefinitions?.FISTE_COKLU_SATIR as any) === 1 ||
+      (companyDefinitions?.FISTE_COKLU_SATIR as any) === "1" ||
+      (companyDefinitions?.FISTE_COKLU_SATIR as any) === "true"
+    );
+  }, [companyDefinitions]);
+
+  const isMasakKontroluVar = useMemo(() => {
+    if (!companyDefinitions) return true;
+    const val = companyDefinitions.FIS_MASAK_KONTROLU_VAR;
+    if (val === false || (val as any) === 0 || (val as any) === "0" || (val as any) === "false") {
+      return false;
+    }
+    return true;
+  }, [companyDefinitions]);
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
@@ -1135,10 +1153,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   );
 
   // MASAK Malvarlığı Dondurulanlar Bloke Durumu
-  const isMasakBlocked = Boolean(masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
+  const isMasakBlocked = Boolean(isMasakKontroluVar && masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
 
   // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
   const isMasakLimitExceeded = useMemo(() => {
+    if (!isMasakKontroluVar) {
+      return false;
+    }
     // İstatistik tanımlarında Fiş Dizayn Tipi = 1 (Gayriresmi/Özel) ise MASAK kontrolü ve limitleri çalışmaz
     const activeStat = selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === istatistikKodu));
     const currentDizaynTipi = istatistikFisDizaynTipi ?? (activeStat ? Number(activeStat.fisDizaynTipi) : null);
@@ -1155,7 +1176,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       odemeRows.some((o) => (o.paraKodu === "USD" || o.paraKodu === "$") && parseDecimal(o.miktar) >= 5000) ||
       lines.some((l) => (l.urunKodu === "USD" || l.urunKodu === "$") && parseDecimal(l.miktar) >= 5000)
     );
-  }, [totalTutar, totalOdemeTutar, alisHas, odemeHas, altinHasKuru, odemeRows, lines, statisticList, selectedStatistic, istatistikFisDizaynTipi, istatistikId, istatistikKodu]);
+  }, [isMasakKontroluVar, totalTutar, totalOdemeTutar, alisHas, odemeHas, altinHasKuru, odemeRows, lines, statisticList, selectedStatistic, istatistikFisDizaynTipi, istatistikId, istatistikKodu]);
 
   const hasCariInOdeme = useMemo(() => {
     return odemeRows.some((r) => r.odemeAraciTuru === 1 || Boolean(r.cariKartId));
@@ -1918,7 +1939,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     targetCopies?: number
   ) => {
     // MASAK Malvarlığı Dondurulanlar Listesinde ise kesinlikle kayıt yapılamaz
-    if (isMasakBlocked) {
+    if (isMasakKontroluVar && isMasakBlocked) {
       showNotif("danger", `🚨 İŞLEM ENGELLENDİ: Bu müşteri MASAK Malvarlığı Dondurulanlar / Yaptırım Listesindedir. Kesinlikle fiş ve işlem kaydı yapılamaz!`);
       setMasakModalOpen(true);
       return;
@@ -1957,7 +1978,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     }
 
     // 185.000 TL veya 5.000 USD MASAK Sınır ve Kimlik Bilgisi Kontrolü
-    if (isMasakLimitExceeded) {
+    if (isMasakKontroluVar && isMasakLimitExceeded) {
       const activeUnvan = (unvan || detayUnvan || "").trim();
       const normUnvan = activeUnvan.toLocaleUpperCase('tr-TR');
       const isAnon = !activeUnvan ||
@@ -2508,17 +2529,17 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const selectedCustomerName = (result.unvan || "").trim();
     // "MASAK uyarısı versin" işaretsizse müşteri seçilirken otomatik sorgu / uyarı açılmaz; kayıttaki kontrol sürer
-    if (kYetkiRef.current.masakUyarisi && !isGayriResmi && selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
+    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && !isGayriResmi && selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
       handleSearchMasak(selectedCustomerName, result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || undefined);
     } else {
       setMasakResult({ matches: [], searched: false });
     }
 
     // Kişi seçmede işlem tutarı MASAK sınırını (≥185.000 TL / 5.000 USD) aşıyorsa uyar (Tip 1 hariç)
-    if (kYetkiRef.current.masakUyarisi && isMasakLimitExceeded && !isGayriResmi) {
+    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && isMasakLimitExceeded && !isGayriResmi) {
       setShowMasakCustomerWarningModal(true);
     }
-  }, [handleSearchMasak, isMasakLimitExceeded, tip, statisticList, selectedStatistic, istatistikFisDizaynTipi, istatistikId, istatistikKodu]);
+  }, [isMasakKontroluVar, handleSearchMasak, isMasakLimitExceeded, tip, statisticList, selectedStatistic, istatistikFisDizaynTipi, istatistikId, istatistikKodu]);
 
   // TC / VKN Girişi / Değişiminde Otomatik Cari, Kayıtsız Müşteri veya GİP Sorgulama
   const handleVknLookup = useCallback(async (inputVal: string, isEnterOrBlur = false) => {
@@ -3437,6 +3458,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, []);
 
   const handleAddSarrafRow = useCallback(() => {
+    if (!isCokluSatirIzinli && linesRef.current.length >= 1) {
+      return false;
+    }
     const currentLines = linesRef.current;
     if (currentLines.length > 0) {
       const lastRow = currentLines[currentLines.length - 1];
@@ -3468,7 +3492,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setActiveRowIndex(currentLines.length);
     requestAnimationFrame(() => focusGridCell(newRow.id, "urunKodu", "select"));
     return true;
-  }, [isSarrafRowFilled, focusGridCell]);
+  }, [isSarrafRowFilled, focusGridCell, isCokluSatirIzinli]);
 
   const handleAddOdemeRow = useCallback((afterIndex?: number) => {
     const currentOdemeRows = odemeRowsRef.current;

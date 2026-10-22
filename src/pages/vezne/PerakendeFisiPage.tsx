@@ -556,6 +556,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
   const [companyDefinitions, setCompanyDefinitions] = useState<any>(null);
+
+  const isCokluSatirIzinli = useMemo(() => {
+    return (
+      companyDefinitions?.FISTE_COKLU_SATIR === true ||
+      companyDefinitions?.FISTE_COKLU_SATIR === 1 ||
+      (companyDefinitions?.FISTE_COKLU_SATIR as any) === "1" ||
+      (companyDefinitions?.FISTE_COKLU_SATIR as any) === "true"
+    );
+  }, [companyDefinitions]);
+
+  const isMasakKontroluVar = useMemo(() => {
+    if (!companyDefinitions) return true;
+    const val = companyDefinitions.FIS_MASAK_KONTROLU_VAR;
+    if (val === false || (val as any) === 0 || (val as any) === "0" || (val as any) === "false") {
+      return false;
+    }
+    return true;
+  }, [companyDefinitions]);
   const [statisticList, setStatisticList] = useState<StatisticItem[]>([]);
   const [faturaTipi, setFaturaTipi] = useState<number>(1); // 0: Alış, 1: Satış
   const [senaryo, setSenaryo] = useState<string>("EARSIVFATURA");
@@ -917,6 +935,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const [detayEposta, setDetayEposta] = useState<string>("");
 
   const isMasakBlocked = Boolean(
+    isMasakKontroluVar &&
     masakResult.searched && masakResult.matches && masakResult.matches.length > 0
   );
 
@@ -1629,6 +1648,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         setActiveRowIndex(emptyIdx);
         requestAnimationFrame(() => focusGridCell(prev[emptyIdx].id, focusTarget, "select"));
         return next;
+      } else if (!isCokluSatirIzinli && prev.length >= 1) {
+        const next = [...prev];
+        next[0] = { ...populated, id: prev[0].id };
+        setActiveRowIndex(0);
+        requestAnimationFrame(() => focusGridCell(prev[0].id, focusTarget, "select"));
+        return next;
       } else {
         const newRow = { ...populated, id: makeId() };
         const next = [...prev, newRow];
@@ -1758,6 +1783,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         requestAnimationFrame(() => {
           requestAnimationFrame(() => focusGridCell(nextRow.id, "barkod", "select"));
         });
+        return next;
+      }
+      if (!isCokluSatirIzinli && next.length >= 1) {
+        setActiveRowIndex(targetIdx);
         return next;
       }
       const newRow = createEmptyRow();
@@ -2262,6 +2291,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   // Insert Row Handler
   const handleAddPerakendeRow = useCallback((afterIndex?: number) => {
     setItems((prev) => {
+      if (!isCokluSatirIzinli && prev.length >= 1) {
+        return prev;
+      }
       if (prev.length > 0) {
         const lastRow = prev[prev.length - 1];
         if (!isItemFilled(lastRow)) {
@@ -2289,7 +2321,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       return [...prev, newRow];
     });
     return true;
-  }, [focusGridCell]);
+  }, [focusGridCell, isCokluSatirIzinli]);
 
   // Helper to determine navigable columns for cart line items (Ziynet/Döviz vs Altın/Gümüş)
   const getNavigableKalemCols = useCallback((item?: CartLineItem): GridColKey[] => {
@@ -2364,7 +2396,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
         // 1. Zaten ürün bilgisi yüklü olan satırda barkod hücresinde Enter'a basıldıysa hemen yeni satır aç / sonraki boş satıra geç:
         if (row.altinUrunId || (row.barkod && row.urunAdi)) {
+          if (!isCokluSatirIzinli && items.length >= 1) {
+            return;
+          }
           setItems((prev) => {
+            if (!isCokluSatirIzinli && prev.length >= 1) {
+              return prev;
+            }
             const nextRow = prev[rowIndex + 1];
             if (nextRow && !isItemFilled(nextRow)) {
               setActiveRowIndex(rowIndex + 1);
@@ -2414,6 +2452,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   if (nextRow && !isItemFilled(nextRow)) {
                     setActiveRowIndex(rowIndex + 1);
                     requestAnimationFrame(() => focusGridCell(nextRow.id, "barkod", "select"));
+                    return next;
+                  }
+                  if (!isCokluSatirIzinli && next.length >= 1) {
+                    setActiveRowIndex(rowIndex);
                     return next;
                   }
                   const newRow = createEmptyRow();
@@ -4089,13 +4131,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const isGayriResmi = activeStat && Number(activeStat.fisDizaynTipi) === 1;
 
     // "MASAK uyarısı versin" işaretsizse müşteri seçilirken otomatik sorgu / uyarı açılmaz; kayıttaki kontrol sürer
-    if (kYetkiRef.current.masakUyarisi && !isGayriResmi && res.unvan && !isAnonymousCustomerName(res.unvan)) {
+    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && !isGayriResmi && res.unvan && !isAnonymousCustomerName(res.unvan)) {
       void handleMasakQuery(res.unvan, res.vergiKimlikNo);
     } else {
       setMasakResult({ matches: [], searched: false });
     }
 
-    if (kYetkiRef.current.masakUyarisi && genelToplam >= 185000 && !isGayriResmi) {
+    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && genelToplam >= 185000 && !isGayriResmi) {
       const cleanVkn = (res.vergiKimlikNo || "").trim();
       const isMissingInfo =
         !cleanVkn ||
@@ -4519,7 +4561,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     if (isSubmittingRef.current) return;
 
     // MASAK Malvarlığı Dondurulanlar Bloke Kontrolü (Kesinlikle Kayıt Yapılamaz!)
-    if (isMasakBlocked) {
+    if (isMasakKontroluVar && isMasakBlocked) {
       showError(
         `⛔ İŞLEM ENGELLENDİ: "${masakResult.queriedName || aliciUnvan}" MASAK Malvarlığı Dondurulanlar listesindedir! Bu kişi/kuruluş için fatura/fiş kaydedilemez.`
       );
@@ -4586,7 +4628,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const isGayriResmi = activeStat && Number(activeStat.fisDizaynTipi) === 1;
 
     const MASAK_LIMIT = 185000;
-    if (genelToplam >= MASAK_LIMIT && !bypassMasakWarning && !isGayriResmi) {
+    if (isMasakKontroluVar && genelToplam >= MASAK_LIMIT && !bypassMasakWarning && !isGayriResmi) {
       const isMissingInfo =
         cleanVkn === "11111111111" ||
         aliciUnvan.trim().toUpperCase() === "NİHAİ TÜKETİCİ" ||

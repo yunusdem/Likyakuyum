@@ -338,6 +338,45 @@ export class CompanyService {
     const blob = await dosyaGetir(`/company/klasor/indir?yol=${encodeURIComponent(yol)}`, "*/*");
     indirBlob(blob, yol.split("/").pop() || "dosya");
   }
+
+  /**
+   * Aktif firmanın / müşterinin kayıtlı veritabanı çalışma alanları (Login ekranındaki gibi)
+   */
+  public static async getAlanlar(): Promise<CompanyAlanDto[]> {
+    try {
+      const musteriNo = localStorage.getItem("kuyumcu_erp_musteri_no") || "";
+      const res = await apiClient.get<CompanyAlanDto[]>("/company/alanlar", musteriNo ? { musteriNo } : undefined);
+      if (res.data && res.data.length > 0) {
+        return res.data;
+      }
+    } catch {}
+
+    try {
+      const musteriNo = localStorage.getItem("kuyumcu_erp_musteri_no") || "";
+      if (musteriNo) {
+        const res = await apiClient.get<Array<{ firmaId: number; unvan: string; dbName: string }>>("/auth/musteri-veritabanlari", { musteriNo });
+        if (res.data && res.data.length > 0) {
+          return res.data.map((v) => ({
+            id: v.firmaId,
+            kod: String(v.firmaId),
+            unvan: v.unvan || v.dbName,
+            dbName: v.dbName,
+            aciklama: "Kayıtlı Veritabanı",
+          }));
+        }
+      }
+    } catch {}
+
+    return [];
+  }
+}
+
+export interface CompanyAlanDto {
+  id: string | number;
+  kod: string;
+  unvan: string;
+  dbName: string;
+  aciklama?: string;
 }
 
 export interface FirmaKlasorOgesi {

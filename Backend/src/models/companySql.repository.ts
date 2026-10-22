@@ -25,6 +25,8 @@ export class CompanySqlRepository {
             ALTER TABLE [dbo].[TODVZ_TANIM] ADD [FIS_AKTARILACAK_HESAP_ID] INT NULL;
           IF COL_LENGTH('dbo.TODVZ_TANIM', 'FIS_AKTARMA_HESABI') IS NULL
             ALTER TABLE [dbo].[TODVZ_TANIM] ADD [FIS_AKTARMA_HESABI] VARCHAR(50) NULL;
+          IF COL_LENGTH('dbo.TODVZ_TANIM', 'FISTE_COKLU_SATIR') IS NULL
+            ALTER TABLE [dbo].[TODVZ_TANIM] ADD [FISTE_COKLU_SATIR] BIT NULL CONSTRAINT DF_TODVZ_TANIM_FISTE_COKLU_SATIR DEFAULT(0);
         `);
       } catch (colErr: any) {
         // Ignored if table alteration permissions are restricted

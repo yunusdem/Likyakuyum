@@ -34,6 +34,7 @@ import DovizFisiPage from "./pages/vezne/DovizFisiPage";
 import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
 import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
 import VezneParaSayPage from "./pages/vezne/VezneParaSayPage";
+import FisAktarmaPage from "./pages/vezne/FisAktarmaPage";
 import PiyasaPage from "./pages/piyasa/PiyasaPage";
 import HizliSatisPage from "./pages/hizliSatis/HizliSatisPage";
 import HizliSatisYonlendir from "./pages/hizliSatis/HizliSatisYonlendir";
@@ -416,6 +417,7 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="vezne/vezne-transferi-duzeltme" element={<VezneTransferiPage />} />
               <Route path="vezne/vezne-transferi" element={<VezneTransferiPage />} />
               <Route path="vezne/transfer" element={<VezneTransferiPage />} />
+              <Route path="vezne/fis-aktarma" element={<FisAktarmaPage />} />
               <Route path="piyasa" element={<PiyasaPage />} />
               {/* Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md) */}
               <Route path="hizli-satis" element={<HizliSatisYonlendir />} />

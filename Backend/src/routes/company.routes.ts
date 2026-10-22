@@ -9,6 +9,7 @@ router.use(authenticate);
 
 router.get("/definitions", CompanyController.getDefinitions);
 router.put("/definitions", CompanyController.updateDefinitions);
+router.get("/alanlar", CompanyController.getAlanlar);
 router.get("/klasor", CompanyController.getKlasor);
 router.get("/klasor/liste", CompanyController.klasorListe);
 router.get("/klasor/indir", CompanyController.klasorIndir);

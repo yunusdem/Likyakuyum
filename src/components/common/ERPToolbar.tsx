@@ -22,6 +22,7 @@ import {
   IconDiamond,
   IconCreditCard,
   IconBuildingStore,
+  IconArrowsExchange,
 } from "@tabler/icons-react";
 
 export interface ERPToolbarProps {
@@ -126,11 +127,12 @@ const ROUTE_PAGE_MAP: Record<string, { title: string; icon: React.ReactNode }> =
   "/vezne/vezne-transferi": { title: "G- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
   "/vezne/transfer": { title: "G- Vezne Transferi Kayıt", icon: <IconCash size={20} /> },
   "/vezne/hareket-listesi": { title: "I- Vezne Hareket Listesi", icon: <IconFileText size={20} /> },
-  "/vezne/bakiye-raporu": { title: "J- Vezne Bakiye Raporu", icon: <IconChartBar size={20} /> },
-  "/vezne/bakiye-raporu-tarih-bazli": { title: "K- Vezne Bakiye Raporu Tarih Bazlı", icon: <IconChartBar size={20} /> },
-  "/vezne/para-say": { title: "L- Vezne Para Say", icon: <IconCash size={20} /> },
-  "/vezne/izleme": { title: "M- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
-  "/vezne/vezne-izleme": { title: "M- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
+  "/vezne/fis-aktarma": { title: "J- Fiş Aktarma", icon: <IconArrowsExchange size={20} /> },
+  "/vezne/bakiye-raporu": { title: "K- Vezne Bakiye Raporu", icon: <IconChartBar size={20} /> },
+  "/vezne/bakiye-raporu-tarih-bazli": { title: "L- Vezne Bakiye Raporu Tarih Bazlı", icon: <IconChartBar size={20} /> },
+  "/vezne/para-say": { title: "M- Vezne Para Say", icon: <IconCash size={20} /> },
+  "/vezne/izleme": { title: "N- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
+  "/vezne/vezne-izleme": { title: "N- Vezne İzleme", icon: <IconDeviceTv size={20} /> },
   "/kasa/hesap-kayit": { title: "A- Hesap Kayıt", icon: <IconBuilding size={20} /> },
   "/kasa/hesap-duzeltme": { title: "B- Hesap Düzeltme", icon: <IconBuilding size={20} /> },
   "/kasa/hareket-kayit": { title: "C- Kasa Hareket Kayıt", icon: <IconCash size={20} /> },

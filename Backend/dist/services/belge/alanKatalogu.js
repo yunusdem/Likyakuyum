@@ -16,7 +16,8 @@ export function ornekVeri(tur, firma = ORNEK_FIRMA, satim = true) {
             fisId: 1, tip: satim ? 1 : 0, tarih: "2026-10-12", saat: "14:30", belgeNo: satim ? "DIS2026000000001" : "DIA2026000000001",
             unvan: "AHMET YILMAZ", vergiKimlikNo: "11111111111", detayIl: "Muğla", detayIlce: "Fethiye", detayUyruk: "TR", vezneKod: "01", istatistikKodu: "9249",
             detayMeslek: "SERBEST", detayPasaportNo: "", guid: "FD5AA22A-A68D-4B2E-87CF-E958E380439F",
-            lines: [{ paraKodu: "EUR", miktar: 1000, kur: 48.1234, tutar: 48123.4 }], komisyonTutari: 0, giseUsdKuru: 41.5,
+            // Satışta KMV binde 2 (BSMV yerine); firma ayarı kurdan hariçse masrafa eklenir, kura dahilse yalnız bilgi olarak basılır
+            lines: [{ paraKodu: "EUR", miktar: 1000, kur: 48.1234, tutar: 48123.4, kmv: satim ? 96.25 : 0 }], bsmvTutari: 0, kmvTutari: satim ? 96.25 : 0, komisyonTutari: 0, giseUsdKuru: 41.5,
         }, firma);
     }
     if (tur.startsWith("EDOVIZ_PDF_")) {
@@ -97,6 +98,7 @@ export const ALAN_ACIKLAMALARI = {
     "firma.subeAdi": "Şube adı", "firma.dosyaNo": "Yetkili müessese dosya no", "firma.satisDayanagi": "Satışın dayanağı (Firma Tanımları)",
     "firma.vdVkn": "\"Vergi dairesi / VKN\" birleşik", "firma.mersisSicil": "\"MERSİS / Sicil no\" birleşik", "firma.kimlikEtiketi": "VKN ya da TCKN etiketi",
     "basamak.doviz": "Döviz kuruş hanesi (firma ayarı)", "basamak.kur": "Kur kuruş hanesi", "basamak.tl": "TL kuruş hanesi",
+    "firma.kmvSekli": "KMV uygulama şekli (firma ayarı): 1 uygulanmasın, 2 kura dahil, 3 kurdan hariç",
     "firma.basamak.doviz": "Döviz kuruş hanesi (firma ayarı)", "firma.basamak.kur": "Kur kuruş hanesi (firma ayarı)", "firma.basamak.tl": "TL kuruş hanesi (firma ayarı)",
     "firma.adSoyad": "(kullanılmaz)", "firma.ulke": "Firmanın ülkesi", "firma.kimlikNo": "Firma VKN", "firma.pasaportNo": "(kullanılmaz)", "firma.musteriTuru": "(kullanılmaz)",
     subeKodu: "Şube kodu", faturaId: "Fatura numarası (iç)",
@@ -112,6 +114,10 @@ export const ALAN_ACIKLAMALARI = {
     "musteri.sehir": "İl", "musteri.kimlikEtiketi": "VKN ya da TCKN etiketi", "musteri.vkn": "VKN / TCKN", "musteri.ticaretSicilNo": "Ticaret sicil no",
     "toplam.genel": "Genel toplam", "toplam.tl": "TL karşılığı toplamı", "toplam.bsmv": "BSMV", "toplam.bsmvVar": "BSMV varsa dolu (koşul)",
     "toplam.komisyon": "Komisyon", "toplam.yaziyla": "Toplamın yazıyla hâli", "toplam.tutar": "Genel toplam", "toplam.has": "Toplam has gram",
+    "toplam.kmv": "KMV (kambiyo muameleleri vergisi)", "toplam.kmvVar": "KMV varsa dolu (koşul)", "toplam.masraf": "Toplam masraf (BSMV + komisyon; KMV kurdan hariçse KMV de)",
+    "toplam.sonToplam": "Son toplam (tutar ± masraf)",
+    kmvNotu: "KMV notu — firma ayarına göre \"Kmv kura dahildir.\" / \"Kmv kura dahil değildir.\"; KMV uygulanmıyorsa ve alış fişinde boş",
+    kmvDahil: "Firma ayarı KMV kura dahil ise dolu (koşulda kullanılır: {{kmvDahil}} / !{{kmvDahil}})",
     "toplam.hasVar": "Has gram varsa dolu", "toplam.odenen": "Ödenen / alınan", "toplam.odenenVar": "Ödeme varsa dolu", "toplam.kalan": "Kalan bakiye",
     "toplam.kalanVar": "Kalan varsa dolu", "toplam.ara": "Mal hizmet toplamı", "toplam.kdv": "Hesaplanan KDV", "toplam.iskonto": "İskonto tutarı",
     "toplam.iskontoVar": "İskonto varsa dolu", "toplam.iskontoOrani": "İskonto oranı (%)", "toplam.iskontoEtiket": "\"İskonto (%5)\"", "toplam.gram": "Toplam gram",

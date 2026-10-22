@@ -519,7 +519,10 @@ export function sahneKur(sablon, veri) {
             // Üstteki uzadıysa / aşağı indiyse ya da yukarı çekilen öğe ona çarpıyorsa aradaki asıl boşluk (en çok 8 pt)
             // korunur; çarpmıyorsa yerinde kalır (gizlenen öğenin boşluğu kapanır).
             const carpar = b.ust + cekme < yeniAlt - PAY;
-            const aralik = yeniAlt > nomAlt + PAY || carpar ? Math.min(Math.max(0, b.ust - nomAlt), KORUNAN_ARALIK) : 0;
+            // İkisinin arasında gizlenip daraltılan öğelerin yeri boşluk sayılmaz: üstteki aşağı itilmişken de o yer kapanır
+            // (ör. BSMV gizliyken KMV satırı döviz satırlarının hemen altına gelir; yoksa 8 pt'lik sahte boşluk kalıyordu).
+            const kapanan = ustler.reduce((t, c) => (c !== a && !c.gorunur && c.o.daralt && c.ust >= nomAlt - PAY && c.ust + c.nomH <= b.ust + PAY ? t + c.nomH : t), 0);
+            const aralik = yeniAlt > nomAlt + PAY || carpar ? Math.min(Math.max(0, b.ust - nomAlt - kapanan), KORUNAN_ARALIK) : 0;
             itme = Math.max(itme, yeniAlt + aralik - (b.ust + cekme));
         }
         b.dy = cekme + itme;

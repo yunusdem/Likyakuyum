@@ -3167,7 +3167,7 @@ export class DovizFisSqlRepository {
       req.input("DIZAYN_VAL", sql.VarChar(50), String(params.dizaynKodu).trim());
       if (!isNaN(dNum)) {
         req.input("DIZAYN_NUM", sql.Int, dNum);
-        query += ` AND (IST.FIS_DIZAYN_TIPI = @DIZAYN_NUM OR UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL))))`;
+        query += ` AND (ISNULL(IST.FIS_DIZAYN_TIPI, 0) = @DIZAYN_NUM OR UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL))))`;
       } else {
         query += ` AND UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL)))`;
       }
@@ -3291,6 +3291,7 @@ export class DovizFisSqlRepository {
     yeniEklenenSayisi?: number;
     guncellenenSayisi?: number;
     hatalar?: Array<{ fisId: number; hata: string }>;
+    aktarilanDetaylar?: any[];
   }> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await DovizFisSqlRepository.ensureAktarmaSchema(pool);
@@ -3385,10 +3386,6 @@ export class DovizFisSqlRepository {
       } catch { }
     }
 
-    if (!targetUnvan) {
-      targetUnvan = "FİŞ AKTARMA HESABI";
-    }
-
     // 3. Find source slips to transfer
     const req = pool.request();
 
@@ -3418,7 +3415,7 @@ export class DovizFisSqlRepository {
         req.input("DIZAYN_VAL", sql.VarChar(50), String(payload.dizaynKodu).trim());
         if (!isNaN(dNum)) {
           req.input("DIZAYN_NUM", sql.Int, dNum);
-          query += ` AND (IST.FIS_DIZAYN_TIPI = @DIZAYN_NUM OR UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL))))`;
+          query += ` AND (ISNULL(IST.FIS_DIZAYN_TIPI, 0) = @DIZAYN_NUM OR UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL))))`;
         } else {
           query += ` AND UPPER(LTRIM(RTRIM(IST.KOD))) = UPPER(LTRIM(RTRIM(@DIZAYN_VAL)))`;
         }
@@ -3465,6 +3462,15 @@ export class DovizFisSqlRepository {
 
     let yeniKayit = 0;
     let guncellenen = 0;
+    const aktarilanDetaylar: Array<{
+      fisId: number;
+      seriNo?: string;
+      belgeNo?: string;
+      tarih?: string;
+      tip?: number;
+      unvan?: string;
+      durum: "eklendi" | "guncellendi";
+    }> = [];
 
     try {
       for (const slip of sourceSlips) {
@@ -3508,10 +3514,10 @@ export class DovizFisSqlRepository {
           updateReq.input("BELGE_NO", sql.VarChar(50), slip.BELGE_NO || "");
           updateReq.input("GELIS_NEDENI", sql.VarChar(200), slip.GELIS_NEDENI || "Fiş Aktarımı");
           updateReq.input("KUR_TURU", sql.TinyInt, slip.KUR_TURU ?? 0);
-          updateReq.input("CARI_KART_ID", sql.Int, targetCariKartId);
+          updateReq.input("CARI_KART_ID", sql.Int, targetCariKartId || slip.CARI_KART_ID || null);
           updateReq.input("BANKA_HESABI_ID", sql.Int, targetBankaHesabiId || slip.BANKA_HESABI_ID || null);
-          updateReq.input("UNVAN", sql.VarChar(200), targetUnvan || slip.UNVAN);
-          updateReq.input("VERGI_KIMLIK_NO", sql.VarChar(50), targetVkn || slip.VERGI_KIMLIK_NO || "");
+          updateReq.input("UNVAN", sql.VarChar(200), (targetCariKartId ? targetUnvan : null) || slip.UNVAN || "");
+          updateReq.input("VERGI_KIMLIK_NO", sql.VarChar(50), (targetCariKartId ? targetVkn : null) || slip.VERGI_KIMLIK_NO || "");
           updateReq.input("TOPLAM_TUTAR", sql.Float, slip.TOPLAM_TUTAR || 0);
           updateReq.input("YUVARLAMA", sql.Float, slip.YUVARLAMA || 0);
           updateReq.input("ODEME_TUTARI", sql.Float, slip.ODEME_TUTARI || 0);
@@ -3585,6 +3591,15 @@ export class DovizFisSqlRepository {
           }
 
           guncellenen++;
+          aktarilanDetaylar.push({
+            fisId: Number(slip.FIS_ID),
+            seriNo: slip.SERI_NO,
+            belgeNo: slip.BELGE_NO,
+            tarih: slip.TARIH ? new Date(slip.TARIH).toLocaleDateString("tr-TR") : "",
+            tip: slip.TIP,
+            unvan: slip.UNVAN,
+            durum: "guncellendi",
+          });
         } else {
           // INSERT NEW INTO TARGET
           const insReq = new sql.Request(transaction);
@@ -3597,15 +3612,15 @@ export class DovizFisSqlRepository {
           insReq.input("GELIS_NEDENI", sql.VarChar(200), slip.GELIS_NEDENI || "Fiş Aktarımı");
           insReq.input("KUR_TURU", sql.TinyInt, slip.KUR_TURU ?? 0);
           insReq.input("ISTATISTIK_ID", sql.Int, slip.ISTATISTIK_ID || null);
-          insReq.input("CARI_KART_ID", sql.Int, targetCariKartId);
+          insReq.input("CARI_KART_ID", sql.Int, targetCariKartId || slip.CARI_KART_ID || null);
           insReq.input("BANKA_HESABI_ID", sql.Int, targetBankaHesabiId || slip.BANKA_HESABI_ID || null);
-          insReq.input("UNVAN", sql.VarChar(200), targetUnvan || slip.UNVAN);
+          insReq.input("UNVAN", sql.VarChar(200), (targetCariKartId ? targetUnvan : null) || slip.UNVAN || "");
           insReq.input("KISILIK_TIPI", sql.TinyInt, slip.KISILIK_TIPI ?? 0);
           insReq.input("UYRUK_ID", sql.Int, slip.UYRUK_ID || null);
           insReq.input("ULKE_ID", sql.Int, slip.ULKE_ID || null);
           insReq.input("HUKUKI_YAPI_ID", sql.Int, slip.HUKUKI_YAPI_ID || null);
           insReq.input("VERGI_DAIRESI_ID", sql.Int, slip.VERGI_DAIRESI_ID || null);
-          insReq.input("VERGI_KIMLIK_NO", sql.VarChar(50), targetVkn || slip.VERGI_KIMLIK_NO || "");
+          insReq.input("VERGI_KIMLIK_NO", sql.VarChar(50), (targetCariKartId ? targetVkn : null) || slip.VERGI_KIMLIK_NO || "");
           insReq.input("BABA_ADI", sql.VarChar(100), slip.BABA_ADI || null);
           insReq.input("ADRES", sql.VarChar(500), slip.ADRES || null);
           insReq.input("ILCE_ID", sql.Int, slip.ILCE_ID || null);
@@ -3707,6 +3722,15 @@ export class DovizFisSqlRepository {
           }
 
           yeniKayit++;
+          aktarilanDetaylar.push({
+            fisId: Number(slip.FIS_ID),
+            seriNo: slip.SERI_NO,
+            belgeNo: slip.BELGE_NO,
+            tarih: slip.TARIH ? new Date(slip.TARIH).toLocaleDateString("tr-TR") : "",
+            tip: slip.TIP,
+            unvan: slip.UNVAN,
+            durum: "eklendi",
+          });
         }
 
         // Mark source slip as transferred
@@ -3732,6 +3756,7 @@ export class DovizFisSqlRepository {
         aktarilanToplam,
         yeniKayit,
         guncellenen,
+        aktarilanDetaylar,
         message: `✅ Başarılı: ${aktarilanToplam} adet döviz fişi aktarıldı (${yeniKayit} yeni kayıt, ${guncellenen} güncelleme). Fişler "${targetUnvan}" hesabına işlendi.`,
       };
     } catch (err: any) {

@@ -22,7 +22,7 @@ export interface DovizFisGirdisi {
   fisId?: number | null; tip: number; tarih?: string; saat?: string; seriNo?: string; belgeNo?: string;
   unvan?: string; vergiKimlikNo?: string; detayIl?: string; detayIlce?: string; detayUyruk?: string;
   detayPasaportNo?: string; detayMeslek?: string; detayCariTipi?: string; vezneKod?: string; istatistikKodu?: string;
-  guid?: string;
+  guid?: string; gelisNedeni?: string; isArbitraj?: boolean; geldigiUlke?: string;
   lines: { paraKodu?: string; paraAdi?: string; miktar?: number | string; kur?: number | string; tutar?: number | string; bmv?: number | string; kmv?: number | string; komisyon?: number | string }[];
   toplamTutar?: number | null; totalMasraf?: number | null; sonToplam?: number | null; odemeTutari?: number | null; bsmvTutari?: number | null; kmvTutari?: number | null; komisyonTutari?: number | null;
   giseUsdKuru?: number | null;
@@ -36,6 +36,7 @@ export interface DovizFisVerisi {
   belgeNo: string; ettn: string; tarih: string; saat: string; seri: string;
   subeKodu: string; dosyaNo: string; subeNo: string; istatistikNo: string; vezne: string;
   geldigiUlke: string; satisDayanagi: string;
+  gelisNedeni?: string; isArbitraj?: boolean;
   /** Firma ayarı KMV "kura dahil" ise dolu (koşulda: {{kmvDahil}} / !{{kmvDahil}}). */
   kmvDahil: boolean;
   /** Satış fişindeki KMV notu: "Kmv kura dahildir." / "Kmv kura dahil değildir."; KMV uygulanmıyorsa ya da alış fişinde boş. */
@@ -219,7 +220,10 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
     belgeNo, ettn, tarih, saat, seri: "EDOVIZBELGE",
     subeKodu, dosyaNo: firma.dosyaNo, subeNo: firma.dosyaNo ? `${subeKodu} - ${firma.dosyaNo}` : subeKodu,
     istatistikNo: yazi(g.istatistikKodu), vezne: yazi(g.vezneKod) || "01",
-    geldigiUlke: "Türkiye", satisDayanagi: firma.satisDayanagi || "32 SAYILI KARAR GEREĞİ",
+    geldigiUlke: yazi(g.geldigiUlke) || (g.gelisNedeni && !satim ? yazi(g.gelisNedeni) : "Türkiye"),
+    satisDayanagi: (satim && g.gelisNedeni ? yazi(g.gelisNedeni) : (firma.satisDayanagi || "32 SAYILI KARAR GEREĞİ")),
+    gelisNedeni: yazi(g.gelisNedeni) || "",
+    isArbitraj: Boolean(g.isArbitraj || (g.gelisNedeni && String(g.gelisNedeni).toLowerCase().includes("arbitraj"))),
     kmvDahil, kmvNotu,
     firma: {
       ...firma,

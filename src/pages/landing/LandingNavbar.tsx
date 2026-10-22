@@ -117,7 +117,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
 
             {/* 3. Right: Action Login Button (Single Row, No Wrap) */}
             <div className="d-none d-lg-flex align-items-center ms-4 flex-shrink-0">
-              <button
+              {/* <button
                 type="button"
                 onClick={() => navigate("/login")}
                 className="furni-btn-login shadow-sm"
@@ -125,7 +125,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
                 <IconBuildingStore size={17} />
                 <span>Sisteme Giriş Yap</span>
                 <IconArrowRight size={15} />
-              </button>
+              </button> */}
             </div>
 
             {/* Mobile Menu Toggle Button */}

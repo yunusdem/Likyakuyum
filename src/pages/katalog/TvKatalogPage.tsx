@@ -118,14 +118,11 @@ export const TvKatalogPage: React.FC = () => {
     };
   }, []);
 
-  const urunSuresiSec = Math.max(1, Number(companyDefs?.KATALOG_URUN_SURESI) || 5);
-  const resimSuresiSec = Math.max(1, Number(companyDefs?.KATALOG_RESIM_SURESI) || 3);
+  // Katalog Geçiş Süresi (Firma Tanımları'ndan tek süre, varsayılan 5 sn)
+  const katalogSuresiSec = Math.max(1, Number(companyDefs?.KATALOG_URUN_SURESI) || 5);
 
-  const urunSuresiSecRef = useRef<number>(urunSuresiSec);
-  urunSuresiSecRef.current = urunSuresiSec;
-
-  const resimSuresiSecRef = useRef<number>(resimSuresiSec);
-  resimSuresiSecRef.current = resimSuresiSec;
+  const katalogSuresiSecRef = useRef<number>(katalogSuresiSec);
+  katalogSuresiSecRef.current = katalogSuresiSec;
 
   const currentDurationRef = useRef<number>(5000);
 
@@ -393,40 +390,28 @@ export const TvKatalogPage: React.FC = () => {
 
   // ─── SLAYT VE GÖRSEL GEÇİŞ MOTORU (FİRMA TANIMLARI SÜRELERİ İLE TAM ENTEGRE) ───
   // Kural:
-  // 1. Tek görselli ürün: Math.max(urunSuresi, resimSuresi) sn kadar ekranda kalır.
-  // 2. Çok görselli ürün (örn. 3 görsel, urunSuresi 5s, resimSuresi 3s):
-  //    - 1. Görsel: 3 sn (resimSuresi)
-  //    - 2. Görsel: 3 sn (resimSuresi)
-  //    - 3. Görsel (Son Görsel): En az 3 sn (resimSuresi) ve varsa arta kalan hedef ürün süresi.
-  //    - Kesinlikle ürünün tüm görselleri bitmeden ürün değişimi yapılmaz!
+  // Ekranda katalogdaki ürünlerin bekleme süresi katalog geçiş süresi kadardır.
+  // Ürünün içerisindeki görseller bu süreye uygun şekilde eşit sürelere bölünerek gösterilir.
+  // Örneğin: Katalog süresi 6 sn ve üründe 3 görsel varsa her görsel 2 sn (2000 ms) gösterilir.
+  // Toplamda ürün tam olarak belirlenen katalog süresi boyunca ekranda kalır.
   const getSlideDurationMs = useCallback(
-    (pIdx: number, iIdx: number, prodList?: KatalogUrun[]): number => {
+    (pIdx: number, _iIdx: number, prodList?: KatalogUrun[]): number => {
       const list = prodList || productsRef.current;
-      if (!list || list.length === 0) return 3000;
+      if (!list || list.length === 0) return 5000;
       const curProd = list[pIdx];
       const curImgs =
         curProd?.resimler && curProd.resimler.length > 0 ? curProd.resimler : [null];
-      const totalImgs = curImgs.length;
+      const totalImgs = Math.max(1, curImgs.length);
 
-      const uSec = Math.max(1, urunSuresiSecRef.current);
-      const rSec = Math.max(1, resimSuresiSecRef.current);
+      const totalSec = Math.max(1, katalogSuresiSecRef.current);
 
-      // Tek görselli ürün
       if (totalImgs <= 1) {
-        return Math.max(uSec, rSec) * 1000;
+        return totalSec * 1000;
       }
 
-      // Çok görselli ürünün ara görselleri: Kesinlikle resim süresi kadar gösterilir
-      if (iIdx < totalImgs - 1) {
-        return rSec * 1000;
-      }
-
-      // Çok görselli ürünün son görseli:
-      // Önceki görsellerde tüketilen süre: (totalImgs - 1) * rSec
-      // Kalan ürün süresi hedefi: uSec - (totalImgs - 1) * rSec
-      // Son görsel kesinlikle en az resim süresi (rSec) kadar kalır, ürün süresi henüz dolmadıysa onu da tamamlar
-      const remainingSec = Math.max(0, uSec - (totalImgs - 1) * rSec);
-      return Math.max(rSec, remainingSec) * 1000;
+      // Ürün içerisindeki görsellere eşit şekilde paylaştırılan süre
+      const perImageDurationMs = Math.round((totalSec * 1000) / totalImgs);
+      return Math.max(300, perImageDurationMs);
     },
     []
   );
@@ -577,7 +562,7 @@ export const TvKatalogPage: React.FC = () => {
       progressStartTimeRef.current = Date.now();
       setSlideProgress(0);
     }
-  }, [urunSuresiSec, resimSuresiSec, isPlaying, products.length, getSlideDurationMs]);
+  }, [katalogSuresiSec, isPlaying, products.length, getSlideDurationMs]);
 
   // Manuel İleri / Geri Resim Değiştirme
   const handleNextSlide = useCallback(() => {

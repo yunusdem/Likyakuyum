@@ -297,7 +297,7 @@ export class DovizFisService {
   }
 
   public static async calistirAktarma(payload: {
-    fisIdler: number[];
+    fisIdler?: number[];
     ilkTarih?: string;
     sonTarih?: string;
     dizaynKodu?: string | number;
@@ -349,13 +349,27 @@ export interface DovizFisAktarmaOnizlemeResult {
   fisler: DovizFisAktarmaItem[];
 }
 
+export interface DovizFisAktarmaDetay {
+  fisId: number;
+  seriNo?: string;
+  belgeNo?: string;
+  tarih?: string;
+  tip?: number;
+  unvan?: string;
+  durum: "eklendi" | "guncellendi";
+}
+
 export interface DovizFisAktarmaCalistirResult {
-  toplamIstek: number;
-  aktarilanSayisi: number;
-  yeniEklenenSayisi: number;
-  guncellenenSayisi: number;
+  toplamIstek?: number;
+  aktarilanSayisi?: number;
+  yeniEklenenSayisi?: number;
+  guncellenenSayisi?: number;
+  aktarilanToplam?: number;
+  yeniKayit?: number;
+  guncellenen?: number;
   hatalar: Array<{ fisId: number; hata: string }>;
   message?: string;
+  aktarilanDetaylar?: DovizFisAktarmaDetay[];
 }
 
 export interface KayitsizMusteriItem {

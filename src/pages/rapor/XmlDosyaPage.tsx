@@ -75,7 +75,7 @@ export default function XmlDosyaPage() {
   // Yükleme & Durum
   const [yukleniyor, setYukleniyor] = useState<boolean>(false);
   const [aramaMetni, setAramaMetni] = useState<string>("");
-  const [durumHataFiltresi, setDurumHataFiltresi] = useState<string>("hepsi");
+  const [durumHataFiltresi, setDurumHataFiltresi] = useState<string>("hatali");
   const [tabloYaziBoyutu, setTabloYaziBoyutu] = useState<number>(11);
   const handleTabloBuyut = () => setTabloYaziBoyutu((prev) => Math.min(prev + 1, 20));
   const handleTabloKucult = () => setTabloYaziBoyutu((prev) => Math.max(prev - 1, 8));
@@ -142,6 +142,7 @@ export default function XmlDosyaPage() {
   // 1. Merkez Kur Kontrolü
   const handleMerkezKurKontrol = async () => {
     setKontrolTuru("merkezKur");
+    setDurumHataFiltresi("hatali");
     setYukleniyor(true);
     try {
       const data = await XmlDosyaService.kontrolMerkezKur({
@@ -165,6 +166,7 @@ export default function XmlDosyaPage() {
   // 2. Firma Kontrolü
   const handleFirmaKontrol = async () => {
     setKontrolTuru("firma");
+    setDurumHataFiltresi("hatali");
     setYukleniyor(true);
     try {
       const data = await XmlDosyaService.kontrolFirma();
@@ -182,6 +184,7 @@ export default function XmlDosyaPage() {
   // 3. Fiş Kontrolü
   const handleFisKontrol = async () => {
     setKontrolTuru("fis");
+    setDurumHataFiltresi("hatali");
     setYukleniyor(true);
     try {
       const data = await XmlDosyaService.kontrolFis({
@@ -205,6 +208,7 @@ export default function XmlDosyaPage() {
   // 4. Fiş Satırı Kontrolü
   const handleFisSatiriKontrol = async () => {
     setKontrolTuru("fisSatiri");
+    setDurumHataFiltresi("hatali");
     setYukleniyor(true);
     try {
       const data = await XmlDosyaService.kontrolFisSatiri({
@@ -911,11 +915,93 @@ export default function XmlDosyaPage() {
 
             {islemModu === "kontrol" && (
               <span className="badge bg-secondary-subtle text-secondary border small">
-                {kontrolTuru === "merkezKur" && `${merkezKurSonuclari.length} kayıt`}
+                {kontrolTuru === "merkezKur" && `${merkezKurSonuclari.length} gün (${kurHataliSayisi} eksik)`}
                 {kontrolTuru === "firma" && (firmaSonucu ? (firmaSonucu.gecerli ? "Eksiksiz" : `${firmaSonucu.eksikler.length} eksik`) : "Bekleniyor")}
                 {kontrolTuru === "fis" && `${fisSonuclari.length} fiş (${fisHataliSayisi} hatalı)`}
                 {kontrolTuru === "fisSatiri" && `${fisSatirSonuclari.length} satır (${satirHataliSayisi} hatalı)`}
               </span>
+            )}
+
+            {/* Merkez Kur Kontrolünde Filtre Butonları */}
+            {islemModu === "kontrol" && kontrolTuru === "merkezKur" && (
+              <div className="d-flex align-items-center gap-1 ms-2">
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("hatali")}
+                >
+                  Hatalılar / Eksikler ({kurHataliSayisi})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("hepsi")}
+                >
+                  Tümü ({merkezKurSonuclari.length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "gecerli" ? "btn-success text-white" : "btn-outline-success"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("gecerli")}
+                >
+                  Mevcut ({merkezKurSonuclari.length - kurHataliSayisi})
+                </button>
+              </div>
+            )}
+
+            {/* Firma Kontrolünde Filtre Butonları */}
+            {islemModu === "kontrol" && kontrolTuru === "firma" && firmaSonucu && (
+              <div className="d-flex align-items-center gap-1 ms-2">
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("hatali")}
+                >
+                  Sadece Hatalar / Eksikler ({firmaSonucu.eksikler.length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("hepsi")}
+                >
+                  Tüm Firma Bilgileri
+                </button>
+              </div>
+            )}
+
+            {/* Fiş Satırı Kontrolünde Filtre Butonları */}
+            {islemModu === "kontrol" && kontrolTuru === "fisSatiri" && (
+              <div className="d-flex align-items-center gap-1 ms-2">
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("hatali")}
+                >
+                  Hatalı Satırlar ({satirHataliSayisi})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("hepsi")}
+                >
+                  Tümü ({fisSatirSonuclari.length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "gecerli" ? "btn-success text-white" : "btn-outline-success"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("gecerli")}
+                >
+                  Geçerli Satırlar ({fisSatirSonuclari.length - satirHataliSayisi})
+                </button>
+              </div>
             )}
 
             {/* Fiş Kontrolünde Durum/Hata Hızlı Filtre Butonları */}
@@ -923,19 +1009,19 @@ export default function XmlDosyaPage() {
               <div className="d-flex align-items-center gap-1 ms-2">
                 <button
                   type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hepsi")}
-                >
-                  Tümü ({fisSonuclari.length})
-                </button>
-                <button
-                  type="button"
                   className={`btn btn-xs ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
                   style={{ fontSize: "11px", padding: "1px 6px" }}
                   onClick={() => setDurumHataFiltresi("hatali")}
                 >
                   Hatalılar ({fisHataliSayisi})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
+                  style={{ fontSize: "11px", padding: "1px 6px" }}
+                  onClick={() => setDurumHataFiltresi("hepsi")}
+                >
+                  Tümü ({fisSonuclari.length})
                 </button>
                 <button
                   type="button"
@@ -951,8 +1037,8 @@ export default function XmlDosyaPage() {
                   value={durumHataFiltresi}
                   onChange={(e) => setDurumHataFiltresi(e.target.value)}
                 >
-                  <option value="hepsi">Filtre: Tümü</option>
                   <option value="hatali">Filtre: Hatalılar</option>
+                  <option value="hepsi">Filtre: Tümü</option>
                   <option value="gecerli">Filtre: Geçerliler</option>
                   <option value="adres">Hata: Adres Eksik</option>
                   <option value="tckn">Hata: TCKN / VKN</option>
@@ -1025,36 +1111,60 @@ export default function XmlDosyaPage() {
                 </tr>
               </thead>
               <tbody>
-                {merkezKurSonuclari.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="text-center py-4 text-muted">
-                      Henüz kontrol yapılmadı veya bu tarih aralığında fiş bulunamadı.
-                    </td>
-                  </tr>
-                ) : (
-                  merkezKurSonuclari
-                    .filter((item) =>
-                      !aramaMetni
-                        ? true
-                        : item.tarih.includes(aramaMetni) ||
-                          item.seriNo.toLowerCase().includes(aramaMetni.toLowerCase()) ||
-                          item.aciklama.toLowerCase().includes(aramaMetni.toLowerCase())
-                    )
-                    .map((row, idx) => (
-                      <tr key={idx} className={row.durum === "hata" ? "row-error" : ""}>
-                        <td className="text-center fw-semibold">{row.tarih}</td>
-                        <td className="text-center font-monospace">{row.seriNo}</td>
-                        <td>{row.aciklama}</td>
-                        <td className="text-center">
-                          {row.durum === "tamam" ? (
-                            <span className="badge bg-success-subtle text-success border border-success">Mevcut</span>
+                {(() => {
+                  const filtered = merkezKurSonuclari.filter((item) => {
+                    if (durumHataFiltresi === "hatali" && item.durum !== "hata") return false;
+                    if (durumHataFiltresi === "gecerli" && item.durum === "hata") return false;
+                    if (!aramaMetni) return true;
+                    return (
+                      item.tarih.includes(aramaMetni) ||
+                      item.seriNo.toLowerCase().includes(aramaMetni.toLowerCase()) ||
+                      item.aciklama.toLowerCase().includes(aramaMetni.toLowerCase())
+                    );
+                  });
+
+                  if (merkezKurSonuclari.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={4} className="text-center py-4 text-muted">
+                          Henüz kontrol yapılmadı veya bu tarih aralığında fiş bulunamadı.
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  if (filtered.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={4} className="text-center py-4">
+                          {kurHataliSayisi === 0 ? (
+                            <div className="text-success d-flex align-items-center justify-content-center gap-2">
+                              <IconCheck size={20} />
+                              <span className="fw-semibold">Tüm Merkez Bankası kurları tanımlıdır, eksik veya hatalı kur kaydı bulunamadı.</span>
+                            </div>
                           ) : (
-                            <span className="badge bg-danger text-white">Eksik</span>
+                            <span className="text-muted">Bu filtre kriterine uygun kayıt bulunamadı.</span>
                           )}
                         </td>
                       </tr>
-                    ))
-                )}
+                    );
+                  }
+
+                  return filtered.map((row, idx) => (
+                    <tr key={idx} className={row.durum === "hata" ? "row-error" : ""}>
+                      <td className="text-center fw-semibold">{row.tarih}</td>
+                      <td className="text-center font-monospace">{row.seriNo}</td>
+                      <td>{row.aciklama}</td>
+                      <td className="text-center">
+                        {row.durum === "tamam" ? (
+                          <span className="badge bg-success-subtle text-success border border-success">Mevcut</span>
+                        ) : (
+                          <span className="badge bg-danger text-white">Eksik</span>
+                        )}
+                      </td>
+                    </tr>
+                  ));
+                })()}
               </tbody>
             </table>
           )}
@@ -1065,6 +1175,51 @@ export default function XmlDosyaPage() {
               {!firmaSonucu ? (
                 <div className="text-center py-4 text-muted">
                   Yukarıdaki <strong>"Firma"</strong> butonuna basarak firma bilgisi kontrolünü başlatabilirsiniz.
+                </div>
+              ) : durumHataFiltresi === "hatali" && firmaSonucu.gecerli ? (
+                <div className="alert alert-success py-3 px-4 mb-0 d-flex flex-wrap align-items-center justify-content-between gap-3 shadow-xs">
+                  <div className="d-flex align-items-center gap-2">
+                    <IconCheck size={22} className="text-success flex-shrink-0" />
+                    <div>
+                      <div className="fw-bold">Firma Tanımları Eksiksiz ve Geçerlidir</div>
+                      <div className="small text-muted">
+                        VİM döviz transfer standardına uygun tüm zorunlu firma ve şube alanları doludur, herhangi bir eksik veya hata bulunamadı.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline-success btn-sm fw-semibold"
+                    onClick={() => setDurumHataFiltresi("hepsi")}
+                  >
+                    Tüm Firma Bilgilerini Gör
+                  </button>
+                </div>
+              ) : durumHataFiltresi === "hatali" && !firmaSonucu.gecerli ? (
+                <div className="d-flex flex-column gap-3">
+                  <div className="alert alert-danger py-2 px-3 mb-0 small">
+                    <strong>Tespit Edilen Eksik / Hatalı Bilgiler:</strong> {firmaSonucu.eksikler.join(", ")}
+                  </div>
+                  <table className="xml-dosya-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: "35%" }}>Eksik / Hatalı Alan</th>
+                        <th>Açıklama</th>
+                        <th style={{ width: "120px" }} className="text-center">Durum</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {firmaSonucu.eksikler.map((eksik, eIdx) => (
+                        <tr key={eIdx} className="row-error">
+                          <td className="fw-bold text-danger">{eksik}</td>
+                          <td>Ayarlar &gt; Firma Tanımları menüsünden bu alanın doldurulması zorunludur.</td>
+                          <td className="text-center">
+                            <span className="badge bg-danger text-white">Eksik</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="d-flex flex-column gap-3">
@@ -1156,79 +1311,100 @@ export default function XmlDosyaPage() {
                 </tr>
               </thead>
               <tbody>
-                {fisSonuclari.length === 0 ? (
-                  <tr>
-                    <td colSpan={17} className="text-center py-4 text-muted">
-                      Henüz fiş kontrolü yapılmadı veya bu filtreye uygun fiş bulunamadı.
-                    </td>
-                  </tr>
-                ) : (
-                  fisSonuclari
-                    .filter((item) => {
-                      if (durumHataFiltresi === "hatali" && item.gecerli) return false;
-                      if (durumHataFiltresi === "gecerli" && !item.gecerli) return false;
-                      if (durumHataFiltresi === "adres" && !item.hatalar.some(h => h.toLowerCase().includes("adres"))) return false;
-                      if (durumHataFiltresi === "tckn" && !item.hatalar.some(h => h.includes("TCKN") || h.includes("VKN"))) return false;
-                      if (durumHataFiltresi === "baba" && !item.hatalar.some(h => h.toLowerCase().includes("baba"))) return false;
-                      if (durumHataFiltresi === "il" && !item.hatalar.some(h => h.toLowerCase().includes("il") || h.toLowerCase().includes("ilçe"))) return false;
-                      if (durumHataFiltresi === "seri" && !item.hatalar.some(h => h.toLowerCase().includes("seri") || h.toLowerCase().includes("belge"))) return false;
-                      if (durumHataFiltresi === "unvan" && !item.hatalar.some(h => h.toLowerCase().includes("ünvan") || h.toLowerCase().includes("adı"))) return false;
+                {(() => {
+                  const filtered = fisSonuclari.filter((item) => {
+                    if (durumHataFiltresi === "hatali" && item.gecerli) return false;
+                    if (durumHataFiltresi === "gecerli" && !item.gecerli) return false;
+                    if (durumHataFiltresi === "adres" && !item.hatalar.some(h => h.toLowerCase().includes("adres"))) return false;
+                    if (durumHataFiltresi === "tckn" && !item.hatalar.some(h => h.includes("TCKN") || h.includes("VKN"))) return false;
+                    if (durumHataFiltresi === "baba" && !item.hatalar.some(h => h.toLowerCase().includes("baba"))) return false;
+                    if (durumHataFiltresi === "il" && !item.hatalar.some(h => h.toLowerCase().includes("il") || h.toLowerCase().includes("ilçe"))) return false;
+                    if (durumHataFiltresi === "seri" && !item.hatalar.some(h => h.toLowerCase().includes("seri") || h.toLowerCase().includes("belge"))) return false;
+                    if (durumHataFiltresi === "unvan" && !item.hatalar.some(h => h.toLowerCase().includes("ünvan") || h.toLowerCase().includes("adı"))) return false;
 
-                      if (!aramaMetni) return true;
-                      const q = aramaMetni.toLowerCase();
-                      return (
-                        item.seriNo.toLowerCase().includes(q) ||
-                        item.vrgSoyad.toLowerCase().includes(q) ||
-                        item.ad.toLowerCase().includes(q) ||
-                        item.tckn.includes(q) ||
-                        item.belgeNo.toLowerCase().includes(q) ||
-                        item.adres.toLowerCase().includes(q)
-                      );
-                    })
-                    .map((row, idx) => (
-                      <tr key={idx} className={!row.gecerli ? "row-error" : ""}>
-                        <td className="text-center">{row.tarih || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-center font-monospace">{row.seriNo || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-center font-monospace small">{row.hukukiYapi === "18" ? "Tüzel" : "Gerçek"}</td>
-                        <td className="fw-semibold text-truncate" title={row.vrgSoyad}>{row.vrgSoyad || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-truncate" title={row.ad}>{row.ad || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-center text-truncate" title={row.babaAdi}>
-                          {row.babaAdi ? row.babaAdi : (row.hukukiYapi !== "18" && row.uyruk === "TR" ? <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span> : "-")}
+                    if (!aramaMetni) return true;
+                    const q = aramaMetni.toLowerCase();
+                    return (
+                      item.seriNo.toLowerCase().includes(q) ||
+                      item.vrgSoyad.toLowerCase().includes(q) ||
+                      item.ad.toLowerCase().includes(q) ||
+                      item.tckn.includes(q) ||
+                      item.belgeNo.toLowerCase().includes(q) ||
+                      item.adres.toLowerCase().includes(q)
+                    );
+                  });
+
+                  if (fisSonuclari.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={17} className="text-center py-4 text-muted">
+                          Henüz fiş kontrolü yapılmadı veya bu tarih aralığında fiş bulunamadı.
                         </td>
-                        <td className="text-center font-monospace text-truncate" title={row.belgeNo}>{row.belgeNo || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-center">{row.uyruk || "TR"}</td>
-                        <td className="text-center">{row.hukukiYapi || "01"}</td>
-                        <td className="text-center font-monospace">
-                          {row.tckn ? row.tckn : <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}
-                        </td>
-                        <td className="text-truncate" title={row.adres}>
-                          {row.adres ? row.adres : <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}
-                        </td>
-                        <td className="text-truncate" title={row.ilce}>{row.ilce || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-center">{row.postaKodu || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-center font-monospace">{row.ilKodu ? row.ilKodu : <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-truncate" title={row.ilAdi}>{row.ilAdi || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
-                        <td className="text-center">{row.ulke || "Türkiye"}</td>
-                        <td className="text-center p-0.5">
-                          {row.gecerli ? (
-                            <span className="badge bg-success text-white" style={{ fontSize: "0.85em", padding: "2px 5px" }}>Geçerli</span>
-                          ) : (
-                            <div className="d-flex flex-wrap gap-0.5 justify-content-center">
-                              {row.hatalar.map((h, hIdx) => (
-                                <span
-                                  key={hIdx}
-                                  className="badge bg-danger text-white fw-normal"
-                                  style={{ fontSize: "0.82em", padding: "1.5px 3px", lineHeight: "1.1" }}
-                                >
-                                  {h}
-                                </span>
-                              ))}
+                      </tr>
+                    );
+                  }
+
+                  if (filtered.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={17} className="text-center py-4">
+                          {fisHataliSayisi === 0 ? (
+                            <div className="text-success d-flex align-items-center justify-content-center gap-2">
+                              <IconCheck size={20} />
+                              <span className="fw-semibold">Tüm döviz fişleri geçerlidir, eksik veya hatalı fiş kaydı bulunamadı.</span>
                             </div>
+                          ) : (
+                            <span className="text-muted">Bu filtre kriterine uygun kayıt bulunamadı.</span>
                           )}
                         </td>
                       </tr>
-                    ))
-                )}
+                    );
+                  }
+
+                  return filtered.map((row, idx) => (
+                    <tr key={idx} className={!row.gecerli ? "row-error" : ""}>
+                      <td className="text-center">{row.tarih || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-center font-monospace">{row.seriNo || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-center font-monospace small">{row.hukukiYapi === "18" ? "Tüzel" : "Gerçek"}</td>
+                      <td className="fw-semibold text-truncate" title={row.vrgSoyad}>{row.vrgSoyad || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-truncate" title={row.ad}>{row.ad || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-center text-truncate" title={row.babaAdi}>
+                        {row.babaAdi ? row.babaAdi : (row.hukukiYapi !== "18" && row.uyruk === "TR" ? <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span> : "-")}
+                      </td>
+                      <td className="text-center font-monospace text-truncate" title={row.belgeNo}>{row.belgeNo || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-center">{row.uyruk || "TR"}</td>
+                      <td className="text-center">{row.hukukiYapi || "01"}</td>
+                      <td className="text-center font-monospace">
+                        {row.tckn ? row.tckn : <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}
+                      </td>
+                      <td className="text-truncate" title={row.adres}>
+                        {row.adres ? row.adres : <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}
+                      </td>
+                      <td className="text-truncate" title={row.ilce}>{row.ilce || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-center">{row.postaKodu || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-center font-monospace">{row.ilKodu ? row.ilKodu : <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-truncate" title={row.ilAdi}>{row.ilAdi || <span className="text-danger fw-bold" style={{ fontSize: "0.85em" }}>EKSİK</span>}</td>
+                      <td className="text-center">{row.ulke || "Türkiye"}</td>
+                      <td className="text-center p-0.5">
+                        {row.gecerli ? (
+                          <span className="badge bg-success text-white" style={{ fontSize: "0.85em", padding: "2px 5px" }}>Geçerli</span>
+                        ) : (
+                          <div className="d-flex flex-wrap gap-0.5 justify-content-center">
+                            {row.hatalar.map((h, hIdx) => (
+                              <span
+                                key={hIdx}
+                                className="badge bg-danger text-white fw-normal"
+                                style={{ fontSize: "0.82em", padding: "1.5px 3px", lineHeight: "1.1" }}
+                              >
+                                {h}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ));
+                })()}
               </tbody>
             </table>
           )}
@@ -1249,43 +1425,67 @@ export default function XmlDosyaPage() {
                 </tr>
               </thead>
               <tbody>
-                {fisSatirSonuclari.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="text-center py-4 text-muted">
-                      Henüz fiş satırı kontrolü yapılmadı veya satır bulunamadı.
-                    </td>
-                  </tr>
-                ) : (
-                  fisSatirSonuclari
-                    .filter((item) =>
-                      !aramaMetni
-                        ? true
-                        : item.seriNo.toLowerCase().includes(aramaMetni.toLowerCase()) ||
-                          item.xmlParaKodu.toLowerCase().includes(aramaMetni.toLowerCase())
-                    )
-                    .map((row, idx) => (
-                      <tr key={idx} className={!row.gecerli ? "row-error" : ""}>
-                        <td className="text-center">{row.tarih}</td>
-                        <td className="text-center font-monospace">{row.seriNo}</td>
-                        <td className="text-center">{row.satirNo}</td>
-                        <td className="text-center fw-bold text-primary">{row.xmlParaKodu}</td>
-                        <td className="text-center">{row.islemTipi}</td>
-                        <td className="text-end font-monospace">{trSayiBicimi(2, 2).format(row.miktar)}</td>
-                        <td className="text-end font-monospace fw-semibold">
-                          {trSayiBicimi(2, 2).format(row.tutarTl)} ₺
+                {(() => {
+                  const filtered = fisSatirSonuclari.filter((item) => {
+                    if (durumHataFiltresi === "hatali" && item.gecerli) return false;
+                    if (durumHataFiltresi === "gecerli" && !item.gecerli) return false;
+                    if (!aramaMetni) return true;
+                    return (
+                      item.seriNo.toLowerCase().includes(aramaMetni.toLowerCase()) ||
+                      item.xmlParaKodu.toLowerCase().includes(aramaMetni.toLowerCase())
+                    );
+                  });
+
+                  if (fisSatirSonuclari.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={8} className="text-center py-4 text-muted">
+                          Henüz fiş satırı kontrolü yapılmadı veya satır bulunamadı.
                         </td>
-                        <td className="text-center">
-                          {row.gecerli ? (
-                            <span className="badge bg-success-subtle text-success border border-success">Geçerli</span>
+                      </tr>
+                    );
+                  }
+
+                  if (filtered.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={8} className="text-center py-4">
+                          {satirHataliSayisi === 0 ? (
+                            <div className="text-success d-flex align-items-center justify-content-center gap-2">
+                              <IconCheck size={20} />
+                              <span className="fw-semibold">Tüm fiş satırları geçerlidir, eksik veya hatalı satır bulunamadı.</span>
+                            </div>
                           ) : (
-                            <span className="badge bg-danger text-white" title={row.hatalar.join(", ")}>
-                              {row.hatalar[0] || "Hata"}
-                            </span>
+                            <span className="text-muted">Bu filtre kriterine uygun satır bulunamadı.</span>
                           )}
                         </td>
                       </tr>
-                    ))
-                )}
+                    );
+                  }
+
+                  return filtered.map((row, idx) => (
+                    <tr key={idx} className={!row.gecerli ? "row-error" : ""}>
+                      <td className="text-center">{row.tarih}</td>
+                      <td className="text-center font-monospace">{row.seriNo}</td>
+                      <td className="text-center">{row.satirNo}</td>
+                      <td className="text-center fw-bold text-primary">{row.xmlParaKodu}</td>
+                      <td className="text-center">{row.islemTipi}</td>
+                      <td className="text-end font-monospace">{trSayiBicimi(2, 2).format(row.miktar)}</td>
+                      <td className="text-end font-monospace fw-semibold">
+                        {trSayiBicimi(2, 2).format(row.tutarTl)} ₺
+                      </td>
+                      <td className="text-center">
+                        {row.gecerli ? (
+                          <span className="badge bg-success-subtle text-success border border-success">Geçerli</span>
+                        ) : (
+                          <span className="badge bg-danger text-white" title={row.hatalar.join(", ")}>
+                            {row.hatalar[0] || "Hata"}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ));
+                })()}
               </tbody>
             </table>
           )}

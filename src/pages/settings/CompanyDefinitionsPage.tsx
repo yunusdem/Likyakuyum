@@ -31,7 +31,7 @@ import {
 
 import ERPToolbar from "components/common/ERPToolbar";
 import { printReportTable } from "../../utils/printReport";
-import { CompanyService, TodvzTanimDto, defaultCompanyTanim } from "../../services/companyService";
+import { CompanyService, TodvzTanimDto, defaultCompanyTanim, CompanyAlanDto } from "../../services/companyService";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import FirmaKlasoruModal from "../../components/common/FirmaKlasoruModal";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
@@ -103,9 +103,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
     CARI_KOD_SIRA_NO: null,
     CARI_KOD_BASINA_SIFIR: false,
     FIS_NO_BASINA_SIFIR: false,
-    DOVIZ_ALIS_DVZ_SATIS_ORANI: undefined,
-    EFEKTIF_ALIS_DVZ_SATIS_ORANI: undefined,
-    EFEKTIF_SATIS_DVZ_SATIS_ORANI: undefined,
+    DOVIZ_ALIS_DVZ_SATIS_ORANI: 1,
+    EFEKTIF_ALIS_DVZ_SATIS_ORANI: 1,
+    EFEKTIF_SATIS_DVZ_SATIS_ORANI: 1,
     ALIS_ISTATISTIK_ID: null,
     SATIS_ISTATISTIK_ID: null,
     ARBITRAJ_ALIS_ISTATISTIK_ID: null,
@@ -288,6 +288,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
     saving: false,
     error: null,
   });
+
+  // Kullanıcıya / Müşteriye ait kayıtlı veritabanı alanları
+  const [dbAlanlari, setDbAlanlari] = useState<CompanyAlanDto[]>([]);
 
   const ensureLookups = async (forceRefresh: boolean = false): Promise<CariLookups> => {
     if (
@@ -818,63 +821,54 @@ export const CompanyDefinitionsPage: React.FC = () => {
     }
   };
 
-  const openFisAktarmaHesabiLookup = async () => {
+  const openFisAktarmaAlaniLookup = async () => {
     try {
-      const [hesaplar, cariler] = await Promise.all([
-        ensureHesaplar(),
-        ensureCariKartlar(),
-      ]);
-      const combined = [
-        ...hesaplar.map((h) => ({
-          id: h.hesapId,
-          kod: h.kod,
-          unvan: h.ad,
-          tur: "Hesap Kartı",
-        })),
-        ...cariler.map((c) => ({
-          id: c.id,
-          kod: c.kod,
-          unvan: c.ad,
-          tur: "Cari Kart",
-        })),
-      ];
+      let list = dbAlanlari;
+      if (!list || list.length === 0) {
+        list = await CompanyService.getAlanlar();
+        if (list && list.length > 0) setDbAlanlari(list);
+      }
       setLookupModalConfig({
         show: true,
-        title: "Fiş Aktarılacak Hesap / Cari Seçimi",
-        items: combined,
-        selectedId: formData.FIS_AKTARILACAK_HESAP_ID,
+        title: "Fiş Aktarma Alanı / Veritabanı Seçimi",
+        items: list.map((a) => ({
+          id: a.dbName,
+          kod: a.dbName,
+          unvan: a.unvan,
+          aciklama: a.aciklama || "Kayıtlı Veritabanı",
+        })),
+        selectedId: formData.DIGER_VERITABANI_ADI,
         columns: [
           {
-            header: "Tür",
-            render: (it) => <Badge bg={it.tur === "Cari Kart" ? "info" : "primary"}>{it.tur}</Badge>,
-            width: "110px",
-          },
-          {
-            header: "Kod",
+            header: "Veritabanı Alanı",
             render: (it) => <span className="font-monospace fw-bold">{it.kod}</span>,
-            width: "120px",
+            width: "150px",
           },
           {
-            header: "Tanım / Ünvan",
+            header: "Firma / Şube Ünvanı",
             render: (it) => <span className="fw-medium">{it.unvan}</span>,
+          },
+          {
+            header: "Durum",
+            render: (it) => <Badge bg="primary">{it.aciklama}</Badge>,
+            width: "140px",
           },
         ],
         filterFn: (it, term) => {
           const t = term.toLowerCase();
           return (
             (it.kod && it.kod.toLowerCase().includes(t)) ||
-            (it.unvan && it.unvan.toLowerCase().includes(t)) ||
-            (it.tur && it.tur.toLowerCase().includes(t))
+            (it.unvan && it.unvan.toLowerCase().includes(t))
           );
         },
         onSelect: (it) => {
-          handleChange("FIS_AKTARILACAK_HESAP_ID", it.id);
+          handleChange("DIGER_VERITABANI_ADI", it.kod);
           handleChange("FIS_AKTARMA_HESABI", it.unvan || it.kod);
           setLookupModalConfig((prev) => ({ ...prev, show: false }));
         },
       });
     } catch (err) {
-      console.error("Fiş aktarma hesabı lookup hatası:", err);
+      console.error("Fiş aktarma alanı lookup hatası:", err);
     }
   };
 
@@ -1042,6 +1036,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
           setFormData(sanitized || emptyCompanyData);
         }
         CompanyService.getKlasor().then(setFirmaKlasoru).catch(() => setFirmaKlasoru(null));
+        CompanyService.getAlanlar().then((al) => {
+          if (al && al.length > 0) setDbAlanlari(al);
+        }).catch(() => {});
       } else {
         setFormData(emptyCompanyData);
       }
@@ -1667,6 +1664,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                 {/* ─── TAB 2: PARA, KURUŞ & ORAN PARAMETRELERİ ─── */}
                 <Tab.Pane eventKey="para">
                   <Row className="g-3">
+                    {/* SOL GRUP: Para Birimleri & Kur Ayarları */}
                     <Col xs={12} md={6}>
                       <div className="p-3 bg-light rounded-3 border h-100">
                         <Row className="g-2">
@@ -1790,10 +1788,22 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               </Col>
                             </Form.Group>
                           </Col>
+                          <Col xs={12} className="mt-2 pt-2 border-top">
+                            <div className="d-flex flex-column gap-2">
+                              <Form.Check
+                                type="checkbox"
+                                id="FISDE_KUR_TURU_DEGISEBILIR"
+                                label="Fişte Kur Türü Değiştirilebilir"
+                                checked={formData.FISDE_KUR_TURU_DEGISEBILIR ?? false}
+                                onChange={(e) => handleChange("FISDE_KUR_TURU_DEGISEBILIR", e.target.checked)}
+                              />
+                            </div>
+                          </Col>
                         </Row>
                       </div>
                     </Col>
 
+                    {/* SAĞ GRUP: Kuruş & Ondalık Sayıları, İstatistikler */}
                     <Col xs={12} md={6}>
                       <div className="p-3 bg-light rounded-3 border h-100">
                         <Row className="g-2">
@@ -1857,83 +1867,10 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               </Col>
                             </Form.Group>
                           </Col>
-                        </Row>
-                      </div>
-                    </Col>
 
-                    {/* Oranlar & İstatistikler */}
-                    <Col xs={12} md={6}>
-                      <div className="p-3 bg-light rounded-3 border h-100">
-                        <Row className="g-2">
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyleOran} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Dvz Alış / Satış:</Form.Label>
-                              <Col>
-                                <Form.Control
-                                  type="number"
-                                  step="0.0001"
-                                  value={formData.DOVIZ_ALIS_DVZ_SATIS_ORANI ?? ""}
-                                  onChange={(e) => handleNumericInput("DOVIZ_ALIS_DVZ_SATIS_ORANI", e.target.value)}
-                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "90px" }}
-                                />
-                              </Col>
-                            </Form.Group>
-                          </Col>
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyleOran} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Efektif Alış / Satış:</Form.Label>
-                              <Col>
-                                <Form.Control
-                                  type="number"
-                                  step="0.0001"
-                                  value={formData.EFEKTIF_ALIS_DVZ_SATIS_ORANI ?? ""}
-                                  onChange={(e) => handleNumericInput("EFEKTIF_ALIS_DVZ_SATIS_ORANI", e.target.value)}
-                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "90px" }}
-                                />
-                              </Col>
-                            </Form.Group>
-                          </Col>
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyleOran} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Efektif Satış / Satış:</Form.Label>
-                              <Col>
-                                <Form.Control
-                                  type="number"
-                                  step="0.0001"
-                                  value={formData.EFEKTIF_SATIS_DVZ_SATIS_ORANI ?? ""}
-                                  onChange={(e) => handleNumericInput("EFEKTIF_SATIS_DVZ_SATIS_ORANI", e.target.value)}
-                                  onKeyDown={(e) => blockNonNumericKeys(e, true)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "90px" }}
-                                />
-                              </Col>
-                            </Form.Group>
-                          </Col>
-                          <Col xs={12} className="mt-2 pt-2 border-top">
-                            <div className="d-flex flex-column gap-2">
-                              <Form.Check
-                                type="checkbox"
-                                id="FISDE_KUR_TURU_DEGISEBILIR"
-                                label="Fişte Kur Türü Değiştirilebilir"
-                                checked={formData.FISDE_KUR_TURU_DEGISEBILIR ?? false}
-                                onChange={(e) => handleChange("FISDE_KUR_TURU_DEGISEBILIR", e.target.checked)}
-                              />
-                            </div>
-                          </Col>
-                        </Row>
-                      </div>
-                    </Col>
-
-                    <Col xs={12} md={6}>
-                      <div className="p-3 bg-light rounded-3 border h-100">
-                        <Row className="g-2">
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyleIstatistik} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Alış İstatistik:</Form.Label>
+                              <Form.Label column style={labelColStyleBasamak} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Alış İstatistik:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap">
                                   <Form.Control
@@ -1979,7 +1916,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyleIstatistik} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Satış İstatistik:</Form.Label>
+                              <Form.Label column style={labelColStyleBasamak} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Satış İstatistik:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap">
                                   <Form.Control
@@ -2025,7 +1962,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyleIstatistik} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Arbitraj Alış:</Form.Label>
+                              <Form.Label column style={labelColStyleBasamak} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Arbitraj Alış:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap">
                                   <Form.Control
@@ -2071,7 +2008,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyleIstatistik} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Arbitraj Satış:</Form.Label>
+                              <Form.Label column style={labelColStyleBasamak} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Arbitraj Satış:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap">
                                   <Form.Control
@@ -2339,43 +2276,43 @@ export const CompanyDefinitionsPage: React.FC = () => {
 
                           <Col xs={12}>
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Fiş Aktarma Hesabı:</Form.Label>
+                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Fiş Aktarma Alanı:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap" style={{ maxWidth: "260px" }}>
-                                  <div
-                                    className="form-control form-control-sm bg-white text-truncate text-secondary text-start"
+                                  <Form.Select
+                                    size="sm"
+                                    value={formData.DIGER_VERITABANI_ADI || ""}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      const matched = dbAlanlari.find((a) => a.dbName === val);
+                                      handleChange("DIGER_VERITABANI_ADI", val);
+                                      handleChange("FIS_AKTARMA_HESABI", matched?.unvan || val);
+                                    }}
+                                    className="bg-white border text-dark font-monospace"
                                     style={{ fontSize: "0.82rem" }}
-                                    title={formData.FIS_AKTARMA_HESABI || getHesapName(formData.FIS_AKTARILACAK_HESAP_ID)}
+                                    title="Fiş aktarımı yapılacak veritabanı alanı"
                                   >
-                                    {formData.FIS_AKTARMA_HESABI || getHesapName(formData.FIS_AKTARILACAK_HESAP_ID) || "Hesap / Cari Seçiniz"}
-                                  </div>
+                                    <option value="">Alan / Veritabanı Seçiniz...</option>
+                                    {dbAlanlari.map((alan) => (
+                                      <option key={alan.dbName || alan.id} value={alan.dbName}>
+                                        {alan.unvan ? `${alan.unvan} (${alan.dbName})` : alan.dbName}
+                                      </option>
+                                    ))}
+                                    {formData.DIGER_VERITABANI_ADI && !dbAlanlari.some((a) => a.dbName === formData.DIGER_VERITABANI_ADI) && (
+                                      <option value={formData.DIGER_VERITABANI_ADI}>
+                                        {formData.FIS_AKTARMA_HESABI || formData.DIGER_VERITABANI_ADI} ({formData.DIGER_VERITABANI_ADI})
+                                      </option>
+                                    )}
+                                  </Form.Select>
                                   <Button
                                     variant="outline-primary"
-                                    onClick={openFisAktarmaHesabiLookup}
-                                    title="Listeden Seç (Dürbün - Fiş Aktarılacak Hesap/Cari)"
+                                    onClick={openFisAktarmaAlaniLookup}
+                                    title="Listeden Seç (Dürbün - Fiş Aktarılacak Veritabanı Alanları)"
                                     className="d-flex align-items-center px-2 flex-shrink-0"
                                   >
                                     <IconBinoculars size={16} />
                                   </Button>
                                 </InputGroup>
-                              </Col>
-                            </Form.Group>
-                          </Col>
-
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Diğer Veritabanı:</Form.Label>
-                              <Col>
-                                <Form.Control
-                                  type="text"
-                                  size="sm"
-                                  value={formData.DIGER_VERITABANI_ADI || ""}
-                                  onChange={(e) => handleChange("DIGER_VERITABANI_ADI", e.target.value)}
-                                  placeholder="Örn: LIKYA_RESMI"
-                                  className="bg-white border font-monospace text-start"
-                                  style={{ maxWidth: "260px" }}
-                                  title="Aktarma yapılacak diğer veritabanı adı"
-                                />
                               </Col>
                             </Form.Group>
                           </Col>
@@ -2729,36 +2666,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             </Form.Group>
                           </Col>
 
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Vergi No Sorgulama:</Form.Label>
-                              <Col>
-                                <Form.Control
-                                  type="number"
-                                  value={formData.VERGI_NO_SORGULAMA_YONTEMI ?? ""}
-                                  onChange={(e) => handleNumericInput("VERGI_NO_SORGULAMA_YONTEMI", e.target.value)}
-                                  onKeyDown={(e) => blockNonNumericKeys(e)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "90px" }}
-                                />
-                              </Col>
-                            </Form.Group>
-                          </Col>
 
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Sorgulayan TC No:</Form.Label>
-                              <Col>
-                                <Form.Control
-                                  type="text"
-                                  value={formData.VERGI_SORGULAYAN_TC_NO || ""}
-                                  onChange={(e) => handleChange("VERGI_SORGULAYAN_TC_NO", e.target.value)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "110px" }}
-                                />
-                              </Col>
-                            </Form.Group>
-                          </Col>
                         </Row>
                       </div>
                     </Col>
@@ -3139,7 +3047,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
                           <Col xs={12} className="mt-3">
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={{ width: "175px", flex: "0 0 175px", maxWidth: "175px" }} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">
-                                Katalog Ürün Geçiş (sn):
+                                Katalog Geçiş Süresi (sn):
                               </Form.Label>
                               <Col>
                                 <Form.Control
@@ -3162,33 +3070,6 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               </Col>
                             </Form.Group>
                           </Col>
-
-                          <Col xs={12}>
-                            <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                              <Form.Label column style={{ width: "175px", flex: "0 0 175px", maxWidth: "175px" }} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">
-                                Katalog Resim Geçiş (sn):
-                              </Form.Label>
-                              <Col>
-                                <Form.Control
-                                  type="number"
-                                  min={1}
-                                  max={120}
-                                  value={formData.KATALOG_RESIM_SURESI !== null && formData.KATALOG_RESIM_SURESI !== undefined ? formData.KATALOG_RESIM_SURESI : ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value.trim();
-                                    if (raw === "") {
-                                      handleChange("KATALOG_RESIM_SURESI", null);
-                                    } else {
-                                      const parsed = parseInt(raw, 10);
-                                      handleChange("KATALOG_RESIM_SURESI", isNaN(parsed) ? null : parsed);
-                                    }
-                                  }}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "85px" }}
-                                />
-                              </Col>
-                            </Form.Group>
-                          </Col>
                         </Row>
                       </div>
                     </Col>
@@ -3199,25 +3080,15 @@ export const CompanyDefinitionsPage: React.FC = () => {
           </Card.Body>
           <Card.Footer className="bg-white py-2 px-3 border-top d-flex justify-content-between align-items-center">
             <div className="text-secondary small">
-              {formData.FIS_AKTARMA_HESABI ? (
+              {formData.DIGER_VERITABANI_ADI ? (
                 <span>
-                  Fiş Aktarma Hesabı: <strong className="text-dark">{formData.FIS_AKTARMA_HESABI}</strong>
-                  {formData.DIGER_VERITABANI_ADI ? ` (Hedef: ${formData.DIGER_VERITABANI_ADI})` : ""}
+                  Fiş Aktarma Alanı: <strong className="text-dark">{formData.DIGER_VERITABANI_ADI}</strong>
+                  {formData.FIS_AKTARMA_HESABI && formData.FIS_AKTARMA_HESABI !== formData.DIGER_VERITABANI_ADI ? ` (${formData.FIS_AKTARMA_HESABI})` : ""}
                 </span>
               ) : (
-                <span className="text-muted">Fiş aktarımı için Muhasebe sekmesinden hedef hesabı tanımlayabilirsiniz.</span>
+                <span className="text-muted">Fiş aktarımı için Muhasebe sekmesinden hedef veritabanı alanını seçebilirsiniz.</span>
               )}
             </div>
-            <Button
-              variant="outline-primary"
-              size="sm"
-              className="d-flex align-items-center gap-1.5 fw-semibold shadow-2xs"
-              onClick={() => setShowFisAktarmaModal(true)}
-              title="Döviz Fişi Aktarma Modalı"
-            >
-              <IconArrowsExchange size={16} />
-              <span>Fiş Aktarma</span>
-            </Button>
           </Card.Footer>
         </Card>
 
