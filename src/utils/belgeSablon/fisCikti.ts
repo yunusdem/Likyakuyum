@@ -60,7 +60,6 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
 
   const baseSeri = String(girdi.seriNo || "");
   const baseBelge = String(girdi.belgeNo || "");
-  const isSatim = Number(girdi.tip) === 1;
 
   const fisler: FisHtml[] = [];
   for (let idx = 0; idx < lines.length; idx++) {
@@ -71,8 +70,6 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
     const bmv = parseDecimal(line.bmv);
     const kmv = parseDecimal(line.kmv);
     const komisyon = parseDecimal(line.komisyon);
-    const masraf = bmv + kmv + komisyon;
-    const sonToplam = isSatim ? tutar + masraf : tutar - masraf;
 
     // Satıra ait seriNo ve belgeNo varsa onları kullan; yoksa ana fişinkinden sırayla türet
     const satirSeriNo = line.seriNo || (baseSeri ? incrementDocNo(baseSeri, idx) : "");
@@ -86,9 +83,10 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
       guid: satirGuid,
       lines: [{ ...line, miktar, kur, tutar, seriNo: satirSeriNo, belgeNo: satirBelgeNo }],
       toplamTutar: tutar,
-      totalMasraf: masraf,
-      sonToplam: sonToplam,
-      odemeTutari: sonToplam,
+      // Masraf ve son toplamı sunucu kurar: KMV firma ayarına göre (kurdan hariç) eklenir ya da (kura dahil) eklenmez.
+      totalMasraf: undefined,
+      sonToplam: undefined,
+      odemeTutari: undefined,
       bsmvTutari: bmv,
       kmvTutari: kmv,
       komisyonTutari: komisyon,

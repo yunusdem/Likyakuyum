@@ -260,7 +260,7 @@
       "x": 0,
       "y": 331,
       "g": 209.77,
-      "h": 80,
+      "h": 90,
       "kalinlik": 0.75
     },
     {
@@ -358,12 +358,34 @@
       ]
     },
     {
+      "id": "kmv",
+      "ad": "KMV",
+      "tip": "tablo",
+      "kosul": "{{toplam.kmvVar}}",
+      "daralt": true,
+      "x": 2,
+      "y": 395,
+      "g": 205.77,
+      "etiketG": 124,
+      "satirH": 10,
+      "boyut": 7.5,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "kalinDeger": true,
+      "satirlar": [
+        [
+          "KMV",
+          "{{toplam.kmv|tl}} TL"
+        ]
+      ]
+    },
+    {
       "id": "toplam-cizgi",
       "tip": "cizgi",
       "x1": 2,
-      "y1": 396,
+      "y1": 406,
       "x2": 207.77,
-      "y2": 396,
+      "y2": 406,
       "kalinlik": 0.75
     },
     {
@@ -372,7 +394,7 @@
       "zorunlu": true,
       "tip": "tablo",
       "x": 2,
-      "y": 397,
+      "y": 407,
       "g": 205.77,
       "etiketG": 100,
       "satirH": 12,
@@ -392,7 +414,7 @@
       "tip": "kutu",
       "kosul": "!{{satim}}",
       "x": 0,
-      "y": 415,
+      "y": 425,
       "g": 209.77,
       "h": 34,
       "kalinlik": 0.75
@@ -402,7 +424,7 @@
       "tip": "tablo",
       "kosul": "!{{satim}}",
       "x": 2,
-      "y": 417,
+      "y": 427,
       "g": 205.77,
       "etiketG": 110,
       "satirH": 9.5,
@@ -422,7 +444,7 @@
       "tip": "tablo",
       "kosul": "!{{satim}}",
       "x": 2,
-      "y": 426.5,
+      "y": 436.5,
       "g": 205.77,
       "etiketG": 120,
       "satirH": 9.5,
@@ -442,18 +464,19 @@
       "tip": "metin",
       "kosul": "!{{satim}}",
       "x": 2,
-      "y": 437,
+      "y": 447,
       "g": 205.77,
       "metin": "Yazıyla {{toplam.yaziyla}}",
       "boyut": 7.5,
-      "kalin": true
+      "kalin": true,
+      "cokSatir": true
     },
     {
       "id": "alt-kutu-satis",
       "tip": "kutu",
       "kosul": "{{satim}}",
       "x": 0,
-      "y": 415,
+      "y": 425,
       "g": 209.77,
       "h": 67,
       "kalinlik": 0.75
@@ -463,7 +486,7 @@
       "tip": "tablo",
       "kosul": "{{satim}}",
       "x": 2,
-      "y": 417,
+      "y": 427,
       "g": 205.77,
       "etiketG": 110,
       "satirH": 9.5,
@@ -484,20 +507,23 @@
       "tip": "metin",
       "kosul": "{{satim}}",
       "x": 2,
-      "y": 427.5,
+      "y": 437.5,
       "g": 205.77,
       "metin": "Yazıyla #{{toplam.yaziyla}}#",
       "boyut": 7.5,
-      "kalin": true
+      "kalin": true,
+      "cokSatir": true
     },
     {
       "id": "kmv-notu",
+      "ad": "KMV notu",
       "tip": "metin",
-      "kosul": "{{satim}}",
+      "kosul": "{{kmvNotu}}",
+      "daralt": true,
       "x": 2,
-      "y": 437.5,
+      "y": 447.5,
       "g": 205.77,
-      "metin": "Kmv kura dahil değildir.",
+      "metin": "{{kmvNotu}}",
       "boyut": 6.75
     },
     {
@@ -505,7 +531,7 @@
       "tip": "metin",
       "kosul": "{{satim}}",
       "x": 2,
-      "y": 446,
+      "y": 456,
       "g": 205.77,
       "metin": "Ülke Kodu: {{musteri.ulkeKodu}}  Uyruk:: {{musteri.uyruk}}  Vezne adı : {{vezne}}",
       "boyut": 7.5
@@ -515,7 +541,7 @@
       "tip": "metin",
       "kosul": "{{satim}}",
       "x": 2,
-      "y": 456,
+      "y": 466,
       "g": 205.77,
       "metin": "Satışın Dayanağı    {{satisDayanagi}}",
       "boyut": 7.5
@@ -525,7 +551,7 @@
       "tip": "tablo",
       "kosul": "{{satim}}",
       "x": 2,
-      "y": 467,
+      "y": 477,
       "g": 205.77,
       "etiketG": 120,
       "satirH": 12,

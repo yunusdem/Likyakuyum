@@ -13,6 +13,8 @@ export interface FirmaKimlik {
   vergiDairesi: string; vkn: string; mersis: string; ticaretSicilNo: string; subeKodu: string; subeAdi: string; dosyaNo: string;
   satisDayanagi: string;
   basamak: { doviz: number; kur: number; tl: number };
+  /** TODVZ_TANIM.KMV_UYGULAMA_SEKLI: 1 uygulanmasın, 2 kura dahil, 3 kurdan hariç (varsayılan; DovizFisiPage ile aynı). */
+  kmvSekli: 1 | 2 | 3;
 }
 
 /** Döviz fişi ekranının yazdırma anındaki görüntüsü (DovizFisiPrintModal'ın aldığı alanlar). */
@@ -34,10 +36,14 @@ export interface DovizFisVerisi {
   belgeNo: string; ettn: string; tarih: string; saat: string; seri: string;
   subeKodu: string; dosyaNo: string; subeNo: string; istatistikNo: string; vezne: string;
   geldigiUlke: string; satisDayanagi: string;
+  /** Firma ayarı KMV "kura dahil" ise dolu (koşulda: {{kmvDahil}} / !{{kmvDahil}}). */
+  kmvDahil: boolean;
+  /** Satış fişindeki KMV notu: "Kmv kura dahildir." / "Kmv kura dahil değildir."; KMV uygulanmıyorsa ya da alış fişinde boş. */
+  kmvNotu: string;
   firma: FirmaKimlik & { vdVkn: string; mersisSicil: string };
   musteri: { unvan: string; ilceSehir: string; uyruk: string; ulkeKodu: string; pasaportNo: string; kimlikNo: string; vergiDairesi: string; musteriTuru: string; meslek: string };
   satirlar: DovizFisSatiri[];
-  toplam: { tl: number; tutar: number; bsmv: number; bsmvVar: boolean; komisyon: number; kmv: number; masraf: number; sonToplam: number; genel: number; yaziyla: string };
+  toplam: { tl: number; tutar: number; bsmv: number; bsmvVar: boolean; komisyon: number; kmv: number; kmvVar: boolean; masraf: number; sonToplam: number; genel: number; yaziyla: string };
   basamak: { doviz: number; kur: number; tl: number };
   qr: string; erisimAdresi: string; onizleme: boolean; iptal: boolean;
 }
@@ -170,9 +176,11 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
   const bsmv = satim ? (g.bsmvTutari !== undefined && g.bsmvTutari !== null ? sayiOku(g.bsmvTutari) : yuvarla(tl * 0.002)) : 0;
   const komisyon = sayiOku(g.komisyonTutari);
   const kmv = sayiOku(g.kmvTutari);
+  // KMV kura dahilse (firma ayarı 2) tutarın içindedir: masrafa ve son toplama eklenmez, fişte yalnız bilgi olarak basılır.
+  const kmvDahil = firma.kmvSekli === 2;
   const masraf = g.totalMasraf !== undefined && g.totalMasraf !== null
     ? sayiOku(g.totalMasraf)
-    : yuvarla(bsmv + komisyon + kmv);
+    : yuvarla(bsmv + komisyon + (kmvDahil ? 0 : kmv));
   const sonToplam = g.sonToplam !== undefined && g.sonToplam !== null
     ? sayiOku(g.sonToplam)
     : (g.odemeTutari !== undefined && g.odemeTutari !== null
@@ -186,6 +194,7 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
   const tarih = /^\d{4}-\d{2}-\d{2}/.test(tarihHam) ? tarihHam.slice(0, 10).split("-").reverse().join("/") : tarihHam;
   const saat = yazi(g.saat).slice(0, 5);
   const tipAdi = satim ? "SATIM" : "ALIM";
+  const kmvNotu = !satim || firma.kmvSekli === 1 ? "" : kmvDahil ? "Kmv kura dahildir." : "Kmv kura dahil değildir.";
 
   const kimlik = yazi(g.vergiKimlikNo) || "11111111111";
   const musteri = {
@@ -210,13 +219,14 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
     subeKodu, dosyaNo: firma.dosyaNo, subeNo: firma.dosyaNo ? `${subeKodu} - ${firma.dosyaNo}` : subeKodu,
     istatistikNo: yazi(g.istatistikKodu), vezne: yazi(g.vezneKod) || "01",
     geldigiUlke: "Türkiye", satisDayanagi: firma.satisDayanagi || "32 SAYILI KARAR GEREĞİ",
+    kmvDahil, kmvNotu,
     firma: {
       ...firma,
       vdVkn: [firma.vergiDairesi, firma.vkn].filter(Boolean).join(" / "),
       mersisSicil: [firma.mersis, firma.ticaretSicilNo].filter(Boolean).join(" / "),
     },
     musteri, satirlar,
-    toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
+    toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv, kmvVar: satim && kmv > 0, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
     basamak, qr, erisimAdresi, onizleme: false, iptal: false,
   };
 }
@@ -224,8 +234,11 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
 /** Boş firma (veritabanı okunamazsa); kuruş varsayılanları DovizFisiPrintModal ile aynı. */
 export const bosFirma = (): FirmaKimlik => ({
   unvan: "", adres: "", ilce: "", sehir: "", telefon: "", web: "", eposta: "", vergiDairesi: "", vkn: "",
-  mersis: "", ticaretSicilNo: "", subeKodu: "", subeAdi: "", dosyaNo: "", satisDayanagi: "", basamak: { doviz: 2, kur: 4, tl: 2 },
+  mersis: "", ticaretSicilNo: "", subeKodu: "", subeAdi: "", dosyaNo: "", satisDayanagi: "", basamak: { doviz: 2, kur: 4, tl: 2 }, kmvSekli: 3,
 });
+
+/** KMV uygulama şekli: 1 / 2 / 3 dışındaki her değer (0, boş) DovizFisiPage'deki gibi 3 - kurdan hariç sayılır. */
+const kmvSekliOku = (v: unknown): 1 | 2 | 3 => (Number(v) === 1 ? 1 : Number(v) === 2 ? 2 : 3);
 
 /** TODVZ_TANIM satırından (ad sütunları birleştirilmiş) firma kimliği. */
 export function firmaKimlikOku(r: Record<string, any> | null | undefined): FirmaKimlik {
@@ -236,6 +249,7 @@ export function firmaKimlikOku(r: Record<string, any> | null | undefined): Firma
     mersis: yazi(r.MERSIS_NO), ticaretSicilNo: yazi(r.TICARET_SICIL_NO), subeKodu: yazi(r.SUBE_KODU), subeAdi: yazi(r.SUBE_ADI), dosyaNo: yazi(r.DOSYA_NO),
     satisDayanagi: yazi(r.SATISIN_DAYANAGI),
     basamak: { doviz: kurusAyari(r.DOVIZ_KURUS_SAYISI, 2), kur: kurusAyari(r.KUR_KURUS_SAYISI, 4), tl: kurusAyari(r.TL_KURUS_SAYISI, 2) },
+    kmvSekli: kmvSekliOku(r.KMV_UYGULAMA_SEKLI),
   };
 }
 
