@@ -175,7 +175,8 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
   const tutar = g.toplamTutar !== undefined && g.toplamTutar !== null ? sayiOku(g.toplamTutar) : tl;
   const bsmv = satim ? (g.bsmvTutari !== undefined && g.bsmvTutari !== null ? sayiOku(g.bsmvTutari) : yuvarla(tl * 0.002)) : 0;
   const komisyon = sayiOku(g.komisyonTutari);
-  const kmv = sayiOku(g.kmvTutari);
+  // Firma ayarı 1 - Uygulanmasın: satırda KMV gelse bile hesaba girmez, fişte KMV satırı ve notu basılmaz.
+  const kmv = firma.kmvSekli === 1 ? 0 : sayiOku(g.kmvTutari);
   // KMV kura dahilse (firma ayarı 2) tutarın içindedir: masrafa ve son toplama eklenmez, fişte yalnız bilgi olarak basılır.
   const kmvDahil = firma.kmvSekli === 2;
   const masraf = g.totalMasraf !== undefined && g.totalMasraf !== null
