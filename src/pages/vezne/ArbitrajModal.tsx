@@ -317,9 +317,32 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const currencyList = useMemo<ArbitrajCurrencyItem[]>(() => {
     const list: ArbitrajCurrencyItem[] = [];
 
+    // TL her zaman ilk sırada seçilebilir olarak listelenir
+    const tlInParalar = (paralar || []).find((p) => {
+      const kod = (p.kod || "").toUpperCase().trim();
+      return kod === "TL" || kod === "TRY";
+    });
+    const tlInKurSatirlar = (kurSatirlar || []).find((k) => {
+      const kod = (k.kod || "").toUpperCase().trim();
+      return kod === "TL" || kod === "TRY";
+    });
+
+    list.push({
+      id: tlInParalar?.id || tlInKurSatirlar?.paraId || 0,
+      kod: "TL",
+      ad: tlInParalar?.ad || tlInKurSatirlar?.ad || "TÜRK LİRASI",
+      isMaden: false,
+      milyem: 1000,
+      dovizAlis: 1,
+      dovizSatis: 1,
+      efektifAlis: 1,
+      efektifSatis: 1,
+      parite: 1,
+    });
+
     (paralar || []).forEach((p) => {
       const kod = (p.kod || "").toUpperCase().trim();
-      if (kod && kod !== "TL" && kod !== "TRY" && !list.some((x) => x.kod.toUpperCase() === kod)) {
+      if (kod && !list.some((x) => x.kod.toUpperCase() === kod)) {
         list.push({
           id: p.id,
           kod: p.kod,
@@ -337,7 +360,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
     (kurSatirlar || []).forEach((k) => {
       const kod = (k.kod || "").toUpperCase().trim();
-      if (kod && kod !== "TL" && kod !== "TRY" && !list.some((x) => x.kod.toUpperCase() === kod)) {
+      if (kod && !list.some((x) => x.kod.toUpperCase() === kod)) {
         list.push({
           id: k.paraId || 1,
           kod: k.kod,
@@ -354,7 +377,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
     (urunler || []).forEach((u) => {
       const kod = (u.kod || "").toUpperCase().trim();
-      if (kod && kod !== "TL" && kod !== "TRY" && !list.some((x) => x.kod.toUpperCase() === kod)) {
+      if (kod && !list.some((x) => x.kod.toUpperCase() === kod)) {
         list.push({
           id: u.id || u.urunId || 999,
           kod: u.kod,
@@ -383,6 +406,10 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   // Find live rate for currency/item based on direction and kurTuru
   const getRateForItem = useCallback(
     (item: ArbitrajCurrencyItem, direction: "alis" | "satis", currentKurTuru: number = kurTuru): number => {
+      const kodUpper = (item.kod || "").toUpperCase().trim();
+      if (kodUpper === "TL" || kodUpper === "TRY") {
+        return 1.0;
+      }
       const srcKur = (kurSatirlar || []).find((k) => k.kod.toUpperCase() === item.kod.toUpperCase());
       if (direction === "satis") {
         if (currentKurTuru === 1) {
