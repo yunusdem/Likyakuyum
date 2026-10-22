@@ -72,8 +72,8 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
     const komisyon = parseDecimal(line.komisyon);
 
     // Satıra ait seriNo ve belgeNo varsa onları kullan; yoksa ana fişinkinden sırayla türet
-    const satirSeriNo = line.seriNo || (baseSeri ? incrementDocNo(baseSeri, idx) : "");
-    const satirBelgeNo = line.belgeNo || (baseBelge ? incrementDocNo(baseBelge, idx) : "");
+    const satirSeriNo = (line.seriNo && line.seriNo !== baseSeri) ? line.seriNo : (baseSeri ? incrementDocNo(baseSeri, idx) : "");
+    const satirBelgeNo = (line.belgeNo && line.belgeNo !== baseBelge) ? line.belgeNo : (baseBelge ? incrementDocNo(baseBelge, idx) : "");
     const satirGuid = line.ettn || line.guid || girdi.guid;
 
     const tekilGirdi = {
@@ -81,6 +81,7 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
       seriNo: satirSeriNo,
       belgeNo: satirBelgeNo,
       guid: satirGuid,
+      ettn: satirGuid,
       lines: [{ ...line, miktar, kur, tutar, seriNo: satirSeriNo, belgeNo: satirBelgeNo }],
       toplamTutar: tutar,
       // Masraf ve son toplamı sunucu kurar: KMV firma ayarına göre (kurdan hariç) eklenir ya da (kura dahil) eklenmez.

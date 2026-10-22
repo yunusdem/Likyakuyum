@@ -183,6 +183,7 @@ export interface SaveDovizFisPayload {
   kimlikKaynagi?: string;
   masakListesindeVar?: boolean;
   kullaniciId?: number;
+  isArbitraj?: boolean;
   satirlar: {
     satirNo?: number;
     paraId: number;
@@ -202,6 +203,9 @@ export interface SaveDovizFisPayload {
     kdvOrani?: number;
     kdv?: number;
     bankaHesabiId?: number | null;
+    seriNo?: string;
+    belgeNo?: string;
+    ettn?: string;
   }[];
 }
 

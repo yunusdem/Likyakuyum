@@ -22,7 +22,7 @@ export interface DovizFisGirdisi {
   fisId?: number | null; tip: number; tarih?: string; saat?: string; seriNo?: string; belgeNo?: string;
   unvan?: string; vergiKimlikNo?: string; detayIl?: string; detayIlce?: string; detayUyruk?: string;
   detayPasaportNo?: string; detayMeslek?: string; detayCariTipi?: string; vezneKod?: string; istatistikKodu?: string;
-  guid?: string; gelisNedeni?: string; isArbitraj?: boolean; geldigiUlke?: string;
+  guid?: string; ettn?: string; gelisNedeni?: string; isArbitraj?: boolean; geldigiUlke?: string;
   lines: { paraKodu?: string; paraAdi?: string; miktar?: number | string; kur?: number | string; tutar?: number | string; bmv?: number | string; kmv?: number | string; komisyon?: number | string }[];
   toplamTutar?: number | null; totalMasraf?: number | null; sonToplam?: number | null; odemeTutari?: number | null; bsmvTutari?: number | null; kmvTutari?: number | null; komisyonTutari?: number | null;
   giseUsdKuru?: number | null;
@@ -33,6 +33,7 @@ export interface DovizFisSatiri { kod: string; ad: string; miktar: number; kur: 
 
 export interface DovizFisVerisi {
   belgeTuru: "DOVIZ_FIS"; fisId: number; satim: boolean; fisTipi: 0 | 1; tipAdi: "ALIM" | "SATIM";
+  belgeBaslikEki: string; tipSeriBilgisi: string; islemTuru: string; belgeKutuBaslik: string;
   belgeNo: string; ettn: string; tarih: string; saat: string; seri: string;
   subeKodu: string; dosyaNo: string; subeNo: string; istatistikNo: string; vezne: string;
   geldigiUlke: string; satisDayanagi: string;
@@ -192,12 +193,17 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
       : (satim ? yuvarla(tutar + masraf) : yuvarla(tutar - masraf)));
   const genel = sonToplam;
 
-  const belgeNo = kodBuyuk(yazi(kayit.belgeNo) || yazi(g.belgeNo) || yazi(g.seriNo));
-  const ettn = kodBuyuk(yazi(kayit.ettn) || yazi(g.guid));
+  const belgeNo = kodBuyuk(yazi(g.belgeNo) || yazi(kayit.belgeNo) || yazi(g.seriNo));
+  const ettn = kodBuyuk(yazi(g.ettn) || yazi(g.guid) || yazi(kayit.ettn));
   const tarihHam = yazi(g.tarih);
   const tarih = /^\d{4}-\d{2}-\d{2}/.test(tarihHam) ? tarihHam.slice(0, 10).split("-").reverse().join("/") : tarihHam;
   const saat = yazi(g.saat).slice(0, 5);
+  const isArbitraj = Boolean(g.isArbitraj || (g.gelisNedeni && String(g.gelisNedeni).toLowerCase().includes("arbitraj")));
   const tipAdi = satim ? "SATIM" : "ALIM";
+  const belgeBaslikEki = isArbitraj ? `ARBİTRAJ ${tipAdi}` : tipAdi;
+  const tipSeriBilgisi = isArbitraj ? `${tipAdi} (ARBİTRAJ)` : tipAdi;
+  const islemTuru = isArbitraj ? "ARBİTRAJ" : (satim ? "DÖVİZ SATIŞ" : "DÖVİZ ALIŞ");
+  const belgeKutuBaslik = isArbitraj ? `ARBİTRAJ ${tipAdi} BELGESİ BİLGİLERİ` : `${tipAdi} BELGESİ BİLGİLERİ`;
   const kmvNotu = !satim || firma.kmvSekli === 1 ? "" : kmvDahil ? "Kmv kura dahildir." : "Kmv kura dahil değildir.";
 
   const kimlik = yazi(g.vergiKimlikNo) || "11111111111";
@@ -219,13 +225,14 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
 
   return {
     belgeTuru: "DOVIZ_FIS", fisId: Number(g.fisId) || 0, satim, fisTipi: satim ? 1 : 0, tipAdi,
+    belgeBaslikEki, tipSeriBilgisi, islemTuru, belgeKutuBaslik,
     belgeNo, ettn, tarih, saat, seri: "EDOVIZBELGE",
     subeKodu, dosyaNo: firma.dosyaNo, subeNo: firma.dosyaNo ? `${subeKodu} - ${firma.dosyaNo}` : subeKodu,
     istatistikNo: yazi(g.istatistikKodu), vezne: yazi(g.vezneKod) || "01",
     geldigiUlke: yazi(g.geldigiUlke) || (g.gelisNedeni && !satim ? yazi(g.gelisNedeni) : "Türkiye"),
     satisDayanagi: (satim && g.gelisNedeni ? yazi(g.gelisNedeni) : (firma.satisDayanagi || "32 SAYILI KARAR GEREĞİ")),
     gelisNedeni: yazi(g.gelisNedeni) || "",
-    isArbitraj: Boolean(g.isArbitraj || (g.gelisNedeni && String(g.gelisNedeni).toLowerCase().includes("arbitraj"))),
+    isArbitraj,
     kmvDahil, kmvNotu,
     firma: {
       ...firma,

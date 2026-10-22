@@ -46,6 +46,8 @@ export interface DovizFisiPrintModalProps {
   vezne?: any;
   istatistikKodu?: string;
   guid?: string;
+  isArbitraj?: boolean;
+  gelisNedeni?: string;
   lines: PrintLineItem[];
   toplamTutar?: number;
   totalMasraf?: number;
@@ -142,7 +144,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!show) return;
-      if (e.key === "Enter" || e.key === "F8" || e.key === "F10") {
+      if (e.key === "Enter" || e.key === "F8" || e.key === "F9" || e.key === "F10") {
         e.preventDefault();
         e.stopPropagation();
         handlePrint();
@@ -159,12 +161,21 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
   const toplamFisSayisi = Array.isArray(fis) ? fis.length : (fis ? 1 : 0);
 
   return (
-    <Modal show={show && (!autoPrint || !!hata)} onHide={onHide} size="lg" centered backdrop="static">
+    <Modal
+      show={show && (!autoPrint || !!hata)}
+      onHide={onHide}
+      size="lg"
+      centered
+      backdrop="static"
+      style={{ zIndex: 1070 }}
+    >
       <Modal.Header closeButton className="bg-light py-2 px-3">
         <div className="d-flex align-items-center justify-content-between w-100 me-2 flex-wrap gap-2">
           <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2 mb-0">
             <IconPrinter size={18} className="text-primary" />
-            <span>e-Döviz Fişi ({isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ"} - 80mm)</span>
+            <span>
+              e-Döviz Fişi ({props.isArbitraj ? `ARBİTRAJ ${isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ"}` : (isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ")} - 80mm)
+            </span>
             {toplamFisSayisi > 1 && (
               <span className="badge bg-primary ms-1 fs-xs px-2 py-0.5">
                 {toplamFisSayisi} Fiş

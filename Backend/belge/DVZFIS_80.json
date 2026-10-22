@@ -11,7 +11,7 @@
 
     { "id": "gib-amblem", "ad": "GİB amblemi", "zorunlu": true, "tip": "resim", "dosya": "logo-gib.png", "x": 0, "y": 0, "g": 39, "h": 39 },
     { "id": "belge-basligi", "ad": "Belge başlığı", "zorunlu": true, "tip": "satirlar", "x": 0, "y": 42, "g": 125, "boyut": 7.9, "kalin": true, "aralik": 1,
-      "satirlar": ["e-DÖVİZ VE KIYMETLİ", "MADEN {{tipAdi}} BELGESİ"] },
+      "satirlar": ["e-DÖVİZ VE KIYMETLİ", "MADEN {{belgeBaslikEki}} BELGESİ"] },
     { "id": "karekod", "ad": "Karekod", "zorunlu": true, "tip": "qr", "x": 143.8, "y": 0, "boyut": 66, "icerik": "{{qr}}" },
 
     { "id": "ayrac-1", "tip": "cizgi", "x1": 0, "y1": 70, "x2": 209.77, "y2": 70, "kalinlik": 0.75, "kesikli": true },
@@ -29,7 +29,7 @@
       ] },
 
     { "id": "belge-kutusu", "tip": "kutu", "x": 0, "y": 156, "g": 209.77, "h": 59, "kalinlik": 0.75 },
-    { "id": "belge-kutusu-baslik", "tip": "metin", "x": 2, "y": 158, "g": 205.77, "metin": "{{tipAdi}} BELGESİ BİLGİLERİ", "boyut": 7.9, "kalin": true, "hiza": "center" },
+    { "id": "belge-kutusu-baslik", "tip": "metin", "x": 2, "y": 158, "g": 205.77, "metin": "{{belgeKutuBaslik}}", "boyut": 7.9, "kalin": true, "hiza": "center" },
     { "id": "belge-kutusu-cizgi", "tip": "cizgi", "x1": 0, "y1": 168.5, "x2": 209.77, "y2": 168.5, "kalinlik": 0.75 },
     { "id": "belge-bilgileri", "ad": "Belge bilgileri", "zorunlu": true, "tip": "tablo", "x": 2, "y": 171, "g": 205.77, "etiketG": 56, "satirH": 10.5, "boyut": 7.9,
       "cerceve": "yok", "hizaDeger": "left", "kalinDeger": true,
@@ -37,7 +37,8 @@
         ["Belge No", "{{belgeNo}}"],
         ["Tarih", "{{tarih}}   {{saat}}"],
         ["Şube/İst.No", "{{subeNo}}    / {{istatistikNo}}"],
-        ["Seri / Tip", "{{seri}} / {{tipAdi}}"]
+        ["Seri / Tip", "{{seri}} / {{tipSeriBilgisi}}"],
+        { "etiket": "İşlem Türü", "deger": "{{islemTuru}}", "kosul": "{{isArbitraj}}", "kalin": true }
       ] },
 
     { "id": "musteri-baslik-alis", "tip": "metin", "kosul": "!{{satim}}", "x": 0, "y": 219, "g": 209.77, "metin": "DÖVİZ SATAN KİŞİ/KURULUŞ BİLGİLERİ", "boyut": 7.5, "kalin": true },
