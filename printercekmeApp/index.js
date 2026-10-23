@@ -363,148 +363,168 @@ async function executePrintJob(job) {
       const escapedTextPath = textFile && fs.existsSync(textFile) ? textFile.replace(/'/g, "''") : "";
       const numCopies = Math.max(1, Number(copies) || 1);
 
-      // WebBrowser (HTML/SVG/QR/Logo) öncelikli, anında donanıma basan PowerShell scripti
+      // Doğrudan hedef yazıcıya basan, durumu denetleyen, ultra hızlı PowerShell scripti
       const psScript = `
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$target = '${safeTarget}'
+$rawTarget = '${safeTarget}'
 $htmlPath = '${escapedHtmlPath}'
 $textPath = '${escapedTextPath}'
 $copies = ${numCopies}
+$isPos = ${isPos ? "$true" : "$false"}
 
-# 1. Mevcut varsayılan yazıcıyı kayıt defterinden gecikmesiz al
-$prev = $null
+# 1. Hedef Yazıcıyı Doğrula
+$printer = $null
+if ($rawTarget -and $rawTarget.Trim() -ne '') {
+  $printer = Get-Printer -Name $rawTarget -ErrorAction SilentlyContinue
+  if (-not $printer) {
+    $printer = Get-Printer | Where-Object { 
+      $_.Name.Equals($rawTarget, [System.StringComparison]::OrdinalIgnoreCase) -or
+      $_.Name.ToLower().Contains($rawTarget.ToLower()) -or
+      $rawTarget.ToLower().Contains($_.Name.ToLower())
+    } | Select-Object -First 1
+  }
+} else {
+  $printer = Get-Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1
+}
+
+if (-not $printer) {
+  Write-Output "ERROR: '$rawTarget' adında bir yazıcı Windows sisteminde yüklü veya tanımlı değil. Lütfen Yazıcı Tanımlarından geçerli bir yazıcı seçiniz."
+  exit 1
+}
+
+$printerName = $printer.Name
+
+# 2. Donanım ve Çevrimdışı Durum Denetimi
+if ($printer.PrinterStatus -eq 7 -or $printer.PrinterStatus -eq 'Offline' -or ($printer.WorkOffline -eq $true)) {
+  Write-Output "ERROR: '$printerName' yazıcısı Çevrimdışı (Offline) veya bilgisayara bağlı değil. Lütfen USB/Ağ kablosunu ve yazıcının açık olduğunu kontrol ediniz."
+  exit 1
+}
+
+if ($printer.PrinterStatus -eq 2 -or $printer.PrinterStatus -eq 'Error') {
+  Write-Output "ERROR: '$printerName' yazıcısında donanım hatası var (kağıt bitmiş veya yazıcı kapağı açık olabilir)."
+  exit 1
+}
+
+if ($printer.PrinterStatus -eq 1 -or $printer.PrinterStatus -eq 'Paused') {
+  Write-Output "ERROR: '$printerName' yazıcısı duraklatılmış (paused) durumda. Lütfen Windows Yazıcılar menüsünden yazdırmayı sürdürünüz."
+  exit 1
+}
+
+# 3. YAZDIRMA İŞLEMİ (Doğrudan hedef yazıcıya GDI PrintDocument ile, anında ve güvenilir)
 try {
-  $dev = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name Device -ErrorAction SilentlyContinue).Device
-  if ($dev) { $prev = $dev.Split(',')[0] }
-} catch {}
-
-# 2. IE / WebBrowser sayfa kenar boşluklarını ve başlık/altbilgileri sıfırla
-try {
-  $ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
-  if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
-  Set-ItemProperty -Path $ps -Name header -Value '' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name footer -Value '' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name margin_left -Value '0' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name margin_right -Value '0' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name margin_top -Value '0' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name margin_bottom -Value '0' -ErrorAction SilentlyContinue
-} catch {}
-
-$printedOk = $false
-
-# 3. ÖNCELİK: HTML Varsa WebBrowser ile birebir modaldaki gibi grafik, QR kod, logo ve kutularla bas
-if ($htmlPath -and (Test-Path $htmlPath)) {
-  try {
-    if ($target) {
-      try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($target) } catch {}
+  # A4 ve HTML varsa, Edge headless dene
+  if (-not $isPos -and $htmlPath -and (Test-Path $htmlPath)) {
+    $edgePath = "\${env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe"
+    if (-not (Test-Path $edgePath)) {
+      $edgePath = "\${env:ProgramFiles}\\Microsoft\\Edge\\Application\\msedge.exe"
     }
-
-    $form = New-Object System.Windows.Forms.Form
-    $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
-    $form.ShowInTaskbar = $false
-    $form.Width = 100
-    $form.Height = 100
-
-    $wb = New-Object System.Windows.Forms.WebBrowser
-    $wb.ScriptErrorsSuppressed = $true
-    $form.Controls.Add($wb)
-    $form.Show()
-
-    $script:ready = $false
-    $wb.add_DocumentCompleted({
-      param($s, $e)
-      $script:ready = $true
-    })
-
-    $wb.Navigate((New-Object System.Uri $htmlPath).AbsoluteUri)
-
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    while (-not $script:ready -and $sw.Elapsed.TotalSeconds -lt 4) {
-      [System.Windows.Forms.Application]::DoEvents()
-      Start-Sleep -Milliseconds 30
-    }
-
-    if ($script:ready) {
-      for ($c = 0; $c -lt $copies; $c++) {
-        $wb.Print()
-        $sw.Restart()
-        while ($sw.Elapsed.TotalSeconds -lt 1.5) {
-          [System.Windows.Forms.Application]::DoEvents()
-          Start-Sleep -Milliseconds 40
-        }
-      }
-      $printedOk = $true
-    }
-
-    $form.Close()
-    $form.Dispose()
-  } catch {
-    $printedOk = $false
-  } finally {
-    if ($target -and $prev -and $prev -ne $target) {
-      try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($prev) } catch {}
+    if (Test-Path $edgePath) {
+      Start-Process -FilePath $edgePath -ArgumentList "--headless --disable-gpu --print-to-printer=\`"$printerName\`" \`"$htmlPath\`"" -Wait -WindowStyle Hidden
+      Write-Output "SUCCESS: $printerName"
+      exit 0
     }
   }
-}
 
-# 4. YEDEK: HTML yoksa veya basılamadıysa GDI PrintDocument ile bas
-if (-not $printedOk -and $textPath -and (Test-Path $textPath)) {
-  try {
-    Add-Type -AssemblyName System.Drawing
-    $script:lines = Get-Content -LiteralPath $textPath -Encoding UTF8
-    $script:font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
+  # POS fişleri, Argox etiket/slip, ve standart fişler için GDI PrintDocument
+  $doc = New-Object System.Drawing.Printing.PrintDocument
+  $doc.PrinterSettings.PrinterName = $printerName
 
-    for ($c = 0; $c -lt $copies; $c++) {
-      $doc = New-Object System.Drawing.Printing.PrintDocument
-      $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
-      if ($target) { $doc.PrinterSettings.PrinterName = $target }
-      $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
-      $doc.OriginAtMargins = $false
+  if (-not $doc.PrinterSettings.IsValid) {
+    Write-Output "ERROR: '$printerName' yazıcısının sürücüsü hazır veya geçerli değil."
+    exit 1
+  }
 
-      $doc.add_PrintPage({
-        param($sender, $ev)
-        $g = $ev.Graphics
-        $x = 4.0
-        $y = 0.0
-        $lineHeight = $script:font.GetHeight($g) + 1.5
-        foreach ($line in $script:lines) {
-          if ($line -ne $null) {
-            $g.DrawString($line, $script:font, [System.Drawing.Brushes]::Black, $x, $y)
-          }
-          $y += $lineHeight
-        }
-        $ev.HasMorePages = $false
-      })
-      $doc.Print()
-      $doc.Dispose()
+  $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+  $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+  $doc.OriginAtMargins = $false
+
+  # Satırları oku
+  $script:lines = @()
+  if ($textPath -and (Test-Path $textPath)) {
+    $script:lines = [System.IO.File]::ReadAllLines($textPath, [System.Text.Encoding]::UTF8)
+  }
+  if ($script:lines.Count -eq 0 -and $htmlPath -and (Test-Path $htmlPath)) {
+    $rawHtml = [System.IO.File]::ReadAllText($htmlPath, [System.Text.Encoding]::UTF8)
+    $plain = $rawHtml -replace '<style[^>]*>[\s\S]*?</style>', '' -replace '<script[^>]*>[\s\S]*?</script>', '' -replace '<br\s*[\/]?>', "\`n" -replace '<\/p>', "\`n" -replace '<\/tr>', "\`n" -replace '<\/div>', "\`n" -replace '<[^>]+>', ' ' -replace '&nbsp;', ' ' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&quot;', '"'
+    $script:lines = $plain.Split("\`n") | ForEach-Object { $_.TrimEnd() }
+  }
+
+  if ($script:lines.Count -eq 0) {
+    Write-Output "ERROR: Yazdırılacak içerik satırları boş."
+    exit 1
+  }
+
+  # Font ve Çizim Hazırlığı (Fişler için Consolas Bold, okunaklı ve net)
+  $script:font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
+  $script:brush = [System.Drawing.Brushes]::Black
+
+  # POS için rulo uzunluğunu dinamik belirle (Kağıt israfını ve gereksiz A4 boşluğunu önler)
+  if ($isPos) {
+    $calcHeight = [Math]::Max(250, [int]($script:lines.Count * 14) + 100)
+    $doc.DefaultPageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize("CustomReceipt", 315, $calcHeight)
+  }
+
+  $script:lineIdx = 0
+
+  $doc.add_PrintPage({
+    param($sender, $ev)
+    $g = $ev.Graphics
+    $lineHeight = $script:font.GetHeight($g) + 1.2
+    $y = 6.0
+    $x = 4.0
+
+    while ($script:lineIdx -lt $script:lines.Count) {
+      $curLine = $script:lines[$script:lineIdx]
+      if ($curLine -ne $null) {
+        $g.DrawString($curLine, $script:font, $script:brush, $x, $y)
+      }
+      $y += $lineHeight
+      $script:lineIdx++
+
+      if (-not $isPos -and ($y + $lineHeight) -gt $ev.MarginBounds.Bottom) {
+        $ev.HasMorePages = $true
+        return
+      }
     }
-    $printedOk = $true
-  } catch {}
-}
 
-if ($printedOk) {
-  Write-Output "SUCCESS: $target"
+    # Bitiş payı
+    $y += ($lineHeight * 2)
+    $ev.HasMorePages = $false
+  })
+
+  for ($c = 0; $c -lt $copies; $c++) {
+    $script:lineIdx = 0
+    $doc.Print()
+  }
+
+  $doc.Dispose()
+  $script:font.Dispose()
+
+  Write-Output "SUCCESS: $printerName"
   exit 0
-} else {
-  Write-Output "ERROR: Yazdırma başarısız"
+} catch {
+  Write-Output "ERROR: Yazdırma işlemi sırasında hata oluştu: $($_.Exception.Message)"
   exit 1
 }
 `;
 
       try {
-        const { stdout } = await runPowerShell(psScript, 10000);
+        const { stdout } = await runPowerShell(psScript, 8000);
         if (stdout && stdout.includes("SUCCESS")) {
           printed = true;
-          console.log(`[printercekmeApp] Yazdırma BAŞARILI: "${targetPrinter || 'Varsayılan'}"`);
+          const matchName = stdout.match(/SUCCESS:\s*(.+)/)?.[1]?.trim() || targetPrinter;
+          console.log(`[printercekmeApp] Yazdırma BAŞARILI: "${matchName || 'Varsayılan'}"`);
         } else if (stdout && stdout.includes("ERROR")) {
           printed = false;
-          printErrorMessage = stdout.trim();
+          printErrorMessage = stdout.match(/ERROR:\s*(.+)/)?.[1]?.trim() || stdout.trim();
+          console.warn(`[printercekmeApp] Yazdırma BAŞARISIZ: ${printErrorMessage}`);
         } else {
-          printed = true;
+          printed = false;
+          printErrorMessage = stdout ? stdout.trim() : "Yazıcıdan yanıt alınamadı.";
+          console.warn(`[printercekmeApp] Beklenmeyen çıktı: ${printErrorMessage}`);
         }
       } catch (runErr) {
         console.warn("[printercekmeApp] PowerShell yazdırma hatası:", runErr.message);
@@ -514,7 +534,7 @@ if ($printedOk) {
       setTimeout(() => {
         if (htmlFile) { try { fs.unlinkSync(htmlFile); } catch {} }
         if (textFile) { try { fs.unlinkSync(textFile); } catch {} }
-      }, 10000);
+      }, 5000);
 
       if (printed) {
         return {
@@ -525,7 +545,7 @@ if ($printedOk) {
       } else {
         return {
           success: false,
-          message: `Yazıcıya gönderilemedi: ${printErrorMessage || "Bilinmeyen hata"}`,
+          message: printErrorMessage || "Yazıcıya gönderilemedi.",
         };
       }
     } else {
