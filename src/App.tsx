@@ -12,6 +12,7 @@ import ModulKorumasi, { OzellikKorumasi } from "./components/auth/ModulKorumasi"
 import CompanyDefinitionsPage from "./pages/settings/CompanyDefinitionsPage";
 import CashDeskDefinitionsPage from "./pages/settings/CashDeskDefinitionsPage";
 import PrinterDefinitionsPage from "./pages/settings/PrinterDefinitionsPage";
+import { checkAndAutoUpdatePrinterAgent } from "./services/silentPrintService";
 import ProductDefinitionsPage from "./pages/settings/ProductDefinitionsPage";
 import StatisticDefinitionsPage from "./pages/settings/StatisticDefinitionsPage";
 import NumeratorDefinitionsPage from "./pages/settings/NumeratorDefinitionsPage";
@@ -220,6 +221,14 @@ const DashboardLayout: React.FC = () => {
       document.body.classList.remove("drawer-open");
     };
   }, [drawerOpen]);
+
+  // Sayfaya girildiğinde (likyakuyum.com / likyaerp.com) yerel PrinterAgent'ın güncel olup olmadığını denetle
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkAndAutoUpdatePrinterAgent().catch(() => {});
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div className={`dashboard-layout-root min-vh-100 position-relative ${drawerOpen ? "drawer-open" : ""}`}>

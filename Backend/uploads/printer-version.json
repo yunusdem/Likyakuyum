@@ -1,0 +1,8 @@
+{
+  "version": "1.0.1",
+  "downloadUrl": "/PrinterAgent.exe",
+  "name": "PrinterAgent",
+  "releaseNotes": "Argox ve tüm termal/barkod yazıcılar için anında GDI WebBrowser baskı ve otomatik güncelleme altyapısı",
+  "minRequiredVersion": "1.0.0",
+  "updatedAt": "2026-10-23T17:45:00Z"
+}

@@ -100,7 +100,7 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
 /** Yazdırma için tam HTML belgesi (tarayıcı iframe yedeği). */
 export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: number): string {
   const isPos = genislikPt < 300;
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${kacis(baslik)}</title><style>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>${kacis(baslik)}</title><style>
 @page { size: ${isPos ? "auto" : `${pt(genislikPt)} auto`}; margin: 0; }
 @media print {
   html, body {

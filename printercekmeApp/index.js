@@ -1,6 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
+const https = require("https");
+const { URL } = require("url");
+
+const CURRENT_VERSION = "1.0.1";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -215,17 +219,266 @@ async function getSystemPrinters() {
   return printers;
 }
 
+// ─── Otomatik Güncelleme Motoru (Auto-Updater) ───────────────────────────────
+function downloadFile(urlStr, destPath, maxRedirects = 5) {
+  return new Promise((resolve, reject) => {
+    if (maxRedirects < 0) return reject(new Error("Çok fazla yönlendirme"));
+
+    let client = http;
+    try {
+      if (urlStr.startsWith("https:")) client = https;
+    } catch {}
+
+    const req = client.get(urlStr, { timeout: 45000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        let redirectUrl = res.headers.location;
+        if (!redirectUrl.startsWith("http")) {
+          const parsed = new URL(urlStr);
+          redirectUrl = new URL(redirectUrl, parsed.origin).href;
+        }
+        res.resume();
+        return downloadFile(redirectUrl, destPath, maxRedirects - 1).then(resolve).catch(reject);
+      }
+
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`İndirme başarısız, HTTP ${res.statusCode}`));
+      }
+
+      const fileStream = fs.createWriteStream(destPath);
+      res.pipe(fileStream);
+
+      fileStream.on("finish", () => {
+        fileStream.close(() => resolve(destPath));
+      });
+
+      fileStream.on("error", (err) => {
+        try { fs.unlinkSync(destPath); } catch {}
+        reject(err);
+      });
+    });
+
+    req.on("error", (err) => {
+      try { fs.unlinkSync(destPath); } catch {}
+      reject(err);
+    });
+
+    req.on("timeout", () => {
+      req.destroy();
+      try { fs.unlinkSync(destPath); } catch {}
+      reject(new Error("İndirme zaman aşımına uğradı"));
+    });
+  });
+}
+
+function fetchJson(urlStr, timeoutMs = 6000) {
+  return new Promise((resolve, reject) => {
+    const client = urlStr.startsWith("https") ? https : http;
+    const req = client.get(urlStr, { timeout: timeoutMs }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        let redirectUrl = res.headers.location;
+        if (!redirectUrl.startsWith("http")) {
+          const parsed = new URL(urlStr);
+          redirectUrl = new URL(redirectUrl, parsed.origin).href;
+        }
+        res.resume();
+        return fetchJson(redirectUrl, timeoutMs).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      let rawData = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { rawData += chunk; });
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(rawData));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("Timeout")); });
+  });
+}
+
+function isNewerVersion(remote, local) {
+  const parse = (v) => String(v || "").replace(/[^0-9.]/g, "").split(".").map(Number);
+  const r = parse(remote);
+  const l = parse(local);
+  for (let i = 0; i < Math.max(r.length, l.length); i++) {
+    const rv = r[i] || 0;
+    const lv = l[i] || 0;
+    if (rv > lv) return true;
+    if (rv < lv) return false;
+  }
+  return false;
+}
+
+let isUpdating = false;
+
+async function performSelfUpdate(downloadUrl, targetVersion = "") {
+  if (isUpdating) {
+    return { success: false, message: "Güncelleme zaten devam ediyor, lütfen bekleyiniz." };
+  }
+  isUpdating = true;
+
+  const currentExec = process.pkg ? process.execPath : process.argv[1];
+  console.log(`[printercekmeApp] Otomatik güncelleme isteği alındı. Sürüm: ${targetVersion || 'Son Sürüm'}, URL: ${downloadUrl}, Mevcut Dosya: ${currentExec}`);
+
+  if (!process.pkg && !currentExec.endsWith(".exe")) {
+    console.log("[printercekmeApp] Geliştirme (node) ortamında çalışıyor, ikili dosya değişimi atlandı.");
+    isUpdating = false;
+    return { success: true, message: "Geliştirme ortamında çalışıldığı için exe değişimi simüle edildi." };
+  }
+
+  const systemDrive = process.env.SystemDrive || "C:";
+  const tmpFolder = os.platform() === "win32"
+    ? path.join(systemDrive, "ProgramData", "LikyaPrintTemp")
+    : path.join(os.tmpdir(), "likya-print-temp");
+
+  if (!fs.existsSync(tmpFolder)) {
+    try { fs.mkdirSync(tmpFolder, { recursive: true }); } catch {}
+  }
+
+  const updateNewExe = path.join(tmpFolder, `PrinterAgent_new_${Date.now()}.exe`);
+
+  try {
+    console.log(`[printercekmeApp] Yeni sürüm indiriliyor: ${downloadUrl} -> ${updateNewExe}`);
+    await downloadFile(downloadUrl, updateNewExe);
+
+    const stats = fs.statSync(updateNewExe);
+    if (stats.size < 5 * 1024 * 1024) {
+      throw new Error(`İndirilen dosya boyutu beklenenden küçük (${Math.round(stats.size / 1024)} KB), güncelleme iptal edildi.`);
+    }
+
+    if (os.platform() === "win32") {
+      const fd = fs.openSync(updateNewExe, "r");
+      const buffer = Buffer.alloc(2);
+      fs.readSync(fd, buffer, 0, 2, 0);
+      fs.closeSync(fd);
+      if (buffer.toString("ascii") !== "MZ") {
+        throw new Error("İndirilen dosya geçerli bir Windows çalıştırılabilir dosyası (.exe) değil.");
+      }
+    }
+
+    console.log(`[printercekmeApp] Yeni sürüm doğrulandı (${(stats.size / (1024 * 1024)).toFixed(1)} MB). Değiştirme ve yeniden başlatma hazırlanıyor...`);
+
+    if (os.platform() === "win32") {
+      const batPath = path.join(tmpFolder, `likya_updater_${Date.now()}.bat`);
+      const batContent = `@echo off
+chcp 65001 >nul
+set OLD_EXE="${currentExec}"
+set NEW_EXE="${updateNewExe}"
+
+echo Güncelleme uygulanıyor, lütfen bekleyiniz...
+timeout /t 2 /nobreak >nul
+
+:retry_delete
+del %OLD_EXE% >nul 2>&1
+if exist %OLD_EXE% (
+    timeout /t 1 /nobreak >nul
+    goto retry_delete
+)
+
+move /y %NEW_EXE% %OLD_EXE% >nul 2>&1
+start "" %OLD_EXE%
+
+del "%~f0" >nul 2>&1
+exit
+`;
+      fs.writeFileSync(batPath, batContent, "utf8");
+
+      const updaterProc = spawn("cmd.exe", ["/c", batPath], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      updaterProc.unref();
+
+      console.log("[printercekmeApp] Güncelleyici batch scripti başlatıldı, eski süreç kapatılıyor...");
+      setTimeout(() => {
+        process.exit(0);
+      }, 800);
+
+      return {
+        success: true,
+        message: "Yeni sürüm başarıyla indirildi. Uygulama kendini 2 saniye içinde güncelleyip yeniden başlatacaktır.",
+      };
+    } else {
+      fs.copyFileSync(updateNewExe, currentExec);
+      fs.chmodSync(currentExec, 0o755);
+      const child = spawn(currentExec, [], { detached: true, stdio: "ignore" });
+      child.unref();
+      setTimeout(() => process.exit(0), 800);
+      return { success: true, message: "Güncelleme uygulandı ve yeniden başlatılıyor." };
+    }
+  } catch (err) {
+    isUpdating = false;
+    console.error("[printercekmeApp] Otomatik güncelleme hatası:", err);
+    try { if (fs.existsSync(updateNewExe)) fs.unlinkSync(updateNewExe); } catch {}
+    return { success: false, message: `Güncelleme başarısız: ${err.message}` };
+  }
+}
+
+const REMOTE_VERSION_ENDPOINTS = [
+  "https://likyakuyum.com/printer-version.json",
+  "https://likyaerp.com/printer-version.json",
+];
+
+async function checkRemoteUpdates() {
+  if (!process.pkg && !process.execPath.endsWith(".exe")) {
+    return;
+  }
+
+  for (const endpoint of REMOTE_VERSION_ENDPOINTS) {
+    try {
+      const data = await fetchJson(endpoint, 6000);
+      if (data && data.version && isNewerVersion(data.version, CURRENT_VERSION)) {
+        console.log(`[printercekmeApp] Yeni sürüm tespit edildi: v${data.version} (Mevcut: v${CURRENT_VERSION}). Otomatik güncelleniyor...`);
+        let downloadUrl = data.downloadUrl || "/PrinterAgent.exe";
+        if (!downloadUrl.startsWith("http")) {
+          const parsed = new URL(endpoint);
+          downloadUrl = new URL(downloadUrl, parsed.origin).href;
+        }
+        await performSelfUpdate(downloadUrl, data.version);
+        return;
+      }
+    } catch {}
+  }
+}
+
+// Uygulama açıldıktan 8 saniye sonra ve her 20 dakikada bir otomatik kontrol
+setTimeout(() => {
+  checkRemoteUpdates().catch(() => {});
+  setInterval(() => {
+    checkRemoteUpdates().catch(() => {});
+  }, 20 * 60 * 1000);
+}, 8000);
+
+
+
 // ─── HTTP Endpoints ─────────────────────────────────────────────────────────
 
 // Sağlık kontrolü
-app.get(["/health", "/status"], (_req, res) => {
+app.get(["/health", "/status", "/api/version", "/version"], (_req, res) => {
   res.json({
     status: "ok",
     service: "printercekmeApp",
-    version: "1.0.0",
+    version: CURRENT_VERSION,
     platform: os.platform(),
+    execPath: process.pkg ? process.execPath : process.argv[1],
     time: new Date().toISOString(),
   });
+});
+
+app.post(["/api/update", "/update"], async (req, res) => {
+  const { downloadUrl, version } = req.body || {};
+  const url = downloadUrl || "https://likyakuyum.com/PrinterAgent.exe";
+  const result = await performSelfUpdate(url, version);
+  res.json(result);
 });
 
 // Yazıcıları listeleme endpoint'i (Hata verse bile 500 dönmeyip daima [] veya listeyi döner)
@@ -272,103 +525,11 @@ if ($p) {
   return res.json({ success: true, printerName });
 });
 
-// ─── Hızlı Tarayıcı ve Yazıcı Yolu Belirleme (PowerShell Gecikmesini Sıfırlamak İçin) ───
-let cachedEdgePath = null;
-function findEdgePath() {
-  if (cachedEdgePath && fs.existsSync(cachedEdgePath)) return cachedEdgePath;
-  const candidates = [
-    `${process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)"}\\Microsoft\\Edge\\Application\\msedge.exe`,
-    `${process.env.ProgramFiles || "C:\\Program Files"}\\Microsoft\\Edge\\Application\\msedge.exe`,
-    `${process.env.LocalAppData || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
-  ];
-  for (const c of candidates) {
-    if (c && fs.existsSync(c)) {
-      cachedEdgePath = c;
-      return c;
-    }
-  }
-  return null;
-}
-
-let cachedChromePath = null;
-function findChromePath() {
-  if (cachedChromePath && fs.existsSync(cachedChromePath)) return cachedChromePath;
-  const candidates = [
-    `${process.env.ProgramFiles || "C:\\Program Files"}\\Google\\Chrome\\Application\\chrome.exe`,
-    `${process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)"}\\Google\\Chrome\\Application\\chrome.exe`,
-    `${process.env.LocalAppData || ""}\\Google\\Chrome\\Application\\chrome.exe`,
-  ];
-  for (const c of candidates) {
-    if (c && fs.existsSync(c)) {
-      cachedChromePath = c;
-      return c;
-    }
-  }
-  return null;
-}
-
 // Global yazıcı durum önbelleği (PowerShell Get-Printer gecikmesini sıfırlar)
 const printerCache = {
   list: [],
   lastUpdated: 0,
 };
-
-// Node.js üzerinden doğrudan Chromium (Edge/Chrome) headless ile ultra hızlı baskı (<400ms)
-function printDirectWithBrowser(browserPath, printerName, htmlPath, copies = 1) {
-  return new Promise((resolve) => {
-    const numCopies = Math.max(1, Number(copies) || 1);
-    let copiesDone = 0;
-
-    const printNext = () => {
-      const args = [
-        "--headless",
-        "--disable-gpu",
-        printerName ? `--print-to-printer=${printerName}` : "--print-to-default-printer",
-        htmlPath,
-      ];
-
-      const child = spawn(browserPath, args, {
-        windowsHide: true,
-        stdio: ["ignore", "ignore", "pipe"],
-      });
-
-      let finished = false;
-      const timer = setTimeout(() => {
-        if (!finished) {
-          finished = true;
-          try { child.kill(); } catch {}
-          resolve({ success: false, message: "Tarayıcı yazdırma işlemi zaman aşımına uğradı." });
-        }
-      }, 5000);
-
-      child.on("close", () => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timer);
-
-        copiesDone++;
-        if (copiesDone < numCopies) {
-          printNext();
-        } else {
-          resolve({
-            success: true,
-            message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
-            printerName,
-          });
-        }
-      });
-
-      child.on("error", (err) => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timer);
-        resolve({ success: false, message: err.message });
-      });
-    };
-
-    printNext();
-  });
-}
 
 // HTML'den temiz düz metin çıkaran yardımcı fonksiyon
 function extractTextFromHtmlSimple(html) {
@@ -517,235 +678,201 @@ async function executePrintJob(job) {
       const escapedTextPath = textFile && fs.existsSync(textFile) ? textFile.replace(/'/g, "''") : "";
       const numCopies = Math.max(1, Number(copies) || 1);
 
-      // ─── 1. AŞAMA: Ultra Hızlı Doğrudan Tarayıcı Baskısı (Edge / Chrome) ───
-      // Node.js üzerinden doğrudan Chromium spawn edilir, PowerShell cold-start ve Get-Printer sorgu gecikmesi (3-5 sn) tamamen sıfırlanır!
-      const browserPath = findEdgePath() || findChromePath();
-      if (browserPath && htmlFile) {
-        let resolvedTarget = targetPrinter;
-        if (targetPrinter && printerCache.list.length > 0) {
-          const match = printerCache.list.find((p) => p.name.toLowerCase() === targetPrinter.toLowerCase()) ||
-                        printerCache.list.find((p) => p.name.toLowerCase().includes(targetPrinter.toLowerCase()) || targetPrinter.toLowerCase().includes(p.name.toLowerCase()));
-          if (match) {
-            if (match.status === "Çevrimdışı") {
-              return {
-                success: false,
-                message: `'${match.name}' yazıcısı Çevrimdışı (Offline) veya bağlı değil. Lütfen USB/Ağ kablosunu kontrol ediniz.`,
-              };
-            }
-            if (match.status === "Hata") {
-              return {
-                success: false,
-                message: `'${match.name}' yazıcısında donanım hatası var (kağıt bitmiş veya kapak açık olabilir).`,
-              };
-            }
-            if (match.status === "Duraklatıldı") {
-              return {
-                success: false,
-                message: `'${match.name}' yazıcısı duraklatılmış durumda. Lütfen Windows Yazıcılar menüsünden sürdürünüz.`,
-              };
-            }
-            resolvedTarget = match.name;
-          }
-        }
+      console.log(`[printercekmeApp] GDI/HTML yazdırma işlemi başlatılıyor: "${targetPrinter || 'Varsayılan'}"`);
 
-        console.log(`[printercekmeApp] Ultra hızlı doğrudan Chromium baskısı başlatılıyor: "${resolvedTarget || 'Varsayılan'}"`);
-        const directResult = await printDirectWithBrowser(browserPath, resolvedTarget, htmlFile, numCopies);
-        if (directResult && directResult.success) {
-          console.log(`[printercekmeApp] Yazdırma BAŞARILI (Anında): "${resolvedTarget || 'Varsayılan'}"`);
-          setTimeout(() => {
-            try { fs.unlinkSync(htmlFile); } catch {}
-            if (textFile) { try { fs.unlinkSync(textFile); } catch {} }
-          }, 3000);
-          return directResult;
-        } else {
-          console.warn("[printercekmeApp] Doğrudan tarayıcı baskısı başarısız oldu, PowerShell yedek akışına geçiliyor:", directResult?.message);
-        }
-      }
-
-      // ─── 2. AŞAMA: PowerShell Yedek Akışı ───
-      // Doğrudan hedef yazıcıya basan, durumu denetleyen, 1:1 grafik/logo/karekod destekli PowerShell scripti
+      // Doğrudan hedef yazıcıya basan, birebir grafik/logo/karekod destekli hızlı PowerShell scripti
       const psScript = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Drawing
 
+# Native winspool P/Invoke (Anında varsayılan yazıcı değiştirme - 1ms)
+try {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class NativeSpool {
+    [DllImport("winspool.drv", CharSet = CharSet.Auto, SetLastError = true)]
+    public static extern bool SetDefaultPrinter(string Name);
+}
+"@ -ErrorAction SilentlyContinue
+} catch {}
+
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+
+// Hedef ve parametreler
 $rawTarget = '${safeTarget}'
 $htmlPath = '${escapedHtmlPath}'
 $textPath = '${escapedTextPath}'
 $copies = ${numCopies}
 $isPos = ${isPos ? "$true" : "$false"}
 
-# 1. Hedef Yazıcıyı Doğrula
-$printer = $null
-if ($rawTarget -and $rawTarget.Trim() -ne '') {
-  $printer = Get-Printer -Name $rawTarget -ErrorAction SilentlyContinue
-  if (-not $printer) {
-    $printer = Get-Printer | Where-Object { 
-      $_.Name.Equals($rawTarget, [System.StringComparison]::OrdinalIgnoreCase) -or
-      $_.Name.ToLower().Contains($rawTarget.ToLower()) -or
-      $rawTarget.ToLower().Contains($_.Name.ToLower())
-    } | Select-Object -First 1
-  }
-} else {
-  $printer = Get-Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1
-}
-
-if (-not $printer) {
-  Write-Output "ERROR: '$rawTarget' adında bir yazıcı Windows sisteminde yüklü veya tanımlı değil. Lütfen Yazıcı Tanımlarından geçerli bir yazıcı seçiniz."
-  exit 1
-}
-
-$printerName = $printer.Name
-
-# 2. Donanım ve Çevrimdışı Durum Denetimi
-if ($printer.PrinterStatus -eq 7 -or $printer.PrinterStatus -eq 'Offline' -or ($printer.WorkOffline -eq $true)) {
-  Write-Output "ERROR: '$printerName' yazıcısı Çevrimdışı (Offline) veya bilgisayara bağlı değil. Lütfen USB/Ağ kablosunu ve yazıcının açık olduğunu kontrol ediniz."
-  exit 1
-}
-
-if ($printer.PrinterStatus -eq 2 -or $printer.PrinterStatus -eq 'Error') {
-  Write-Output "ERROR: '$printerName' yazıcısında donanım hatası var (kağıt bitmiş veya yazıcı kapağı açık olabilir)."
-  exit 1
-}
-
-if ($printer.PrinterStatus -eq 1 -or $printer.PrinterStatus -eq 'Paused') {
-  Write-Output "ERROR: '$printerName' yazıcısı duraklatılmış (paused) durumda. Lütfen Windows Yazıcılar menüsünden yazdırmayı sürdürünüz."
-  exit 1
-}
-
-# 3. YAZDIRMA İŞLEMİ (Birebir F9 önizlemesi: HTML/SVG/Logo/Karekod ile doğrudan hedef yazıcıya)
+# 1. Mevcut Varsayılan Yazıcıyı Kaydet (1ms)
+$prev = $null
 try {
-  $printed = $false
+  $dev = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows' -Name Device -ErrorAction SilentlyContinue).Device
+  if ($dev) { $prev = $dev.Split(',')[0] }
+} catch {}
 
-  if ($htmlPath -and (Test-Path $htmlPath)) {
-    # 3.1. ÖNCELİK: Microsoft Edge Headless (Modern Chromium - anında, arka planda, birebir logo & karekod)
-    $edgePath = "\${env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe"
-    if (-not (Test-Path $edgePath)) {
-      $edgePath = "\${env:ProgramFiles}\\Microsoft\\Edge\\Application\\msedge.exe"
+# 2. Hedef Yazıcıyı Doğrula ([System.Drawing.Printing.PrinterSettings]::InstalledPrinters - 5ms)
+$exactPrinter = $null
+$installed = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
+
+if ($rawTarget -and $rawTarget.Trim() -ne '') {
+  foreach ($p in $installed) {
+    if ($p.Equals($rawTarget, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $exactPrinter = $p
+      break
     }
-
-    if (Test-Path $edgePath) {
-      for ($c = 0; $c -lt $copies; $c++) {
-        $p = Start-Process -FilePath $edgePath -ArgumentList "--headless --disable-gpu --print-to-printer=\`"$printerName\`" \`"$htmlPath\`"" -Wait -PassThru -WindowStyle Hidden
+  }
+  if (-not $exactPrinter) {
+    foreach ($p in $installed) {
+      if ($p.IndexOf($rawTarget, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or $rawTarget.IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        $exactPrinter = $p
+        break
       }
-      $printed = $true
-      Write-Output "SUCCESS: $printerName"
-      exit 0
     }
-
-    # 3.2. YEDEK 1: Google Chrome Headless (Edge yoksa)
-    $chromePath = "\${env:ProgramFiles}\\Google\\Chrome\\Application\\chrome.exe"
-    if (-not (Test-Path $chromePath)) {
-      $chromePath = "\${env:ProgramFiles(x86)}\\Google\\Chrome\\Application\\chrome.exe"
-    }
-    if (Test-Path $chromePath) {
-      for ($c = 0; $c -lt $copies; $c++) {
-        $p = Start-Process -FilePath $chromePath -ArgumentList "--headless --disable-gpu --print-to-printer=\`"$printerName\`" \`"$htmlPath\`"" -Wait -PassThru -WindowStyle Hidden
+  }
+  if (-not $exactPrinter) {
+    $clean = ($rawTarget -split '[\\/]')[-1].Trim()
+    foreach ($p in $installed) {
+      if ($p.IndexOf($clean, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        $exactPrinter = $p
+        break
       }
-      $printed = $true
-      Write-Output "SUCCESS: $printerName"
-      exit 0
     }
+  }
+}
 
-    # 3.3. YEDEK 2: WebBrowser Formu (Chromium bulunamayan eski sistemler için grafik/HTML baskı)
+if (-not $exactPrinter) {
+  $exactPrinter = $prev
+}
+
+if (-not $exactPrinter -and $installed.Count -gt 0) {
+  $exactPrinter = $installed[0]
+}
+
+if (-not $exactPrinter) {
+  Write-Output "ERROR: Windows sisteminde yüklü hiçbir yazıcı bulunamadı."
+  exit 1
+}
+
+# 3. IE / WebBrowser Ayarları (Sayfa başlık/altbilgi ve marjinlerini sıfırla - tam 80mm fiş oturması için)
+try {
+  $ps = 'HKCU:\Software\Microsoft\Internet Explorer\PageSetup'
+  if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
+  Set-ItemProperty -Path $ps -Name header -Value '' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name footer -Value '' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name margin_left -Value '0' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name margin_right -Value '0' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name margin_top -Value '0' -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $ps -Name margin_bottom -Value '0' -ErrorAction SilentlyContinue
+} catch {}
+
+# Modern HTML5, SVG ve base64 desteği için IE11 motorunu zorunlu kıl
+try {
+  $emu = 'HKCU:\Software\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION'
+  if (-not (Test-Path $emu)) { New-Item -Path $emu -Force | Out-Null }
+  Set-ItemProperty -Path $emu -Name 'powershell.exe' -Value 11001 -Type DWord -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $emu -Name 'PrinterAgent.exe' -Value 11001 -Type DWord -ErrorAction SilentlyContinue
+} catch {}
+
+# 4. Hedef Yazıcıyı Varsayılan Olarak Ata
+$changedDefault = $false
+if ($exactPrinter -and $prev -ne $exactPrinter) {
+  try {
+    [NativeSpool]::SetDefaultPrinter($exactPrinter) | Out-Null
+    $changedDefault = $true
+  } catch {
     try {
-      Add-Type -AssemblyName System.Windows.Forms
-
-      $prev = $null
-      try {
-        $dev = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name Device -ErrorAction SilentlyContinue).Device
-        if ($dev) { $prev = $dev.Split(',')[0] }
-      } catch {}
-
-      try {
-        $ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
-        if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
-        Set-ItemProperty -Path $ps -Name header -Value '' -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path $ps -Name footer -Value '' -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path $ps -Name margin_left -Value '0' -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path $ps -Name margin_right -Value '0' -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path $ps -Name margin_top -Value '0' -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path $ps -Name margin_bottom -Value '0' -ErrorAction SilentlyContinue
-      } catch {}
-
-      if ($printerName) {
-        try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($printerName) } catch {}
-      }
-
-      $form = New-Object System.Windows.Forms.Form
-      $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
-      $form.ShowInTaskbar = $false
-      $form.Width = 100
-      $form.Height = 100
-
-      $wb = New-Object System.Windows.Forms.WebBrowser
-      $wb.ScriptErrorsSuppressed = $true
-      $form.Controls.Add($wb)
-      $form.Show()
-
-      $script:ready = $false
-      $wb.add_DocumentCompleted({
-        param($s, $e)
-        $script:ready = $true
-      })
-
-      $wb.Navigate((New-Object System.Uri $htmlPath).AbsoluteUri)
-
-      $sw = [Diagnostics.Stopwatch]::StartNew()
-      while (-not $script:ready -and $sw.Elapsed.TotalSeconds -lt 4) {
-        [System.Windows.Forms.Application]::DoEvents()
-        Start-Sleep -Milliseconds 30
-      }
-
-      if ($script:ready) {
-        for ($c = 0; $c -lt $copies; $c++) {
-          $wb.Print()
-          $sw.Restart()
-          while ($sw.Elapsed.TotalSeconds -lt 1.5) {
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 40
-          }
-        }
-        $printed = $true
-      }
-
-      $form.Close()
-      $form.Dispose()
-
-      if ($prev -and $prev -ne $printerName) {
-        try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($prev) } catch {}
-      }
-
-      if ($printed) {
-        Write-Output "SUCCESS: $printerName"
-        exit 0
-      }
+      (New-Object -ComObject WScript.Network).SetDefaultPrinter($exactPrinter)
+      $changedDefault = $true
     } catch {}
   }
+}
 
-  # 3.4. SON ÇARE YEDEK: HTML basılamadıysa GDI PrintDocument ile düz metin bas
-  if (-not $printed -and $textPath -and (Test-Path $textPath)) {
+$printed = $false
+
+# 5. BİRİNCİL: WebBrowser Formu ile Birebir Grafik Baskısı (Logo, Karekod, Çizgiler, Tablolar)
+if ($htmlPath -and (Test-Path $htmlPath)) {
+  try {
+    $form = New-Object System.Windows.Forms.Form
+    $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
+    $form.ShowInTaskbar = $false
+    $form.Width = 100
+    $form.Height = 100
+
+    $wb = New-Object System.Windows.Forms.WebBrowser
+    $wb.ScriptErrorsSuppressed = $true
+    $form.Controls.Add($wb)
+    $form.Show()
+
+    $script:ready = $false
+    $wb.add_DocumentCompleted({
+      param($s, $e)
+      $script:ready = $true
+    })
+
+    $uri = [System.Uri]::new($htmlPath)
+    $wb.Navigate($uri.AbsoluteUri)
+
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $script:ready -and $sw.Elapsed.TotalMilliseconds -lt 2500) {
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 15
+    }
+
+    if ($script:ready) {
+      for ($c = 0; $c -lt $copies; $c++) {
+        $wb.Print()
+        $sw.Restart()
+        while ($sw.Elapsed.TotalMilliseconds -lt 650) {
+          [System.Windows.Forms.Application]::DoEvents()
+          Start-Sleep -Milliseconds 25
+        }
+      }
+      $printed = $true
+    }
+
+    $form.Close()
+    $form.Dispose()
+  } catch {}
+}
+
+# Spooler'a aktarım süresi
+Start-Sleep -Milliseconds 200
+
+# Varsayılan yazıcıyı eski haline getir
+if ($changedDefault -and $prev) {
+  try { [NativeSpool]::SetDefaultPrinter($prev) | Out-Null } catch {
+    try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($prev) } catch {}
+  }
+}
+
+if ($printed) {
+  Write-Output "SUCCESS: $exactPrinter"
+  exit 0
+}
+
+# 6. YEDEK (HTML başarısız olduysa): GDI PrintDocument ile Düz Metin Bas
+if ($textPath -and (Test-Path $textPath)) {
+  try {
     $doc = New-Object System.Drawing.Printing.PrintDocument
-    $doc.PrinterSettings.PrinterName = $printerName
+    $doc.PrinterSettings.PrinterName = $exactPrinter
     if ($doc.PrinterSettings.IsValid) {
       $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
       $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
       $doc.OriginAtMargins = $false
-
       $script:lines = [System.IO.File]::ReadAllLines($textPath, [System.Text.Encoding]::UTF8)
       if ($script:lines.Count -gt 0) {
         $script:font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
         $script:brush = [System.Drawing.Brushes]::Black
-        if ($isPos) {
-          $calcHeight = [Math]::Max(250, [int]($script:lines.Count * 14) + 100)
-          $doc.DefaultPageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize("CustomReceipt", 315, $calcHeight)
-        }
         $script:lineIdx = 0
         $doc.add_PrintPage({
           param($sender, $ev)
           $g = $ev.Graphics
           $lineHeight = $script:font.GetHeight($g) + 1.2
-          $y = 6.0
+          $y = 4.0
           $x = 4.0
           while ($script:lineIdx -lt $script:lines.Count) {
             $curLine = $script:lines[$script:lineIdx]
@@ -763,18 +890,15 @@ try {
         }
         $doc.Dispose()
         $script:font.Dispose()
-        Write-Output "SUCCESS: $printerName"
+        Write-Output "SUCCESS: $exactPrinter (Metin)"
         exit 0
       }
     }
-  }
-
-  Write-Output "ERROR: Yazdırma işlemi gerçekleştirilemedi."
-  exit 1
-} catch {
-  Write-Output "ERROR: Yazdırma işlemi sırasında hata oluştu: $($_.Exception.Message)"
-  exit 1
+  } catch {}
 }
+
+Write-Output "ERROR: '$exactPrinter' yazıcısına yazdırma komutu gönderilemedi."
+exit 1
 `;
 
       try {
@@ -853,6 +977,18 @@ const wss = new WebSocketServer({ server });
 wss.on("connection", (ws) => {
   console.log("[printercekmeApp] Yeni WebSocket istemcisi bağlandı.");
 
+  // İlk bağlantıda sürüm bilgisini bildir
+  try {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({
+        action: "agent_info",
+        service: "printercekmeApp",
+        version: CURRENT_VERSION,
+        platform: os.platform(),
+      }));
+    }
+  } catch {}
+
   let isPrinting = false;
 
   const sendPrinters = async () => {
@@ -875,6 +1011,23 @@ wss.on("connection", (ws) => {
       const text = data ? (Buffer.isBuffer(data) ? data.toString("utf8") : String(data)).trim() : "";
       if (text.startsWith("{")) {
         const msg = JSON.parse(text);
+        if (msg.action === "update" || msg.type === "UPDATE") {
+          console.log(`[printercekmeApp] WebSocket üzerinden güncelleme komutu alındı: ${msg.downloadUrl || 'Varsayılan URL'}`);
+          const url = msg.downloadUrl || "https://likyakuyum.com/PrinterAgent.exe";
+          const updateRes = await performSelfUpdate(url, msg.version);
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ action: "update_result", ...updateRes }));
+          }
+          return;
+        }
+
+        if (msg.action === "get_version" || msg.action === "version") {
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ action: "agent_info", version: CURRENT_VERSION, service: "printercekmeApp" }));
+          }
+          return;
+        }
+
         if (msg.action === "print" || msg.type === "PRINT") {
           isPrinting = true;
           console.log(`[printercekmeApp] WebSocket üzerinden yazdırma komutu alındı: "${msg.printerName || msg.targetDevice || 'Varsayılan'}"`);

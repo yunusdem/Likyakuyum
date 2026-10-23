@@ -27,11 +27,198 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
+export const TARGET_PRINTER_AGENT_VERSION = "1.0.1";
+
+/**
+ * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
+ */
+export function isNewerVersion(v1: string, v2: string): boolean {
+  const p1 = String(v1 || "").replace(/[^0-9.]/g, "").split(".").map(Number);
+  const p2 = String(v2 || "").replace(/[^0-9.]/g, "").split(".").map(Number);
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const num1 = p1[i] || 0;
+    const num2 = p2[i] || 0;
+    if (num1 > num2) return true;
+    if (num1 < num2) return false;
+  }
+  return false;
+}
+
+function showPrinterAgentUpdateToast(oldVer: string, newVer: string): void {
+  if (typeof document === "undefined") return;
+  const existing = document.getElementById("likya-printer-agent-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "likya-printer-agent-toast";
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #0f172a;
+    color: #f8fafc;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    z-index: 9999999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 380px;
+    transition: all 0.3s ease;
+  `;
+
+  toast.innerHTML = `
+    <div style="width:28px;height:28px;border-radius:8px;background:rgba(56,189,248,0.15);display:flex;align-items:center;justify-content:center;color:#38bdf8;font-size:16px;flex-shrink:0;">
+      🖨️
+    </div>
+    <div style="flex:1;">
+      <div style="font-weight:600;color:#ffffff;margin-bottom:2px;">Yazıcı Köprüsü Güncelleniyor</div>
+      <div style="color:#94a3b8;font-size:12px;line-height:1.3;">v${oldVer || '1.0.0'} &rarr; v${newVer} otomatik kuruluyor...</div>
+    </div>
+  `;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    try {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(10px)";
+      setTimeout(() => toast.remove(), 400);
+    } catch {}
+  }, 6000);
+}
+
+let lastUpdateCheckTime = 0;
+let isUpdatingAgent = false;
+
+/**
+ * Bilgisayarda çalışan yerel PrinterAgent.exe'nin sürümünü denetler.
+ * Yeni bir sürüm varsa sunucudan (likyakuyum.com / likyaerp.com veya aktif siteden)
+ * exe'yi otomatik olarak indirip kendisini güncellemesini sağlar.
+ */
+export async function checkAndAutoUpdatePrinterAgent(): Promise<{ updated: boolean; currentVersion?: string; targetVersion?: string }> {
+  if (typeof window === "undefined" || isUpdatingAgent) {
+    return { updated: false };
+  }
+
+  const now = Date.now();
+  if (now - lastUpdateCheckTime < 45000) {
+    return { updated: false };
+  }
+  lastUpdateCheckTime = now;
+
+  let currentAgentVer = "";
+  const origin = window.location.origin;
+  const downloadUrl = `${origin}/PrinterAgent.exe`;
+
+  // 1. HTTP /health veya /status üzerinden sürüm sorgula
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 1200);
+    const res = await fetch("http://127.0.0.1:9100/health", { signal: ctrl.signal }).catch(() => null);
+    clearTimeout(t);
+    if (res && res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data && data.version) {
+        currentAgentVer = data.version;
+      }
+    }
+  } catch {}
+
+  // 2. HTTP yanıt vermezse WebSocket üzerinden sürüm dene
+  if (!currentAgentVer && typeof WebSocket !== "undefined") {
+    try {
+      currentAgentVer = await new Promise<string>((resolve) => {
+        const ws = new WebSocket("ws://127.0.0.1:9100");
+        const tm = setTimeout(() => { try { ws.close(); } catch {} resolve(""); }, 1200);
+        ws.onmessage = (e) => {
+          try {
+            const parsed = JSON.parse(e.data);
+            if (parsed && (parsed.action === "agent_info" || parsed.version)) {
+              clearTimeout(tm);
+              ws.close();
+              resolve(parsed.version);
+            }
+          } catch {}
+        };
+        ws.onerror = () => { clearTimeout(tm); resolve(""); };
+      });
+    } catch {}
+  }
+
+  if (!currentAgentVer) {
+    return { updated: false };
+  }
+
+  // Sürüm kontrolü
+  if (isNewerVersion(TARGET_PRINTER_AGENT_VERSION, currentAgentVer)) {
+    console.log(`[silentPrintService] PrinterAgent.exe güncellemesi tespit edildi: v${currentAgentVer} -> v${TARGET_PRINTER_AGENT_VERSION}`);
+    isUpdatingAgent = true;
+
+    showPrinterAgentUpdateToast(currentAgentVer, TARGET_PRINTER_AGENT_VERSION);
+
+    // Güncelleme komutunu gönder (Önce WebSocket, sonra HTTP)
+    let triggered = false;
+    if (typeof WebSocket !== "undefined") {
+      try {
+        triggered = await new Promise<boolean>((resolve) => {
+          const ws = new WebSocket("ws://127.0.0.1:9100");
+          const tm = setTimeout(() => { try { ws.close(); } catch {} resolve(false); }, 4000);
+          ws.onopen = () => {
+            ws.send(JSON.stringify({
+              action: "update",
+              downloadUrl,
+              version: TARGET_PRINTER_AGENT_VERSION,
+            }));
+          };
+          ws.onmessage = (e) => {
+            try {
+              const d = JSON.parse(e.data);
+              if (d && (d.action === "update_result" || d.success !== undefined)) {
+                clearTimeout(tm);
+                ws.close();
+                resolve(Boolean(d.success));
+              }
+            } catch {}
+          };
+          ws.onerror = () => { clearTimeout(tm); resolve(false); };
+        });
+      } catch {}
+    }
+
+    if (!triggered) {
+      try {
+        const res = await fetch("http://127.0.0.1:9100/api/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ downloadUrl, version: TARGET_PRINTER_AGENT_VERSION }),
+        }).catch(() => null);
+        if (res && res.ok) triggered = true;
+      } catch {}
+    }
+
+    setTimeout(() => {
+      isUpdatingAgent = false;
+    }, 8000);
+
+    return { updated: true, currentVersion: currentAgentVer, targetVersion: TARGET_PRINTER_AGENT_VERSION };
+  }
+
+  return { updated: false, currentVersion: currentAgentVer };
+}
+
 /**
  * Yerel yazdırma servislerinin (Port 9100 PrinterAgent / printercekmeApp veya Port 5050)
  * çalışıp çalışmadığını kontrol eder. Öncelik 9100'dedir.
  */
 export async function checkLocalPrintServiceOnline(): Promise<number | null> {
+  // Arka planda güncelleme kontrolünü tetikle
+  checkAndAutoUpdatePrinterAgent().catch(() => {});
+
   const ports = [9100, 5050];
   for (const port of ports) {
     try {
@@ -323,6 +510,9 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
       message: "Yazdırılacak içerik bulunamadı.",
     };
   }
+
+  // Arka planda ajan sürümünü kontrol et ve gerekiyorsa otomatik güncelle
+  checkAndAutoUpdatePrinterAgent().catch(() => {});
 
   // Yazıcıya gönderim süresince ekranda dönen yüklenme ikonu gösterilir
   showPrintLoadingOverlay(printerName);
