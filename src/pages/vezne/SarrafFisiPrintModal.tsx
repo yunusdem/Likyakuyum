@@ -233,11 +233,10 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
         ? (selectedDbPrinter.cihazAdi?.trim() || selectedDbPrinter.ad?.trim() || null)
         : (selectedPrinterId ? String(selectedPrinterId) : (resolvedResult?.printerName || null));
 
-      const targetCopies = selectedDbPrinter?.kopyaSayisi ? Number(selectedDbPrinter.kopyaSayisi) : (resolvedResult?.kopyaSayisi || 1);
       const res = await fisiYazdir(hazir, {
         printerId: selectedDbPrinter ? selectedDbPrinter.id : null,
         printerName: targetPrinterName,
-        copies: targetCopies,
+        copies: 1,
         isPos: printType === "POS",
       });
       if (res.success) {

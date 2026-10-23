@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.0.5";
+const CURRENT_VERSION = "1.0.6";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -705,17 +705,15 @@ async function executePrintJob(job) {
     }
     ${isPos ? `
     .pos-print-root {
-      width: 80mm !important;
-      max-width: 80mm !important;
-      margin: 0 auto !important;
+      width: 304px !important;
+      max-width: 304px !important;
+      margin: 0 !important;
       padding: 0 !important;
       box-sizing: border-box !important;
       text-align: left !important;
     }
     .belge-sablon {
       margin: 0 auto !important;
-      transform: scale(0.95);
-      transform-origin: top center;
       box-sizing: border-box !important;
       page-break-inside: avoid !important;
       text-align: left !important;
@@ -757,8 +755,14 @@ async function executePrintJob(job) {
         if (chromiumPath && isPos) {
           try {
             pngFile = path.join(tmpDir, `print_${timestamp}.png`);
-            const renderCmd = `"${chromiumPath}" --headless --disable-gpu --hide-scrollbars --window-size=576,1400 --screenshot="${pngFile}" "${htmlFile}"`;
-            await execAsync(renderCmd, { timeout: 6000 });
+            const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
+            const renderCmd = `"${chromiumPath}" --headless=new --disable-gpu --no-sandbox --allow-file-access-from-files --hide-scrollbars --window-size=304,1600 --screenshot="${pngFile}" "${fileUrl}"`;
+            try {
+              await execAsync(renderCmd, { timeout: 6000 });
+            } catch {
+              const fallbackCmd = `"${chromiumPath}" --headless --disable-gpu --no-sandbox --allow-file-access-from-files --hide-scrollbars --window-size=304,1600 --screenshot="${pngFile}" "${fileUrl}"`;
+              await execAsync(fallbackCmd, { timeout: 6000 });
+            }
             if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
               pngFile = "";
             }
@@ -981,13 +985,14 @@ try {
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
-        # 80mm fiş genişliğine göre orantılı çiz
-        $targetW = [Math]::Min($ev.PageBounds.Width, 300)
-        if ($targetW -le 50) { $targetW = 280 }
+        # 80mm fiş genişliğine göre orantılı çiz (tam oturacak şekilde)
+        $targetW = $ev.PageBounds.Width
+        if ($targetW -le 50 -or $targetW -gt 400) { $targetW = 285 }
         $scale = $targetW / $script:pngImg.Width
         $targetH = [int]($script:pngImg.Height * $scale)
+        $leftOffset = [Math]::Max(0, [int](($ev.PageBounds.Width - $targetW) / 2))
 
-        $g.DrawImage($script:pngImg, 0, 0, $targetW, $targetH)
+        $g.DrawImage($script:pngImg, $leftOffset, 0, $targetW, $targetH)
         $ev.HasMorePages = $false
       })
       for ($c = 0; $c -lt $copies; $c++) {
@@ -1007,8 +1012,8 @@ try {
           param($sender, $ev)
           $g = $ev.Graphics
           $lineHeight = $script:font.GetHeight($g) + 1.2
-          $y = 4.0
-          $x = 4.0
+          $y = 8.0
+          $x = 14.0
           while ($script:lineIdx -lt $script:lines.Count) {
             $curLine = $script:lines[$script:lineIdx]
             if ($curLine -ne $null) {

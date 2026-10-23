@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.0.5";
+export const TARGET_PRINTER_AGENT_VERSION = "1.0.6";
 
 /**
  * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
