@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.0.1";
+export const TARGET_PRINTER_AGENT_VERSION = "1.0.2";
 
 /**
  * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
@@ -90,6 +90,54 @@ function showPrinterAgentUpdateToast(oldVer: string, newVer: string): void {
       setTimeout(() => toast.remove(), 400);
     } catch {}
   }, 6000);
+}
+
+function showPrinterAgentUpdatedSuccessToast(version: string): void {
+  if (typeof document === "undefined") return;
+  const existing = document.getElementById("likya-printer-agent-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "likya-printer-agent-toast";
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #0f172a;
+    color: #f8fafc;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(34, 197, 94, 0.25);
+    border-radius: 12px;
+    padding: 14px 18px;
+    z-index: 9999999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 380px;
+    transition: all 0.3s ease;
+  `;
+
+  toast.innerHTML = `
+    <div style="width:28px;height:28px;border-radius:8px;background:rgba(34,197,94,0.15);display:flex;align-items:center;justify-content:center;color:#22c55e;font-size:16px;flex-shrink:0;">
+      ✅
+    </div>
+    <div style="flex:1;">
+      <div style="font-weight:600;color:#ffffff;margin-bottom:2px;">Yazıcı Köprüsü Güncellendi</div>
+      <div style="color:#86efac;font-size:12px;line-height:1.3;">v${version} başarıyla yüklendi ve aktif edildi.</div>
+    </div>
+  `;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    try {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(10px)";
+      setTimeout(() => toast.remove(), 400);
+    } catch {}
+  }, 5000);
 }
 
 let lastUpdateCheckTime = 0;
@@ -201,9 +249,28 @@ export async function checkAndAutoUpdatePrinterAgent(): Promise<{ updated: boole
       } catch {}
     }
 
-    setTimeout(() => {
-      isUpdatingAgent = false;
-    }, 8000);
+    // Uygulama yeniden başlatıldıktan sonra yeni sürümü teyit et ve ekranda başarı bildirimi göster
+    let pollCount = 0;
+    const pollInterval = setInterval(async () => {
+      pollCount++;
+      try {
+        const chk = await fetch("http://127.0.0.1:9100/health", { cache: "no-store" }).catch(() => null);
+        if (chk && chk.ok) {
+          const dt = await chk.json().catch(() => ({}));
+          if (dt && dt.version === TARGET_PRINTER_AGENT_VERSION) {
+            clearInterval(pollInterval);
+            isUpdatingAgent = false;
+            showPrinterAgentUpdatedSuccessToast(TARGET_PRINTER_AGENT_VERSION);
+            return;
+          }
+        }
+      } catch {}
+
+      if (pollCount > 10) {
+        clearInterval(pollInterval);
+        isUpdatingAgent = false;
+      }
+    }, 1200);
 
     return { updated: true, currentVersion: currentAgentVer, targetVersion: TARGET_PRINTER_AGENT_VERSION };
   }

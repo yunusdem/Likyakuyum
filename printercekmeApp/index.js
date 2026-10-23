@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.0.1";
+const CURRENT_VERSION = "1.0.2";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -700,7 +700,7 @@ public class NativeSpool {
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
-// Hedef ve parametreler
+# Hedef ve parametreler
 $rawTarget = '${safeTarget}'
 $htmlPath = '${escapedHtmlPath}'
 $textPath = '${escapedTextPath}'
@@ -813,26 +813,27 @@ if ($htmlPath -and (Test-Path $htmlPath)) {
       $script:ready = $true
     })
 
-    $uri = [System.Uri]::new($htmlPath)
-    $wb.Navigate($uri.AbsoluteUri)
+    try {
+      $wb.Navigate($htmlPath)
+    } catch {
+      $wb.Navigate((New-Object System.Uri $htmlPath).AbsoluteUri)
+    }
 
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    while (-not $script:ready -and $sw.Elapsed.TotalMilliseconds -lt 2500) {
+    while (-not $script:ready -and $wb.ReadyState -ne [System.Windows.Forms.WebBrowserReadyState]::Complete -and $sw.Elapsed.TotalMilliseconds -lt 2500) {
       [System.Windows.Forms.Application]::DoEvents()
       Start-Sleep -Milliseconds 15
     }
 
-    if ($script:ready) {
-      for ($c = 0; $c -lt $copies; $c++) {
-        $wb.Print()
-        $sw.Restart()
-        while ($sw.Elapsed.TotalMilliseconds -lt 650) {
-          [System.Windows.Forms.Application]::DoEvents()
-          Start-Sleep -Milliseconds 25
-        }
+    for ($c = 0; $c -lt $copies; $c++) {
+      $wb.Print()
+      $sw.Restart()
+      while ($sw.Elapsed.TotalMilliseconds -lt 750) {
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 25
       }
-      $printed = $true
     }
+    $printed = $true
 
     $form.Close()
     $form.Dispose()
@@ -902,18 +903,19 @@ exit 1
 `;
 
       try {
-        const { stdout } = await runPowerShell(psScript, 8000);
-        if (stdout && stdout.includes("SUCCESS")) {
+        const { stdout, stderr } = await runPowerShell(psScript, 8000);
+        const combined = (stdout || "") + "\n" + (stderr || "");
+        if (combined.includes("SUCCESS")) {
           printed = true;
-          const matchName = stdout.match(/SUCCESS:\s*(.+)/)?.[1]?.trim() || targetPrinter;
+          const matchName = combined.match(/SUCCESS:\s*(.+)/)?.[1]?.trim() || targetPrinter;
           console.log(`[printercekmeApp] Yazdırma BAŞARILI: "${matchName || 'Varsayılan'}"`);
-        } else if (stdout && stdout.includes("ERROR")) {
+        } else if (combined.includes("ERROR")) {
           printed = false;
-          printErrorMessage = stdout.match(/ERROR:\s*(.+)/)?.[1]?.trim() || stdout.trim();
+          printErrorMessage = combined.match(/ERROR:\s*(.+)/)?.[1]?.trim() || stderr.trim() || stdout.trim() || "Yazıcı hatası";
           console.warn(`[printercekmeApp] Yazdırma BAŞARISIZ: ${printErrorMessage}`);
         } else {
           printed = false;
-          printErrorMessage = stdout ? stdout.trim() : "Yazıcıdan yanıt alınamadı.";
+          printErrorMessage = stderr ? stderr.trim() : (stdout ? stdout.trim() : "Yazıcıdan yanıt alınamadı.");
           console.warn(`[printercekmeApp] Beklenmeyen çıktı: ${printErrorMessage}`);
         }
       } catch (runErr) {
@@ -1054,10 +1056,11 @@ wss.on("connection", (ws) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`================================================================`);
-  console.log(`🖨️  printercekmeApp - Yerel Yazıcı Köprüsü Aktif!`);
+  console.log(`🖨️  printercekmeApp - Yerel Yazıcı Köprüsü Aktif! (v${CURRENT_VERSION})`);
   console.log(`📡 HTTP Endpoint : http://${HOST}:${PORT}/api/printers`);
   console.log(`🔌 WebSocket     : ws://${HOST}:${PORT}`);
   console.log(`💻 İşletim Sistemi: ${os.platform()} (${os.arch()})`);
+  console.log(`🔄 Otomatik Güncelleme: Aktif (v${CURRENT_VERSION} - likyakuyum.com / likyaerp.com)`);
   console.log(`================================================================`);
   // Başlangıçta yazıcı listesini ve durumlarını arka planda ısıt (cache warm-up)
   getSystemPrinters().catch(() => {});
