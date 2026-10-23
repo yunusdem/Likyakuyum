@@ -115,7 +115,7 @@ async function printViaWebSocket(options: SilentPrintOptions): Promise<SilentPri
 
       const timer = setTimeout(() => {
         finish(null);
-      }, 12000);
+      }, 4000);
 
       try {
         ws = new WebSocket(wsUrl);
@@ -442,26 +442,48 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
         <title>${title}</title>
         <style>
           @page {
-            size: ${isPos ? "80mm auto" : "A4 portrait"};
+            size: ${isPos ? "auto" : "A4 portrait"};
             margin: ${isPos ? "0mm" : "5mm"} !important;
           }
-          * {
-            box-sizing: border-box;
+          *, *::before, *::after {
+            box-sizing: border-box !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            color-adjust: exact !important;
           }
           html, body {
-            width: 100%;
-            max-width: ${isPos ? "78mm" : "210mm"};
+            width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            background: #ffffff;
-            font-family: ${isPos ? "'Consolas', 'Segoe UI Mono', monospace" : "Arial, Helvetica, sans-serif"};
-            color: #000000;
-            font-weight: 600;
-            font-size: ${isPos ? "12px" : "12px"};
+            background: #ffffff !important;
+            color: #000000 !important;
             -webkit-font-smoothing: antialiased;
           }
+          ${isPos ? `
+          .pos-print-root {
+            width: 100%;
+            max-width: 80mm;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: flex-start !important;
+            box-sizing: border-box !important;
+          }
+          .belge-sablon {
+            margin: 0 auto !important;
+            transform: scale(0.96);
+            transform-origin: top center;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+          }
+          ` : `
+          .belge-sablon {
+            margin: 0 auto !important;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+          }
+          `}
           table {
             border-collapse: collapse;
             width: 100%;
@@ -471,8 +493,8 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
           }
         </style>
       </head>
-      <body>
-        ${htmlContent}
+      <body style="margin:0;padding:0;background:#ffffff;">
+        ${isPos ? `<div class="pos-print-root">${htmlContent}</div>` : htmlContent}
       </body>
     </html>
   `);

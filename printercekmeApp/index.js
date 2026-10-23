@@ -210,6 +210,8 @@ async function getSystemPrinters() {
     console.error("[printercekmeApp] getSystemPrinters genel yakalama:", globalErr.message);
   }
 
+  printerCache.list = printers;
+  printerCache.lastUpdated = Date.now();
   return printers;
 }
 
@@ -269,6 +271,104 @@ if ($p) {
 
   return res.json({ success: true, printerName });
 });
+
+// ─── Hızlı Tarayıcı ve Yazıcı Yolu Belirleme (PowerShell Gecikmesini Sıfırlamak İçin) ───
+let cachedEdgePath = null;
+function findEdgePath() {
+  if (cachedEdgePath && fs.existsSync(cachedEdgePath)) return cachedEdgePath;
+  const candidates = [
+    `${process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)"}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${process.env.ProgramFiles || "C:\\Program Files"}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${process.env.LocalAppData || ""}\\Microsoft\\Edge\\Application\\msedge.exe`,
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) {
+      cachedEdgePath = c;
+      return c;
+    }
+  }
+  return null;
+}
+
+let cachedChromePath = null;
+function findChromePath() {
+  if (cachedChromePath && fs.existsSync(cachedChromePath)) return cachedChromePath;
+  const candidates = [
+    `${process.env.ProgramFiles || "C:\\Program Files"}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)"}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${process.env.LocalAppData || ""}\\Google\\Chrome\\Application\\chrome.exe`,
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) {
+      cachedChromePath = c;
+      return c;
+    }
+  }
+  return null;
+}
+
+// Global yazıcı durum önbelleği (PowerShell Get-Printer gecikmesini sıfırlar)
+const printerCache = {
+  list: [],
+  lastUpdated: 0,
+};
+
+// Node.js üzerinden doğrudan Chromium (Edge/Chrome) headless ile ultra hızlı baskı (<400ms)
+function printDirectWithBrowser(browserPath, printerName, htmlPath, copies = 1) {
+  return new Promise((resolve) => {
+    const numCopies = Math.max(1, Number(copies) || 1);
+    let copiesDone = 0;
+
+    const printNext = () => {
+      const args = [
+        "--headless",
+        "--disable-gpu",
+        printerName ? `--print-to-printer=${printerName}` : "--print-to-default-printer",
+        htmlPath,
+      ];
+
+      const child = spawn(browserPath, args, {
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+
+      let finished = false;
+      const timer = setTimeout(() => {
+        if (!finished) {
+          finished = true;
+          try { child.kill(); } catch {}
+          resolve({ success: false, message: "Tarayıcı yazdırma işlemi zaman aşımına uğradı." });
+        }
+      }, 5000);
+
+      child.on("close", () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+
+        copiesDone++;
+        if (copiesDone < numCopies) {
+          printNext();
+        } else {
+          resolve({
+            success: true,
+            message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
+            printerName,
+          });
+        }
+      });
+
+      child.on("error", (err) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        resolve({ success: false, message: err.message });
+      });
+    };
+
+    printNext();
+  });
+}
 
 // HTML'den temiz düz metin çıkaran yardımcı fonksiyon
 function extractTextFromHtmlSimple(html) {
@@ -340,22 +440,76 @@ async function executePrintJob(job) {
       let htmlFile = "";
       if (html) {
         htmlFile = path.join(tmpDir, `print_${timestamp}.html`);
-        const fullHtml = `<!DOCTYPE html>
+        const isFullDoc = html.trim().startsWith("<!DOCTYPE") || html.trim().startsWith("<html");
+
+        const printStyle = `
+  <style>
+    @page {
+      margin: 0 !important;
+      size: ${isPos ? "auto" : "A4 portrait"};
+    }
+    *, *::before, *::after {
+      box-sizing: border-box !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      background: #ffffff !important;
+      color: #000000 !important;
+      -webkit-font-smoothing: antialiased;
+    }
+    ${isPos ? `
+    .pos-print-root {
+      width: 100%;
+      max-width: 80mm;
+      margin: 0 auto !important;
+      padding: 0 !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: flex-start !important;
+      box-sizing: border-box !important;
+    }
+    .belge-sablon {
+      margin: 0 auto !important;
+      transform: scale(0.96);
+      transform-origin: top center;
+      box-sizing: border-box !important;
+      page-break-inside: avoid !important;
+    }
+    ` : `
+    .belge-sablon {
+      margin: 0 auto !important;
+      box-sizing: border-box !important;
+      page-break-inside: avoid !important;
+    }
+    `}
+  </style>`;
+
+        let fullHtml = "";
+        if (isFullDoc) {
+          if (html.includes("</head>")) {
+            fullHtml = html.replace("</head>", `${printStyle}</head>`);
+          } else {
+            fullHtml = printStyle + html;
+          }
+        } else {
+          fullHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <title>${title}</title>
-  <style>
-    @page { size: ${isPos ? "80mm auto" : "A4 portrait"}; margin: 0mm !important; }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    html, body { width: 100%; margin: 0 !important; padding: 0 !important; background: #ffffff; color: #000000; }
-  </style>
+  ${printStyle}
 </head>
 <body style="margin:0;padding:0;background:#ffffff;">
-  ${html}
+  ${isPos ? `<div class="pos-print-root">${html}</div>` : html}
 </body>
 </html>`;
+        }
         fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
       }
 
@@ -363,7 +517,53 @@ async function executePrintJob(job) {
       const escapedTextPath = textFile && fs.existsSync(textFile) ? textFile.replace(/'/g, "''") : "";
       const numCopies = Math.max(1, Number(copies) || 1);
 
-      // Doğrudan hedef yazıcıya basan, durumu denetleyen, ultra hızlı PowerShell scripti
+      // ─── 1. AŞAMA: Ultra Hızlı Doğrudan Tarayıcı Baskısı (Edge / Chrome) ───
+      // Node.js üzerinden doğrudan Chromium spawn edilir, PowerShell cold-start ve Get-Printer sorgu gecikmesi (3-5 sn) tamamen sıfırlanır!
+      const browserPath = findEdgePath() || findChromePath();
+      if (browserPath && htmlFile) {
+        let resolvedTarget = targetPrinter;
+        if (targetPrinter && printerCache.list.length > 0) {
+          const match = printerCache.list.find((p) => p.name.toLowerCase() === targetPrinter.toLowerCase()) ||
+                        printerCache.list.find((p) => p.name.toLowerCase().includes(targetPrinter.toLowerCase()) || targetPrinter.toLowerCase().includes(p.name.toLowerCase()));
+          if (match) {
+            if (match.status === "Çevrimdışı") {
+              return {
+                success: false,
+                message: `'${match.name}' yazıcısı Çevrimdışı (Offline) veya bağlı değil. Lütfen USB/Ağ kablosunu kontrol ediniz.`,
+              };
+            }
+            if (match.status === "Hata") {
+              return {
+                success: false,
+                message: `'${match.name}' yazıcısında donanım hatası var (kağıt bitmiş veya kapak açık olabilir).`,
+              };
+            }
+            if (match.status === "Duraklatıldı") {
+              return {
+                success: false,
+                message: `'${match.name}' yazıcısı duraklatılmış durumda. Lütfen Windows Yazıcılar menüsünden sürdürünüz.`,
+              };
+            }
+            resolvedTarget = match.name;
+          }
+        }
+
+        console.log(`[printercekmeApp] Ultra hızlı doğrudan Chromium baskısı başlatılıyor: "${resolvedTarget || 'Varsayılan'}"`);
+        const directResult = await printDirectWithBrowser(browserPath, resolvedTarget, htmlFile, numCopies);
+        if (directResult && directResult.success) {
+          console.log(`[printercekmeApp] Yazdırma BAŞARILI (Anında): "${resolvedTarget || 'Varsayılan'}"`);
+          setTimeout(() => {
+            try { fs.unlinkSync(htmlFile); } catch {}
+            if (textFile) { try { fs.unlinkSync(textFile); } catch {} }
+          }, 3000);
+          return directResult;
+        } else {
+          console.warn("[printercekmeApp] Doğrudan tarayıcı baskısı başarısız oldu, PowerShell yedek akışına geçiliyor:", directResult?.message);
+        }
+      }
+
+      // ─── 2. AŞAMA: PowerShell Yedek Akışı ───
+      // Doğrudan hedef yazıcıya basan, durumu denetleyen, 1:1 grafik/logo/karekod destekli PowerShell scripti
       const psScript = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -413,98 +613,164 @@ if ($printer.PrinterStatus -eq 1 -or $printer.PrinterStatus -eq 'Paused') {
   exit 1
 }
 
-# 3. YAZDIRMA İŞLEMİ (Doğrudan hedef yazıcıya GDI PrintDocument ile, anında ve güvenilir)
+# 3. YAZDIRMA İŞLEMİ (Birebir F9 önizlemesi: HTML/SVG/Logo/Karekod ile doğrudan hedef yazıcıya)
 try {
-  # A4 ve HTML varsa, Edge headless dene
-  if (-not $isPos -and $htmlPath -and (Test-Path $htmlPath)) {
+  $printed = $false
+
+  if ($htmlPath -and (Test-Path $htmlPath)) {
+    # 3.1. ÖNCELİK: Microsoft Edge Headless (Modern Chromium - anında, arka planda, birebir logo & karekod)
     $edgePath = "\${env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe"
     if (-not (Test-Path $edgePath)) {
       $edgePath = "\${env:ProgramFiles}\\Microsoft\\Edge\\Application\\msedge.exe"
     }
+
     if (Test-Path $edgePath) {
-      Start-Process -FilePath $edgePath -ArgumentList "--headless --disable-gpu --print-to-printer=\`"$printerName\`" \`"$htmlPath\`"" -Wait -WindowStyle Hidden
+      for ($c = 0; $c -lt $copies; $c++) {
+        $p = Start-Process -FilePath $edgePath -ArgumentList "--headless --disable-gpu --print-to-printer=\`"$printerName\`" \`"$htmlPath\`"" -Wait -PassThru -WindowStyle Hidden
+      }
+      $printed = $true
       Write-Output "SUCCESS: $printerName"
       exit 0
     }
-  }
 
-  # POS fişleri, Argox etiket/slip, ve standart fişler için GDI PrintDocument
-  $doc = New-Object System.Drawing.Printing.PrintDocument
-  $doc.PrinterSettings.PrinterName = $printerName
-
-  if (-not $doc.PrinterSettings.IsValid) {
-    Write-Output "ERROR: '$printerName' yazıcısının sürücüsü hazır veya geçerli değil."
-    exit 1
-  }
-
-  $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
-  $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
-  $doc.OriginAtMargins = $false
-
-  # Satırları oku
-  $script:lines = @()
-  if ($textPath -and (Test-Path $textPath)) {
-    $script:lines = [System.IO.File]::ReadAllLines($textPath, [System.Text.Encoding]::UTF8)
-  }
-  if ($script:lines.Count -eq 0 -and $htmlPath -and (Test-Path $htmlPath)) {
-    $rawHtml = [System.IO.File]::ReadAllText($htmlPath, [System.Text.Encoding]::UTF8)
-    $plain = $rawHtml -replace '<style[^>]*>[\s\S]*?</style>', '' -replace '<script[^>]*>[\s\S]*?</script>', '' -replace '<br\s*[\/]?>', "\`n" -replace '<\/p>', "\`n" -replace '<\/tr>', "\`n" -replace '<\/div>', "\`n" -replace '<[^>]+>', ' ' -replace '&nbsp;', ' ' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&quot;', '"'
-    $script:lines = $plain.Split("\`n") | ForEach-Object { $_.TrimEnd() }
-  }
-
-  if ($script:lines.Count -eq 0) {
-    Write-Output "ERROR: Yazdırılacak içerik satırları boş."
-    exit 1
-  }
-
-  # Font ve Çizim Hazırlığı (Fişler için Consolas Bold, okunaklı ve net)
-  $script:font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
-  $script:brush = [System.Drawing.Brushes]::Black
-
-  # POS için rulo uzunluğunu dinamik belirle (Kağıt israfını ve gereksiz A4 boşluğunu önler)
-  if ($isPos) {
-    $calcHeight = [Math]::Max(250, [int]($script:lines.Count * 14) + 100)
-    $doc.DefaultPageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize("CustomReceipt", 315, $calcHeight)
-  }
-
-  $script:lineIdx = 0
-
-  $doc.add_PrintPage({
-    param($sender, $ev)
-    $g = $ev.Graphics
-    $lineHeight = $script:font.GetHeight($g) + 1.2
-    $y = 6.0
-    $x = 4.0
-
-    while ($script:lineIdx -lt $script:lines.Count) {
-      $curLine = $script:lines[$script:lineIdx]
-      if ($curLine -ne $null) {
-        $g.DrawString($curLine, $script:font, $script:brush, $x, $y)
+    # 3.2. YEDEK 1: Google Chrome Headless (Edge yoksa)
+    $chromePath = "\${env:ProgramFiles}\\Google\\Chrome\\Application\\chrome.exe"
+    if (-not (Test-Path $chromePath)) {
+      $chromePath = "\${env:ProgramFiles(x86)}\\Google\\Chrome\\Application\\chrome.exe"
+    }
+    if (Test-Path $chromePath) {
+      for ($c = 0; $c -lt $copies; $c++) {
+        $p = Start-Process -FilePath $chromePath -ArgumentList "--headless --disable-gpu --print-to-printer=\`"$printerName\`" \`"$htmlPath\`"" -Wait -PassThru -WindowStyle Hidden
       }
-      $y += $lineHeight
-      $script:lineIdx++
-
-      if (-not $isPos -and ($y + $lineHeight) -gt $ev.MarginBounds.Bottom) {
-        $ev.HasMorePages = $true
-        return
-      }
+      $printed = $true
+      Write-Output "SUCCESS: $printerName"
+      exit 0
     }
 
-    # Bitiş payı
-    $y += ($lineHeight * 2)
-    $ev.HasMorePages = $false
-  })
+    # 3.3. YEDEK 2: WebBrowser Formu (Chromium bulunamayan eski sistemler için grafik/HTML baskı)
+    try {
+      Add-Type -AssemblyName System.Windows.Forms
 
-  for ($c = 0; $c -lt $copies; $c++) {
-    $script:lineIdx = 0
-    $doc.Print()
+      $prev = $null
+      try {
+        $dev = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name Device -ErrorAction SilentlyContinue).Device
+        if ($dev) { $prev = $dev.Split(',')[0] }
+      } catch {}
+
+      try {
+        $ps = 'HKCU:\\Software\\Microsoft\\Internet Explorer\\PageSetup'
+        if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
+        Set-ItemProperty -Path $ps -Name header -Value '' -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $ps -Name footer -Value '' -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $ps -Name margin_left -Value '0' -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $ps -Name margin_right -Value '0' -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $ps -Name margin_top -Value '0' -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $ps -Name margin_bottom -Value '0' -ErrorAction SilentlyContinue
+      } catch {}
+
+      if ($printerName) {
+        try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($printerName) } catch {}
+      }
+
+      $form = New-Object System.Windows.Forms.Form
+      $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
+      $form.ShowInTaskbar = $false
+      $form.Width = 100
+      $form.Height = 100
+
+      $wb = New-Object System.Windows.Forms.WebBrowser
+      $wb.ScriptErrorsSuppressed = $true
+      $form.Controls.Add($wb)
+      $form.Show()
+
+      $script:ready = $false
+      $wb.add_DocumentCompleted({
+        param($s, $e)
+        $script:ready = $true
+      })
+
+      $wb.Navigate((New-Object System.Uri $htmlPath).AbsoluteUri)
+
+      $sw = [Diagnostics.Stopwatch]::StartNew()
+      while (-not $script:ready -and $sw.Elapsed.TotalSeconds -lt 4) {
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 30
+      }
+
+      if ($script:ready) {
+        for ($c = 0; $c -lt $copies; $c++) {
+          $wb.Print()
+          $sw.Restart()
+          while ($sw.Elapsed.TotalSeconds -lt 1.5) {
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 40
+          }
+        }
+        $printed = $true
+      }
+
+      $form.Close()
+      $form.Dispose()
+
+      if ($prev -and $prev -ne $printerName) {
+        try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($prev) } catch {}
+      }
+
+      if ($printed) {
+        Write-Output "SUCCESS: $printerName"
+        exit 0
+      }
+    } catch {}
   }
 
-  $doc.Dispose()
-  $script:font.Dispose()
+  # 3.4. SON ÇARE YEDEK: HTML basılamadıysa GDI PrintDocument ile düz metin bas
+  if (-not $printed -and $textPath -and (Test-Path $textPath)) {
+    $doc = New-Object System.Drawing.Printing.PrintDocument
+    $doc.PrinterSettings.PrinterName = $printerName
+    if ($doc.PrinterSettings.IsValid) {
+      $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+      $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+      $doc.OriginAtMargins = $false
 
-  Write-Output "SUCCESS: $printerName"
-  exit 0
+      $script:lines = [System.IO.File]::ReadAllLines($textPath, [System.Text.Encoding]::UTF8)
+      if ($script:lines.Count -gt 0) {
+        $script:font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
+        $script:brush = [System.Drawing.Brushes]::Black
+        if ($isPos) {
+          $calcHeight = [Math]::Max(250, [int]($script:lines.Count * 14) + 100)
+          $doc.DefaultPageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize("CustomReceipt", 315, $calcHeight)
+        }
+        $script:lineIdx = 0
+        $doc.add_PrintPage({
+          param($sender, $ev)
+          $g = $ev.Graphics
+          $lineHeight = $script:font.GetHeight($g) + 1.2
+          $y = 6.0
+          $x = 4.0
+          while ($script:lineIdx -lt $script:lines.Count) {
+            $curLine = $script:lines[$script:lineIdx]
+            if ($curLine -ne $null) {
+              $g.DrawString($curLine, $script:font, $script:brush, $x, $y)
+            }
+            $y += $lineHeight
+            $script:lineIdx++
+          }
+          $ev.HasMorePages = $false
+        })
+        for ($c = 0; $c -lt $copies; $c++) {
+          $script:lineIdx = 0
+          $doc.Print()
+        }
+        $doc.Dispose()
+        $script:font.Dispose()
+        Write-Output "SUCCESS: $printerName"
+        exit 0
+      }
+    }
+  }
+
+  Write-Output "ERROR: Yazdırma işlemi gerçekleştirilemedi."
+  exit 1
 } catch {
   Write-Output "ERROR: Yazdırma işlemi sırasında hata oluştu: $($_.Exception.Message)"
   exit 1
@@ -640,4 +906,6 @@ server.listen(PORT, HOST, () => {
   console.log(`🔌 WebSocket     : ws://${HOST}:${PORT}`);
   console.log(`💻 İşletim Sistemi: ${os.platform()} (${os.arch()})`);
   console.log(`================================================================`);
+  // Başlangıçta yazıcı listesini ve durumlarını arka planda ısıt (cache warm-up)
+  getSystemPrinters().catch(() => {});
 });

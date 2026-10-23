@@ -99,12 +99,12 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
 
 /** Yazdırma için tam HTML belgesi (tarayıcı iframe yedeği). */
 export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: number): string {
+  const isPos = genislikPt < 300;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${kacis(baslik)}</title><style>
-@page { size: ${pt(genislikPt)} auto; margin: 0; }
+@page { size: ${isPos ? "auto" : `${pt(genislikPt)} auto`}; margin: 0; }
 @media print {
   html, body {
-    width: ${pt(genislikPt)} !important;
-    max-width: ${pt(genislikPt)} !important;
+    width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
@@ -113,12 +113,23 @@ export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: numbe
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+  .pos-print-root {
+    width: 100%;
+    max-width: 80mm;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    box-sizing: border-box !important;
+  }
   .belge-sablon {
-    width: 100% !important;
+    margin: 0 auto !important;
+    ${isPos ? "transform: scale(0.96); transform-origin: top center;" : ""}
     page-break-inside: avoid !important;
   }
 }
 * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 html, body { margin: 0 !important; padding: 0 !important; background: #fff; color: #000000; font-family: 'Consolas', 'Segoe UI Mono', monospace; font-weight: 600; }
-</style></head><body>${govde}</body></html>`;
+</style></head><body>${isPos ? `<div class="pos-print-root">${govde}</div>` : govde}</body></html>`;
 }
