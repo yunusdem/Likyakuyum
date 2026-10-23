@@ -1,8 +1,8 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.5",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "Argox ve tüm termal yazıcılar için hatasız GDI baskı ve otomatik güncelleme altyapısı",
+  "releaseNotes": "Windows Edge/Chromium doğrudan GDI ve RAW spooler tetikleme motoru",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-10-23T18:20:00Z"
+  "updatedAt": "2026-10-23T20:15:00Z"
 }

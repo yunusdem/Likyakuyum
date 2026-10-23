@@ -4468,7 +4468,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     try {
       const fisCikti = await perakendeFisleriHtml(previewFatura, isPos ? "80" : "A4");
       const sonuc = await fisiYazdir(fisCikti, {
-        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
         copies: resolved.kopyaSayisi || 1,
         isPos,
       });
@@ -4811,7 +4811,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         try {
           const fisCikti = await perakendeFisleriHtml(result || payload, isPos ? "80" : "A4");
           const sonuc = await fisiYazdir(fisCikti, {
-            printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+            printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
             copies: resolved.kopyaSayisi || 1,
             isPos,
           });

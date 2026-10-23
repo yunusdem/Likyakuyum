@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.0.2";
+const CURRENT_VERSION = "1.0.5";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -14,8 +14,37 @@ const util = require("util");
 
 const execAsync = util.promisify(exec);
 
+// Windows ortamında IE11/Edge ve varsayılan yazıcı ayarlarını başlangıçta kayıt defterine uygula
+function initWindowsPrinterRegistry() {
+  if (os.platform() !== "win32") return;
+  const regCmds = [
+    // Windows 10/11'de "Varsayılan yazıcımı Windows yönetsin" özelliğini kapat (Yazıcı seçimini kalıcı kıl)
+    'reg add "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows" /v "LegacyDefaultPrinterMode" /t REG_DWORD /d 1 /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\Main\\FeatureControl\\FEATURE_BROWSER_EMULATION" /v "powershell.exe" /t REG_DWORD /d 11001 /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\Main\\FeatureControl\\FEATURE_BROWSER_EMULATION" /v "PrinterAgent.exe" /t REG_DWORD /d 11001 /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\Main\\FeatureControl\\FEATURE_BROWSER_EMULATION" /v "node.exe" /t REG_DWORD /d 11001 /f',
+    'reg add "HKCU\\Software\\Wow6432Node\\Microsoft\\Internet Explorer\\Main\\FeatureControl\\FEATURE_BROWSER_EMULATION" /v "powershell.exe" /t REG_DWORD /d 11001 /f',
+    'reg add "HKCU\\Software\\Wow6432Node\\Microsoft\\Internet Explorer\\Main\\FeatureControl\\FEATURE_BROWSER_EMULATION" /v "PrinterAgent.exe" /t REG_DWORD /d 11001 /f',
+    'reg add "HKCU\\Software\\Wow6432Node\\Microsoft\\Internet Explorer\\Main\\FeatureControl\\FEATURE_BROWSER_EMULATION" /v "node.exe" /t REG_DWORD /d 11001 /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\PageSetup" /v "header" /t REG_SZ /d "" /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\PageSetup" /v "footer" /t REG_SZ /d "" /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\PageSetup" /v "margin_left" /t REG_SZ /d "0" /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\PageSetup" /v "margin_right" /t REG_SZ /d "0" /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\PageSetup" /v "margin_top" /t REG_SZ /d "0" /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\PageSetup" /v "margin_bottom" /t REG_SZ /d "0" /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\PageSetup" /v "Shrink_To_Fit" /t REG_SZ /d "no" /f',
+    'reg add "HKCU\\Software\\Microsoft\\Internet Explorer\\PageSetup" /v "Print_Background" /t REG_SZ /d "yes" /f',
+  ];
+  for (const cmd of regCmds) {
+    try {
+      exec(cmd, { windowsHide: true }, () => {});
+    } catch {}
+  }
+}
+initWindowsPrinterRegistry();
+
 // PowerShell scriptlerini Base64 Unicode (-EncodedCommand) ile güvenle ve asılı kalmadan çalıştıran fonksiyon
-function runPowerShell(script, timeoutMs = 8000) {
+function runPowerShell(script, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
     const systemRoot = process.env.SystemRoot || "C:\\Windows";
     const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
@@ -492,6 +521,25 @@ app.get(["/api/printers", "/printers"], async (_req, res) => {
   }
 });
 
+// Windows üzerinde kurulu Chromium (Edge veya Chrome) yürütülebilir dosyasını bulur
+function findChromiumPath() {
+  if (os.platform() !== "win32") return null;
+  const sysDrive = process.env.SystemDrive || "C:";
+  const candidates = [
+    path.join(process.env["ProgramFiles(x86)"] || `${sysDrive}\\Program Files (x86)`, "Microsoft", "Edge", "Application", "msedge.exe"),
+    path.join(process.env["ProgramFiles"] || `${sysDrive}\\Program Files`, "Microsoft", "Edge", "Application", "msedge.exe"),
+    path.join(process.env["ProgramFiles"] || `${sysDrive}\\Program Files`, "Google", "Chrome", "Application", "chrome.exe"),
+    path.join(process.env["ProgramFiles(x86)"] || `${sysDrive}\\Program Files (x86)`, "Google", "Chrome", "Application", "chrome.exe"),
+    path.join(process.env["LOCALAPPDATA"] || `${sysDrive}\\Users\\Default\\AppData\\Local`, "Google", "Chrome", "Application", "chrome.exe"),
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {}
+  }
+  return null;
+}
+
 // Windows varsayılan yazıcısını ayarlama endpoint'i (Tarayıcı çıktısının doğru yazıcıya gitmesini sağlar)
 app.post(["/api/set-default", "/set-default"], async (req, res) => {
   const { printerName } = req.body || {};
@@ -506,15 +554,46 @@ app.post(["/api/set-default", "/set-default"], async (req, res) => {
       const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
       const safeTarget = printerName.replace(/'/g, "''");
       const psCmd = `
-$target = '${safeTarget}';
-$p = Get-Printer | Where-Object { $_.Name -like ('*' + $target + '*') } | Select-Object -First 1;
-if (-not $p) { $p = Get-Printer | Where-Object { $_.Name -eq $target } | Select-Object -First 1 };
-if ($p) {
-  (New-Object -ComObject WScript.Network).SetDefaultPrinter($p.Name)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class NativeSpool {
+    [DllImport("winspool.drv", CharSet = CharSet.Auto, SetLastError = true)]
+    public static extern bool SetDefaultPrinter(string Name);
+}
+"@ -ErrorAction SilentlyContinue
+} catch {}
+
+try {
+  Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name 'LegacyDefaultPrinterMode' -Value 1 -ErrorAction SilentlyContinue
+} catch {}
+
+$target = '${safeTarget}'
+$installed = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
+$matched = $null
+foreach ($p in $installed) {
+  if ($p.Equals($target, [System.StringComparison]::OrdinalIgnoreCase)) { $matched = $p; break }
+}
+if (-not $matched) {
+  foreach ($p in $installed) {
+    if ($p.IndexOf($target, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or $target.IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+      $matched = $p; break
+    }
+  }
+}
+if ($matched) {
+  try { [NativeSpool]::SetDefaultPrinter($matched) | Out-Null } catch {
+    (New-Object -ComObject WScript.Network).SetDefaultPrinter($matched)
+  }
+  Write-Output "SUCCESS: $matched"
+} else {
+  Write-Output "NOT_FOUND"
 }
 `;
-      await execAsync(`"${psPath}" -NoProfile -NonInteractive -Command "${psCmd.replace(/\r?\n/g, ' ')}"`, { timeout: 4000 });
-      console.log(`[printercekmeApp] Varsayılan yazıcı "${printerName}" olarak ayarlandı.`);
+      const { stdout } = await execAsync(`"${psPath}" -NoProfile -NonInteractive -Command "${psCmd.replace(/\r?\n/g, ' ')}"`, { timeout: 4000 });
+      console.log(`[printercekmeApp] Varsayılan yazıcı "${printerName}" ayarlandı. Çıktı: ${stdout.trim()}`);
       return res.json({ success: true, printerName });
     } catch (err) {
       console.warn("[printercekmeApp] Varsayılan yazıcı ayarlama hatası:", err.message);
@@ -599,6 +678,7 @@ async function executePrintJob(job) {
       }
 
       let htmlFile = "";
+      let pngFile = "";
       if (html) {
         htmlFile = path.join(tmpDir, `print_${timestamp}.html`);
         const isFullDoc = html.trim().startsWith("<!DOCTYPE") || html.trim().startsWith("<html");
@@ -606,8 +686,8 @@ async function executePrintJob(job) {
         const printStyle = `
   <style>
     @page {
-      margin: 0 !important;
-      size: ${isPos ? "auto" : "A4 portrait"};
+      margin: 0mm !important;
+      size: ${isPos ? "80mm auto" : "A4 portrait"};
     }
     *, *::before, *::after {
       box-sizing: border-box !important;
@@ -625,21 +705,18 @@ async function executePrintJob(job) {
     }
     ${isPos ? `
     .pos-print-root {
-      width: 100%;
-      max-width: 80mm;
+      width: 80mm !important;
+      max-width: 80mm !important;
       margin: 0 auto !important;
       padding: 0 !important;
-      display: flex !important;
-      justify-content: center !important;
-      align-items: flex-start !important;
       box-sizing: border-box !important;
+      text-align: left !important;
     }
     .belge-sablon {
       margin: 0 auto !important;
-      transform: scale(0.96);
-      transform-origin: top center;
       box-sizing: border-box !important;
       page-break-inside: avoid !important;
+      text-align: left !important;
     }
     ` : `
     .belge-sablon {
@@ -672,27 +749,91 @@ async function executePrintJob(job) {
 </html>`;
         }
         fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
+
+        // Edge/Chromium ile piksel piksel birebir önizleme görüntüsü oluştur (Google Chrome kalitesi)
+        const chromiumPath = findChromiumPath();
+        if (chromiumPath && isPos) {
+          try {
+            pngFile = path.join(tmpDir, `print_${timestamp}.png`);
+            const renderCmd = `"${chromiumPath}" --headless --disable-gpu --hide-scrollbars --window-size=576,1400 --screenshot="${pngFile}" "${htmlFile}"`;
+            await execAsync(renderCmd, { timeout: 6000 });
+            if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
+              pngFile = "";
+            }
+          } catch {
+            pngFile = "";
+          }
+        }
       }
 
       const escapedHtmlPath = htmlFile ? htmlFile.replace(/'/g, "''") : "";
       const escapedTextPath = textFile && fs.existsSync(textFile) ? textFile.replace(/'/g, "''") : "";
+      const escapedPngPath = pngFile && fs.existsSync(pngFile) ? pngFile.replace(/'/g, "''") : "";
       const numCopies = Math.max(1, Number(copies) || 1);
 
-      console.log(`[printercekmeApp] GDI/HTML yazdırma işlemi başlatılıyor: "${targetPrinter || 'Varsayılan'}"`);
+      console.log(`[printercekmeApp] Yerel yazdırma işlemi başlatılıyor: "${targetPrinter || 'Varsayılan'}" (PNG: ${Boolean(pngFile)})`);
 
-      // Doğrudan hedef yazıcıya basan, birebir grafik/logo/karekod destekli hızlı PowerShell scripti
+      // Windows Doğrudan GDI ve Spooler Yazdırma Scripti
       const psScript = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Native winspool P/Invoke (Anında varsayılan yazıcı değiştirme - 1ms)
+# Native Spooler ve Raw Printer P/Invoke tanımları
 try {
   Add-Type -TypeDefinition @"
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 public class NativeSpool {
     [DllImport("winspool.drv", CharSet = CharSet.Auto, SetLastError = true)]
     public static extern bool SetDefaultPrinter(string Name);
+}
+public class RawPrinter {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public class DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+    [DllImport("winspool.drv", EntryPoint = "ClosePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+    [DllImport("winspool.drv", EntryPoint = "EndDocPrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "StartPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "EndPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "WritePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+    public static bool SendBytesToPrinter(string szPrinterName, byte[] pBytes) {
+        IntPtr hPrinter = IntPtr.Zero;
+        DOCINFOA di = new DOCINFOA();
+        di.pDocName = "Likya_Fis";
+        di.pDataType = "RAW";
+        if (OpenPrinter(szPrinterName.Normalize(), out hPrinter, IntPtr.Zero)) {
+            if (StartDocPrinter(hPrinter, 1, di)) {
+                if (StartPagePrinter(hPrinter)) {
+                    IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(pBytes.Length);
+                    Marshal.Copy(pBytes, 0, pUnmanagedBytes, pBytes.Length);
+                    int dwWritten = 0;
+                    bool success = WritePrinter(hPrinter, pUnmanagedBytes, pBytes.Length, out dwWritten);
+                    Marshal.FreeCoTaskMem(pUnmanagedBytes);
+                    EndPagePrinter(hPrinter);
+                    EndDocPrinter(hPrinter);
+                    ClosePrinter(hPrinter);
+                    return success;
+                }
+                EndDocPrinter(hPrinter);
+            }
+            ClosePrinter(hPrinter);
+        }
+        return false;
+    }
 }
 "@ -ErrorAction SilentlyContinue
 } catch {}
@@ -700,24 +841,56 @@ public class NativeSpool {
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
-# Hedef ve parametreler
+# Parametreler
 $rawTarget = '${safeTarget}'
 $htmlPath = '${escapedHtmlPath}'
 $textPath = '${escapedTextPath}'
+$pngPath = '${escapedPngPath}'
 $copies = ${numCopies}
 $isPos = ${isPos ? "$true" : "$false"}
 
-# 1. Mevcut Varsayılan Yazıcıyı Kaydet (1ms)
-$prev = $null
+# 1. Windows 10/11 Varsayılan Yönetimini Devre Dışı Bırak
 try {
-  $dev = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows' -Name Device -ErrorAction SilentlyContinue).Device
-  if ($dev) { $prev = $dev.Split(',')[0] }
+  Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name 'LegacyDefaultPrinterMode' -Value 1 -ErrorAction SilentlyContinue
 } catch {}
 
-# 2. Hedef Yazıcıyı Doğrula ([System.Drawing.Printing.PrinterSettings]::InstalledPrinters - 5ms)
-$exactPrinter = $null
+# 2. Sistemdeki Yüklü Yazıcıları Tara
 $installed = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
 
+function Clean-PName($str) {
+  if (-not $str) { return "" }
+  $s = $str -replace '\\s*\\([0-9]+\\s*yönlendirildi\\)', ''
+  $s = $s -replace '\\s*\\(yönlendirildi\\s*[0-9]+\\)', ''
+  $s = $s -replace '\\s*\\([^\\)]*redirected[^\\)]*\\)', ''
+  $s = $s -replace '\\s*\\([^\\)]*session[^\\)]*\\)', ''
+  $s = $s -replace '[^a-zA-Z0-9]', ''
+  return $s.ToLower().Trim()
+}
+
+function Test-IsVirtual($str) {
+  if (-not $str) { return $true }
+  $low = $str.ToLower()
+  $virts = @("onenote", "pdf", "xps", "fax", "document writer", "root print queue", "anydesk", "teamviewer")
+  foreach ($v in $virts) {
+    if ($low.IndexOf($v) -ge 0) { return $true }
+  }
+  return $false
+}
+
+function Test-IsPos($str) {
+  if (-not $str) { return $false }
+  if (Test-IsVirtual $str) { return $false }
+  $low = $str.ToLower()
+  $posKeys = @("pos", "thermal", "termal", "receipt", "fis", "fiş", "80", "58", "xp-", "xprinter", "epson", "bixolon", "hprt", "rp80", "rp-80", "citizen", "star", "sam4s", "zj-", "argox", "zebra", "tsc", "godex", "kuveyt", "hugin", "inter")
+  foreach ($k in $posKeys) {
+    if ($low.IndexOf($k) -ge 0) { return $true }
+  }
+  return $false
+}
+
+$exactPrinter = $null
+
+# 2.A: Hedef Yazıcı Eşleştirmesi
 if ($rawTarget -and $rawTarget.Trim() -ne '') {
   foreach ($p in $installed) {
     if ($p.Equals($rawTarget, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -727,143 +900,102 @@ if ($rawTarget -and $rawTarget.Trim() -ne '') {
   }
   if (-not $exactPrinter) {
     foreach ($p in $installed) {
-      if ($p.IndexOf($rawTarget, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or $rawTarget.IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        $exactPrinter = $p
-        break
+      if (-not (Test-IsVirtual $p)) {
+        if ($p.IndexOf($rawTarget, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or $rawTarget.IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+          $exactPrinter = $p
+          break
+        }
       }
     }
   }
   if (-not $exactPrinter) {
-    $clean = ($rawTarget -split '[\\/]')[-1].Trim()
-    foreach ($p in $installed) {
-      if ($p.IndexOf($clean, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        $exactPrinter = $p
-        break
+    $cleanRaw = Clean-PName $rawTarget
+    if ($cleanRaw.Length -ge 3) {
+      foreach ($p in $installed) {
+        if (-not (Test-IsVirtual $p)) {
+          $cleanP = Clean-PName $p
+          if ($cleanP -eq $cleanRaw -or $cleanP.IndexOf($cleanRaw) -ge 0 -or $cleanRaw.IndexOf($cleanP) -ge 0) {
+            $exactPrinter = $p
+            break
+          }
+        }
       }
     }
   }
 }
 
-if (-not $exactPrinter) {
-  $exactPrinter = $prev
+# 2.B: Hedef bulunamadıysa POS cihazlarını tara
+if ((-not $exactPrinter -or (Test-IsVirtual $exactPrinter)) -and $isPos) {
+  foreach ($p in $installed) {
+    if (Test-IsPos $p) {
+      $exactPrinter = $p
+      break
+    }
+  }
 }
 
-if (-not $exactPrinter -and $installed.Count -gt 0) {
-  $exactPrinter = $installed[0]
+# 2.C: İlk fiziksel yazıcıyı seç
+if (-not $exactPrinter) {
+  foreach ($p in $installed) {
+    if (-not (Test-IsVirtual $p)) {
+      $exactPrinter = $p
+      break
+    }
+  }
 }
 
-if (-not $exactPrinter) {
-  Write-Output "ERROR: Windows sisteminde yüklü hiçbir yazıcı bulunamadı."
+# 2.D: Hiçbir fiziksel yazıcı yoksa hata ver
+if (-not $exactPrinter -or (Test-IsVirtual $exactPrinter)) {
+  $allPrintersStr = ($installed -join ', ')
+  Write-Output "ERROR: Hedef yazıcı ('$rawTarget') bu bilgisayarda bulunamadı ve fiziksel yazıcı algılanamadı. Sistemdeki yazıcılar: [$allPrintersStr]"
   exit 1
 }
 
-# 3. IE / WebBrowser Ayarları (Sayfa başlık/altbilgi ve marjinlerini sıfırla - tam 80mm fiş oturması için)
+# 3. Hedef Yazıcıyı Windows Varsayılanı Yap (Chrome Ctrl+P'nin de bunu otomatik seçmesi için)
 try {
-  $ps = 'HKCU:\Software\Microsoft\Internet Explorer\PageSetup'
-  if (-not (Test-Path $ps)) { New-Item -Path $ps -Force | Out-Null }
-  Set-ItemProperty -Path $ps -Name header -Value '' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name footer -Value '' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name margin_left -Value '0' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name margin_right -Value '0' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name margin_top -Value '0' -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $ps -Name margin_bottom -Value '0' -ErrorAction SilentlyContinue
-} catch {}
-
-# Modern HTML5, SVG ve base64 desteği için IE11 motorunu zorunlu kıl
-try {
-  $emu = 'HKCU:\Software\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION'
-  if (-not (Test-Path $emu)) { New-Item -Path $emu -Force | Out-Null }
-  Set-ItemProperty -Path $emu -Name 'powershell.exe' -Value 11001 -Type DWord -ErrorAction SilentlyContinue
-  Set-ItemProperty -Path $emu -Name 'PrinterAgent.exe' -Value 11001 -Type DWord -ErrorAction SilentlyContinue
-} catch {}
-
-# 4. Hedef Yazıcıyı Varsayılan Olarak Ata
-$changedDefault = $false
-if ($exactPrinter -and $prev -ne $exactPrinter) {
-  try {
-    [NativeSpool]::SetDefaultPrinter($exactPrinter) | Out-Null
-    $changedDefault = $true
-  } catch {
-    try {
-      (New-Object -ComObject WScript.Network).SetDefaultPrinter($exactPrinter)
-      $changedDefault = $true
-    } catch {}
-  }
+  [NativeSpool]::SetDefaultPrinter($exactPrinter) | Out-Null
+} catch {
+  try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($exactPrinter) } catch {}
 }
 
-$printed = $false
+$spooledSuccess = $false
 
-# 5. BİRİNCİL: WebBrowser Formu ile Birebir Grafik Baskısı (Logo, Karekod, Çizgiler, Tablolar)
-if ($htmlPath -and (Test-Path $htmlPath)) {
-  try {
-    $form = New-Object System.Windows.Forms.Form
-    $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
-    $form.ShowInTaskbar = $false
-    $form.Width = 100
-    $form.Height = 100
+# 4. YÖNTEM 1: GDI PrintDocument (Chromium PNG veya Metin çıktısı ile doğrudan donanıma baskı)
+try {
+  $doc = New-Object System.Drawing.Printing.PrintDocument
+  $doc.PrinterSettings.PrinterName = $exactPrinter
+  if ($doc.PrinterSettings.IsValid) {
+    $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+    $doc.OriginAtMargins = $false
+    $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
 
-    $wb = New-Object System.Windows.Forms.WebBrowser
-    $wb.ScriptErrorsSuppressed = $true
-    $form.Controls.Add($wb)
-    $form.Show()
+    if ($pngPath -and (Test-Path $pngPath)) {
+      # Chromium ile render edilmiş birebir fiş görseli (Logo, Çizgi, QR, Bold)
+      $script:pngImg = [System.Drawing.Image]::FromFile($pngPath)
+      $doc.add_PrintPage({
+        param($s, $ev)
+        $g = $ev.Graphics
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
-    $script:ready = $false
-    $wb.add_DocumentCompleted({
-      param($s, $e)
-      $script:ready = $true
-    })
+        # 80mm fiş genişliğine göre orantılı çiz
+        $targetW = [Math]::Min($ev.PageBounds.Width, 300)
+        if ($targetW -le 50) { $targetW = 280 }
+        $scale = $targetW / $script:pngImg.Width
+        $targetH = [int]($script:pngImg.Height * $scale)
 
-    try {
-      $wb.Navigate($htmlPath)
-    } catch {
-      $wb.Navigate((New-Object System.Uri $htmlPath).AbsoluteUri)
-    }
-
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    while (-not $script:ready -and $wb.ReadyState -ne [System.Windows.Forms.WebBrowserReadyState]::Complete -and $sw.Elapsed.TotalMilliseconds -lt 2500) {
-      [System.Windows.Forms.Application]::DoEvents()
-      Start-Sleep -Milliseconds 15
-    }
-
-    for ($c = 0; $c -lt $copies; $c++) {
-      $wb.Print()
-      $sw.Restart()
-      while ($sw.Elapsed.TotalMilliseconds -lt 750) {
-        [System.Windows.Forms.Application]::DoEvents()
-        Start-Sleep -Milliseconds 25
+        $g.DrawImage($script:pngImg, 0, 0, $targetW, $targetH)
+        $ev.HasMorePages = $false
+      })
+      for ($c = 0; $c -lt $copies; $c++) {
+        $doc.Print()
       }
-    }
-    $printed = $true
-
-    $form.Close()
-    $form.Dispose()
-  } catch {}
-}
-
-# Spooler'a aktarım süresi
-Start-Sleep -Milliseconds 200
-
-# Varsayılan yazıcıyı eski haline getir
-if ($changedDefault -and $prev) {
-  try { [NativeSpool]::SetDefaultPrinter($prev) | Out-Null } catch {
-    try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($prev) } catch {}
-  }
-}
-
-if ($printed) {
-  Write-Output "SUCCESS: $exactPrinter"
-  exit 0
-}
-
-# 6. YEDEK (HTML başarısız olduysa): GDI PrintDocument ile Düz Metin Bas
-if ($textPath -and (Test-Path $textPath)) {
-  try {
-    $doc = New-Object System.Drawing.Printing.PrintDocument
-    $doc.PrinterSettings.PrinterName = $exactPrinter
-    if ($doc.PrinterSettings.IsValid) {
-      $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
-      $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
-      $doc.OriginAtMargins = $false
+      $script:pngImg.Dispose()
+      $doc.Dispose()
+      $spooledSuccess = $true
+    } elseif ($textPath -and (Test-Path $textPath)) {
+      # GDI Doğrudan Metin Baskısı
       $script:lines = [System.IO.File]::ReadAllLines($textPath, [System.Text.Encoding]::UTF8)
       if ($script:lines.Count -gt 0) {
         $script:font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
@@ -891,11 +1023,34 @@ if ($textPath -and (Test-Path $textPath)) {
         }
         $doc.Dispose()
         $script:font.Dispose()
-        Write-Output "SUCCESS: $exactPrinter (Metin)"
-        exit 0
+        $spooledSuccess = $true
+      }
+    }
+  }
+} catch {
+  Write-Warning ("GDI PrintDocument hatası: " + $_.Exception.Message)
+}
+
+# 5. YÖNTEM 2 (Yedek): Raw Spooler Doğrudan ESC/POS Gönderimi
+if (-not $spooledSuccess -and $textPath -and (Test-Path $textPath) -and $isPos) {
+  try {
+    $rawStr = [System.IO.File]::ReadAllText($textPath, [System.Text.Encoding]::UTF8)
+    if ($rawStr) {
+      # ESC/POS Initialize (ESC @) + Türkçe Windows-1254/CP857 Kod Sayfası + Metin + Kağıt Kesme (GS V 1)
+      $initBytes = [byte[]]@(0x1B, 0x40, 0x1B, 0x74, 0x12)
+      $bodyBytes = [System.Text.Encoding]::GetEncoding(1254).GetBytes($rawStr + "\`r\`n\`r\`n\`r\`n\`r\`n")
+      $cutBytes = [byte[]]@(0x1D, 0x56, 0x01)
+      $allBytes = $initBytes + $bodyBytes + $cutBytes
+      for ($c = 0; $c -lt $copies; $c++) {
+        $spooledSuccess = [RawPrinter]::SendBytesToPrinter($exactPrinter, $allBytes)
       }
     }
   } catch {}
+}
+
+if ($spooledSuccess) {
+  Write-Output "SUCCESS: $exactPrinter"
+  exit 0
 }
 
 Write-Output "ERROR: '$exactPrinter' yazıcısına yazdırma komutu gönderilemedi."
@@ -903,42 +1058,47 @@ exit 1
 `;
 
       try {
-        const { stdout, stderr } = await runPowerShell(psScript, 8000);
+        const { stdout, stderr } = await runPowerShell(psScript, 12000);
         const combined = (stdout || "") + "\n" + (stderr || "");
         if (combined.includes("SUCCESS")) {
           printed = true;
           const matchName = combined.match(/SUCCESS:\s*(.+)/)?.[1]?.trim() || targetPrinter;
           console.log(`[printercekmeApp] Yazdırma BAŞARILI: "${matchName || 'Varsayılan'}"`);
+          return {
+            success: true,
+            message: `Fiş "${matchName || targetPrinter || 'Varsayılan Yazıcı'}" cihazına başarıyla gönderildi.`,
+            printerName: matchName || targetPrinter,
+          };
         } else if (combined.includes("ERROR")) {
           printed = false;
           printErrorMessage = combined.match(/ERROR:\s*(.+)/)?.[1]?.trim() || stderr.trim() || stdout.trim() || "Yazıcı hatası";
           console.warn(`[printercekmeApp] Yazdırma BAŞARISIZ: ${printErrorMessage}`);
+          return {
+            success: false,
+            message: printErrorMessage,
+          };
         } else {
           printed = false;
           printErrorMessage = stderr ? stderr.trim() : (stdout ? stdout.trim() : "Yazıcıdan yanıt alınamadı.");
           console.warn(`[printercekmeApp] Beklenmeyen çıktı: ${printErrorMessage}`);
+          return {
+            success: false,
+            message: printErrorMessage,
+          };
         }
       } catch (runErr) {
         console.warn("[printercekmeApp] PowerShell yazdırma hatası:", runErr.message);
         printErrorMessage = runErr.message;
-      }
-
-      setTimeout(() => {
-        if (htmlFile) { try { fs.unlinkSync(htmlFile); } catch {} }
-        if (textFile) { try { fs.unlinkSync(textFile); } catch {} }
-      }, 5000);
-
-      if (printed) {
-        return {
-          success: true,
-          message: `Fiş "${targetPrinter || 'Varsayılan Yazıcı'}" cihazına başarıyla gönderildi.`,
-          printerName: targetPrinter,
-        };
-      } else {
         return {
           success: false,
-          message: printErrorMessage || "Yazıcıya gönderilemedi.",
+          message: printErrorMessage,
         };
+      } finally {
+        setTimeout(() => {
+          if (htmlFile) { try { fs.unlinkSync(htmlFile); } catch {} }
+          if (textFile) { try { fs.unlinkSync(textFile); } catch {} }
+          if (pngFile) { try { fs.unlinkSync(pngFile); } catch {} }
+        }, 5000);
       }
     } else {
       // macOS / Linux Ortamı

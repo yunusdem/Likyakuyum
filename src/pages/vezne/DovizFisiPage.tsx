@@ -4059,6 +4059,7 @@ export const DovizFisiPage: React.FC = () => {
         let printerToUse: YaziciItem | null = targetPrinter || null;
         let copiesToUse: number = targetCopies || 1;
         let isPos = false;
+        let resolvedEffectiveName: string | null = null;
 
         if (printerToUse) {
           isPos = printerToUse.belgeYaziciModu !== 0;
@@ -4074,6 +4075,7 @@ export const DovizFisiPage: React.FC = () => {
             printers,
           });
           printerToUse = resolved.printer;
+          resolvedEffectiveName = resolved.printerName;
           isPos = resolved.recommendedPrintType === "POS";
           copiesToUse = resolved.kopyaSayisi || 1;
         }
@@ -4083,7 +4085,7 @@ export const DovizFisiPage: React.FC = () => {
         try {
           const fisCikti = await dovizFisleriHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
           const sonuc = await fisiYazdir(fisCikti, {
-            printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
+            printerName: printerToUse?.cihazAdi || printerToUse?.ad || resolvedEffectiveName || null,
             copies: copiesToUse,
             isPos,
           });
@@ -4658,7 +4660,7 @@ export const DovizFisiPage: React.FC = () => {
     try {
       const fisCikti = await dovizFisleriHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
       const sonuc = await fisiYazdir(fisCikti, {
-        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
         copies: resolved.kopyaSayisi || 1,
         isPos: true,
       });

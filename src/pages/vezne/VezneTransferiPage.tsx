@@ -225,10 +225,44 @@ export const VezneTransferiPage: React.FC = () => {
   const [showParaSayModal, setShowParaSayModal] = useState<boolean>(false);
   const [banknotCounts, setBanknotCounts] = useState<Record<string, Record<number, number>>>({});
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
+  const [systemPrinters, setSystemPrinters] = useState<{ name: string; isDefault?: boolean }[]>([]);
+  const [selectedPrinterId, setSelectedPrinterId] = useState<string | number | null>(null);
 
   useEffect(() => {
-    PrinterService.getYazicilar().then(setPrinters).catch(() => {});
-  }, []);
+    Promise.all([
+      PrinterService.getYazicilar().catch(() => [] as YaziciItem[]),
+      PrinterService.getSystemPrinters(user).catch(() => [] as any[]),
+    ]).then(([dbList, sysList]) => {
+      setPrinters(dbList);
+      setSystemPrinters(sysList);
+
+      const termUUID = PrinterService.getTerminalUUID();
+      const savedTermPrinter =
+        localStorage.getItem(`likya_terminal_printer_${termUUID}`) ||
+        localStorage.getItem("likya_last_selected_printer") ||
+        localStorage.getItem("likya_terminal_last_printer");
+
+      let initName: string | null = null;
+      if (savedTermPrinter) {
+        setSelectedPrinterId(savedTermPrinter);
+        initName = savedTermPrinter;
+      } else if (sysList.length > 0) {
+        setSelectedPrinterId(sysList[0]?.name);
+        initName = sysList[0]?.name;
+      } else if (dbList.length > 0) {
+        setSelectedPrinterId(dbList[0]?.id);
+        initName = dbList[0]?.cihazAdi || dbList[0]?.ad;
+      }
+
+      if (initName) {
+        fetch("http://127.0.0.1:9100/api/set-default", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ printerName: initName }),
+        }).catch(() => {});
+      }
+    });
+  }, [user]);
 
   // Transfer list for search modal
   const [transferList, setTransferList] = useState<VezneTransferiListItem[]>([]);
@@ -981,7 +1015,10 @@ export const VezneTransferiPage: React.FC = () => {
             user,
             printers,
           });
-          const pName = resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null;
+
+          const selectedSys = systemPrinters.find((p) => p.name.toLowerCase() === String(selectedPrinterId || "").toLowerCase());
+          const selectedDb = printers.find((p) => String(p.id) === String(selectedPrinterId) || p.cihazAdi === selectedPrinterId || p.ad === selectedPrinterId);
+          const pName = selectedSys?.name || selectedDb?.cihazAdi || selectedDb?.ad || (selectedPrinterId ? String(selectedPrinterId) : (resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null));
 
           const slipHtml = `
             <div style="font-family: monospace; padding: 6px; max-width: 78mm; font-size: 12px;">
@@ -1174,7 +1211,7 @@ export const VezneTransferiPage: React.FC = () => {
       } else if (isF9) {
         e.preventDefault();
         e.stopPropagation();
-        handleOpenParaSay();
+        setShowPrintModal(true);
       } else if (isF10) {
         e.preventDefault();
         e.stopPropagation();
@@ -1737,6 +1774,7 @@ export const VezneTransferiPage: React.FC = () => {
       />
 
       {/* Print Slip Preview Modal (F10) */}
+      {/* Print Slip Preview Modal (F9 / Toolbar) */}
       <Modal
         show={showPrintModal}
         onHide={() => setShowPrintModal(false)}
@@ -1744,10 +1782,97 @@ export const VezneTransferiPage: React.FC = () => {
         centered
       >
         <Modal.Header closeButton className="bg-light py-2 px-3">
-          <Modal.Title className="fs-6 d-flex align-items-center gap-2">
-            <IconPrinter size={18} className="text-primary" />
-            <span>Vezne Transfer Fişi Yazdır (Kes)</span>
-          </Modal.Title>
+          <div className="d-flex align-items-center justify-content-between w-100 me-2 flex-wrap gap-2">
+            <Modal.Title className="fs-6 d-flex align-items-center gap-2 mb-0">
+              <IconPrinter size={18} className="text-primary" />
+              <span>Vezne Transfer Fişi Önizleme & Yazdır</span>
+            </Modal.Title>
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <span className="text-secondary small fw-bold">Yazıcı:</span>
+              <Form.Select
+                size="sm"
+                value={selectedPrinterId !== null && selectedPrinterId !== undefined ? String(selectedPrinterId) : ""}
+                onChange={(e) => {
+                  const newVal = e.target.value;
+                  setSelectedPrinterId(newVal || null);
+                  if (newVal) {
+                    const matchedSys = systemPrinters.find((p) => p.name.toLowerCase() === newVal.toLowerCase());
+                    const matchedDb = printers.find((p) => String(p.id) === newVal || p.cihazAdi === newVal || p.ad === newVal);
+                    const pName = matchedSys?.name || matchedDb?.cihazAdi || matchedDb?.ad || newVal;
+                    PrinterService.saveClientPrinter({ name: pName }, user?.id);
+                    fetch("http://127.0.0.1:9100/api/set-default", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ printerName: pName }),
+                    }).catch(() => {});
+                  }
+                }}
+                style={{ width: "220px", fontSize: "11.5px", fontWeight: 600 }}
+              >
+                {systemPrinters.length > 0 && (
+                  <optgroup label="🔌 Bu Bilgisayara Bağlı Yazıcılar">
+                    {systemPrinters.map((p) => (
+                      <option key={`sys-${p.name}`} value={p.name}>
+                        {p.name} {p.isDefault ? "(Varsayılan)" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {printers.length > 0 && (
+                  <optgroup label="🏢 Sistem / Vezne Tanımlı Yazıcılar">
+                    {printers.map((p) => (
+                      <option key={`db-${p.id}`} value={p.id}>
+                        {p.ad || p.cihazAdi || `Yazıcı #${p.id}`} {p.kopyaSayisi ? `(${p.kopyaSayisi} Kopya)` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {printers.length === 0 && systemPrinters.length === 0 && (
+                  <option value="">Sistem Varsayılan Yazıcısı</option>
+                )}
+              </Form.Select>
+              <Button
+                variant="outline-primary"
+                size="sm"
+                onClick={() => {
+                  const el = document.getElementById("printable-transfer-slip");
+                  if (!el) return;
+                  const printWin = window.open("", "_blank", "width=850,height=900");
+                  if (printWin) {
+                    printWin.document.write(`
+                      <!DOCTYPE html>
+                      <html>
+                      <head>
+                        <meta charset="utf-8" />
+                        <title>Vezne Transfer Fişi</title>
+                        <style>
+                          @page { size: 80mm auto; margin: 0; }
+                          body { margin: 0; padding: 0; background: #ffffff; }
+                          .pos-print-root { width: 80mm; margin: 0 auto; }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="pos-print-root">${el.outerHTML}</div>
+                        <script>
+                          window.onload = function() {
+                            window.focus();
+                            window.print();
+                          };
+                        </script>
+                      </body>
+                      </html>
+                    `);
+                    printWin.document.close();
+                  }
+                }}
+                className="px-2.5 fw-bold"
+                title="Google Chrome / Tarayıcı Önizleme Penceresi ile Yazdır"
+              >
+                <IconPrinter size={14} className="me-1" />
+                Tarayıcı (Ctrl+P)
+              </Button>
+            </div>
+          </div>
         </Modal.Header>
         <Modal.Body className="p-4">
           <div
@@ -1807,26 +1932,102 @@ export const VezneTransferiPage: React.FC = () => {
           <Button variant="secondary" size="sm" onClick={() => setShowPrintModal(false)}>
             Kapat
           </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={async () => {
-              const el = document.getElementById("printable-transfer-slip");
-              if (el) {
-                await triggerSilentPrint({
-                  html: el.innerHTML,
-                  title: `Vezne_Transfer_${refNo || "Fis"}`,
-                  isPos: true,
-                  allowBrowserFallback: false,
-                });
-              }
-              setShowPrintModal(false);
-            }}
-            className="d-flex align-items-center gap-1 fw-bold"
-          >
-            <IconPrinter size={16} />
-            <span>Yazıcıya Gönder (Kes)</span>
-          </Button>
+          <div className="d-flex gap-2">
+            <Button
+              variant="outline-primary"
+              size="sm"
+              onClick={() => {
+                const el = document.getElementById("printable-transfer-slip");
+                if (!el) return;
+                const printWin = window.open("", "_blank", "width=850,height=900");
+                if (printWin) {
+                  printWin.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                      <meta charset="utf-8" />
+                      <title>Vezne Transfer Fişi</title>
+                      <style>
+                        @page { size: 80mm auto; margin: 0; }
+                        body { margin: 0; padding: 0; background: #ffffff; }
+                        .pos-print-root { width: 80mm; margin: 0 auto; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="pos-print-root">${el.outerHTML}</div>
+                      <script>
+                        window.onload = function() {
+                          window.focus();
+                          window.print();
+                        };
+                      </script>
+                    </body>
+                    </html>
+                  `);
+                  printWin.document.close();
+                }
+              }}
+              title="Google Chrome / Tarayıcı Yazdırma Penceresi (Ctrl+P)"
+            >
+              <IconPrinter size={14} className="me-1" />
+              Tarayıcıdan Yazdır (Ctrl+P)
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={async () => {
+                const el = document.getElementById("printable-transfer-slip");
+                if (el) {
+                  const selectedSys = systemPrinters.find((p) => p.name.toLowerCase() === String(selectedPrinterId || "").toLowerCase());
+                  const selectedDb = printers.find((p) => String(p.id) === String(selectedPrinterId) || p.cihazAdi === selectedPrinterId || p.ad === selectedPrinterId);
+                  const pName = selectedSys?.name || selectedDb?.cihazAdi || selectedDb?.ad || (selectedPrinterId ? String(selectedPrinterId) : null);
+
+                  const styledHtml = `<div class="belge-sablon" style="width: 80mm; max-width: 80mm; margin: 0 auto; padding: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; color: #000; box-sizing: border-box;">${el.innerHTML}</div>`;
+                  const res = await triggerSilentPrint({
+                    html: styledHtml,
+                    printerName: pName,
+                    title: `Vezne_Transfer_${refNo || "Fis"}`,
+                    isPos: true,
+                    allowBrowserFallback: false,
+                  });
+                  if (!res.success) {
+                    const printWin = window.open("", "_blank", "width=850,height=900");
+                    if (printWin) {
+                      printWin.document.write(`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                          <meta charset="utf-8" />
+                          <title>Vezne Transfer Fişi</title>
+                          <style>
+                            @page { size: 80mm auto; margin: 0; }
+                            body { margin: 0; padding: 0; background: #ffffff; }
+                            .pos-print-root { width: 80mm; margin: 0 auto; }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="pos-print-root">${styledHtml}</div>
+                          <script>
+                            window.onload = function() {
+                              window.focus();
+                              window.print();
+                            };
+                          </script>
+                        </body>
+                        </html>
+                      `);
+                      printWin.document.close();
+                    }
+                  }
+                }
+                setShowPrintModal(false);
+              }}
+              className="d-flex align-items-center gap-1 fw-bold"
+            >
+              <IconPrinter size={16} />
+              <span>Yazıcıya Gönder (Kes)</span>
+            </Button>
+          </div>
         </Modal.Footer>
       </Modal>
 

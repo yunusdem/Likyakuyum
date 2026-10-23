@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.0.2";
+export const TARGET_PRINTER_AGENT_VERSION = "1.0.5";
 
 /**
  * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
@@ -652,7 +652,17 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
       }
     }
 
-    // 3. Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
+    // 3. Servise ulaşılamadıysa ve tarayıcı yedeğine izin verilmişse:
+    if (options.allowBrowserFallback && html) {
+      printViaHiddenIframe(html, title, isPos);
+      return {
+        success: true,
+        message: "Yerel yazıcı servisine ulaşılamadığı için tarayıcı yazdırma akışı başlatıldı.",
+        fallbackUsed: true,
+      };
+    }
+
+    // Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
     return {
       success: false,
       message: lastError

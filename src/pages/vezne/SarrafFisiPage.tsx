@@ -2294,7 +2294,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         try {
           const fisCikti = await sarrafFisleriHtml(snapObj, isPos ? "80" : "A4");
           const sonuc = await fisiYazdir(fisCikti, {
-            printerName: printerToUse?.cihazAdi || printerToUse?.ad || null,
+            printerName: printerToUse?.cihazAdi || printerToUse?.ad || resolved.printerName || null,
             copies: copiesToUse,
             isPos,
           });
@@ -4890,7 +4890,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     try {
       const fisCikti = await sarrafFisleriHtml(snapObj, isPos ? "80" : "A4");
       const sonuc = await fisiYazdir(fisCikti, {
-        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
+        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
         copies: resolved.kopyaSayisi || 1,
         isPos,
       });
