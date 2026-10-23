@@ -129,6 +129,11 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
             .pos-print-root {
               width: 80mm;
               margin: 0 auto;
+              ${printType === "POS" ? "display: flex; justify-content: center;" : ""}
+            }
+            .belge-sablon {
+              margin: 0 auto !important;
+              ${printType === "POS" ? "transform: scale(0.95); transform-origin: top center; box-sizing: border-box !important;" : ""}
             }
           </style>
         </head>
@@ -295,7 +300,7 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
               title="Google Chrome / Tarayıcı Önizleme Penceresi ile Yazdır"
             >
               <IconPrinter size={14} className="me-1" />
-              Tarayıcı (Ctrl+P)
+              Tarayıcı
             </Button>
           </div>
         </div>
@@ -315,10 +320,10 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
           size="sm"
           onClick={handleBrowserPrint}
           disabled={!fis || isPrinting}
-          title="Google Chrome / Tarayıcı Yazdırma Penceresi (Ctrl+P)"
+          title="Google Chrome / Tarayıcı Yazdırma Penceresi"
         >
           <IconPrinter size={14} className="me-1" />
-          Tarayıcıdan Yazdır (Ctrl+P)
+          Tarayıcıdan Yazdır
         </Button>
         <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting}>
           {isPrinting ? (

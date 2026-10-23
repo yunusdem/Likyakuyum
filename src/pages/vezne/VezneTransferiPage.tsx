@@ -1869,7 +1869,7 @@ export const VezneTransferiPage: React.FC = () => {
                 title="Google Chrome / Tarayıcı Önizleme Penceresi ile Yazdır"
               >
                 <IconPrinter size={14} className="me-1" />
-                Tarayıcı (Ctrl+P)
+                Tarayıcı
               </Button>
             </div>
           </div>
@@ -1967,10 +1967,10 @@ export const VezneTransferiPage: React.FC = () => {
                   printWin.document.close();
                 }
               }}
-              title="Google Chrome / Tarayıcı Yazdırma Penceresi (Ctrl+P)"
+              title="Google Chrome / Tarayıcı Yazdırma Penceresi"
             >
               <IconPrinter size={14} className="me-1" />
-              Tarayıcıdan Yazdır (Ctrl+P)
+              Tarayıcıdan Yazdır
             </Button>
             <Button
               variant="primary"

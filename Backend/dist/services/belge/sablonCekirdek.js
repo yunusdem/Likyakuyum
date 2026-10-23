@@ -233,27 +233,34 @@ export function tahminiSatir(metin, boyut, g, yaziTipi = "sans", kalin = false) 
     return satir;
 }
 /** Tablo / liste satırlarını göreli y'ye (0'dan) çizer; yükseklik döner. */
-function tabloSatirlari(o, satirlar, y0, varsayilanBoyut, cizimler) {
+function tabloSatirlari(o, satirlar, y0, varsayilanBoyut, cizimler, yt = "sans") {
     const boyut = o.boyut ?? varsayilanBoyut;
     const satirH = o.satirH ?? 15;
     const hucre = (o.cerceve ?? "hucre") === "hucre";
     const ic = hucre ? 3 : 0;
     let y = y0;
     for (const s of satirlar) {
+        const etiketW = (s.deger === "" && !hucre) ? Math.max(10, o.g - 2 * ic) : Math.max(10, o.etiketG - 2 * ic);
+        const degerW = Math.max(10, o.g - o.etiketG - 2 * ic);
+        const etiketSatir = tahminiSatir(s.etiket, boyut, etiketW, yt, s.kalin);
+        const degerSatir = s.deger ? tahminiSatir(s.deger, boyut, degerW, yt, s.kalin || !!o.kalinDeger) : 1;
+        const satirAdet = Math.max(1, etiketSatir, s.deger ? degerSatir : 1);
+        const ustBosluk = Math.max(0, (satirH - boyut * SATIR_ORANI) / 2);
+        const gercekSatirH = Math.max(satirH, 2 * ustBosluk + satirAdet * boyut * SATIR_ORANI);
         if (hucre) {
-            cizimler.push({ tip: "kutu", x: o.x, y, g: o.g, h: satirH, kalinlik: 0.5 });
-            cizimler.push({ tip: "cizgi", x1: o.x + o.etiketG, y1: y, x2: o.x + o.etiketG, y2: y + satirH, kalinlik: 0.5, kesikli: false });
+            cizimler.push({ tip: "kutu", x: o.x, y, g: o.g, h: gercekSatirH, kalinlik: 0.5 });
+            cizimler.push({ tip: "cizgi", x1: o.x + o.etiketG, y1: y, x2: o.x + o.etiketG, y2: y + gercekSatirH, kalinlik: 0.5, kesikli: false });
         }
-        const ty = y + (satirH - boyut * SATIR_ORANI) / 2;
+        const ty = y + ustBosluk;
         if (s.deger === "" && !hucre) {
             // Değersiz satır (ör. "Satılan Ürün" başlığı) tüm genişliği kullanır.
-            cizimler.push({ tip: "metin", x: o.x + ic, y: ty, g: o.g - 2 * ic, metin: s.etiket, boyut, kalin: s.kalin, hiza: "left", renk: "#000", altCizgi: false, tekSatir: true });
+            cizimler.push({ tip: "metin", x: o.x + ic, y: ty, g: etiketW, metin: s.etiket, boyut, kalin: s.kalin, hiza: "left", renk: "#000", altCizgi: false, tekSatir: etiketSatir <= 1 });
         }
         else {
-            cizimler.push({ tip: "metin", x: o.x + ic, y: ty, g: o.etiketG - 2 * ic, metin: s.etiket, boyut, kalin: s.kalin, hiza: "left", renk: "#000", altCizgi: false, tekSatir: true });
-            cizimler.push({ tip: "metin", x: o.x + o.etiketG + ic, y: ty, g: o.g - o.etiketG - 2 * ic, metin: s.deger, boyut, kalin: s.kalin || !!o.kalinDeger, hiza: o.hizaDeger || "right", renk: "#000", altCizgi: false, tekSatir: true });
+            cizimler.push({ tip: "metin", x: o.x + ic, y: ty, g: etiketW, metin: s.etiket, boyut, kalin: s.kalin, hiza: "left", renk: "#000", altCizgi: false, tekSatir: etiketSatir <= 1 });
+            cizimler.push({ tip: "metin", x: o.x + o.etiketG + ic, y: ty, g: degerW, metin: s.deger, boyut, kalin: s.kalin || !!o.kalinDeger, hiza: o.hizaDeger || "right", renk: "#000", altCizgi: false, tekSatir: degerSatir <= 1 });
         }
-        y += satirH;
+        y += gercekSatirH;
     }
     return y - y0;
 }
@@ -297,8 +304,9 @@ function sutunluListe(o, dizi, veri, varsayilanBoyut, yt, c) {
         // Ana satır: çok satırlı sütun varsa satır uzar
         const hucreler = sutunlar.map((s, i) => {
             const metin = doldur(s.deger, bag);
-            const satir = s.cokSatir ? tahminiSatir(metin, boyut, s.g - 2 * ic, yt, !!s.kalin) : 1;
-            return { s, i, metin, satir };
+            const tahmini = tahminiSatir(metin, boyut, s.g - 2 * ic, yt, !!s.kalin);
+            const satir = s.cokSatir || tahmini > 1 ? tahmini : 1;
+            return { s, i, metin, satir, tahmini };
         });
         const enCok = Math.max(1, ...hucreler.map(h => h.satir));
         const ustBosluk = Math.max(0, (satirH - boyut * SATIR_ORANI) / 2);
@@ -307,12 +315,15 @@ function sutunluListe(o, dizi, veri, varsayilanBoyut, yt, c) {
         const altlar = (o.altSatirlar || []).filter(a => kosulGecti(a.kosul, bag))
             .map(a => ({ ...a, sutun: Math.min(Math.max(0, Number(a.sutun) || 0), sutunlar.length - 1), metin: doldur(a.metin, bag) }));
         const sutunAltlari = sutunlar.map((_, i) => altlar.filter(a => a.sutun === i));
-        const altToplam = Math.max(0, ...sutunAltlari.map(l => l.reduce((t, a) => t + altH(a), 0)));
+        const altToplam = Math.max(0, ...sutunAltlari.map(l => l.reduce((t, a) => {
+            const at = tahminiSatir(a.metin, altBoyut(a), o.g, yt, !!a.kalin);
+            return t + altH(a) + (at > 1 ? (at - 1) * altBoyut(a) * SATIR_ORANI : 0);
+        }, 0)));
         const satirToplam = anaH + (altToplam ? altToplam + 1 : 0);
         for (const h of hucreler) {
             if (hucre)
                 c.push({ tip: "kutu", x: xler[h.i], y, g: h.s.g, h: satirToplam, kalinlik: 0.5 });
-            c.push({ tip: "metin", x: xler[h.i] + ic, y: y + ustBosluk, g: h.s.g - 2 * ic, metin: h.metin, boyut, kalin: !!h.s.kalin, hiza: h.s.hiza || "left", renk: "#000", altCizgi: false, tekSatir: !h.s.cokSatir });
+            c.push({ tip: "metin", x: xler[h.i] + ic, y: y + ustBosluk, g: h.s.g - 2 * ic, metin: h.metin, boyut, kalin: !!h.s.kalin, hiza: h.s.hiza || "left", renk: "#000", altCizgi: false, tekSatir: h.tahmini <= 1 });
         }
         sutunAltlari.forEach((liste, i) => {
             let ay = y + anaH;
@@ -323,8 +334,9 @@ function sutunluListe(o, dizi, veri, varsayilanBoyut, yt, c) {
                     sonSutun++;
             const altG = xler[sonSutun] + sutunlar[sonSutun].g - xler[i] - 2 * ic;
             for (const a of liste) {
-                c.push({ tip: "metin", x: xler[i] + ic, y: ay, g: altG, metin: a.metin, boyut: altBoyut(a), kalin: !!a.kalin, hiza: sutunlar[i].hiza || "left", renk: "#000", altCizgi: false, tekSatir: true });
-                ay += altH(a);
+                const altTahmini = tahminiSatir(a.metin, altBoyut(a), altG, yt, !!a.kalin);
+                c.push({ tip: "metin", x: xler[i] + ic, y: ay, g: altG, metin: a.metin, boyut: altBoyut(a), kalin: !!a.kalin, hiza: sutunlar[i].hiza || "left", renk: "#000", altCizgi: false, tekSatir: altTahmini <= 1 });
+                ay += altH(a) + (altTahmini > 1 ? (altTahmini - 1) * altBoyut(a) * SATIR_ORANI : 0);
             }
         });
         y += satirToplam;
@@ -354,9 +366,10 @@ function ogeyiHazirla(o, veri, varsayilanBoyut, icG, yt, rulo) {
         case "metin": {
             const g = o.g || Math.max(10, icG - o.x);
             const metin = doldur(o.metin, veri);
-            const cokSatir = !!o.cokSatir;
+            const tahmini = tahminiSatir(metin, boyut, g, ogeFont, !!o.kalin);
+            const cokSatir = !!o.cokSatir || tahmini > 1;
             c.push({ tip: "metin", x: o.x, y: o.y, g, metin, boyut, kalin: !!o.kalin, hiza: o.hiza || "left", renk: o.renk || "#000", altCizgi: !!o.altCizgi, tekSatir: !cokSatir });
-            gercekH = tahminiSatir(metin, boyut, g, ogeFont, !!o.kalin) * boyut * SATIR_ORANI;
+            gercekH = tahmini * boyut * SATIR_ORANI;
             break;
         }
         case "satirlar": {
@@ -376,7 +389,7 @@ function ogeyiHazirla(o, veri, varsayilanBoyut, icG, yt, rulo) {
         case "tablo": {
             const satirlar = o.satirlar.map(satirAc).filter(s => kosulGecti(s.kosul, veri) && !satirYok(s.deger, veri))
                 .map(s => ({ etiket: doldur(s.etiket, veri), deger: doldur(s.deger, veri), kalin: s.kalin }));
-            gercekH = tabloSatirlari(o, satirlar, o.y, varsayilanBoyut, c);
+            gercekH = tabloSatirlari(o, satirlar, o.y, varsayilanBoyut, c, ogeFont);
             break;
         }
         case "liste": {
@@ -401,7 +414,7 @@ function ogeyiHazirla(o, veri, varsayilanBoyut, icG, yt, rulo) {
                     .map(s => ({ etiket: doldur(s.etiket, bag), deger: doldur(s.deger, bag), kalin: s.kalin }));
                 if (i > 0)
                     y += o.aralik ?? 0;
-                y += tabloSatirlari(etiketli, satirlar, y, varsayilanBoyut, c);
+                y += tabloSatirlari(etiketli, satirlar, y, varsayilanBoyut, c, ogeFont);
             });
             gercekH = y - o.y;
             break;

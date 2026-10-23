@@ -74,14 +74,12 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
         break;
       case "resim": {
         const src = gorselAdresi(gorseller[c.dosya]);
-        // Termal ruloda firma görseli siyah-beyaz (yazıcı gri tonu noktalarla basar, eşikleme daha net çıkar)
-        const sb = c.siyahBeyaz ? ";filter:grayscale(100%) contrast(500%)" : "";
-        if (src) ustKatman.push(`<img alt="" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.g)};height:${pt(c.h)};object-fit:contain${sb}"/>`);
+        if (src) ustKatman.push(`<img alt="" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.g)};height:${pt(c.h)};object-fit:contain;image-rendering:-webkit-optimize-contrast;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
         break;
       }
       case "qr": {
-        const src = await QRCode.toDataURL(String(c.icerik), { margin: 0, errorCorrectionLevel: "M", width: Math.max(16, Math.round(say(c.boyut) * 4)) });
-        ustKatman.push(`<img alt="" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.boyut)};height:${pt(c.boyut)};image-rendering:pixelated"/>`);
+        const src = await QRCode.toDataURL(String(c.icerik), { margin: 0, errorCorrectionLevel: "M", width: Math.max(240, Math.round(say(c.boyut) * 4)) });
+        ustKatman.push(`<img alt="QR" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.boyut)};height:${pt(c.boyut)};image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
         break;
       }
       case "filigran":
@@ -125,7 +123,8 @@ export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: numbe
   }
   .belge-sablon {
     margin: 0 auto !important;
-    ${isPos ? "transform: scale(0.96); transform-origin: top center;" : ""}
+    ${isPos ? "transform: scale(0.95); transform-origin: top center;" : ""}
+    box-sizing: border-box !important;
     page-break-inside: avoid !important;
   }
 }

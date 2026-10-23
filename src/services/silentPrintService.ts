@@ -739,7 +739,7 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
           }
           .belge-sablon {
             margin: 0 auto !important;
-            transform: scale(0.96);
+            transform: scale(0.95);
             transform-origin: top center;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;

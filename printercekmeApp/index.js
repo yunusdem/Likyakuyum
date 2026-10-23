@@ -714,6 +714,8 @@ async function executePrintJob(job) {
     }
     .belge-sablon {
       margin: 0 auto !important;
+      transform: scale(0.95);
+      transform-origin: top center;
       box-sizing: border-box !important;
       page-break-inside: avoid !important;
       text-align: left !important;

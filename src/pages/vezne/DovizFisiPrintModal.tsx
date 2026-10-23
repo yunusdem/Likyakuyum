@@ -170,6 +170,14 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
             .pos-print-root {
               width: 80mm;
               margin: 0 auto;
+              display: flex;
+              justify-content: center;
+            }
+            .belge-sablon {
+              margin: 0 auto !important;
+              transform: scale(0.95);
+              transform-origin: top center;
+              box-sizing: border-box !important;
             }
           </style>
         </head>
@@ -326,7 +334,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
               title="Google Chrome / Tarayıcı Önizleme Penceresi ile Yazdır"
             >
               <IconPrinter size={14} className="me-1" />
-              Tarayıcı (Ctrl+P)
+              Tarayıcı
             </Button>
           </div>
         </div>
@@ -346,10 +354,10 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
             size="sm"
             onClick={handleBrowserPrint}
             disabled={!fis || isPrinting}
-            title="Google Chrome / Tarayıcı Yazdırma Penceresi (Ctrl+P)"
+            title="Google Chrome / Tarayıcı Yazdırma Penceresi"
           >
             <IconPrinter size={14} className="me-1" />
-            Tarayıcıdan Yazdır (Ctrl+P)
+            Tarayıcıdan Yazdır
           </Button>
           <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting} className="d-flex align-items-center gap-1 px-4 fw-bold shadow-xs">
             {isPrinting ? (
