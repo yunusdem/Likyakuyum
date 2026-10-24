@@ -117,7 +117,7 @@ BEGIN
     SET @sql = N'USE ' + QUOTENAME(@h) + N';
       DECLARE @s nvarchar(max);
       SELECT @s = STRING_AGG(CAST(N''ALTER USER '' + QUOTENAME(dp.name) + N'' WITH LOGIN = '' + QUOTENAME(sp.name) + N'';'' AS nvarchar(max)), N'' '')
-        FROM sys.database_principals dp JOIN sys.server_principals sp ON sp.name = dp.name AND sp.type = ''S''
+        FROM sys.database_principals dp JOIN sys.server_principals sp ON sp.name COLLATE DATABASE_DEFAULT = dp.name COLLATE DATABASE_DEFAULT AND sp.type = ''S''
        WHERE dp.type = ''S'' AND dp.sid <> sp.sid;
       IF @s IS NOT NULL EXEC (@s);';
     EXEC (@sql);
