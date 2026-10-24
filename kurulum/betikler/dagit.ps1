@@ -34,6 +34,7 @@ function TamYol([string]$ad) { $c = Get-Command $ad -ErrorAction SilentlyContinu
 $git = if ($ayar.git) { [string]$ayar.git } else { TamYol "git.exe" }
 $npm = if ($ayar.npm) { [string]$ayar.npm } else { TamYol "npm.cmd" }
 $pm2 = if ($ayar.pm2) { [string]$ayar.pm2 } else { TamYol "pm2.cmd" }
+$node = if ($ayar.node) { [string]$ayar.node } else { TamYol "node.exe" }
 if ($ayar.node) { $env:Path = (Split-Path -Parent ([string]$ayar.node)) + ";" + $env:Path }
 if ($ayar.git) { $env:Path = (Split-Path -Parent $git) + ";" + $env:Path }
 $env:NODE_OPTIONS = ""
@@ -166,25 +167,21 @@ function Kur([string]$commit, [string]$oncekiCommit, [bool]$geriDonus) {
     try { $rollup = (Get-Content (Join-Path $kok "node_modules\rollup\package.json") -Raw | ConvertFrom-Json).version } catch { }
     Calistir $npm @("install", "--no-save", "--no-audit", "--no-fund", "@rollup/rollup-win32-x64-msvc@$rollup") $kok | Out-Null
   }
-  # Depo node_modules'u izledigi icin esbuild'in JS parcasi ile Windows ikili paketi farkli surumde gelebiliyor
-  # ("Host version ... does not match binary version"); tsx (surum:yayinla) bunu kullanir. rebuild eslesen ikiliyi kurar.
-  if (Test-Path (Join-Path $kok "Backend\node_modules\esbuild\package.json")) {
-    Calistir $npm @("rebuild", "esbuild") (Join-Path $kok "Backend") | Out-Null
-  }
 
   Adim ($on + "Backend derleniyor")
   Calistir $npm @("run", "build") (Join-Path $kok "Backend") | Out-Null
 
   if (-not $geriDonus) {
     Adim "Sema gocleri (sablon, bulut firmalari, yonetim)"
-    $kod = Calistir $npm @("run", "surum:yayinla", "--", "--yalniz-sema") (Join-Path $kok "Backend") @(0, 2)
+    # tsx yerine Backend derlemesinin urettigi JS calistirilir: depodaki esbuild ikilisi baska isletim sisteminden
+    # commitlenmis olabiliyor (tsx onu kullanir), derlenmis betik esbuild'e ihtiyac duymaz.
+    $kod = Calistir $node @("dist\scripts\surum-yayinla.js", "--yalniz-sema") (Join-Path $kok "Backend") @(0, 2)
     if ($kod -eq 2) { throw "Sema gocu hata verdi (log'a bakin)" }
   }
 
   Adim ($on + "Arayuz derleniyor")
   # Kök "npm run build" = tsc && vite build (dist'e). IIS dist'i degil "yayin" klasorunu sunar; dist derleme boyunca bos
   # kalabilir. dist ayrica exe paketinin (surum:yayinla) kaynagidir, o yuzden yeni derleme dist'e yazilir.
-  $node = if ($ayar.node) { [string]$ayar.node } else { TamYol "node.exe" }
   Calistir $node @((Join-Path $kok "node_modules\typescript\bin\tsc")) $kok | Out-Null
   Calistir $node @((Join-Path $kok "node_modules\vite\bin\vite.js"), "build") $kok | Out-Null
   $wc = Join-Path $kok "dist\web.config"
@@ -213,7 +210,7 @@ function Kur([string]$commit, [string]$oncekiCommit, [bool]$geriDonus) {
   if (-not $geriDonus -and $hedef -eq "canli" -and $ortam.exePaketi -eq $true) {
     Adim "Kurulum (exe) paketi yayinlaniyor"
     try {
-      Calistir $npm @("run", "surum:yayinla", "--", "--mevcut-moduller", "--not", "Dagitim #$id") (Join-Path $kok "Backend") | Out-Null
+      Calistir $node @("dist\scripts\surum-yayinla.js", "--mevcut-moduller", "--not", "Dagitim #$id") (Join-Path $kok "Backend") | Out-Null
     } catch { Yaz ("UYARI: exe paketi yayinlanamadi: " + $_.Exception.Message); $script:paketUyarisi = "exe paketi yayinlanamadi" }
   }
 }
