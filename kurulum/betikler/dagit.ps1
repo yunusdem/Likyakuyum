@@ -7,6 +7,7 @@
 # build (dist) -> "yayin" klasorune ayna (IIS bunu sunar) -> (canli: admin + erp build) -> pm2 restart -> saglik (commit
 # dogrulamali) -> (canli: exe paketi, dist'ten). Herhangi biri
 # kalirsa onceki commit'e ayni adimlarla geri donulur (sema gocu geri alinmaz).
+# Sunucuda ilk panel denemesi: 24.10.2026 (Canlıya Geçir).
 # -Deneme: pm2 yerine verilen komut (DenemeBaslat/DenemeDurdur) kullanilir; yerel denemede gorev gerekmez.
 param(
   [string]$Klasor = "C:\LikyaYedek\dagitim",
