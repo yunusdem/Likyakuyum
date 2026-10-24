@@ -6,6 +6,9 @@ import type { LisansIletisim } from "./userService";
 export interface SistemBilgisi {
   kurulum: boolean;
   surum: string;
+  /** Test / canlı ayrımı (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md): "test" iken giriş ekranında TEST şeridi */
+  ortam?: "canli" | "test";
+  commit?: string | null;
   firma?: { firmaKodu: string; unvan: string; musteriNo: string } | null;
   /** Kurulumda firma veritabanında hiç kullanıcı var mı (yoksa ilk yönetici formu açılır) */
   kullaniciVar?: boolean | null;

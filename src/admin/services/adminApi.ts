@@ -512,6 +512,53 @@ export const tokenYaz = (token: string | null) => {
 
 
 // ---------------------------------------------------------------- Destek ---
+// Dağıtım (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md): test (likyakuyum.com) / canlı (likyaerp.com)
+export type DagitimHedef = "canli" | "test";
+export type DagitimDurum = "CALISIYOR" | "BASARILI" | "HATA" | "GERI_DONDU" | "GERI_DONUS_HATASI";
+export interface CommitOzeti {
+  commit: string;
+  kisa: string;
+  baslik: string;
+  yazar: string;
+  tarih: string;
+}
+export interface OrtamDurumu {
+  commit: string | null;
+  kisa: string | null;
+  ozet: CommitOzeti | null;
+}
+export interface DagitimKaydi {
+  dagitimId: number;
+  hedef: DagitimHedef;
+  oncekiCommit: string | null;
+  hedefCommit: string | null;
+  baslatanAdminId: number | null;
+  baslatan: string | null;
+  baslangic: string;
+  bitis: string | null;
+  durum: DagitimDurum;
+  adim: string | null;
+  mesaj: string | null;
+  logDosyasi: string | null;
+  goruldu: boolean;
+}
+export interface DagitimDurumu {
+  ortam: "canli" | "test";
+  kurulu: boolean;
+  kurulumNotu: string | null;
+  canli: OrtamDurumu;
+  test: OrtamDurumu;
+  uzak: OrtamDurumu;
+  canliyaGidecek: CommitOzeti[];
+  testeGidecek: CommitOzeti[];
+  uzakHata: string | null;
+  calisan: DagitimKaydi | null;
+  gecmis: DagitimKaydi[];
+}
+export interface DagitimOzet {
+  calisan: boolean;
+  gorulmemisHata: number;
+}
 export interface DestekOzet {
   okunmamis: number;
   acikTalep: number;
@@ -748,6 +795,12 @@ export const adminApi = {
   bildirimOlustur: (veri: BildirimGirdi) => istek<DestekKonuDetay>("POST", "/destek/bildirimler", veri),
   bildirimGuncelle: (konuId: number, veri: BildirimGirdi) => istek<DestekKonuDetay>("PUT", `/destek/bildirimler/${konuId}`, veri),
   bildirimGeriCek: (konuId: number) => istek<DestekKonuDetay>("POST", `/destek/bildirimler/${konuId}/geri-cek`),
+  // Dağıtım
+  dagitimOzet: () => istek<DagitimOzet>("GET", "/dagitim/ozet"),
+  dagitimDurum: (yenile = true) => istek<DagitimDurumu>("GET", `/dagitim${yenile ? "" : "?yenile=0"}`),
+  dagitimBaslat: (hedef: DagitimHedef) => istek<DagitimKaydi>("POST", "/dagitim", { hedef }),
+  dagitimLog: (id: number) => istek<{ kayit: DagitimKaydi; log: string }>("GET", `/dagitim/${id}/log`),
+  dagitimGoruldu: () => istek<void>("POST", "/dagitim/goruldu"),
   /** Ek görsel (Authorization ile); nesne adresi döner */
   destekEkAdresi: async (ekId: number) => {
     const token = tokenOku();

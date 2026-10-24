@@ -642,7 +642,7 @@ export const LandingPage: React.FC = () => {
               </div>
 
               <div className="d-flex align-items-center gap-2">
-                <a href="#" className="furni-social-circle"><IconBrandInstagram size={18} /></a>
+                <a href={ILETISIM.instagram} target="_blank" rel="noopener noreferrer" className="furni-social-circle" aria-label="Instagram"><IconBrandInstagram size={18} /></a>
                 <a href="#" className="furni-social-circle"><IconBrandFacebook size={18} /></a>
                 <a href="#" className="furni-social-circle"><IconBrandTwitter size={18} /></a>
                 <a href="#" className="furni-social-circle"><IconBrandLinkedin size={18} /></a>

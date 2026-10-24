@@ -21,6 +21,16 @@
     />
     <meta property="og:url" content="https://www.likyaerp.com/" />
     <!--GSC_DOGRULAMA-->
+    <!-- Google tag (gtag.js) — Google Ads AW-1067809486 (23.10.2026). GA4 kimliği ayrıca src/erp-site/yardimci/analitik.ts'ten
+         VITE_ERP_GA_ID ile yüklenir; ikisi aynı dataLayer'ı paylaşır. -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-1067809486"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'AW-1067809486');
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -43,7 +53,7 @@
           "addressRegion": "Muğla",
           "addressCountry": "TR"
         },
-        "sameAs": ["https://likyakuyum.com/"]
+        "sameAs": ["https://likyakuyum.com/", "https://www.instagram.com/likyaerp/"]
       }
     </script>
   </head>

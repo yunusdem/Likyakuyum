@@ -3,7 +3,7 @@ import { env } from "../config/env.config.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { calisanSurum } from "../utils/surum.js";
+import { calisanCommit, calisanSurum } from "../utils/surum.js";
 import { AuthService } from "../services/auth.service.js";
 import { KurulumLisansService } from "../services/kurulum/kurulumLisans.service.js";
 import { kurulumFirmasi } from "../services/kurulum/firmaDosyasi.js";
@@ -34,7 +34,7 @@ const kurulumOlmali = () => {
 export class KurulumController {
   /** Açık uç: giriş ekranı kurulum mu bulut mu olduğunu, sürümü ve (kurulumda) firmayı buradan öğrenir. */
   public static bilgi = asyncHandler(async (req: Request, res: Response) => {
-    if (!env.KURULUM_MODU) return ApiResponse.ok(res, "Sistem bilgisi.", { kurulum: false, surum: calisanSurum() });
+    if (!env.KURULUM_MODU) return ApiResponse.ok(res, "Sistem bilgisi.", { kurulum: false, surum: calisanSurum(), ortam: env.ORTAM, commit: calisanCommit() });
     const f = kurulumFirmasi();
     let kullaniciVar: boolean | null = null;
     try {

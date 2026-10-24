@@ -4,11 +4,13 @@
  *   npm run surum:yayinla -- --not "Kısa açıklama"
  *
  * Seçenekler: --mevcut-moduller (npm ci yerine mevcut node_modules), --sema-atla, --kuru (veritabanına yazmaz)
+ *             --yalniz-sema: paket üretmez, yalnızca şema göçlerini (şablon, bulut firmaları, LIKYA_ADMIN) uygular
+ *             (test ortamı ve dağıtım betiği; docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
  * docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md, 6.6
  */
 import path from "path";
 import { closeAdminPool } from "../config/adminDb.config.js";
-import { surumYayinla } from "../services/surum/surumYayinla.js";
+import { semaYay, surumYayinla } from "../services/surum/surumYayinla.js";
 
 const arg = (ad: string): string | null => {
   const i = process.argv.indexOf(ad);
@@ -18,6 +20,15 @@ const var_ = (ad: string): boolean => process.argv.includes(ad);
 
 const main = async () => {
   const backendKok = process.cwd();
+  if (var_("--yalniz-sema")) {
+    const sema = await semaYay((m) => console.log("  " + m));
+    console.log("");
+    console.log(`  TAMAM: şema hedef ${sema.hedef}; şablon ${sema.sablon ?? "-"}; yönetim ${sema.yonetim ?? "-"}`);
+    for (const f of sema.firmalar) console.log(`          ${f.firmaKodu}: ${f.sonuc}`);
+    if (sema.firmalar.some((f) => f.sonuc.startsWith("HATA")) || String(sema.yonetim || "").startsWith("HATA")) process.exitCode = 2;
+    console.log("");
+    return;
+  }
   const sonuc = await surumYayinla({
     backendKok,
     webKok: path.resolve(backendKok, "..", "dist"),
@@ -30,7 +41,7 @@ const main = async () => {
   console.log("");
   console.log(`  TAMAM: sürüm ${sonuc.surum}`);
   console.log(`  Paket : ${sonuc.zip} (${(sonuc.boyut / 1024 / 1024).toFixed(1)} MB, ${sonuc.dosyaSayisi} dosya)`);
-  console.log(`  Şema  : hedef ${sonuc.sema.hedef}; şablon ${sonuc.sema.sablon ?? "-"}`);
+  console.log(`  Şema  : hedef ${sonuc.sema.hedef}; şablon ${sonuc.sema.sablon ?? "-"}; yönetim ${sonuc.sema.yonetim ?? "-"}`);
   for (const f of sonuc.sema.firmalar) console.log(`          ${f.firmaKodu}: ${f.sonuc}`);
   console.log("");
 };

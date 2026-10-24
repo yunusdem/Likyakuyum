@@ -5,6 +5,7 @@ import { connectDatabase } from "./config/database.config.js";
 import { logger } from "./utils/logger.js";
 import { BulutZamanlayici } from "./services/admin/bulutZamanlayici.js";
 import { DestekZamanlayici } from "./services/destek/destekZamanlayici.js";
+import { DagitimService } from "./services/admin/dagitim.service.js";
 import { DestekKurulumService } from "./services/destek/destekKurulum.service.js";
 import { KurulumBildirim } from "./services/kurulum/kurulumBildirim.js";
 import { Guncelleyici } from "./services/kurulum/guncelleyici.js";
@@ -38,6 +39,8 @@ const startServer = async () => {
       logger.info(`🌍 Ortam: ${env.NODE_ENV.toUpperCase()}`);
       BulutZamanlayici.baslat();
       DestekZamanlayici.baslat();
+      // Yeniden başlatma sırasında yarım kalan dağıtım izlemesi sürsün (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
+      DagitimService.baslat_acilis();
       if (env.KURULUM_MODU) {
         // Kurulum: yeni sürümün şema göçleri kendi veritabanına uygulanır, merkeze bildirim başlar. Göç bitene kadar API
         // istekleri bekletilir, sağlık ucu 503 döner (services/kurulum/gocDurumu.ts)

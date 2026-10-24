@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { IconBrandWhatsapp, IconMail, IconMapPin, IconPhone } from "@tabler/icons-react";
+import { IconBrandInstagram, IconBrandWhatsapp, IconMail, IconMapPin, IconPhone } from "@tabler/icons-react";
 import { URUNLER } from "../veri/urunler";
 import { MAIL_LINK, SIRKET, TEL2_LINK, TEL_LINK } from "../veri/sirket";
 import { Logo } from "./Logo";
@@ -27,6 +27,9 @@ export const Alt: React.FC = () => (
             </a>
             <a href={MAIL_LINK}>
               <IconMail size={16} aria-hidden="true" /> {SIRKET.eposta}
+            </a>
+            <a href={SIRKET.instagram} target="_blank" rel="noopener noreferrer">
+              <IconBrandInstagram size={16} aria-hidden="true" /> Instagram: @likyaerp
             </a>
             <span>
               <IconMapPin size={16} aria-hidden="true" /> {SIRKET.adres}

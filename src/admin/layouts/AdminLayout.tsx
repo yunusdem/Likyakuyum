@@ -17,9 +17,10 @@ import {
   IconMessage2,
   IconSpeakerphone,
   IconPackages,
+  IconRocket,
 } from "@tabler/icons-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
-import { adminApi, DestekOzet } from "../services/adminApi";
+import { adminApi, DagitimOzet, DestekOzet } from "../services/adminApi";
 import LogoutConfirmModal from "../../components/common/LogoutConfirmModal";
 
 const MENU = [
@@ -35,6 +36,7 @@ const MENU = [
   { yol: "/pos", baslik: "POS Entegrasyonu", ikon: <IconCreditCard size={18} />, tam: false },
   { yol: "/adminler", baslik: "Adminler", ikon: <IconShieldLock size={18} />, tam: false },
   { yol: "/surumler", baslik: "Sürümler", ikon: <IconPackage size={18} />, tam: false },
+  { yol: "/dagitim", baslik: "Dağıtım", ikon: <IconRocket size={18} />, tam: false },
   { yol: "/ayarlar", baslik: "Ayarlar", ikon: <IconSettings size={18} />, tam: false },
   { yol: "/sifre-degistir", baslik: "Şifre Değiştir", ikon: <IconKey size={18} />, tam: false },
 ];
@@ -44,6 +46,7 @@ const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
   const kilitli = !!admin?.sifreDegismeli;
   const [destek, setDestek] = useState<DestekOzet | null>(null);
+  const [dagitim, setDagitim] = useState<DagitimOzet | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -51,15 +54,21 @@ const AdminLayout: React.FC = () => {
   useEffect(() => {
     if (kilitli) return;
     let aktif = true;
-    const yukle = () => adminApi.destekOzet().then((o) => aktif && setDestek(o)).catch(() => undefined);
+    const yukle = () => {
+      adminApi.destekOzet().then((o) => aktif && setDestek(o)).catch(() => undefined);
+      // Dağıtım: çalışan iş ya da görülmemiş hata (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
+      adminApi.dagitimOzet().then((o) => aktif && setDagitim(o)).catch(() => undefined);
+    };
     yukle();
     const z = setInterval(() => document.visibilityState === "visible" && yukle(), 30_000);
     const dinle = () => yukle();
     window.addEventListener("likya-admin-destek-degisti", dinle);
+    window.addEventListener("likya-admin-dagitim-degisti", dinle);
     return () => {
       aktif = false;
       clearInterval(z);
       window.removeEventListener("likya-admin-destek-degisti", dinle);
+      window.removeEventListener("likya-admin-dagitim-degisti", dinle);
     };
   }, [kilitli]);
 
@@ -93,6 +102,16 @@ const AdminLayout: React.FC = () => {
               {m.yol === "/destek" && !!destek?.okunmamis && (
                 <Badge bg="danger" pill className="ms-auto">
                   {destek.okunmamis}
+                </Badge>
+              )}
+              {m.yol === "/dagitim" && !!dagitim?.gorulmemisHata && (
+                <Badge bg="danger" pill className="ms-auto" title="Hatalı dağıtım">
+                  {dagitim.gorulmemisHata}
+                </Badge>
+              )}
+              {m.yol === "/dagitim" && !dagitim?.gorulmemisHata && !!dagitim?.calisan && (
+                <Badge bg="warning" text="dark" pill className="ms-auto" title="Dağıtım çalışıyor">
+                  …
                 </Badge>
               )}
               {m.yol === "/bildirimler" && !!destek?.taslakBildirim && (

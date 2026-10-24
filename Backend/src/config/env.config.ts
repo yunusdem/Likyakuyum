@@ -130,6 +130,13 @@ const envSchema = z.object({
   MERKEZ_ADRESI: z.string().default("https://likyakuyum.com"),
   // Kurulumda arayüz (Vite build çıktısı) bu klasörden sunulur; boşsa sunulmaz
   ARAYUZ_KLASORU: z.string().default(""),
+  // --- Test / canlı ayrımı (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md) ---
+  // "test": likyakuyum.com test ortamı (giriş ekranında TEST şeridi); "canli": likyaerp.com. Sunucuda Backend/.env.local'de yazılır.
+  ORTAM: z.enum(["canli", "test"]).default("canli"),
+  // Dağıtım (panelden "Canlıya Geçir" / "Test'i Güncelle") çalışma klasörü: ayar.json, istek.json, durum.json, log klasörü
+  DAGITIM_KLASORU: z.string().default("C:\\LikyaYedek\\dagitim"),
+  // Dağıtım hata/başarı bildiriminin gideceği e-posta (boşsa ILETISIM_ALICI); SMTP yapılandırılmamışsa mail gitmez
+  DAGITIM_EPOSTA: z.string().default(""),
   // Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): LED panoya verilen açık adreslerin başı (https://likyakuyum.com gibi).
   // Boşsa isteğin geldiği sunucu adı kullanılır (yönetim paneli başka alan adındaysa yanlış olur).
   PANO_ACIK_KOK: z.string().default(""),

@@ -9,7 +9,7 @@ import { AdminLogSqlRepository } from "../../models/admin/adminLogSql.repository
 import { trZaman } from "../../utils/zaman.utils.js";
 import { ZipYazici, klasorEkle } from "../../utils/zip.js";
 import { klasorKopyala } from "../../utils/dosya.utils.js";
-import { enYuksekGoc, gocDosyalari, semaGocUygula } from "../semaGoc.service.js";
+import { enYuksekGoc, gocDosyalari, gocKlasoru, semaGocUygula } from "../semaGoc.service.js";
 import { kd, klonIle, klonYapilandirildiMi } from "../admin/klon.service.js";
 import { butunlukListesiUret, paketImzala, sha256Dosya } from "./paketImza.js";
 import { DestekService } from "../destek/destek.service.js";
@@ -42,7 +42,7 @@ export interface YayinSonucu {
   sha256: string;
   imza: string;
   dosyaSayisi: number;
-  sema: { hedef: number; sablon?: string; firmalar: { firmaKodu: string; sonuc: string }[] };
+  sema: { hedef: number; sablon?: string; yonetim?: string; firmalar: { firmaKodu: string; sonuc: string }[] };
 }
 
 /** 1.0.0+20261006.153012 (Türkiye saati; aynı dakikada iki yayın çakışmasın diye saniyeli) */
@@ -162,6 +162,17 @@ export const semaYay = async (log: (m: string) => void = () => undefined): Promi
     sonuc.sablon = `HATA: ${err?.message}`;
   }
   log(`Şablon: ${sonuc.sablon}`);
+
+  // Yönetim veritabanı (LIKYA_ADMIN) göçleri: Backend/migrations-admin, klon hesabıyla (db_owner; docs/sql/LIKYA_ADMIN_DAGITIM.sql).
+  // Uygulamanın kendi SQL kullanıcısında DDL yetkisi olmadığından SSMS'te elle yapılan ALTER'lar buraya taşındı (K4).
+  try {
+    const yonetimDosyalari = gocDosyalari(path.resolve(gocKlasoru(), "..", "migrations-admin"));
+    const r = await klonIle(env.ADMIN_DB_NAME, (p) => semaGocUygula(p, yonetimDosyalari));
+    sonuc.yonetim = r.uygulanan.length ? `güncellendi (${r.uygulanan.join(", ")})` : "güncel";
+  } catch (err: any) {
+    sonuc.yonetim = `HATA: ${String(err?.message || err).slice(0, 200)}`;
+  }
+  log(`Yönetim (${env.ADMIN_DB_NAME}): ${sonuc.yonetim}`);
 
   const pool = await getAdminPool();
   const firmalar = (

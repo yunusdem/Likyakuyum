@@ -3,6 +3,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { env } from "../config/env.config.js";
 import { gocDurumu } from "../services/kurulum/gocDurumu.js";
+import { calisanCommit, calisanSurum } from "../utils/surum.js";
 
 export class HealthController {
   public static check = (req: Request, res: Response) => {
@@ -21,7 +22,10 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: env.NODE_ENV,
-      version: "1.0.0",
+      version: calisanSurum(),
+      // Test / canlı ayrımı: dağıtım betiği yeniden başlatma sonrası doğru commit'in yüklendiğini buradan doğrular
+      ortam: env.ORTAM,
+      commit: calisanCommit(),
     });
   };
 }

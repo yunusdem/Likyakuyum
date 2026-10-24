@@ -492,6 +492,16 @@ export const LoginPage: React.FC = () => {
       )}
 
       <div className="login-icerik">
+        {/* Test ortamı (likyakuyum.com): canlıyla karıştırılmasın (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md) */}
+        {sistem?.ortam === "test" && (
+          <div
+            className="text-center fw-bold small rounded-3 mb-3 py-2 px-3"
+            style={{ background: "#dc3545", color: "#fff", letterSpacing: "0.08em" }}
+            title={sistem.commit ? `Commit ${sistem.commit.slice(0, 9)}` : undefined}
+          >
+            TEST ORTAMI — burada girilen kayıtlar canlıya yazılmaz{sistem.commit ? ` · ${sistem.commit.slice(0, 9)}` : ""}
+          </div>
+        )}
         {/* Marka */}
         <div className="login-marka">
           <div className="d-inline-flex align-items-center gap-3">

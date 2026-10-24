@@ -18,6 +18,7 @@ import EpostaDogrulaPage from "./pages/EpostaDogrulaPage";
 import PosEntegrasyonPage from "./pages/PosEntegrasyonPage";
 import AyarlarPage from "./pages/AyarlarPage";
 import SurumlerPage from "./pages/SurumlerPage";
+import DagitimPage from "./pages/DagitimPage";
 import DestekPage from "./pages/DestekPage";
 import BildirimlerPage from "./pages/BildirimlerPage";
 
@@ -66,6 +67,7 @@ const AdminApp: React.FC = () => (
       <Route path="/adminler" element={<AdminlerPage />} />
       <Route path="/ayarlar" element={<AyarlarPage />} />
       <Route path="/surumler" element={<SurumlerPage />} />
+      <Route path="/dagitim" element={<DagitimPage />} />
       <Route path="/sifre-degistir" element={<SifreDegistirPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />

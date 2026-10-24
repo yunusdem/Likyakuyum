@@ -14,6 +14,8 @@ export const ILETISIM = {
   telefon2Ham: "+902526358205",
   eposta: "info@likyakuyum.com",
   adres: "Hal Caddesi No: 101, Fethiye / Muğla",
+  /** Instagram hesabı (likyakuyum.com ve likyaerp.com ortak) */
+  instagram: "https://www.instagram.com/likyaerp/",
 } as const;
 
 export const TEL_LINK = `tel:${ILETISIM.telefonHam}`;

@@ -9,6 +9,7 @@ import { IzlemeController } from "../controllers/admin/izleme.controller.js";
 import { PosAdminController } from "../controllers/admin/posAdmin.controller.js";
 import { PanoApiAdminController } from "../controllers/admin/panoApiAdmin.controller.js";
 import { DestekAdminController } from "../controllers/admin/destekAdmin.controller.js";
+import { DagitimController } from "../controllers/admin/dagitim.controller.js";
 import {
   adminKonuListeSchema,
   adminMesajSchema,
@@ -41,6 +42,8 @@ import {
   lisansIptalSchema,
   ayarKaydetSchema,
   surumGuncelleSchema,
+  dagitimBaslatSchema,
+  dagitimIdSchema,
   hedefSurumSchema,
   firmaGuncelleSchema,
   firmaDurumSchema,
@@ -121,6 +124,13 @@ router.get("/firmalar/:id/kurulum/firma-dosyasi", validate(adminIdSchema), Firma
 router.post("/firmalar/:id/kurulum/baglanti", validate(adminIdSchema), FirmaController.kurulumBaglantisi);
 router.put("/firmalar/:id/hedef-surum", validate(hedefSurumSchema), FirmaController.hedefSurum);
 router.get("/surumler", FirmaController.surumler);
+
+// Dağıtım: test / canlı sürüm durumu, panelden güncelleme (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
+router.get("/dagitim/ozet", DagitimController.ozet);
+router.get("/dagitim", DagitimController.durum);
+router.post("/dagitim", validate(dagitimBaslatSchema), DagitimController.baslat);
+router.post("/dagitim/goruldu", DagitimController.goruldu);
+router.get("/dagitim/:id/log", validate(dagitimIdSchema), DagitimController.log);
 router.put("/surumler/:surum", validate(surumGuncelleSchema), FirmaController.surumGuncelle);
 router.put("/ayarlar", validate(ayarKaydetSchema), FirmaController.ayarKaydet);
 

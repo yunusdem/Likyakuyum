@@ -282,3 +282,11 @@ export const lisansEkleSchema = z.object({
     urunler: urunlerAlani,
   }),
 });
+
+// Dağıtım (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md): "Test'i Güncelle" / "Canlıya Geçir"
+export const dagitimBaslatSchema = z.object({
+  body: z.object({ hedef: z.enum(["canli", "test"]) }),
+});
+export const dagitimIdSchema = z.object({
+  params: z.object({ id: z.coerce.number().int().positive() }),
+});

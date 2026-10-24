@@ -16,11 +16,13 @@ export const SIRKET = {
   telefon2Ham: ILETISIM.telefon2Ham,
   whatsapp: ILETISIM.whatsapp,
   eposta: ILETISIM.eposta,
+  instagram: ILETISIM.instagram,
   site: "https://www.likyaerp.com",
   /** Likya.Kuyum'un kendi tanıtım sitesi */
   kuyumSitesi: "https://likyakuyum.com",
   /** Uygulama giriş ekranı (müşteri no ile giriş) — Ust ve Alt'taki "Giriş Yap" buraya gider */
-  girisAdresi: "/login",
+  // Uygulama likyaerp.com kökünde (canlı), tanıtım sitesi www.likyaerp.com'da (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md K8)
+  girisAdresi: "https://likyaerp.com/login",
 } as const;
 
 export const TEL_LINK = `tel:${SIRKET.telefonHam}`;
