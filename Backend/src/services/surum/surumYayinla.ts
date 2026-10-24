@@ -182,7 +182,20 @@ export const semaYay = async (log: (m: string) => void = () => undefined): Promi
   const firmalar = (
     await pool.request().query(`SELECT FIRMA_ID, FIRMA_KODU, DB_NAME FROM dbo.ADM_FIRMA WHERE BAGLANTI_MODU = 'cloud' AND DURUM IN ('AKTIF','DONDURULMUS','PASIF','SILINECEK')`)
   ).recordset as any[];
+  // Kaydı bulutta görünüp veritabanı bu sunucuda hiç olmayan firma (ör. taşınmış / silinmiş) hata değil, atlanır:
+  // aksi halde panelden her dağıtım bu firma yüzünden "şema göçü hata verdi" deyip geri dönüyordu.
+  // Bağlantı ya da göç hatası olan VAR olan veritabanları yine HATA sayılır.
+  const sunucudakiler = new Set<string>(
+    await klonIle("master", async (p) =>
+      ((await p.request().query(`SELECT name FROM sys.databases`)).recordset as any[]).map((r) => String(r.name).toLowerCase())
+    )
+  );
   for (const f of firmalar) {
+    if (!sunucudakiler.has(String(f.DB_NAME || "").toLowerCase())) {
+      sonuc.firmalar.push({ firmaKodu: f.FIRMA_KODU, sonuc: `atlandı (${f.DB_NAME || "-"} veritabanı bu sunucuda yok)` });
+      log(`${f.FIRMA_KODU}: ${sonuc.firmalar[sonuc.firmalar.length - 1].sonuc}`);
+      continue;
+    }
     try {
       const r = await klonIle(f.DB_NAME, (p) => semaGocUygula(p, dosyalar));
       await pool.request().input("id", sql.Int, f.FIRMA_ID).input("s", sql.Int, r.sonraki).query(`UPDATE dbo.ADM_FIRMA SET SEMA_SURUMU = @s WHERE FIRMA_ID = @id`);
