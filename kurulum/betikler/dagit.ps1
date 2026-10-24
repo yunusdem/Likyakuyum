@@ -166,6 +166,11 @@ function Kur([string]$commit, [string]$oncekiCommit, [bool]$geriDonus) {
     try { $rollup = (Get-Content (Join-Path $kok "node_modules\rollup\package.json") -Raw | ConvertFrom-Json).version } catch { }
     Calistir $npm @("install", "--no-save", "--no-audit", "--no-fund", "@rollup/rollup-win32-x64-msvc@$rollup") $kok | Out-Null
   }
+  # Depo node_modules'u izledigi icin esbuild'in JS parcasi ile Windows ikili paketi farkli surumde gelebiliyor
+  # ("Host version ... does not match binary version"); tsx (surum:yayinla) bunu kullanir. rebuild eslesen ikiliyi kurar.
+  if (Test-Path (Join-Path $kok "Backend\node_modules\esbuild\package.json")) {
+    Calistir $npm @("rebuild", "esbuild") (Join-Path $kok "Backend") | Out-Null
+  }
 
   Adim ($on + "Backend derleniyor")
   Calistir $npm @("run", "build") (Join-Path $kok "Backend") | Out-Null
@@ -230,6 +235,16 @@ try {
 
   # Sunucuda elle degistirilmis izlenen dosya (ornegin Backend/.env) varsa hicbir seye dokunmadan durulur:
   # checkout -f onu sessizce silerdi. Derleme ciktilari ve paket klasorleri sayilmaz.
+  # Hedef ortamin pm2 sureci yoksa (ornegin test ortami henuz kurulmadi) hicbir seye dokunmadan durulur: yoksa kurulum
+  # derlemeyi bitirip yeniden baslatmada kalir ve geri donus de ayni yerde kalirdi.
+  if (-not $Deneme) {
+    Adim "pm2 sureci denetleniyor ($([string]$ortam.pm2))"
+    $pr = Surec $pm2 @("describe", [string]$ortam.pm2) $kok
+    if ($pr.kod -ne 0 -or ("" + $pr.out + $pr.err) -match "doesn't exist|not found") {
+      throw ("pm2'de '{0}' sureci yok; {1} ortami henuz kurulmamis. Dagitim yapilmadi (hicbir sey degismedi)." -f [string]$ortam.pm2, $hedef)
+    }
+  }
+
   Adim "Calisma kopyasi denetleniyor"
   # public-admin / public-erp altındaki PrinterAgent.exe ve images: admin ve erp derlemesi public'ten kopyalar (vite.*.config.ts)
   $izinli = '^(Backend/dist/|dist/|dist-admin/|dist-erp/|yayin/|node_modules/|Backend/node_modules/|public-erp/images/|public-erp/PrinterAgent\.exe$|public-admin/PrinterAgent\.exe$|package-lock\.json$|Backend/package-lock\.json$)'
