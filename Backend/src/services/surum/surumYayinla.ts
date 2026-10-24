@@ -149,7 +149,11 @@ export const semaYay = async (log: (m: string) => void = () => undefined): Promi
     sonuc.sablon = "atlandı (klonlama hesabı yok)";
     return sonuc;
   }
-  try {
+  // Test ortamı (likyakuyum.com) ortak LIKYA_SABLON'a ve onun .bak yedeğine dokunmaz: şablon canlının yeni firma kaynağıdır,
+  // onaylanmamış göç oraya yazılmasın (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
+  if (env.ORTAM === "test") {
+    sonuc.sablon = "atlandı (test ortamı)";
+  } else try {
     const r = await klonIle("LIKYA_SABLON", (pool) => semaGocUygula(pool, dosyalar));
     if (r.uygulanan.length) {
       const yedek = await AyarSqlRepository.oku("SABLON_YEDEK_DOSYASI");
