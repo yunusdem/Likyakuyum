@@ -1,8 +1,8 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.7",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "Windows Edge/Chromium doğrudan GDI ve RAW spooler tetikleme motoru",
+  "releaseNotes": "Mükerrer ve çift fiş basımını önleyen deduplication motoru ve akıllı kilit",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-10-23T20:15:00Z"
+  "updatedAt": "2026-10-24T11:35:00Z"
 }

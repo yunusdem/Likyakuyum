@@ -64,9 +64,7 @@
     { "id": "yaziyla-alis", "ad": "Yazıyla (alış)", "tip": "metin", "kosul": "!{{satim}}", "x": 0, "y": 254, "g": 209.77, "metin": "Yalnız: **{{toplam.yaziyla}}**", "boyut": 7.1, "hiza": "center" },
     { "id": "ayrac-7", "tip": "cizgi", "x1": 0, "y1": 265, "x2": 209.77, "y2": 265, "kalinlik": 0.75, "kesikli": true },
 
-    { "id": "karekod", "ad": "Karekod", "tip": "qr", "x": 0, "y": 269, "boyut": 41, "icerik": "{{qr}}" },
-    { "id": "bilgi-fisi", "ad": "Bilgi fişi ibaresi", "zorunlu": true, "tip": "satirlar", "x": 45, "y": 276, "g": 164.77, "boyut": 6.75, "aralik": 0.5, "hiza": "center",
-      "satirlar": ["BİLGİ FİŞİDİR", "MALİ DEĞERİ YOKTUR", "**İyi Günlerde Kullanınız**"] },
+    { "id": "karekod", "ad": "Karekod", "tip": "qr", "x": 84.4, "y": 269, "boyut": 41, "icerik": "{{qr}}" },
 
     { "id": "imza-cizgi", "tip": "cizgi", "x1": 0, "y1": 316, "x2": 209.77, "y2": 316, "kalinlik": 0.5, "kesikli": true },
     { "id": "teslim-eden", "tip": "metin", "x": 0, "y": 320, "g": 104, "metin": "Teslim Eden", "boyut": 7.1, "hiza": "center" },

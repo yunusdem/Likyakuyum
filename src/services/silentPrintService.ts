@@ -343,42 +343,60 @@ async function printViaWebPrintingApi(html: string, printerName?: string | null,
   return false;
 }
 
+interface WsPrintResult {
+  handled: boolean;
+  result: SilentPrintResult | null;
+}
+
 /**
  * WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) üzerinden doğrudan sessiz yazdırma.
  * Canlı HTTPS siteler yerel WebSocket bağlantılarını engellemediğinden
  * Mixed Content / Private Network Access hatası olmadan doğrudan çalışır.
  */
-async function printViaWebSocket(options: SilentPrintOptions): Promise<SilentPrintResult | null> {
-  if (typeof WebSocket === "undefined") return null;
+async function printViaWebSocket(options: SilentPrintOptions, jobId: string): Promise<WsPrintResult> {
+  if (typeof WebSocket === "undefined") return { handled: false, result: null };
 
-  const tryConnect = (wsUrl: string): Promise<SilentPrintResult | null> => {
+  const tryConnect = (wsUrl: string): Promise<WsPrintResult> => {
     return new Promise((resolve) => {
       let resolved = false;
+      let sent = false;
       let ws: WebSocket | null = null;
+      let timer: any = null;
 
       const finish = (result: SilentPrintResult | null) => {
         if (!resolved) {
           resolved = true;
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           if (ws) {
             try { ws.close(); } catch {}
           }
-          resolve(result);
+          resolve({ handled: sent, result });
         }
       };
 
-      const timer = setTimeout(() => {
+      // 1. Aşama: Bağlantı kurulamazsa (servis kapalıysa) hızlıca vazgeç: 1200ms
+      timer = setTimeout(() => {
         finish(null);
-      }, 4000);
+      }, 1200);
 
       try {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
           try {
+            sent = true;
+            // 2. Aşama: Bağlantı kuruldu ve mesaj iletildi!
+            // Artık HTTP yedeğine düşülmemelidir; fiş işlenirken yanıt beklenir.
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+              // 12 saniyede yanıt gelmese bile istek iletildiği için başarılı kabul edilir, mükerrer basılmaz
+              finish({ success: true, message: "Fiş yazıcı kuyruğuna iletildi." });
+            }, 12000);
+
             ws?.send(
               JSON.stringify({
                 action: "print",
+                jobId,
                 html: options.html,
                 text: options.text,
                 printerName: options.printerName,
@@ -405,21 +423,24 @@ async function printViaWebSocket(options: SilentPrintOptions): Promise<SilentPri
           } catch {}
         };
 
-        ws.onerror = () => finish(null);
+        ws.onerror = () => {
+          if (!sent) finish(null);
+        };
       } catch {
         finish(null);
       }
     });
   };
 
-  // Önce 127.0.0.1, ardından localhost adresini dene
+  // Önce 127.0.0.1 adresini dene
   const res1 = await tryConnect("ws://127.0.0.1:9100");
-  if (res1) return res1;
+  if (res1.handled) return res1;
 
+  // Sadece ilk bağlantı açılamadıysa localhost dene
   const res2 = await tryConnect("ws://localhost:9100");
-  if (res2) return res2;
+  if (res2.handled) return res2;
 
-  return null;
+  return { handled: false, result: null };
 }
 
 /**
@@ -556,6 +577,9 @@ function hidePrintLoadingOverlay(): void {
   }
 }
 
+// Tarayıcı tarafında peş peşe (örneğin çift F10 basılması gibi) mükerrer gönderimleri engelleyen kilit
+const activePrintSignatures = new Map<string, number>();
+
 /**
  * Gönderilen HTML veya Metin verisini doğrudan yazıcıya gönderir.
  * Tarayıcı önizleme penceresini açmaz, arka plandaki yerel yazıcı servisine iletir.
@@ -578,6 +602,20 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
+  // 1. Tarayıcı içi mükerrer basım engeli (2.5 saniye içinde birebir aynı içerik basılamaz)
+  const now = Date.now();
+  const signature = `${printerName || "default"}__${(title || "").trim()}__${(text || "").trim().slice(0, 100)}__${(html || "").length}`;
+  for (const [k, t] of activePrintSignatures.entries()) {
+    if (now - t > 10000) activePrintSignatures.delete(k);
+  }
+  if (activePrintSignatures.has(signature) && (now - (activePrintSignatures.get(signature) || 0)) < 2500) {
+    console.warn("[triggerSilentPrint] Mükerrer yazdırma çağrısı engellendi:", signature);
+    return { success: true, message: "Fiş zaten yazdırılıyor." };
+  }
+  activePrintSignatures.set(signature, now);
+
+  const jobId = "job_" + now + "_" + Math.random().toString(36).substring(2, 8);
+
   // Arka planda ajan sürümünü kontrol et ve gerekiyorsa otomatik güncelle
   checkAndAutoUpdatePrinterAgent().catch(() => {});
 
@@ -585,22 +623,20 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
   showPrintLoadingOverlay(printerName);
 
   try {
-    // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
+    // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
     try {
-      const wsResult = await printViaWebSocket(options);
-      if (wsResult) {
-        return wsResult;
+      const wsRes = await printViaWebSocket(options, jobId);
+      if (wsRes.handled) {
+        // İstek yerel ajana başarıyla iletildi; asla HTTP yedeğine düşülmez (çift/üç fiş çıkmasını önler!)
+        return wsRes.result || { success: true, message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.` };
       }
     } catch (wsErr) {
       console.warn("[triggerSilentPrint] WebSocket yazdırma denenirken hata:", wsErr);
     }
 
-    // 2. Yedek: Yerel HTTP POST (Port 9100 ve Port 5050 - 127.0.0.1 & localhost)
+    // 2. Yedek: Yerel HTTP POST (SADECE WebSocket kapalıysa veya ulaşılamadıysa devreye girer!)
     const candidateUrls = [
-      "http://127.0.0.1:9100/print",
       "http://127.0.0.1:9100/api/print",
-      "http://localhost:9100/print",
-      "http://localhost:9100/api/print",
       "http://127.0.0.1:5050/print",
     ];
 
@@ -609,12 +645,13 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     for (const url of candidateUrls) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            jobId,
             html,
             text,
             printerName,
@@ -634,17 +671,15 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
         if (res) {
           if (res.ok) {
             const data = await res.json().catch(() => ({}));
-            if (data.success !== false) {
-              return {
-                success: true,
-                message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
-              };
-            } else {
-              lastError = data.message || "Yazdırma servisi hata döndürdü.";
-            }
+            return {
+              success: data.success !== false,
+              message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
+            };
           } else {
             const errData = await res.json().catch(() => ({}));
             lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
+            // 9100 portundan yanıt alındıysa mükerrer basımı önlemek için başka porta istek atma
+            break;
           }
         }
       } catch (err: any) {

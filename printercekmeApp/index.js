@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.0.6";
+const CURRENT_VERSION = "1.0.7";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -632,8 +632,11 @@ function extractTextFromHtmlSimple(html) {
 }
 
 // ─── Doğrudan Sessiz Yazdırma İşi (Windows & macOS/Linux) ─────────────────────
+// Mükerrer yazdırmayı önleyen geçici önbellek (aynı jobId veya içerik 10 saniye içinde tekrar basılmaz)
+const recentPrintJobs = new Map();
+
 async function executePrintJob(job) {
-  const { html, text, printerName, targetDevice, isPos = true, copies = 1, title = "Likya_Fis" } = job || {};
+  const { html, text, printerName, targetDevice, isPos = true, copies = 1, title = "Likya_Fis", jobId = "" } = job || {};
 
   if (!html && !text) {
     return { success: false, message: "Yazdırılacak içerik (html veya text) bulunamadı." };
@@ -642,6 +645,25 @@ async function executePrintJob(job) {
   const targetPrinter = (printerName || targetDevice || "").trim();
   const platform = os.platform();
   const timestamp = Date.now();
+
+  // Deduplication Kontrolü: 10 saniye içinde aynı istek tekrar geldiyse mükerrer basımı engelle
+  for (const [k, t] of recentPrintJobs.entries()) {
+    if (timestamp - t > 15000) recentPrintJobs.delete(k);
+  }
+
+  if (jobId && recentPrintJobs.has(jobId)) {
+    console.log(`[printercekmeApp] ⚠️ Mükerrer yazdırma isteği engellendi (JobId: ${jobId})`);
+    return { success: true, message: "Fiş zaten yazdırılıyor (mükerrer istek engellendi)." };
+  }
+
+  const contentSig = `${targetPrinter}__${title}__${(text || "").trim().slice(0, 100)}__${(html || "").length}`;
+  if (contentSig.length > 20 && recentPrintJobs.has(contentSig) && (timestamp - recentPrintJobs.get(contentSig) < 6000)) {
+    console.log(`[printercekmeApp] ⚠️ Mükerrer yazdırma isteği engellendi (İçerik İmzası: ${contentSig.slice(0, 40)}...)`);
+    return { success: true, message: "Fiş zaten yazdırılıyor (mükerrer istek engellendi)." };
+  }
+
+  if (jobId) recentPrintJobs.set(jobId, timestamp);
+  recentPrintJobs.set(contentSig, timestamp);
 
   // Windows'ta kullanıcı adındaki boşluklardan ("Yusuf ARAS") etkilenmemek için C:\ProgramData kullan
   let tmpDir = "";

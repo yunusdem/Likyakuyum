@@ -45,9 +45,6 @@
       "cerceve": "yok", "hizaDeger": "right", "satirlar": [["GENEL TOPLAM:", "{{toplam.genel|sayi}} TL", true]] },
 
     { "id": "karekod", "ad": "Karekod", "tip": "qr", "x": 80.4, "y": 186, "boyut": 49, "icerik": "{{qr}}" },
-    { "id": "ettn", "ad": "ETTN", "tip": "metin", "kosul": "{{ettn}}", "daralt": true, "x": 0, "y": 238, "g": 209.77, "metin": "ETTN: {{ettn}}", "boyut": 6, "hiza": "center" },
-    { "id": "alt-cizgi", "tip": "cizgi", "x1": 0, "y1": 249, "x2": 209.77, "y2": 249, "kalinlik": 0.5 },
-    { "id": "bilgi-fisi", "ad": "Bilgi fişi ibaresi", "zorunlu": true, "tip": "satirlar", "x": 0, "y": 252, "g": 209.77, "boyut": 6.75, "aralik": 0.5, "hiza": "center",
-      "satirlar": ["İyi günlerde kullanmanız dileğiyle.", "Mali değeri yoktur, bilgi fişidir."] }
+    { "id": "ettn", "ad": "ETTN", "tip": "metin", "kosul": "{{ettn}}", "daralt": true, "x": 0, "y": 238, "g": 209.77, "metin": "ETTN: {{ettn}}", "boyut": 6, "hiza": "center" }
   ]
 }
