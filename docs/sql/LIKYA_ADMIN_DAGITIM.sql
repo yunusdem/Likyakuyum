@@ -4,7 +4,7 @@
    Panelden "Test'i Güncelle" / "Canlıya Geçir" kayıtları ve yönetim veritabanı göçlerinin otomatik uygulanması.
 
      1) Klon hesabına (docs/sql/KLON_HESABI.sql, .env.local KLON_DB_USER) bu veritabanında db_owner verilir:
-        Backend/migrations-admin/*.sql dosyalarını npm run surum:yayinla bu hesapla uygular (K4). Uygulamanın kendi
+        Backend/migrations-admin klasöründeki göç dosyalarını npm run surum:yayinla bu hesapla uygular (K4). Uygulamanın kendi
         SQL kullanıcısında DDL yetkisi yoktur, o değişmez.
      2) ADM_DAGITIM tablosu (ilk kurulumda elle; sonraki değişiklikler migrations-admin ile gelir).
 
