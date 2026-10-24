@@ -88,7 +88,7 @@ const HomePage: React.FC = () => {
       <style>{STIL}</style>
 
       <div className="lk-hero d-flex align-items-center gap-3 px-3 py-2 mb-3">
-        <div style={{ fontSize: 13, letterSpacing: ".12em", color: ALTIN, fontWeight: 700 }}>GENEL DURUM — TEST</div>
+        <div style={{ fontSize: 13, letterSpacing: ".12em", color: ALTIN, fontWeight: 700 }}>GENEL DURUM</div>
         <div className="ms-auto d-flex align-items-center gap-2">
           {saat && <span style={{ fontSize: 11, opacity: 0.8 }}>Son güncelleme {saat.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</span>}
           <button type="button" className="lk-hero-btn btn btn-sm py-0 px-2" style={{ fontSize: 12 }} disabled={yukleniyor} onClick={yenile}>
