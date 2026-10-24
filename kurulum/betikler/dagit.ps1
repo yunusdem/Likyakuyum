@@ -230,7 +230,8 @@ try {
   # Sunucuda elle degistirilmis izlenen dosya (ornegin Backend/.env) varsa hicbir seye dokunmadan durulur:
   # checkout -f onu sessizce silerdi. Derleme ciktilari ve paket klasorleri sayilmaz.
   Adim "Calisma kopyasi denetleniyor"
-  $izinli = '^(Backend/dist/|dist/|dist-admin/|dist-erp/|yayin/|node_modules/|Backend/node_modules/|public-erp/images/|public-erp/PrinterAgent\.exe$|package-lock\.json$|Backend/package-lock\.json$)'
+  # public-admin / public-erp altındaki PrinterAgent.exe ve images: admin ve erp derlemesi public'ten kopyalar (vite.*.config.ts)
+  $izinli = '^(Backend/dist/|dist/|dist-admin/|dist-erp/|yayin/|node_modules/|Backend/node_modules/|public-erp/images/|public-erp/PrinterAgent\.exe$|public-admin/PrinterAgent\.exe$|package-lock\.json$|Backend/package-lock\.json$)'
   $elle = @()
   foreach ($s in ((Git @("-c", "core.quotepath=false", "status", "--porcelain", "--untracked-files=no")) -split "`r?`n")) {
     if (-not $s.Trim()) { continue }
