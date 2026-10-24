@@ -523,9 +523,14 @@ export interface CommitOzeti {
   tarih: string;
 }
 export interface OrtamDurumu {
+  /** Çalışan backend'in commit'i; backend kapalıysa diskteki */
   commit: string | null;
   kisa: string | null;
   ozet: CommitOzeti | null;
+  /** Diskteki kod çalışandan farklıysa (yarım kalmış kurulum) */
+  diskCommit?: string | null;
+  /** Backend sağlık ucuna ulaşılamadı */
+  calismiyor?: boolean;
 }
 export interface DagitimKaydi {
   dagitimId: number;

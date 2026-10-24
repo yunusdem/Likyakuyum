@@ -64,6 +64,13 @@ const OrtamKarti: React.FC<{ baslik: string; alt: string; d: DagitimDurumu["canl
       ) : (
         <div className="small text-muted mt-2">Commit bilgisi okunamadı.</div>
       )}
+      {/* Kart çalışan sürümü gösterir; uyarılar yarım kalmış kurulumu ya da kapalı backend'i belirtir */}
+      {d.calismiyor && <div className="small text-danger mt-2">Backend çalışmıyor; gösterilen diskteki kod.</div>}
+      {d.diskCommit && (
+        <div className="small text-warning-emphasis mt-2">
+          Diskteki kod farklı (<span className="font-monospace">{kisa(d.diskCommit)}</span>): yarım kalmış kurulum. Aynı hedef yeniden kurulabilir.
+        </div>
+      )}
     </Card.Body>
   </Card>
 );

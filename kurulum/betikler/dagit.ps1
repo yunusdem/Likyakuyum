@@ -47,11 +47,25 @@ $script:durum = [ordered]@{
   oncekiCommit = $null; yeniCommit = $null; baslangic = (Get-Date).ToString("o"); bitis = $null
 }
 
+# Log dosyasina ekleme. Add-Content KULLANILMAZ: panel log'u 3 sn'de bir okurken PS 5.1 Add-Content "Stream was not
+# readable" firlatip kurulumu yarida birakiyordu. Dosya paylasimli (ReadWrite) acilir, kilitliyse kisa araliklarla tekrar
+# denenir; log yazilamazsa da kurulum durmaz (hata yutulur).
+$script:utf8 = New-Object Text.UTF8Encoding($false)
+function LogEkle([string]$metin) {
+  $bayt = $script:utf8.GetBytes($metin + "`r`n")
+  for ($i = 0; $i -lt 30; $i++) {
+    try {
+      $fs = [IO.File]::Open($Gunluk, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+      try { $fs.Write($bayt, 0, $bayt.Length) } finally { $fs.Close() }
+      return
+    } catch { Start-Sleep -Milliseconds 100 }
+  }
+}
 function Yaz([string]$m) {
   $satir = "{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $m
-  Add-Content -Path $Gunluk -Value $satir -Encoding UTF8
+  LogEkle $satir
   # Write-Output degil: fonksiyonlarin donus degerine karismasin (Saglik $false donerken log satirlari diziyi dogru yapiyordu)
-  Write-Host $satir
+  try { Write-Host $satir } catch { }
 }
 function DurumYaz {
   $gecici = "$durumDosyasi.tmp"
@@ -75,6 +89,9 @@ function Surec([string]$exe, [string[]]$arg, [string]$dizin) {
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
+  # node / npm UTF-8 yazar; varsayilan konsol kod sayfasiyla okununca Turkce karakterler bozuluyordu
+  $psi.StandardOutputEncoding = $script:utf8
+  $psi.StandardErrorEncoding = $script:utf8
   $psi.CreateNoWindow = $true
   $p = New-Object Diagnostics.Process
   $p.StartInfo = $psi
@@ -98,7 +115,7 @@ function Calistir([string]$exe, [string[]]$arg, [string]$dizin, [int[]]$izinliKo
   $r = Surec $exe $arg $dizin
   $cikti = @((("" + $r.out) + "`n" + ("" + $r.err)) -split "`r?`n" | Where-Object { $_ -and $_.Trim() })
   if ($cikti.Count -gt 60) { $cikti = @("... ({0} satir atlandi)" -f ($cikti.Count - 60)) + $cikti[-60..-1] }
-  foreach ($s in $cikti) { Add-Content -Path $Gunluk -Value ("    " + $s) -Encoding UTF8 }
+  if ($cikti.Count -gt 0) { LogEkle ((($cikti | ForEach-Object { "    " + $_ }) -join "`r`n")) }
   if ($izinliKodlar -notcontains $r.kod) { throw ("{0} cikis kodu {1}" -f (Split-Path -Leaf $exe), $r.kod) }
   return $r.kod
 }
@@ -256,7 +273,17 @@ try {
 
   Adim "Uzak depo okunuyor"
   Git @("fetch", "origin", "--quiet") | Out-Null
-  $onceki = Git @("rev-parse", "HEAD")
+  # "Onceki" = CALISAN backend'in surumu (saglik ucu). Diskteki HEAD yarim kalmis bir kurulumdan ileride olabilir;
+  # o durumda geri donus calisan surume yapilir ve ayni hedef yeniden kurulabilir.
+  $head = Git @("rev-parse", "HEAD")
+  $calisan = $null
+  try {
+    $sr = Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$port/api/v1/health" -TimeoutSec 5
+    $c = [string](($sr.Content | ConvertFrom-Json).data.commit)
+    if ($c -match '^[0-9a-f]{40}$') { $calisan = $c }
+  } catch { }
+  $onceki = if ($calisan) { $calisan } else { $head }
+  if ($calisan -and $calisan -ne $head) { Yaz "UYARI: diskteki kod ($($head.Substring(0, 9))) calisan surumden ($($calisan.Substring(0, 9))) farkli; onceki surum olarak calisan alindi" }
   $yeni = Git @("rev-parse", "--verify", ([string]$istek.commit + "^{commit}"))
   $script:durum.oncekiCommit = $onceki; $script:durum.yeniCommit = $yeni; DurumYaz
   Yaz "Onceki: $onceki  Yeni: $yeni"

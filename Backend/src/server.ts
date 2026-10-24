@@ -6,6 +6,11 @@ import { logger } from "./utils/logger.js";
 import { BulutZamanlayici } from "./services/admin/bulutZamanlayici.js";
 import { DestekZamanlayici } from "./services/destek/destekZamanlayici.js";
 import { DagitimService } from "./services/admin/dagitim.service.js";
+import { calisanCommit } from "./utils/surum.js";
+
+// Çalışan kodun commit'i açılışta sabitlenir: sonradan diskte checkout yapılsa da sağlık ucu ÇALIŞAN sürümü söyler
+// (dağıtım betiği ve panel buna bakar; docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
+calisanCommit();
 import { DestekKurulumService } from "./services/destek/destekKurulum.service.js";
 import { KurulumBildirim } from "./services/kurulum/kurulumBildirim.js";
 import { Guncelleyici } from "./services/kurulum/guncelleyici.js";

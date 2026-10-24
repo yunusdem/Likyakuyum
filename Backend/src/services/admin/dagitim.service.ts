@@ -47,9 +47,14 @@ export interface CommitOzeti {
 }
 
 export interface OrtamDurumu {
+  /** Çalışan backend'in commit'i (sağlık ucu); backend kapalıysa diskteki */
   commit: string | null;
   kisa: string | null;
   ozet: CommitOzeti | null;
+  /** Diskteki kod çalışandan farklıysa (yarım kalmış kurulum) diskteki commit */
+  diskCommit?: string | null;
+  /** Backend sağlık ucuna ulaşılamadı */
+  calismiyor?: boolean;
 }
 
 export interface DagitimDurumu {
@@ -134,9 +139,33 @@ const ozet = async (ayar: DagitimAyari, kok: string, commit: string | null): Pro
   }
 };
 
-const ortamDurumu = async (ayar: DagitimAyari, kok: string): Promise<OrtamDurumu> => {
-  const commit = gitCommit(kok);
-  return { commit, kisa: commit ? commit.slice(0, 9) : null, ozet: await ozet(ayar, kok, commit) };
+/** Ortamın ÇALIŞAN backend'inin commit'i (sağlık ucu); ulaşılamazsa null */
+const calisanCommitiOku = async (port: number): Promise<string | null> => {
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/v1/health`, { signal: AbortSignal.timeout(4000) });
+    const j: any = await r.json();
+    const c = String(j?.data?.commit || "");
+    return /^[0-9a-f]{40}$/.test(c) ? c : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Kart çalışan sürümü gösterir (yarım kalmış bir kurulumda diskteki HEAD ileride olabilir; o zaman "disk" ayrıca verilir).
+ * Backend kapalıysa diskteki HEAD gösterilir, "calismiyor" işaretlenir.
+ */
+const ortamDurumu = async (ayar: DagitimAyari, o: OrtamAyari): Promise<OrtamDurumu> => {
+  const disk = gitCommit(o.kok);
+  const calisan = await calisanCommitiOku(o.port);
+  const commit = calisan || disk;
+  return {
+    commit,
+    kisa: commit ? commit.slice(0, 9) : null,
+    ozet: await ozet(ayar, o.kok, commit),
+    diskCommit: disk && calisan && disk !== calisan ? disk : null,
+    calismiyor: !calisan,
+  };
 };
 
 const pidYasiyorMu = (pid?: number): boolean => {
@@ -179,8 +208,8 @@ export class DagitimService {
     }
     if (!ayar) return d;
 
-    d.canli = await ortamDurumu(ayar, ayar.canli.kok);
-    d.test = await ortamDurumu(ayar, ayar.test.kok);
+    d.canli = await ortamDurumu(ayar, ayar.canli);
+    d.test = await ortamDurumu(ayar, ayar.test);
     try {
       if (uzagiYenile) await git(ayar, ayar.test.kok, ["fetch", "origin", "--quiet"], 60);
       const uzakCommit = (await git(ayar, ayar.test.kok, ["rev-parse", "origin/main"], 15)).trim() || null;
@@ -210,10 +239,13 @@ export class DagitimService {
       await DagitimSqlRepository.bitir(calisan.dagitimId, "HATA", "Betikten sonuç gelmedi (zaman aşımı); kayıt kapatıldı.", null, null);
     }
 
-    const oncekiCommit = gitCommit(hedef === "canli" ? ayar.canli.kok : ayar.test.kok);
+    // Önceki = hedefin ÇALIŞAN sürümü (yarım kalmış kurulumda diskteki ileride olabilir)
+    const hedefOrtam = hedef === "canli" ? ayar.canli : ayar.test;
+    const oncekiCommit = (await calisanCommitiOku(hedefOrtam.port)) || gitCommit(hedefOrtam.kok);
     let hedefCommit: string;
     if (hedef === "canli") {
-      const testCommit = gitCommit(ayar.test.kok);
+      // Canlıya testte ÇALIŞAN sürüm gider; test backend kapalıysa test kopyasındaki kod
+      const testCommit = (await calisanCommitiOku(ayar.test.port)) || gitCommit(ayar.test.kok);
       if (!testCommit) throw new ApiError(400, "Test kopyasının commit'i okunamadı.");
       if (testCommit === oncekiCommit) throw new ApiError(400, "Canlı zaten testteki sürümde.");
       hedefCommit = testCommit;
