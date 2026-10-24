@@ -15,13 +15,13 @@ export interface ResolvedPrinterResult {
   printerId: number | null;
   printerName: string;
   source:
-    | "vezne_altin_alis"
-    | "vezne_altin_satis"
-    | "vezne_alis"
-    | "vezne_satis"
-    | "kullanici"
-    | "varsayilan"
-    | "yok";
+  | "vezne_altin_alis"
+  | "vezne_altin_satis"
+  | "vezne_alis"
+  | "vezne_satis"
+  | "kullanici"
+  | "varsayilan"
+  | "yok";
   sourceLabel: string;
   kopyaSayisi: number;
   recommendedPrintType: "A4" | "POS";

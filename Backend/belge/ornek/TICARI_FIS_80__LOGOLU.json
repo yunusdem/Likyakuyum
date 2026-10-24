@@ -265,31 +265,7 @@
       "boyut": 6,
       "hiza": "center"
     },
-    {
-      "id": "alt-cizgi",
-      "tip": "cizgi",
-      "x1": 0,
-      "y1": 299,
-      "x2": 209.77,
-      "y2": 299,
-      "kalinlik": 0.5
-    },
-    {
-      "id": "bilgi-fisi",
-      "ad": "Bilgi fişi ibaresi",
-      "zorunlu": true,
-      "tip": "satirlar",
-      "x": 0,
-      "y": 302,
-      "g": 209.77,
-      "boyut": 6.75,
-      "aralik": 0.5,
-      "hiza": "center",
-      "satirlar": [
-        "İyi günlerde kullanmanız dileğiyle.",
-        "Mali değeri yoktur, bilgi fişidir."
-      ]
-    },
+
     {
       "id": "firma-kase",
       "ad": "Firma kaşesi",

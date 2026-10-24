@@ -39,6 +39,11 @@ import {
   getLocalPrintersFromStorage,
   saveLocalPrintersToStorage,
 } from "../../services/printerService";
+import {
+  checkAndAutoUpdatePrinterAgent,
+  TARGET_PRINTER_AGENT_VERSION,
+  isNewerVersion,
+} from "../../services/silentPrintService";
 
 
 const initialFormState: YaziciFormData = {
@@ -87,6 +92,8 @@ export const PrinterDefinitionsPage: React.FC = () => {
   const [systemPrinterSearchTerm, setSystemPrinterSearchTerm] = useState<string>("");
   const [isAgentOnline, setIsAgentOnline] = useState<boolean | null>(null);
   const [agentErrorMessage, setAgentErrorMessage] = useState<string | null>(null);
+  const [agentVersion, setAgentVersion] = useState<string | null>(null);
+  const [isUpdatingAgent, setIsUpdatingAgent] = useState<boolean>(false);
 
   // Sadece bu bilgisayara bağlı / Chrome Yazdır penceresindeki gerçek yazıcıları listeler (Sunucu verisi eklemez)
   const updateClientPrinterLists = (
@@ -227,6 +234,9 @@ export const PrinterDefinitionsPage: React.FC = () => {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            if (data && (data.action === "agent_info" || data.version)) {
+              if (data.version) setAgentVersion(data.version);
+            }
             const ok = handlePrintersData(data);
             if (ok) {
               received = true;
@@ -263,6 +273,10 @@ export const PrinterDefinitionsPage: React.FC = () => {
           const ok = handlePrintersData(data);
           if (ok) {
             received = true;
+            fetch("http://127.0.0.1:9100/health")
+              .then((h) => h.json())
+              .then((hd) => { if (hd?.version) setAgentVersion(hd.version); })
+              .catch(() => {});
             return;
           }
         }
@@ -845,13 +859,36 @@ export const PrinterDefinitionsPage: React.FC = () => {
               <div className="d-flex align-items-center gap-2">
                 <IconCheck size={20} className="text-success flex-shrink-0" />
                 <div>
-                  <strong className="text-success">printercekmeApp Yerel Ajanı Bağlı (Port 9100)</strong>
+                  <strong className="text-success">
+                    printercekmeApp Yerel Ajanı Bağlı (v{agentVersion || "1.0.0"})
+                  </strong>
                   <span className="text-dark ms-1.5">
                     — Bilgisayarınızdaki tüm donanım yazıcıları ({systemPrinters.length} Adet) canlı olarak listelendi.
                   </span>
                 </div>
               </div>
               <div className="d-flex align-items-center gap-2">
+                {agentVersion && isNewerVersion(TARGET_PRINTER_AGENT_VERSION, agentVersion) && (
+                  <Button
+                    variant="warning"
+                    size="sm"
+                    className="fw-semibold py-0.5 px-2.5 text-dark shadow-xs border-0"
+                    style={{ backgroundColor: "#f59e0b" }}
+                    onClick={async () => {
+                      setIsUpdatingAgent(true);
+                      await checkAndAutoUpdatePrinterAgent();
+                      setTimeout(() => {
+                        setIsUpdatingAgent(false);
+                        loadPrintersFromAgent();
+                      }, 4000);
+                    }}
+                    disabled={isUpdatingAgent}
+                    title="Yazıcı köprüsünü son sürüme otomatik güncelle"
+                  >
+                    <IconRefresh size={14} className="me-1" />
+                    <span>{isUpdatingAgent ? "Güncelleniyor..." : `v${TARGET_PRINTER_AGENT_VERSION}'a Güncelle`}</span>
+                  </Button>
+                )}
                 <Badge bg="success" className="px-2 py-1">
                   🟢 {systemPrinters.length} Yazıcı Aktif
                 </Badge>

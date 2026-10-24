@@ -57,7 +57,7 @@
       "aralik": 1,
       "satirlar": [
         "e-DÖVİZ VE KIYMETLİ",
-        "MADEN {{tipAdi}} BELGESİ"
+        "MADEN {{belgeBaslikEki}} BELGESİ"
       ]
     },
     {
@@ -152,7 +152,7 @@
       "x": 2,
       "y": 198,
       "g": 205.77,
-      "metin": "{{tipAdi}} BELGESİ BİLGİLERİ",
+      "metin": "{{belgeKutuBaslik}}",
       "boyut": 7.9,
       "kalin": true,
       "hiza": "center"
@@ -195,8 +195,14 @@
         ],
         [
           "Seri / Tip",
-          "{{seri}} / {{tipAdi}}"
-        ]
+          "{{seri}} / {{tipSeriBilgisi}}"
+        ],
+        {
+          "etiket": "İşlem Türü",
+          "deger": "{{islemTuru}}",
+          "kosul": "{{isArbitraj}}",
+          "kalin": true
+        }
       ]
     },
     {

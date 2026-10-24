@@ -11,7 +11,7 @@ export interface YaziciSecimi {
 export function extractPlainTextFromFis(fis: FisHtml): string {
   if (!fis?.sahne || !Array.isArray(fis.sahne.cizimler)) return "";
   try {
-    const W_CHARS = 40; // 80mm standart termal karakter genişliği
+    const W_CHARS = 38; // 80mm standart termal karakter genişliği (kenar taşmasını önler)
 
     const rawElements: { type: "text" | "divider"; text: string; rawY: number; x: number; g: number; align: string }[] = [];
     for (const c of (fis.sahne.cizimler as any[])) {
@@ -115,6 +115,9 @@ export async function fisiYazdir(fis: FisHtml | FisHtml[], y: YaziciSecimi): Pro
     return { success: true, message: "Yazdırılacak fiş bulunamadı." };
   }
 
+  // Kullanıcı gereksinimi: her belge nolu fiş tam 1 kere çıkmalıdır (asla mükerrer veya çift kopya çıkmaz)
+  const tekKopya = 1;
+
   if (fisler.length === 1) {
     const tekFis = fisler[0];
     const plainText = extractPlainTextFromFis(tekFis);
@@ -122,7 +125,7 @@ export async function fisiYazdir(fis: FisHtml | FisHtml[], y: YaziciSecimi): Pro
       html: tekFis.html,
       text: plainText || undefined,
       printerName: y.printerName ?? null,
-      copies: y.copies || 1,
+      copies: tekKopya,
       isPos: y.isPos,
       title: tekFis.baslik,
       allowBrowserFallback: false,
@@ -137,7 +140,7 @@ export async function fisiYazdir(fis: FisHtml | FisHtml[], y: YaziciSecimi): Pro
       html: slip.html,
       text: plainText || undefined,
       printerName: y.printerName ?? null,
-      copies: y.copies || 1,
+      copies: tekKopya,
       isPos: y.isPos,
       title: slip.baslik || `Fis_${i + 1}`,
       allowBrowserFallback: false,

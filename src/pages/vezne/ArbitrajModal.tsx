@@ -130,6 +130,7 @@ interface ArbitrajModalProps {
   pageType: "doviz" | "sarraf";
   onApplyToFis?: (result: ArbitrajApplyResult) => void;
   onSaveDirect?: (result: ArbitrajApplyResult, shouldPrint?: boolean) => Promise<boolean | void>;
+  onOpenPrintModal?: (result: ArbitrajApplyResult) => void;
   kurKurusSayisi?: number;
   dovizKurusSayisi?: number;
   tlKurusSayisi?: number;
@@ -142,6 +143,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   fisTip = 0,
   hedefTlTutar = 0,
   savedArbitraj = null,
+  onOpenPrintModal,
   paralar = [],
   kurSatirlar = [],
   urunler = [],
@@ -176,7 +178,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   });
   const [seriNo, setSeriNo] = useState<string>("ARB");
   const [belgeNo, setBelgeNo] = useState<string>("Otomatik");
-  const [gelisNedeni, setGelisNedeni] = useState<string>("Arbitraj");
+  const [gelisNedeni, setGelisNedeni] = useState<string>("");
   const [cariId, setCariId] = useState<number | null>(selectedCariId);
   const [cariKodu, setCariKodu] = useState<string>(selectedCariKod || "");
   const [unvan, setUnvan] = useState<string>(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
@@ -235,6 +237,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
   // Fiş Tipi Ref (Otomatik Odaklanma İçin)
   const tipSelectRef = useRef<HTMLSelectElement | null>(null);
+  const initialFocusDoneRef = useRef<boolean>(false);
 
   // Parse helper
   const parseNum = useCallback((val: number | string | undefined): number => {
@@ -573,7 +576,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         // Fişin tersi açılır: Arka Alışsa Satış, Satışsa Alış
         const dir: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
         setIslemYonu(dir);
-        setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+        setGelisNedeni("");
         setCariId(selectedCariId);
         setCariKodu(selectedCariKod || "");
         setUnvan(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
@@ -617,26 +620,29 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     createBlankLine,
   ]);
 
-  // Modal açıldığında otomatik olarak Fiş Tipine (Alış / Satış) odaklan
+  // Modal açıldığında otomatik olarak Fiş Tipine (Alış / Satış) SADECE İLK AÇILIŞTA odaklan
   useEffect(() => {
-    if (show && !showDetayModal && lookupType === null) {
-      const focusTip = () => {
-        const el = tipSelectRef.current || (document.getElementById("arbitraj-fis-tip-select") as HTMLSelectElement | null);
-        if (el && document.activeElement !== el) {
-          el.focus({ preventScroll: true });
-        }
-      };
-      focusTip();
-      const t1 = setTimeout(focusTip, 50);
-      const t2 = setTimeout(focusTip, 150);
-      const t3 = setTimeout(focusTip, 300);
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-      };
+    if (show) {
+      if (!initialFocusDoneRef.current) {
+        initialFocusDoneRef.current = true;
+        const focusTip = () => {
+          const el = tipSelectRef.current || (document.getElementById("arbitraj-fis-tip-select") as HTMLSelectElement | null);
+          if (el && document.activeElement !== el) {
+            el.focus({ preventScroll: true });
+          }
+        };
+        focusTip();
+        const t1 = setTimeout(focusTip, 50);
+        const t2 = setTimeout(focusTip, 150);
+        return () => {
+          clearTimeout(t1);
+          clearTimeout(t2);
+        };
+      }
+    } else {
+      initialFocusDoneRef.current = false;
     }
-  }, [show, showDetayModal, lookupType]);
+  }, [show]);
 
   // Recalculate rates when kurTuru changes
   const handleKurTuruChange = (newKurTuru: number) => {
@@ -671,7 +677,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const handleToggleIslemYonu = (targetDir?: "alis" | "satis") => {
     const newDir: "alis" | "satis" = targetDir || (islemYonu === "satis" ? "alis" : "satis");
     setIslemYonu(newDir);
-    setGelisNedeni(newDir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+    if (gelisNedeni && gelisNedeni.toLowerCase().includes("arbitraj")) {
+      setGelisNedeni(newDir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+    }
 
     // İstatistik oranlarını al
     let statBmv = "";
@@ -1046,13 +1054,13 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
   // Save / Apply Arbitraj (shouldPrint: F10 ile basılırsa true, normal kaydet ile false)
   const handleSaveArbitraj = async (shouldPrint: boolean = true) => {
-    const validLines = lines.filter((l) => (l.kod && l.kod.trim() !== "") || parseNum(l.tutar) > 0);
+    const validLines = lines.filter((l) => (l.kod && l.kod.trim() !== "") && (parseNum(l.miktar) > 0 || parseNum(l.tutar) > 0));
     if (validLines.length === 0 || totalTutar <= 0) {
       setSaveMessage({ type: "danger", text: "Lütfen geçerli bir döviz satırı ve tutar giriniz." });
       return;
     }
 
-    const firstLine = lines[0];
+    const firstLine = validLines[0];
     const selectedItem = currencyList.find((c) => c.kod.toUpperCase() === firstLine.kod.toUpperCase()) || {
       id: firstLine.paraId,
       kod: firstLine.kod,
@@ -1080,7 +1088,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       cariKodu: cariKodu,
       vknTckn: formVknTckn,
       istatistikKodu: istatistikKod,
-      allLines: lines,
+      allLines: validLines,
+      lines: validLines,
       detay: {
         cariTipi: detayCariTipi,
         yetkiliKisi: detayYetkiliKisi,
@@ -1140,7 +1149,84 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     }
   };
 
-  // Keyboard shortcut inside modal (ESC, F8, F10)
+  // F9) Arbitraj Yazdırma Modalı Aç
+  const handleOpenPrintModal = () => {
+    const validLines = lines.filter((l) => (l.kod && l.kod.trim() !== "") && (parseNum(l.miktar) > 0 || parseNum(l.tutar) > 0));
+    if (validLines.length === 0 || totalTutar <= 0) {
+      setSaveMessage({ type: "danger", text: "Lütfen yazdırmak için geçerli bir döviz satırı ve tutar giriniz." });
+      return;
+    }
+
+    const firstLine = validLines[0];
+    const selectedItem = currencyList.find((c) => c.kod.toUpperCase() === firstLine.kod.toUpperCase()) || {
+      id: firstLine.paraId,
+      kod: firstLine.kod,
+      ad: firstLine.ad,
+      isMaden: firstLine.isMaden,
+      milyem: firstLine.milyem,
+    };
+
+    const miktarNum = parseNum(firstLine.miktar);
+    const kurNum = parseNum(firstLine.kur);
+
+    const applyResult: ArbitrajApplyResult = {
+      islemYonu,
+      girisPara: islemYonu === "satis" ? { id: 0, kod: "USD", ad: "Dolar" } : selectedItem,
+      girisMiktar: islemYonu === "satis" ? Number(hedefTlTutar) : miktarNum,
+      girisKur: islemYonu === "satis" ? 1.0 : kurNum,
+      cikisPara: islemYonu === "satis" ? selectedItem : { id: 0, kod: "USD", ad: "Dolar" },
+      cikisMiktar: islemYonu === "satis" ? miktarNum : Number(hedefTlTutar),
+      cikisKur: islemYonu === "satis" ? kurNum : 1.0,
+      parite: kurNum,
+      pariteYonu: "carp",
+      aciklama: `${gelisNedeni || "Arbitraj"} - ${firstLine.kod}`,
+      cariId: cariId,
+      cariUnvan: unvan,
+      cariKodu: cariKodu,
+      vknTckn: formVknTckn,
+      istatistikKodu: istatistikKod,
+      allLines: validLines,
+      lines: validLines,
+      detay: {
+        cariTipi: detayCariTipi,
+        yetkiliKisi: detayYetkiliKisi,
+        yetkiliKisiId: detayYetkiliKisiId,
+        sirketTuru: detaySirketTuru,
+        dernekAmaci: detayDernekAmaci,
+        pasaportNo: detayPasaportNo,
+        gecerlilikTarihi: detayGecerlilikTarihi,
+        dogumTarihi: detayDogumTarihi,
+        dogumYeri: detayDogumYeri,
+        kimlikKaynagi: detayKimlikKaynagi,
+        kimlikSeriNo: detayKimlikSeriNo,
+        babaAdi: detayBabaAdi,
+        anneAdi: detayAnneAdi,
+        vergiDairesi: detayVergiDairesi,
+        vergiDairesiId: detayVergiDairesiId,
+        adres: detayAdres,
+        eposta: detayEposta,
+        telefon: detayTelefon,
+        vekil: detayVekil,
+        vekilTipi: detayVekilTipi,
+        vekilAdi: detayVekilAdi,
+        vekilKimlikNo: detayVekilKimlikNo,
+        meslek: detayMeslek,
+        meslekId: detayMeslekId,
+        ulke: detayUlke,
+        uyruk: detayUyruk,
+        hukukiYapi: detayHukukiYapi,
+        il: detayIl,
+        ilce: detayIlce,
+        postaKodu: detayPostaKodu,
+      },
+    };
+
+    if (onOpenPrintModal) {
+      onOpenPrintModal(applyResult);
+    }
+  };
+
+  // Keyboard shortcut inside modal (ESC, F8, F9, F10)
   useEffect(() => {
     if (!show) return;
 
@@ -1174,7 +1260,15 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         e.preventDefault();
         e.stopPropagation();
         setShowDetayModal(true);
-      } else if (e.key === "F1" || e.key === "F10") {
+      } else if (e.key === "F9") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleOpenPrintModal();
+      } else if (e.key === "F1") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSaveArbitraj(false);
+      } else if (e.key === "F10") {
         e.preventDefault();
         e.stopPropagation();
         handleSaveArbitraj(true);
@@ -1183,7 +1277,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [show, lookupType, showDetayModal, onClose, handleSaveArbitraj, focusArbCell]);
+  }, [show, lookupType, showDetayModal, onClose, handleSaveArbitraj, handleOpenPrintModal, focusArbCell]);
 
   // LookupModal Kolon Tanımları (Döviz / Cari / İstatistik)
   const currencyColumns: LookupColumn<ArbitrajCurrencyItem>[] = useMemo(() => [
@@ -2161,7 +2255,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
               <span>[F8] Müşteri Detay</span>
             </Button>
             <span className="text-muted small">
-              <kbd>F8</kbd> Detay | <kbd>F10</kbd> Kaydet & Yazdır | <kbd>ESC</kbd> Vazgeç
+              <kbd>F1</kbd> Kaydet | <kbd>F8</kbd> Detay | <kbd>F9</kbd> Yazdır | <kbd>F10</kbd> Kaydet & Yazdır | <kbd>ESC</kbd> Vazgeç
             </span>
           </div>
 
@@ -2171,15 +2265,27 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
             </Button>
 
             <Button
+              variant="outline-secondary"
+              size="sm"
+              className="fw-bold px-3 shadow-2xs d-flex align-items-center gap-1.5"
+              onClick={handleOpenPrintModal}
+              disabled={isSaving || totalTutar <= 0}
+              title="Arbitraj fişini yazdırma modalından incele ve yazdır [F9]"
+            >
+              <IconPrinter size={16} />
+              <span>[F9] Yazdır</span>
+            </Button>
+
+            <Button
               variant="outline-primary"
               size="sm"
               className="fw-bold px-3 shadow-2xs d-flex align-items-center gap-1.5"
               onClick={() => handleSaveArbitraj(false)}
               disabled={isSaving || totalTutar <= 0}
-              title="Arbitraj fişini yazdırmadan doğrudan kaydet"
+              title="Arbitraj fişini doğrudan kaydet [F1]"
             >
               <IconDeviceFloppy size={16} />
-              <span>Kaydet</span>
+              <span>[F1] Kaydet</span>
             </Button>
 
             <Button
@@ -2551,9 +2657,12 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         show={lookupType === "currency"}
         onHide={() => {
           setLookupType(null);
-          const rIdx = activeLookupLineIndexRef.current;
-          if (rIdx !== null && rIdx !== undefined) {
-            setTimeout(() => focusArbCell(rIdx, "kod"), 50);
+          let rIdx = activeLookupLineIndexRef.current;
+          if (rIdx === null || rIdx === undefined) {
+            rIdx = lines.findIndex((l) => l.id === activeLookupLineId);
+          }
+          if (rIdx !== null && rIdx !== undefined && rIdx >= 0) {
+            setTimeout(() => focusArbCell(rIdx, "kod"), 60);
           }
         }}
         title="Para / Döviz / Maden Seçimi"
@@ -2570,13 +2679,17 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         }}
         onSelect={(item) => {
           const lineId = activeLookupLineId;
-          const rIdx = activeLookupLineIndexRef.current;
+          let rIdx = activeLookupLineIndexRef.current;
+          if (rIdx === null || rIdx === undefined) {
+            rIdx = lines.findIndex((l) => l.id === lineId);
+            if (rIdx === -1) rIdx = 0;
+          }
           if (lineId) {
             handleSelectCurrencyForLine(lineId, item);
           }
           setLookupType(null);
-          if (rIdx !== null && rIdx !== undefined) {
-            setTimeout(() => focusArbCell(rIdx, "miktar"), 50);
+          if (rIdx !== null && rIdx !== undefined && rIdx >= 0) {
+            setTimeout(() => focusArbCell(rIdx, "miktar"), 60);
           }
         }}
       />

@@ -74,14 +74,12 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
         break;
       case "resim": {
         const src = gorselAdresi(gorseller[c.dosya]);
-        // Termal ruloda firma görseli siyah-beyaz (yazıcı gri tonu noktalarla basar, eşikleme daha net çıkar)
-        const sb = c.siyahBeyaz ? ";filter:grayscale(100%) contrast(500%)" : "";
-        if (src) ustKatman.push(`<img alt="" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.g)};height:${pt(c.h)};object-fit:contain${sb}"/>`);
+        if (src) ustKatman.push(`<img alt="" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.g)};height:${pt(c.h)};object-fit:contain;image-rendering:-webkit-optimize-contrast;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
         break;
       }
       case "qr": {
-        const src = await QRCode.toDataURL(String(c.icerik), { margin: 0, errorCorrectionLevel: "M", width: Math.max(16, Math.round(say(c.boyut) * 4)) });
-        ustKatman.push(`<img alt="" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.boyut)};height:${pt(c.boyut)};image-rendering:pixelated"/>`);
+        const src = await QRCode.toDataURL(String(c.icerik), { margin: 0, errorCorrectionLevel: "M", width: Math.max(240, Math.round(say(c.boyut) * 4)) });
+        ustKatman.push(`<img alt="QR" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.boyut)};height:${pt(c.boyut)};image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
         break;
       }
       case "filigran":
@@ -99,12 +97,12 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
 
 /** Yazdırma için tam HTML belgesi (tarayıcı iframe yedeği). */
 export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: number): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${kacis(baslik)}</title><style>
-@page { size: ${pt(genislikPt)} auto; margin: 0; }
+  const isPos = genislikPt < 300;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>${kacis(baslik)}</title><style>
+@page { size: ${isPos ? "auto" : `${pt(genislikPt)} auto`}; margin: 0; }
 @media print {
   html, body {
-    width: ${pt(genislikPt)} !important;
-    max-width: ${pt(genislikPt)} !important;
+    width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
@@ -113,12 +111,24 @@ export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: numbe
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+  .pos-print-root {
+    width: 100%;
+    max-width: 80mm;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    box-sizing: border-box !important;
+  }
   .belge-sablon {
-    width: 100% !important;
+    margin: 0 auto !important;
+    ${isPos ? "transform: scale(0.95); transform-origin: top center;" : ""}
+    box-sizing: border-box !important;
     page-break-inside: avoid !important;
   }
 }
 * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 html, body { margin: 0 !important; padding: 0 !important; background: #fff; color: #000000; font-family: 'Consolas', 'Segoe UI Mono', monospace; font-weight: 600; }
-</style></head><body>${govde}</body></html>`;
+</style></head><body>${isPos ? `<div class="pos-print-root">${govde}</div>` : govde}</body></html>`;
 }

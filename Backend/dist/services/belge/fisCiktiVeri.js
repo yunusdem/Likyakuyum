@@ -132,8 +132,10 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
     const tutar = g.toplamTutar !== undefined && g.toplamTutar !== null ? sayiOku(g.toplamTutar) : tl;
     const bsmv = satim ? (g.bsmvTutari !== undefined && g.bsmvTutari !== null ? sayiOku(g.bsmvTutari) : yuvarla(tl * 0.002)) : 0;
     const komisyon = sayiOku(g.komisyonTutari);
-    // Firma ayarı 1 - Uygulanmasın: satırda KMV gelse bile hesaba girmez, fişte KMV satırı ve notu basılmaz.
-    const kmv = firma.kmvSekli === 1 ? 0 : sayiOku(g.kmvTutari);
+    // KMV yalnız satış fişinde doğar; alış fişinde ve firma ayarı 1 - Uygulanmasın iken "yok" (null): hesaba girmez ve
+    // şablondaki KMV satırı koşulsuz bile olsa basılmaz (sablonCekirdek `satirYok`). Firma şablonuna bakmadan koddan gizlenir.
+    const kmvYok = !satim || firma.kmvSekli === 1;
+    const kmv = kmvYok ? 0 : sayiOku(g.kmvTutari);
     // KMV kura dahilse (firma ayarı 2) tutarın içindedir: masrafa ve son toplama eklenmez, fişte yalnız bilgi olarak basılır.
     const kmvDahil = firma.kmvSekli === 2;
     const masraf = g.totalMasraf !== undefined && g.totalMasraf !== null
@@ -145,12 +147,17 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
             ? sayiOku(g.odemeTutari)
             : (satim ? yuvarla(tutar + masraf) : yuvarla(tutar - masraf)));
     const genel = sonToplam;
-    const belgeNo = kodBuyuk(yazi(kayit.belgeNo) || yazi(g.belgeNo) || yazi(g.seriNo));
-    const ettn = kodBuyuk(yazi(kayit.ettn) || yazi(g.guid));
+    const belgeNo = kodBuyuk(yazi(g.belgeNo) || yazi(kayit.belgeNo) || yazi(g.seriNo));
+    const ettn = kodBuyuk(yazi(g.ettn) || yazi(g.guid) || yazi(kayit.ettn));
     const tarihHam = yazi(g.tarih);
     const tarih = /^\d{4}-\d{2}-\d{2}/.test(tarihHam) ? tarihHam.slice(0, 10).split("-").reverse().join("/") : tarihHam;
     const saat = yazi(g.saat).slice(0, 5);
+    const isArbitraj = Boolean(g.isArbitraj || (g.gelisNedeni && String(g.gelisNedeni).toLowerCase().includes("arbitraj")));
     const tipAdi = satim ? "SATIM" : "ALIM";
+    const belgeBaslikEki = isArbitraj ? `ARBİTRAJ ${tipAdi}` : tipAdi;
+    const tipSeriBilgisi = isArbitraj ? `${tipAdi} (ARBİTRAJ)` : tipAdi;
+    const islemTuru = isArbitraj ? "ARBİTRAJ" : (satim ? "DÖVİZ SATIŞ" : "DÖVİZ ALIŞ");
+    const belgeKutuBaslik = isArbitraj ? `ARBİTRAJ ${tipAdi} BELGESİ BİLGİLERİ` : `${tipAdi} BELGESİ BİLGİLERİ`;
     const kmvNotu = !satim || firma.kmvSekli === 1 ? "" : kmvDahil ? "Kmv kura dahildir." : "Kmv kura dahil değildir.";
     const kimlik = yazi(g.vergiKimlikNo) || "11111111111";
     const musteri = {
@@ -169,13 +176,14 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
     const subeKodu = firma.subeKodu || "1";
     return {
         belgeTuru: "DOVIZ_FIS", fisId: Number(g.fisId) || 0, satim, fisTipi: satim ? 1 : 0, tipAdi,
+        belgeBaslikEki, tipSeriBilgisi, islemTuru, belgeKutuBaslik,
         belgeNo, ettn, tarih, saat, seri: "EDOVIZBELGE",
         subeKodu, dosyaNo: firma.dosyaNo, subeNo: firma.dosyaNo ? `${subeKodu} - ${firma.dosyaNo}` : subeKodu,
         istatistikNo: yazi(g.istatistikKodu), vezne: yazi(g.vezneKod) || "01",
         geldigiUlke: yazi(g.geldigiUlke) || (g.gelisNedeni && !satim ? yazi(g.gelisNedeni) : "Türkiye"),
         satisDayanagi: (satim && g.gelisNedeni ? yazi(g.gelisNedeni) : (firma.satisDayanagi || "32 SAYILI KARAR GEREĞİ")),
         gelisNedeni: yazi(g.gelisNedeni) || "",
-        isArbitraj: Boolean(g.isArbitraj || (g.gelisNedeni && String(g.gelisNedeni).toLowerCase().includes("arbitraj"))),
+        isArbitraj,
         kmvDahil, kmvNotu,
         firma: {
             ...firma,
@@ -183,7 +191,7 @@ export function dovizFisVerisi(g, firma, kayit = {}) {
             mersisSicil: [firma.mersis, firma.ticaretSicilNo].filter(Boolean).join(" / "),
         },
         musteri, satirlar,
-        toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv, kmvVar: satim && kmv > 0, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
+        toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv: kmvYok ? null : kmv, kmvVar: satim && kmv > 0, masraf, sonToplam, genel, yaziyla: fisYaziyla(sonToplam) },
         basamak, qr, erisimAdresi, onizleme: false, iptal: false,
     };
 }

@@ -27,11 +27,265 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
+export const TARGET_PRINTER_AGENT_VERSION = "1.0.7";
+
+/**
+ * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
+ */
+export function isNewerVersion(v1: string, v2: string): boolean {
+  const p1 = String(v1 || "").replace(/[^0-9.]/g, "").split(".").map(Number);
+  const p2 = String(v2 || "").replace(/[^0-9.]/g, "").split(".").map(Number);
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const num1 = p1[i] || 0;
+    const num2 = p2[i] || 0;
+    if (num1 > num2) return true;
+    if (num1 < num2) return false;
+  }
+  return false;
+}
+
+function showPrinterAgentUpdateToast(oldVer: string, newVer: string): void {
+  if (typeof document === "undefined") return;
+  const existing = document.getElementById("likya-printer-agent-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "likya-printer-agent-toast";
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #0f172a;
+    color: #f8fafc;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    z-index: 9999999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 380px;
+    transition: all 0.3s ease;
+  `;
+
+  toast.innerHTML = `
+    <div style="width:28px;height:28px;border-radius:8px;background:rgba(56,189,248,0.15);display:flex;align-items:center;justify-content:center;color:#38bdf8;font-size:16px;flex-shrink:0;">
+      🖨️
+    </div>
+    <div style="flex:1;">
+      <div style="font-weight:600;color:#ffffff;margin-bottom:2px;">Yazıcı Köprüsü Güncelleniyor</div>
+      <div style="color:#94a3b8;font-size:12px;line-height:1.3;">v${oldVer || '1.0.0'} &rarr; v${newVer} otomatik kuruluyor...</div>
+    </div>
+  `;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    try {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(10px)";
+      setTimeout(() => toast.remove(), 400);
+    } catch {}
+  }, 6000);
+}
+
+function showPrinterAgentUpdatedSuccessToast(version: string): void {
+  if (typeof document === "undefined") return;
+  const existing = document.getElementById("likya-printer-agent-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "likya-printer-agent-toast";
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #0f172a;
+    color: #f8fafc;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(34, 197, 94, 0.25);
+    border-radius: 12px;
+    padding: 14px 18px;
+    z-index: 9999999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 380px;
+    transition: all 0.3s ease;
+  `;
+
+  toast.innerHTML = `
+    <div style="width:28px;height:28px;border-radius:8px;background:rgba(34,197,94,0.15);display:flex;align-items:center;justify-content:center;color:#22c55e;font-size:16px;flex-shrink:0;">
+      ✅
+    </div>
+    <div style="flex:1;">
+      <div style="font-weight:600;color:#ffffff;margin-bottom:2px;">Yazıcı Köprüsü Güncellendi</div>
+      <div style="color:#86efac;font-size:12px;line-height:1.3;">v${version} başarıyla yüklendi ve aktif edildi.</div>
+    </div>
+  `;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    try {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(10px)";
+      setTimeout(() => toast.remove(), 400);
+    } catch {}
+  }, 5000);
+}
+
+let lastUpdateCheckTime = 0;
+let isUpdatingAgent = false;
+
+/**
+ * Bilgisayarda çalışan yerel PrinterAgent.exe'nin sürümünü denetler.
+ * Yeni bir sürüm varsa sunucudan (likyakuyum.com / likyaerp.com veya aktif siteden)
+ * exe'yi otomatik olarak indirip kendisini güncellemesini sağlar.
+ */
+export async function checkAndAutoUpdatePrinterAgent(): Promise<{ updated: boolean; currentVersion?: string; targetVersion?: string }> {
+  if (typeof window === "undefined" || isUpdatingAgent) {
+    return { updated: false };
+  }
+
+  const now = Date.now();
+  if (now - lastUpdateCheckTime < 45000) {
+    return { updated: false };
+  }
+  lastUpdateCheckTime = now;
+
+  let currentAgentVer = "";
+  const origin = window.location.origin;
+  const downloadUrl = `${origin}/PrinterAgent.exe`;
+
+  // 1. HTTP /health veya /status üzerinden sürüm sorgula
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 1200);
+    const res = await fetch("http://127.0.0.1:9100/health", { signal: ctrl.signal }).catch(() => null);
+    clearTimeout(t);
+    if (res && res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data && data.version) {
+        currentAgentVer = data.version;
+      }
+    }
+  } catch {}
+
+  // 2. HTTP yanıt vermezse WebSocket üzerinden sürüm dene
+  if (!currentAgentVer && typeof WebSocket !== "undefined") {
+    try {
+      currentAgentVer = await new Promise<string>((resolve) => {
+        const ws = new WebSocket("ws://127.0.0.1:9100");
+        const tm = setTimeout(() => { try { ws.close(); } catch {} resolve(""); }, 1200);
+        ws.onmessage = (e) => {
+          try {
+            const parsed = JSON.parse(e.data);
+            if (parsed && (parsed.action === "agent_info" || parsed.version)) {
+              clearTimeout(tm);
+              ws.close();
+              resolve(parsed.version);
+            }
+          } catch {}
+        };
+        ws.onerror = () => { clearTimeout(tm); resolve(""); };
+      });
+    } catch {}
+  }
+
+  if (!currentAgentVer) {
+    return { updated: false };
+  }
+
+  // Sürüm kontrolü
+  if (isNewerVersion(TARGET_PRINTER_AGENT_VERSION, currentAgentVer)) {
+    console.log(`[silentPrintService] PrinterAgent.exe güncellemesi tespit edildi: v${currentAgentVer} -> v${TARGET_PRINTER_AGENT_VERSION}`);
+    isUpdatingAgent = true;
+
+    showPrinterAgentUpdateToast(currentAgentVer, TARGET_PRINTER_AGENT_VERSION);
+
+    // Güncelleme komutunu gönder (Önce WebSocket, sonra HTTP)
+    let triggered = false;
+    if (typeof WebSocket !== "undefined") {
+      try {
+        triggered = await new Promise<boolean>((resolve) => {
+          const ws = new WebSocket("ws://127.0.0.1:9100");
+          const tm = setTimeout(() => { try { ws.close(); } catch {} resolve(false); }, 4000);
+          ws.onopen = () => {
+            ws.send(JSON.stringify({
+              action: "update",
+              downloadUrl,
+              version: TARGET_PRINTER_AGENT_VERSION,
+            }));
+          };
+          ws.onmessage = (e) => {
+            try {
+              const d = JSON.parse(e.data);
+              if (d && (d.action === "update_result" || d.success !== undefined)) {
+                clearTimeout(tm);
+                ws.close();
+                resolve(Boolean(d.success));
+              }
+            } catch {}
+          };
+          ws.onerror = () => { clearTimeout(tm); resolve(false); };
+        });
+      } catch {}
+    }
+
+    if (!triggered) {
+      try {
+        const res = await fetch("http://127.0.0.1:9100/api/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ downloadUrl, version: TARGET_PRINTER_AGENT_VERSION }),
+        }).catch(() => null);
+        if (res && res.ok) triggered = true;
+      } catch {}
+    }
+
+    // Uygulama yeniden başlatıldıktan sonra yeni sürümü teyit et ve ekranda başarı bildirimi göster
+    let pollCount = 0;
+    const pollInterval = setInterval(async () => {
+      pollCount++;
+      try {
+        const chk = await fetch("http://127.0.0.1:9100/health", { cache: "no-store" }).catch(() => null);
+        if (chk && chk.ok) {
+          const dt = await chk.json().catch(() => ({}));
+          if (dt && dt.version === TARGET_PRINTER_AGENT_VERSION) {
+            clearInterval(pollInterval);
+            isUpdatingAgent = false;
+            showPrinterAgentUpdatedSuccessToast(TARGET_PRINTER_AGENT_VERSION);
+            return;
+          }
+        }
+      } catch {}
+
+      if (pollCount > 10) {
+        clearInterval(pollInterval);
+        isUpdatingAgent = false;
+      }
+    }, 1200);
+
+    return { updated: true, currentVersion: currentAgentVer, targetVersion: TARGET_PRINTER_AGENT_VERSION };
+  }
+
+  return { updated: false, currentVersion: currentAgentVer };
+}
+
 /**
  * Yerel yazdırma servislerinin (Port 9100 PrinterAgent / printercekmeApp veya Port 5050)
  * çalışıp çalışmadığını kontrol eder. Öncelik 9100'dedir.
  */
 export async function checkLocalPrintServiceOnline(): Promise<number | null> {
+  // Arka planda güncelleme kontrolünü tetikle
+  checkAndAutoUpdatePrinterAgent().catch(() => {});
+
   const ports = [9100, 5050];
   for (const port of ports) {
     try {
@@ -89,42 +343,60 @@ async function printViaWebPrintingApi(html: string, printerName?: string | null,
   return false;
 }
 
+interface WsPrintResult {
+  handled: boolean;
+  result: SilentPrintResult | null;
+}
+
 /**
  * WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) üzerinden doğrudan sessiz yazdırma.
  * Canlı HTTPS siteler yerel WebSocket bağlantılarını engellemediğinden
  * Mixed Content / Private Network Access hatası olmadan doğrudan çalışır.
  */
-async function printViaWebSocket(options: SilentPrintOptions): Promise<SilentPrintResult | null> {
-  if (typeof WebSocket === "undefined") return null;
+async function printViaWebSocket(options: SilentPrintOptions, jobId: string): Promise<WsPrintResult> {
+  if (typeof WebSocket === "undefined") return { handled: false, result: null };
 
-  const tryConnect = (wsUrl: string): Promise<SilentPrintResult | null> => {
+  const tryConnect = (wsUrl: string): Promise<WsPrintResult> => {
     return new Promise((resolve) => {
       let resolved = false;
+      let sent = false;
       let ws: WebSocket | null = null;
+      let timer: any = null;
 
       const finish = (result: SilentPrintResult | null) => {
         if (!resolved) {
           resolved = true;
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           if (ws) {
             try { ws.close(); } catch {}
           }
-          resolve(result);
+          resolve({ handled: sent, result });
         }
       };
 
-      const timer = setTimeout(() => {
+      // 1. Aşama: Bağlantı kurulamazsa (servis kapalıysa) hızlıca vazgeç: 1200ms
+      timer = setTimeout(() => {
         finish(null);
-      }, 12000);
+      }, 1200);
 
       try {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
           try {
+            sent = true;
+            // 2. Aşama: Bağlantı kuruldu ve mesaj iletildi!
+            // Artık HTTP yedeğine düşülmemelidir; fiş işlenirken yanıt beklenir.
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+              // 12 saniyede yanıt gelmese bile istek iletildiği için başarılı kabul edilir, mükerrer basılmaz
+              finish({ success: true, message: "Fiş yazıcı kuyruğuna iletildi." });
+            }, 12000);
+
             ws?.send(
               JSON.stringify({
                 action: "print",
+                jobId,
                 html: options.html,
                 text: options.text,
                 printerName: options.printerName,
@@ -151,21 +423,24 @@ async function printViaWebSocket(options: SilentPrintOptions): Promise<SilentPri
           } catch {}
         };
 
-        ws.onerror = () => finish(null);
+        ws.onerror = () => {
+          if (!sent) finish(null);
+        };
       } catch {
         finish(null);
       }
     });
   };
 
-  // Önce 127.0.0.1, ardından localhost adresini dene
+  // Önce 127.0.0.1 adresini dene
   const res1 = await tryConnect("ws://127.0.0.1:9100");
-  if (res1) return res1;
+  if (res1.handled) return res1;
 
+  // Sadece ilk bağlantı açılamadıysa localhost dene
   const res2 = await tryConnect("ws://localhost:9100");
-  if (res2) return res2;
+  if (res2.handled) return res2;
 
-  return null;
+  return { handled: false, result: null };
 }
 
 /**
@@ -302,6 +577,9 @@ function hidePrintLoadingOverlay(): void {
   }
 }
 
+// Tarayıcı tarafında peş peşe (örneğin çift F10 basılması gibi) mükerrer gönderimleri engelleyen kilit
+const activePrintSignatures = new Map<string, number>();
+
 /**
  * Gönderilen HTML veya Metin verisini doğrudan yazıcıya gönderir.
  * Tarayıcı önizleme penceresini açmaz, arka plandaki yerel yazıcı servisine iletir.
@@ -324,26 +602,41 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
+  // 1. Tarayıcı içi mükerrer basım engeli (2.5 saniye içinde birebir aynı içerik basılamaz)
+  const now = Date.now();
+  const signature = `${printerName || "default"}__${(title || "").trim()}__${(text || "").trim().slice(0, 100)}__${(html || "").length}`;
+  for (const [k, t] of activePrintSignatures.entries()) {
+    if (now - t > 10000) activePrintSignatures.delete(k);
+  }
+  if (activePrintSignatures.has(signature) && (now - (activePrintSignatures.get(signature) || 0)) < 2500) {
+    console.warn("[triggerSilentPrint] Mükerrer yazdırma çağrısı engellendi:", signature);
+    return { success: true, message: "Fiş zaten yazdırılıyor." };
+  }
+  activePrintSignatures.set(signature, now);
+
+  const jobId = "job_" + now + "_" + Math.random().toString(36).substring(2, 8);
+
+  // Arka planda ajan sürümünü kontrol et ve gerekiyorsa otomatik güncelle
+  checkAndAutoUpdatePrinterAgent().catch(() => {});
+
   // Yazıcıya gönderim süresince ekranda dönen yüklenme ikonu gösterilir
   showPrintLoadingOverlay(printerName);
 
   try {
-    // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
+    // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!
     try {
-      const wsResult = await printViaWebSocket(options);
-      if (wsResult) {
-        return wsResult;
+      const wsRes = await printViaWebSocket(options, jobId);
+      if (wsRes.handled) {
+        // İstek yerel ajana başarıyla iletildi; asla HTTP yedeğine düşülmez (çift/üç fiş çıkmasını önler!)
+        return wsRes.result || { success: true, message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.` };
       }
     } catch (wsErr) {
       console.warn("[triggerSilentPrint] WebSocket yazdırma denenirken hata:", wsErr);
     }
 
-    // 2. Yedek: Yerel HTTP POST (Port 9100 ve Port 5050 - 127.0.0.1 & localhost)
+    // 2. Yedek: Yerel HTTP POST (SADECE WebSocket kapalıysa veya ulaşılamadıysa devreye girer!)
     const candidateUrls = [
-      "http://127.0.0.1:9100/print",
       "http://127.0.0.1:9100/api/print",
-      "http://localhost:9100/print",
-      "http://localhost:9100/api/print",
       "http://127.0.0.1:5050/print",
     ];
 
@@ -352,12 +645,13 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     for (const url of candidateUrls) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            jobId,
             html,
             text,
             printerName,
@@ -377,17 +671,15 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
         if (res) {
           if (res.ok) {
             const data = await res.json().catch(() => ({}));
-            if (data.success !== false) {
-              return {
-                success: true,
-                message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
-              };
-            } else {
-              lastError = data.message || "Yazdırma servisi hata döndürdü.";
-            }
+            return {
+              success: data.success !== false,
+              message: data.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.`,
+            };
           } else {
             const errData = await res.json().catch(() => ({}));
             lastError = errData.message || `Servis HTTP ${res.status} hatası döndürdü.`;
+            // 9100 portundan yanıt alındıysa mükerrer basımı önlemek için başka porta istek atma
+            break;
           }
         }
       } catch (err: any) {
@@ -395,7 +687,17 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
       }
     }
 
-    // 3. Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
+    // 3. Servise ulaşılamadıysa ve tarayıcı yedeğine izin verilmişse:
+    if (options.allowBrowserFallback && html) {
+      printViaHiddenIframe(html, title, isPos);
+      return {
+        success: true,
+        message: "Yerel yazıcı servisine ulaşılamadığı için tarayıcı yazdırma akışı başlatıldı.",
+        fallbackUsed: true,
+      };
+    }
+
+    // Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
     return {
       success: false,
       message: lastError
@@ -442,26 +744,48 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
         <title>${title}</title>
         <style>
           @page {
-            size: ${isPos ? "80mm auto" : "A4 portrait"};
+            size: ${isPos ? "auto" : "A4 portrait"};
             margin: ${isPos ? "0mm" : "5mm"} !important;
           }
-          * {
-            box-sizing: border-box;
+          *, *::before, *::after {
+            box-sizing: border-box !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            color-adjust: exact !important;
           }
           html, body {
-            width: 100%;
-            max-width: ${isPos ? "78mm" : "210mm"};
+            width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            background: #ffffff;
-            font-family: ${isPos ? "'Consolas', 'Segoe UI Mono', monospace" : "Arial, Helvetica, sans-serif"};
-            color: #000000;
-            font-weight: 600;
-            font-size: ${isPos ? "12px" : "12px"};
+            background: #ffffff !important;
+            color: #000000 !important;
             -webkit-font-smoothing: antialiased;
           }
+          ${isPos ? `
+          .pos-print-root {
+            width: 100%;
+            max-width: 80mm;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: flex-start !important;
+            box-sizing: border-box !important;
+          }
+          .belge-sablon {
+            margin: 0 auto !important;
+            transform: scale(0.95);
+            transform-origin: top center;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+          }
+          ` : `
+          .belge-sablon {
+            margin: 0 auto !important;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+          }
+          `}
           table {
             border-collapse: collapse;
             width: 100%;
@@ -471,8 +795,8 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
           }
         </style>
       </head>
-      <body>
-        ${htmlContent}
+      <body style="margin:0;padding:0;background:#ffffff;">
+        ${isPos ? `<div class="pos-print-root">${htmlContent}</div>` : htmlContent}
       </body>
     </html>
   `);
