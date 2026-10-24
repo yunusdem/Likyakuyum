@@ -151,9 +151,6 @@ function Kur([string]$commit, [string]$oncekiCommit, [bool]$geriDonus) {
   # Elle degistirilmis baska izlenen dosya varsa buraya hic gelinmez (ElleDegisiklikler). Site "yayin" klasorunden
   # sunuldugu icin checkout ve derleme boyunca kullanicilar eski surumu gormeye devam eder.
   Git @("checkout", "-f", "-B", "main", $commit) | Out-Null
-  # Bir sonraki calistirma icin betigin yeni surumu
-  $yeniBetik = Join-Path $kok "kurulum\betikler\dagit.ps1"
-  if (Test-Path $yeniBetik) { Copy-Item $yeniBetik (Join-Path $Klasor "dagit.ps1") -Force }
 
   Adim ($on + "Bagimliliklar")
   if (PaketKilidiDegisti $oncekiCommit $commit "Backend/package-lock.json") {
@@ -267,6 +264,9 @@ try {
 
   try {
     Kur $yeni $onceki $false
+    # Betik kendini yalniz basarili kurulumdan sonra gunceller (geri donuste eski surume cevrilmesin)
+    $yeniBetik = Join-Path $kok "kurulum\betikler\dagit.ps1"
+    if (Test-Path $yeniBetik) { Copy-Item $yeniBetik (Join-Path $Klasor "dagit.ps1") -Force }
     $m = "Kuruldu: " + $yeni.Substring(0, 9)
     if ($script:paketUyarisi) { $m += " (UYARI: $script:paketUyarisi)" }
     Bitir "BASARILI" $m
