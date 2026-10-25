@@ -376,7 +376,7 @@ export class DagitimService {
     if (!mailYapilandirildiMi()) return;
     const kime = env.DAGITIM_EPOSTA || env.ILETISIM_ALICI;
     if (!kime) return;
-    const hedefAd = k.hedef === "canli" ? "CANLI (likyaerp.com)" : "TEST (likyakuyum.com)";
+    const hedefAd = k.hedef === "canli" ? "CANLI (likyaerp.com, likyakuyum.com)" : "TEST (developer.likyakuyum.com)";
     const basarili = durum === "BASARILI";
     const durumMetni: Record<DagitimDurum, string> = {
       CALISIYOR: "Çalışıyor",

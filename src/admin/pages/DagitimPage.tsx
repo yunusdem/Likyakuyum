@@ -4,7 +4,7 @@ import { IconRefresh, IconRocket, IconFlask, IconFileText } from "@tabler/icons-
 import { adminApi, CommitOzeti, DagitimDurum, DagitimDurumu, DagitimHedef, DagitimKaydi, tarihYaz } from "../services/adminApi";
 
 /**
- * Dağıtım (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md): likyakuyum.com = TEST, likyaerp.com = CANLI.
+ * Dağıtım (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md): developer.likyakuyum.com = TEST; likyaerp.com ve likyakuyum.com = CANLI.
  *   "Test'i Güncelle": test kopyası origin/main'e çekilir.  "Canlıya Geçir": canlı, testte ÇALIŞAN commit'e çekilir.
  * İş sunucudaki Görev Zamanlayıcı görevinde koşar; burada adım, log ve sonuç izlenir. Hata olursa betik önceki
  * sürüme kendisi döner, sonuç kırmızı görünür ve mail gider.
@@ -17,7 +17,7 @@ const DURUM: Record<DagitimDurum, { metin: string; renk: string }> = {
   GERI_DONUS_HATASI: { metin: "Hata — geri dönüş de kaldı", renk: "danger" },
 };
 
-const HEDEF: Record<DagitimHedef, string> = { canli: "Canlı (likyaerp.com)", test: "Test (likyakuyum.com)" };
+const HEDEF: Record<DagitimHedef, string> = { canli: "Canlı (likyaerp.com, likyakuyum.com)", test: "Test (developer.likyakuyum.com)" };
 
 const kisa = (c: string | null | undefined) => (c ? c.slice(0, 9) : "-");
 
@@ -177,7 +177,7 @@ const DagitimPage: React.FC = () => {
             <div>
               <h5 className="mb-1">Dağıtım</h5>
               <p className="text-muted small mb-0">
-                Her push önce <strong>test</strong>e (likyakuyum.com) alınır; testler bitince <strong>canlı</strong>ya (likyaerp.com) geçirilir.
+                Her push önce <strong>test</strong>e (developer.likyakuyum.com) alınır; testler bitince <strong>canlı</strong>ya (likyaerp.com, likyakuyum.com) geçirilir.
                 Kurulum hata verirse önceki sürüme kendiliğinden dönülür ve e-posta gider.
               </p>
             </div>
@@ -208,10 +208,10 @@ const DagitimPage: React.FC = () => {
                   <OrtamKarti baslik="GitHub (origin/main)" alt="Son push edilen kod" d={durum.uzak} renk="secondary" />
                 </Col>
                 <Col md={4}>
-                  <OrtamKarti baslik="Test" alt="likyakuyum.com" d={durum.test} renk="warning" />
+                  <OrtamKarti baslik="Test" alt="developer.likyakuyum.com" d={durum.test} renk="warning" />
                 </Col>
                 <Col md={4}>
-                  <OrtamKarti baslik="Canlı" alt="likyaerp.com" d={durum.canli} renk="success" />
+                  <OrtamKarti baslik="Canlı" alt="likyaerp.com · likyakuyum.com" d={durum.canli} renk="success" />
                 </Col>
               </Row>
 
@@ -352,14 +352,14 @@ const DagitimPage: React.FC = () => {
           {onay === "canli" ? (
             <>
               <p>
-                <strong>likyaerp.com</strong> testteki sürüme ({kisa(durum?.test.commit)}) çekilecek. Kullanıcılar kurulum sırasında birkaç saniye
+                <strong>likyaerp.com</strong> ve <strong>likyakuyum.com</strong> testteki sürüme ({kisa(durum?.test.commit)}) çekilecek. Kullanıcılar kurulum sırasında birkaç saniye
                 kesinti görebilir; şema göçleri canlı veritabanlarına uygulanır (geri alınmaz).
               </p>
               <p className="mb-0 small text-muted">Uygulanacak {durum?.canliyaGidecek.length} commit yukarıdaki listede.</p>
             </>
           ) : (
             <p className="mb-0">
-              <strong>likyakuyum.com</strong> GitHub'daki son koda ({kisa(durum?.uzak.commit)}) çekilecek; {durum?.testeGidecek.length} commit uygulanacak.
+              <strong>developer.likyakuyum.com</strong> GitHub'daki son koda ({kisa(durum?.uzak.commit)}) çekilecek; {durum?.testeGidecek.length} commit uygulanacak.
             </p>
           )}
         </Modal.Body>
