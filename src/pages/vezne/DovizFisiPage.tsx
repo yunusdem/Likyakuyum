@@ -33,6 +33,7 @@ import {
   IconSearch,
   IconAlertCircle,
   IconArrowsExchange,
+  IconPrinter,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
@@ -41,6 +42,7 @@ import { MasakService, MasakEslesme } from "../../services/masakService";
 import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
 import MasakModal from "../../components/masak/MasakModal";
 import { DovizFisiPrintModal } from "./DovizFisiPrintModal";
+import { DovizTeklifTaniModal } from "./DovizTeklifTaniModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
@@ -384,6 +386,7 @@ export const DovizFisiPage: React.FC = () => {
   // Modals
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
+  const [showTeklifTaniModal, setShowTeklifTaniModal] = useState<boolean>(false);
   const [printSnapshot, setPrintSnapshot] = useState<any>(null);
   const [isPendingDirectPrint, setIsPendingDirectPrint] = useState<boolean>(false);
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
@@ -4498,6 +4501,7 @@ export const DovizFisiPage: React.FC = () => {
     setShowParaModal(false);
     setShowGumrukModal(false);
     setShowPrintModal(false);
+    setShowTeklifTaniModal(false);
     setActiveLookupType(null);
   }, []);
 
@@ -4956,6 +4960,11 @@ export const DovizFisiPage: React.FC = () => {
           setShowPrintModal(false);
           return;
         }
+        if (showTeklifTaniModal) {
+          e.preventDefault();
+          setShowTeklifTaniModal(false);
+          return;
+        }
         if (showCariModal) {
           e.preventDefault();
           setShowCariModal(false);
@@ -5056,6 +5065,7 @@ export const DovizFisiPage: React.FC = () => {
     showIstatistikModal,
     showArbitrajModal,
     showPrintModal,
+    showTeklifTaniModal,
     showCariModal,
     showSearchModal,
     showVezneModal,
@@ -6713,6 +6723,16 @@ export const DovizFisiPage: React.FC = () => {
                 </Button>
                 <Button
                   size="sm"
+                  variant="primary"
+                  className="px-2.5 py-0.5 border text-white fw-bold shadow-xs d-inline-flex align-items-center gap-1"
+                  style={{ fontSize: "11.5px", backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
+                  onClick={() => setShowTeklifTaniModal(true)}
+                  title="Teklif ve Müşteri Tanı Formu Yazdır (A4 - Kayıt Etmeden)"
+                >
+                  <IconPrinter size={14} /> Teklif Yazdır (A4)
+                </Button>
+                <Button
+                  size="sm"
                   variant="light"
                   className="px-2 py-0.5 border text-success fw-bold"
                   style={{ fontSize: "11.5px" }}
@@ -7446,14 +7466,26 @@ export const DovizFisiPage: React.FC = () => {
           >
             Gümrük
           </Button>
-          <Button
-            variant="success"
-            size="sm"
-            className="d-flex align-items-center gap-1"
-            onClick={() => setShowDetayModal(false)}
-          >
-            <IconCheck size={16} /> Tamam
-          </Button>
+          <div className="d-flex align-items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              className="d-flex align-items-center gap-1 fw-bold shadow-xs"
+              style={{ backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
+              onClick={() => setShowTeklifTaniModal(true)}
+              title="Fişi kayıt etmeden A4 Teklif ve Müşteri Tanı Formu yazdır"
+            >
+              <IconPrinter size={16} /> Teklif & Tanı Formu Yazdır (A4)
+            </Button>
+            <Button
+              variant="success"
+              size="sm"
+              className="d-flex align-items-center gap-1"
+              onClick={() => setShowDetayModal(false)}
+            >
+              <IconCheck size={16} /> Tamam
+            </Button>
+          </div>
         </Modal.Footer>
       </Modal>
 
@@ -8076,6 +8108,51 @@ export const DovizFisiPage: React.FC = () => {
         dovizKurusSayisi={dovizKurusSayisi}
         kurKurusSayisi={kurKurusSayisi}
         tlKurusSayisi={tlKurusSayisi}
+      />
+
+      {/* A4 Teklif & Müşteri Tanı Formu Modalı (Kayıt etmeden çıkartır) */}
+      <DovizTeklifTaniModal
+        show={showTeklifTaniModal}
+        onHide={() => setShowTeklifTaniModal(false)}
+        tip={tip}
+        tarih={tarih}
+        saat={saat}
+        seriNo={seriNo}
+        belgeNo={belgeNo || (fisId ? String(fisId) : "TEKLİF")}
+        unvan={unvan}
+        vergiKimlikNo={vergiKimlikNo}
+        cariKartId={cariKartId}
+        detayUyruk={detayUyruk || detayUlke}
+        detayDogumYeri={detayDogumYeri}
+        detayBabaAdi={detayBabaAdi}
+        detayAnneAdi={detayAnneAdi}
+        detayMeslek={detayMeslek}
+        detayTelefon={detayTelefon}
+        detayIlce={detayIlce}
+        detayIl={detayIl}
+        detayAdres={detayAdres}
+        detayPasaportNo={detayPasaportNo}
+        detayCariTipi={detayHukukiYapi}
+        lines={lines.map((l: any) => ({
+          paraKodu: l.paraKodu,
+          paraAdi: l.paraAdi,
+          miktar: l.miktar,
+          kur: l.kur,
+          tutar: l.tutar,
+          usdKarsiligi: l.usdKarsiligi,
+          bmv: l.bmv,
+        }))}
+        toplamTutar={totalTutar}
+        totalMasraf={totalMasraf}
+        sonToplam={sonToplam}
+        bsmvTutari={calculatedBsmv}
+        giseUsdKuru={(() => {
+          const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
+          return usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 1;
+        })()}
+        istatistikKodu={istatistikKodu}
+        gelisNedeni={gelisNedeni}
+        companyDefinitions={companyDefinitions}
       />
 
       {/* F3) İstatistik Kodu Seçim Modalı */}
