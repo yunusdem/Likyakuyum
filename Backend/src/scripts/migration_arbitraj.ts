@@ -26,6 +26,59 @@ export async function runArbitrajMigration() {
       END
     `);
 
+    // 1.1. TODVZ_FIS_ARBITRAJ Tablosu Oluşturma (Müstakil Arbitraj Tablosu)
+    console.log("1.1. TODVZ_FIS_ARBITRAJ tablosu kontrol ediliyor...");
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.TODVZ_FIS_ARBITRAJ', 'U') IS NULL
+      BEGIN
+        CREATE TABLE [dbo].[TODVZ_FIS_ARBITRAJ] (
+          [ARBITRAJ_ID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+          [FIS_ID] INT NOT NULL,
+          [SATIR_NO] INT NOT NULL DEFAULT 1,
+          [ISLEM_YONU] VARCHAR(10) NOT NULL DEFAULT 'satis',
+          [PARA_ID] INT NOT NULL DEFAULT 1,
+          [PARA_KODU] VARCHAR(20) NULL,
+          [PARA_ADI] VARCHAR(100) NULL,
+          [MIKTAR] DECIMAL(18,4) NOT NULL DEFAULT 0,
+          [KUR] DECIMAL(18,6) NOT NULL DEFAULT 0,
+          [TUTAR] DECIMAL(18,2) NOT NULL DEFAULT 0,
+          [KOMISYON_ORANI] DECIMAL(9,4) NOT NULL DEFAULT 0,
+          [KOMISYON] DECIMAL(18,2) NOT NULL DEFAULT 0,
+          [BMV_ORANI] DECIMAL(9,4) NOT NULL DEFAULT 0,
+          [BMV] DECIMAL(18,2) NOT NULL DEFAULT 0,
+          [KMV_ORANI] DECIMAL(9,4) NOT NULL DEFAULT 0,
+          [KMV] DECIMAL(18,2) NOT NULL DEFAULT 0,
+          [IS_MADEN] BIT NOT NULL DEFAULT 0,
+          [MILYEM] INT NOT NULL DEFAULT 1000,
+          [SERI_NO] VARCHAR(30) NULL,
+          [BELGE_NO] VARCHAR(50) NULL,
+          [ETTN] VARCHAR(50) NULL,
+          [GIRIS_KOD] VARCHAR(20) NULL,
+          [GIRIS_MIKTAR] DECIMAL(18,4) NULL,
+          [CIKIS_KOD] VARCHAR(20) NULL,
+          [CIKIS_MIKTAR] DECIMAL(18,4) NULL,
+          [PARITE] DECIMAL(18,6) NULL,
+          [HEDEF_TL_TUTAR] DECIMAL(18,2) NULL,
+          [CARI_ID] INT NULL,
+          [CARI_KODU] VARCHAR(50) NULL,
+          [CARI_UNVAN] VARCHAR(250) NULL,
+          [VKN_TCKN] VARCHAR(50) NULL,
+          [ISTATISTIK_KODU] VARCHAR(50) NULL,
+          [DETAY_JSON] NVARCHAR(MAX) NULL,
+          [EKLEME_ZAMANI] DATETIME NOT NULL DEFAULT GETDATE(),
+          [GUNCELLEME_ZAMANI] DATETIME NOT NULL DEFAULT GETDATE()
+        );
+        PRINT 'TODVZ_FIS_ARBITRAJ tablosu başarıyla oluşturuldu.';
+      END;
+
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TODVZ_FIS_ARBITRAJ_FIS_ID' AND object_id = OBJECT_ID('dbo.TODVZ_FIS_ARBITRAJ'))
+      BEGIN
+        CREATE NONCLUSTERED INDEX [IX_TODVZ_FIS_ARBITRAJ_FIS_ID]
+        ON [dbo].[TODVZ_FIS_ARBITRAJ] ([FIS_ID]);
+        PRINT 'IX_TODVZ_FIS_ARBITRAJ_FIS_ID indeksi oluşturuldu.';
+      END;
+    `);
+
     // 2. TODVZ_ISKELE_FIS Tablosuna Arbitraj Kolonları Ekleme
     console.log("2. TODVZ_ISKELE_FIS tablosu kontrol ediliyor...");
     await pool.request().query(`

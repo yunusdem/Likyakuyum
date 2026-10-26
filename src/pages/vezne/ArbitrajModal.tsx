@@ -650,10 +650,16 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     [calculateRow, companyDefinitions]
   );
 
-  // Initialize modal state ONLY when modal transitions from closed to open
+  // Initialize modal state when modal opens or when savedArbitraj is provided / updated
   const prevShowRef = useRef(false);
+  const prevSavedArbitrajRef = useRef<any>(null);
+
   useEffect(() => {
-    if (show && !prevShowRef.current) {
+    const isOpening = show && !prevShowRef.current;
+    const isSavedArbitrajChanged = show && savedArbitraj !== prevSavedArbitrajRef.current && Boolean(savedArbitraj);
+
+    if (isOpening || isSavedArbitrajChanged) {
+      prevSavedArbitrajRef.current = savedArbitraj;
       setSaveMessage(null);
       setIsSaving(false);
       setLookupType(null);
@@ -667,31 +673,45 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           (savedArbitraj.lines && savedArbitraj.lines.length > 0))
       ) {
         // Kayıtlı arbitraj verisini otomatik yükle
-        const sourceLines: ArbitrajModalLine[] =
+        const rawList =
           savedArbitraj.allLines && savedArbitraj.allLines.length > 0
-            ? savedArbitraj.allLines.map((l, idx) => ({ ...l, satirNo: idx + 1 }))
-            : (savedArbitraj.lines || []).map((l, idx) => ({
-                id: String(Date.now() + idx),
-                satirNo: idx + 1,
-                paraId: l.paraId || 0,
-                kod: l.kod || "",
-                ad: l.ad || "",
-                miktar: l.miktar !== undefined ? String(l.miktar) : "",
-                kur: l.kur !== undefined ? String(l.kur) : "",
-                tutar: l.tutar !== undefined ? String(l.tutar) : "",
-                komisyonOrani: l.komisyonOrani !== undefined ? String(l.komisyonOrani) : "",
-                komisyon: l.komisyon !== undefined ? String(l.komisyon) : "",
-                bmvOrani: l.bmvOrani !== undefined ? String(l.bmvOrani) : "",
-                bmv: l.bmv !== undefined ? String(l.bmv) : "",
-                kmvOrani: l.kmvOrani !== undefined ? String(l.kmvOrani) : "",
-                kmv: l.kmv !== undefined ? String(l.kmv) : "",
-                isMaden: l.isMaden || false,
-                milyem: l.milyem || 1000,
-              }));
+            ? savedArbitraj.allLines
+            : savedArbitraj.lines || [];
+
+        const sourceLines: ArbitrajModalLine[] = rawList.map((l: any, idx: number) => {
+          const miktarVal = l.miktar !== undefined && l.miktar !== null ? String(l.miktar) : "";
+          const kurVal = l.kur !== undefined && l.kur !== null ? String(l.kur) : "";
+          const tutarVal = l.tutar !== undefined && l.tutar !== null ? String(l.tutar) : "";
+          return {
+            id: String(l.id || `arb-row-${idx + 1}-${Date.now()}`),
+            satirNo: idx + 1,
+            paraId: Number(l.paraId) || 0,
+            kod: l.kod || l.paraKodu || "",
+            ad: l.ad || l.paraAdi || "",
+            miktar: miktarVal,
+            kur: kurVal,
+            tutar: tutarVal,
+            komisyonOrani: l.komisyonOrani !== undefined && l.komisyonOrani !== null ? String(l.komisyonOrani) : "",
+            komisyon: l.komisyon !== undefined && l.komisyon !== null ? String(l.komisyon) : "",
+            bmvOrani: l.bmvOrani !== undefined && l.bmvOrani !== null ? String(l.bmvOrani) : "",
+            bmv: l.bmv !== undefined && l.bmv !== null ? String(l.bmv) : "",
+            kmvOrani: l.kmvOrani !== undefined && l.kmvOrani !== null ? String(l.kmvOrani) : "",
+            kmv: l.kmv !== undefined && l.kmv !== null ? String(l.kmv) : "",
+            isMaden: Boolean(l.isMaden),
+            milyem: Number(l.milyem) || 1000,
+            seriNo: l.seriNo || "",
+            belgeNo: l.belgeNo || "",
+            ettn: l.ettn || "",
+          };
+        });
         setLines(sourceLines.length > 0 ? sourceLines : [createBlankLine(1)]);
         if (savedArbitraj.islemYonu) {
           setIslemYonu(savedArbitraj.islemYonu);
           setGelisNedeni(savedArbitraj.islemYonu === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+        } else {
+          const dir = fisTip === 0 ? "satis" : "alis";
+          setIslemYonu(dir);
+          setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
         }
         if (savedArbitraj.seriNo) setSeriNo(savedArbitraj.seriNo);
         else setSeriNo("");
@@ -699,7 +719,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         else setBelgeNo("");
         if (savedArbitraj.cariUnvan) setUnvan(savedArbitraj.cariUnvan);
         if (savedArbitraj.vknTckn) setFormVknTckn(savedArbitraj.vknTckn);
-        if (savedArbitraj.istatistikKodu) setIstatistikKod(savedArbitraj.istatistikKodu);
+        const resolvedStat = savedArbitraj.istatistikKodu || (savedArbitraj.islemYonu === "satis" ? "10285" : "9249");
+        setIstatistikKod(resolvedStat);
         if (savedArbitraj.cariId) setCariId(savedArbitraj.cariId);
         if (savedArbitraj.cariKodu) setCariKodu(savedArbitraj.cariKodu);
         if (savedArbitraj.detay) {
@@ -716,7 +737,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           if (d.ilce) setDetayIlce(d.ilce);
           if (d.postaKodu) setDetayPostaKodu(d.postaKodu);
         }
-      } else {
+      } else if (isOpening) {
         // Fişin tersi açılır: Arka Alışsa Satış, Satışsa Alış
         const dir: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
         setIslemYonu(dir);

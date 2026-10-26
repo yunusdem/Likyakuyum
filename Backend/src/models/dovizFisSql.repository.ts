@@ -108,6 +108,7 @@ export interface DovizFisModel {
   guncelleyenId: number;
   guncellemeZamani: string;
   satirlar: DovizFisSatiriModel[];
+  arbitrajSatirlar?: any[];
 }
 
 export interface SaveDovizFisSatiriDto {
@@ -210,6 +211,7 @@ export interface SaveDovizFisDto {
   guid?: string;
   degisiklikTakipVar?: boolean;
   satirlar: SaveDovizFisSatiriDto[];
+  arbitrajSatirlar?: any[];
 }
 
 export class DovizFisSqlRepository {
@@ -344,6 +346,56 @@ export class DovizFisSqlRepository {
             [E_BELGE_DURUMU] TINYINT NULL DEFAULT(0),
             [E_BELGE_HATA_ACIKLAMASI] VARCHAR(250) NULL
           )
+        END
+      `);
+
+      // 2.1 Table: TODVZ_FIS_ARBITRAJ (Müstakil Arbitraj Tablosu)
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TODVZ_FIS_ARBITRAJ')
+        BEGIN
+          CREATE TABLE [dbo].[TODVZ_FIS_ARBITRAJ] (
+            [ARBITRAJ_ID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+            [FIS_ID] INT NOT NULL,
+            [SATIR_NO] INT NOT NULL DEFAULT 1,
+            [ISLEM_YONU] VARCHAR(10) NOT NULL DEFAULT 'satis',
+            [PARA_ID] INT NOT NULL DEFAULT 1,
+            [PARA_KODU] VARCHAR(20) NULL,
+            [PARA_ADI] VARCHAR(100) NULL,
+            [MIKTAR] DECIMAL(18,4) NOT NULL DEFAULT 0,
+            [KUR] DECIMAL(18,6) NOT NULL DEFAULT 0,
+            [TUTAR] DECIMAL(18,2) NOT NULL DEFAULT 0,
+            [KOMISYON_ORANI] DECIMAL(9,4) NOT NULL DEFAULT 0,
+            [KOMISYON] DECIMAL(18,2) NOT NULL DEFAULT 0,
+            [BMV_ORANI] DECIMAL(9,4) NOT NULL DEFAULT 0,
+            [BMV] DECIMAL(18,2) NOT NULL DEFAULT 0,
+            [KMV_ORANI] DECIMAL(9,4) NOT NULL DEFAULT 0,
+            [KMV] DECIMAL(18,2) NOT NULL DEFAULT 0,
+            [IS_MADEN] BIT NOT NULL DEFAULT 0,
+            [MILYEM] INT NOT NULL DEFAULT 1000,
+            [SERI_NO] VARCHAR(30) NULL,
+            [BELGE_NO] VARCHAR(50) NULL,
+            [ETTN] VARCHAR(50) NULL,
+            [GIRIS_KOD] VARCHAR(20) NULL,
+            [GIRIS_MIKTAR] DECIMAL(18,4) NULL,
+            [CIKIS_KOD] VARCHAR(20) NULL,
+            [CIKIS_MIKTAR] DECIMAL(18,4) NULL,
+            [PARITE] DECIMAL(18,6) NULL,
+            [HEDEF_TL_TUTAR] DECIMAL(18,2) NULL,
+            [CARI_ID] INT NULL,
+            [CARI_KODU] VARCHAR(50) NULL,
+            [CARI_UNVAN] VARCHAR(250) NULL,
+            [VKN_TCKN] VARCHAR(50) NULL,
+            [ISTATISTIK_KODU] VARCHAR(50) NULL,
+            [DETAY_JSON] NVARCHAR(MAX) NULL,
+            [EKLEME_ZAMANI] DATETIME NOT NULL DEFAULT GETDATE(),
+            [GUNCELLEME_ZAMANI] DATETIME NOT NULL DEFAULT GETDATE()
+          );
+        END
+
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_TODVZ_FIS_ARBITRAJ_FIS_ID' AND object_id = OBJECT_ID('dbo.TODVZ_FIS_ARBITRAJ'))
+        BEGIN
+          CREATE NONCLUSTERED INDEX [IX_TODVZ_FIS_ARBITRAJ_FIS_ID]
+          ON [dbo].[TODVZ_FIS_ARBITRAJ] ([FIS_ID]);
         END
       `);
 
@@ -1362,7 +1414,16 @@ export class DovizFisSqlRepository {
 
     // Calculate totals from items - ALWAYS 0-indexed satirNo for SODVZ_FIS_KAYDET temp table
     let toplamTutar = 0;
-    const items = dto.satirlar.map((s, idx) => {
+    const rawSatirlar = (Array.isArray(dto.satirlar) && dto.satirlar.length > 0) ? dto.satirlar : [
+      {
+        satirNo: 0,
+        paraId: defaultParaId,
+        miktar: 0,
+        kur: 1.0,
+        tutar: 0,
+      } as SaveDovizFisSatiriDto
+    ];
+    const items = rawSatirlar.map((s, idx) => {
       let pId = Number(s.paraId);
       if ((!pId || pId <= 0) && (s as any).paraKodu) {
         pId = paraMap.get(String((s as any).paraKodu).trim().toUpperCase()) || 0;
@@ -2353,8 +2414,10 @@ export class DovizFisSqlRepository {
           IF @EFF_ARBITRAJ_ID IS NOT NULL AND @EFF_ARBITRAJ_ID > 0
           BEGIN
             UPDATE [dbo].[TODVZ_FIS]
-            SET ARBITRAJ_ID = @P_FIS_ID
-            WHERE FIS_ID = @EFF_ARBITRAJ_ID AND (ARBITRAJ_ID IS NULL OR ARBITRAJ_ID <> @P_FIS_ID);
+            SET ARBITRAJ_ID = @P_FIS_ID,
+                IS_ARBITRAJ = 1,
+                GELIS_NEDENI = CASE WHEN GELIS_NEDENI IS NULL OR LTRIM(RTRIM(GELIS_NEDENI)) = '' THEN 'Arbitraj' ELSE GELIS_NEDENI END
+            WHERE FIS_ID = @EFF_ARBITRAJ_ID;
           END
 
           -- İşçilik Hareketini TODVZ_HESAP_HAREKETI tablosuna işleme (Firma Tanımlarındaki ISCILIK_HESABI)
@@ -2473,6 +2536,83 @@ export class DovizFisSqlRepository {
           } catch (updErr) {
             logger.warn("TODVZ_FIS supplementary update warning:", updErr);
           }
+
+          // Arbitraj Satırları Yönetimi (Müstakil TODVZ_FIS_ARBITRAJ tablosu)
+          if (Array.isArray(dto.arbitrajSatirlar)) {
+            try {
+              // Önce bu fişe ait mevcut arbitraj satırlarını temizle
+              const delArbReq = pool.request();
+              delArbReq.input("DEL_FIS_ID", sql.Int, savedFisId);
+              await delArbReq.query(`DELETE FROM [dbo].[TODVZ_FIS_ARBITRAJ] WHERE FIS_ID = @DEL_FIS_ID`);
+
+              if (dto.arbitrajSatirlar.length > 0) {
+                for (let aIdx = 0; aIdx < dto.arbitrajSatirlar.length; aIdx++) {
+                  const a = dto.arbitrajSatirlar[aIdx];
+                  const insArbReq = pool.request();
+                  insArbReq.input("FIS_ID", sql.Int, savedFisId);
+                  insArbReq.input("SATIR_NO", sql.Int, Number(a.satirNo) || (aIdx + 1));
+                  insArbReq.input("ISLEM_YONU", sql.VarChar(10), String(a.islemYonu || (tip === 0 ? "satis" : "alis")).slice(0, 10));
+                  insArbReq.input("PARA_ID", sql.Int, Number(a.paraId) || 1);
+                  insArbReq.input("PARA_KODU", sql.VarChar(20), (a.kod || a.paraKodu || "").trim().slice(0, 20) || null);
+                  insArbReq.input("PARA_ADI", sql.VarChar(100), (a.ad || a.paraAdi || "").trim().slice(0, 100) || null);
+                  insArbReq.input("MIKTAR", sql.Decimal(18, 4), parseSafeDecimal(a.miktar, 0));
+                  insArbReq.input("KUR", sql.Decimal(18, 6), parseSafeDecimal(a.kur, 0));
+                  insArbReq.input("TUTAR", sql.Decimal(18, 2), parseSafeDecimal(a.tutar, 0));
+                  insArbReq.input("KOMISYON_ORANI", sql.Decimal(9, 4), parseSafeDecimal(a.komisyonOrani, 0));
+                  insArbReq.input("KOMISYON", sql.Decimal(18, 2), parseSafeDecimal(a.komisyon, 0));
+                  insArbReq.input("BMV_ORANI", sql.Decimal(9, 4), parseSafeDecimal(a.bmvOrani, 0));
+                  insArbReq.input("BMV", sql.Decimal(18, 2), parseSafeDecimal(a.bmv, 0));
+                  insArbReq.input("KMV_ORANI", sql.Decimal(9, 4), parseSafeDecimal(a.kmvOrani, 0));
+                  insArbReq.input("KMV", sql.Decimal(18, 2), parseSafeDecimal(a.kmv, 0));
+                  insArbReq.input("IS_MADEN", sql.Bit, a.isMaden ? 1 : 0);
+                  insArbReq.input("MILYEM", sql.Int, Number(a.milyem) || 1000);
+                  insArbReq.input("SERI_NO", sql.VarChar(30), (a.seriNo || "").trim().slice(0, 30) || null);
+                  insArbReq.input("BELGE_NO", sql.VarChar(50), (a.belgeNo || "").trim().slice(0, 50) || null);
+                  insArbReq.input("ETTN", sql.VarChar(50), (a.ettn || "").trim().slice(0, 50) || null);
+                  insArbReq.input("GIRIS_KOD", sql.VarChar(20), (a.girisKod || "").trim().slice(0, 20) || null);
+                  insArbReq.input("GIRIS_MIKTAR", sql.Decimal(18, 4), parseSafeDecimal(a.girisMiktar, 0));
+                  insArbReq.input("CIKIS_KOD", sql.VarChar(20), (a.cikisKod || "").trim().slice(0, 20) || null);
+                  insArbReq.input("CIKIS_MIKTAR", sql.Decimal(18, 4), parseSafeDecimal(a.cikisMiktar, 0));
+                  insArbReq.input("PARITE", sql.Decimal(18, 6), parseSafeDecimal(a.parite, 0));
+                  insArbReq.input("HEDEF_TL_TUTAR", sql.Decimal(18, 2), parseSafeDecimal(a.hedefTlTutar, 0));
+                  insArbReq.input("CARI_ID", sql.Int, toValidId(a.cariId));
+                  insArbReq.input("CARI_KODU", sql.VarChar(50), (a.cariKodu || "").trim().slice(0, 50) || null);
+                  insArbReq.input("CARI_UNVAN", sql.VarChar(250), (a.cariUnvan || "").trim().slice(0, 250) || null);
+                  insArbReq.input("VKN_TCKN", sql.VarChar(50), (a.vknTckn || "").trim().slice(0, 50) || null);
+                  insArbReq.input("ISTATISTIK_KODU", sql.VarChar(50), (a.istatistikKodu || "").trim().slice(0, 50) || null);
+                  insArbReq.input("DETAY_JSON", sql.NVarChar(sql.MAX), a.detay ? JSON.stringify(a.detay) : null);
+
+                  await insArbReq.query(`
+                    INSERT INTO [dbo].[TODVZ_FIS_ARBITRAJ] (
+                      FIS_ID, SATIR_NO, ISLEM_YONU, PARA_ID, PARA_KODU, PARA_ADI,
+                      MIKTAR, KUR, TUTAR, KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV,
+                      KMV_ORANI, KMV, IS_MADEN, MILYEM, SERI_NO, BELGE_NO, ETTN,
+                      GIRIS_KOD, GIRIS_MIKTAR, CIKIS_KOD, CIKIS_MIKTAR, PARITE,
+                      HEDEF_TL_TUTAR, CARI_ID, CARI_KODU, CARI_UNVAN, VKN_TCKN,
+                      ISTATISTIK_KODU, DETAY_JSON, EKLEME_ZAMANI, GUNCELLEME_ZAMANI
+                    ) VALUES (
+                      @FIS_ID, @SATIR_NO, @ISLEM_YONU, @PARA_ID, @PARA_KODU, @PARA_ADI,
+                      @MIKTAR, @KUR, @TUTAR, @KOMISYON_ORANI, @KOMISYON, @BMV_ORANI, @BMV,
+                      @KMV_ORANI, @KMV, @IS_MADEN, @MILYEM, @SERI_NO, @BELGE_NO, @ETTN,
+                      @GIRIS_KOD, @GIRIS_MIKTAR, @CIKIS_KOD, @CIKIS_MIKTAR, @PARITE,
+                      @HEDEF_TL_TUTAR, @CARI_ID, @CARI_KODU, @CARI_UNVAN, @VKN_TCKN,
+                      @ISTATISTIK_KODU, @DETAY_JSON, GETDATE(), GETDATE()
+                    )
+                  `);
+                }
+
+                // Fişi IS_ARBITRAJ = 1 olarak güncelle
+                await pool.request().input("ARB_FIS_ID", sql.Int, savedFisId).query(`
+                  UPDATE [dbo].[TODVZ_FIS]
+                  SET IS_ARBITRAJ = 1,
+                      GELIS_NEDENI = CASE WHEN GELIS_NEDENI IS NULL OR LTRIM(RTRIM(GELIS_NEDENI)) = '' THEN 'Arbitraj' ELSE GELIS_NEDENI END
+                  WHERE FIS_ID = @ARB_FIS_ID
+                `);
+              }
+            } catch (arbErr) {
+              logger.warn("TODVZ_FIS_ARBITRAJ kayıt hatası / uyarısı:", arbErr);
+            }
+          }
         }
       } catch (err: any) {
         const precedingMsgs = Array.isArray(err?.precedingErrors)
@@ -2587,6 +2727,53 @@ export class DovizFisSqlRepository {
       ORDER BY S.SATIR_NO ASC
     `);
 
+    // Arbitraj Satırları (TODVZ_FIS_ARBITRAJ)
+    const arbitrajSatirlarRes = await pool.request().input("FIS_ID", sql.Int, id).query(`
+      SELECT 
+        A.*,
+        P.KOD AS PARA_KOD, P.AD AS PARA_AD
+      FROM [dbo].[TODVZ_FIS_ARBITRAJ] A
+      LEFT JOIN [dbo].[TODVZ_PARA] P ON P.PARA_ID = A.PARA_ID
+      WHERE A.FIS_ID = @FIS_ID
+      ORDER BY A.SATIR_NO ASC
+    `);
+
+    const arbitrajSatirlar = (arbitrajSatirlarRes.recordset || []).map((a: any) => ({
+      arbitrajId: Number(a.ARBITRAJ_ID),
+      fisId: Number(a.FIS_ID),
+      satirNo: Number(a.SATIR_NO) || 1,
+      islemYonu: (a.ISLEM_YONU || "satis").trim(),
+      paraId: Number(a.PARA_ID) || 1,
+      paraKodu: (a.PARA_KODU || a.PARA_KOD || "").trim().toUpperCase(),
+      paraAdi: (a.PARA_ADI || a.PARA_AD || "").trim(),
+      miktar: Number(a.MIKTAR) || 0,
+      kur: Number(a.KUR) || 0,
+      tutar: Number(a.TUTAR) || 0,
+      komisyonOrani: Number(a.KOMISYON_ORANI) || 0,
+      komisyon: Number(a.KOMISYON) || 0,
+      bmvOrani: Number(a.BMV_ORANI) || 0,
+      bmv: Number(a.BMV) || 0,
+      kmvOrani: Number(a.KMV_ORANI) || 0,
+      kmv: Number(a.KMV) || 0,
+      isMaden: Boolean(a.IS_MADEN),
+      milyem: Number(a.MILYEM) || 1000,
+      seriNo: a.SERI_NO || "",
+      belgeNo: a.BELGE_NO || "",
+      ettn: a.ETTN || "",
+      girisKod: a.GIRIS_KOD || "",
+      girisMiktar: Number(a.GIRIS_MIKTAR) || 0,
+      cikisKod: a.CIKIS_KOD || "",
+      cikisMiktar: Number(a.CIKIS_MIKTAR) || 0,
+      parite: Number(a.PARITE) || 0,
+      hedefTlTutar: Number(a.HEDEF_TL_TUTAR) || 0,
+      cariId: a.CARI_ID || null,
+      cariKodu: a.CARI_KODU || "",
+      cariUnvan: a.CARI_UNVAN || "",
+      vknTckn: a.VKN_TCKN || "",
+      istatistikKodu: a.ISTATISTIK_KODU || "",
+      detay: a.DETAY_JSON ? (() => { try { return JSON.parse(a.DETAY_JSON); } catch { return null; } })() : null,
+    }));
+
     const satirlar: DovizFisSatiriModel[] = (satirlarRes.recordset || []).map((s: any) => {
       let bmvOrani = parseFloat((Number(s.BMV_ORANI) || 0).toFixed(4));
       let bmv = parseFloat((Number(s.BMV) || 0).toFixed(2));
@@ -2696,7 +2883,7 @@ export class DovizFisSqlRepository {
       gmTeyitSayi: row.GM_TEYIT_SAYI || "",
       gmFaturaNo: row.GM_FATURA_NO || "",
       arbitrajId: row.ARBITRAJ_ID || null,
-      isArbitraj: Boolean(row.IS_ARBITRAJ || (row.GELIS_NEDENI && String(row.GELIS_NEDENI).toLowerCase().includes("arbitraj"))),
+      isArbitraj: Boolean(row.IS_ARBITRAJ || (row.GELIS_NEDENI && String(row.GELIS_NEDENI).toLowerCase().includes("arbitraj")) || (row.ARBITRAJ_ID && Number(row.ARBITRAJ_ID) > 0) || arbitrajSatirlar.length > 0),
       telefonNo: row.TELEFON_NO || "",
       meslekId: row.MESLEK_ID || null,
       dogumTarihi: formatDbDate(row.DOGUM_TARIHI),
@@ -2722,6 +2909,7 @@ export class DovizFisSqlRepository {
       guncelleyenId: Number(row.GUNCELLEYEN_ID) || 1,
       guncellemeZamani: row.GUNCELLEME_ZAMANI ? new Date(row.GUNCELLEME_ZAMANI).toISOString() : "",
       satirlar,
+      arbitrajSatirlar,
     };
   }
 
@@ -2754,7 +2942,7 @@ export class DovizFisSqlRepository {
         V.KOD AS vezneKod,
         V.AD AS vezneAd,
         F.ARBITRAJ_ID AS arbitrajId,
-        CASE WHEN F.IS_ARBITRAJ = 1 OR F.GELIS_NEDENI LIKE '%Arbitraj%' THEN 1 ELSE 0 END AS isArbitraj,
+        CASE WHEN F.IS_ARBITRAJ = 1 OR F.GELIS_NEDENI LIKE '%Arbitraj%' OR (F.ARBITRAJ_ID IS NOT NULL AND F.ARBITRAJ_ID > 0) OR EXISTS (SELECT 1 FROM [dbo].[TODVZ_FIS_ARBITRAJ] A WHERE A.FIS_ID = F.FIS_ID) THEN 1 ELSE 0 END AS isArbitraj,
         F.GELIS_NEDENI AS gelisNedeni,
         (SELECT COUNT(*) FROM [dbo].[TODVZ_FIS_SATIRI] S WHERE S.FIS_ID = F.FIS_ID) AS satirSayisi,
         COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) AS siralama
@@ -2820,6 +3008,11 @@ export class DovizFisSqlRepository {
         .query(`IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE ACIKLAMA = @A`)
         .catch((e: any) => logger.warn("Döviz fişi işçilik kaydı silinemedi:", e?.message));
     };
+
+    // Fişe ait arbitraj satırlarını temizle
+    await pool.request().input("DEL_ARB_ID", sql.Int, id)
+      .query(`IF OBJECT_ID('dbo.TODVZ_FIS_ARBITRAJ','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_FIS_ARBITRAJ] WHERE FIS_ID = @DEL_ARB_ID`)
+      .catch((e: any) => logger.warn("TODVZ_FIS_ARBITRAJ silme uyarısı:", e?.message));
 
     // Eski silme yordamı (SODVZ_FIS_SIL), fiş tarihi firma tanımındaki e-Döviz başlangıç tarihinden (E_DOVIZ_FIS_BASLANGIC_TARIHI_1..4)
     // sonraysa "GİB için hazırlanmış fişi silemezsiniz" der; eski programda e-Döviz döneminde fiş silinmez, yalnız GİB'de iptal edilir.
