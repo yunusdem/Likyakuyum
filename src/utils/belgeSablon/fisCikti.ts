@@ -108,47 +108,10 @@ export async function sarrafFisHtml(girdi: Record<string, any>, bicim: FisBicimi
   return ciz(c, `${c.veri?.baslik || "Sarraf Fişi"}${c.veri?.fisNo ? ` - ${c.veri.fisNo}` : ""}`);
 }
 
-/** Perakende fişi / fatura: kayıtlı fatura ya da kayıt yükü. */
+/** Perakende fişi / fatura: kayıtlı fatura ya da kayıt yükü; bütün ürünler tek fişte. */
 export async function perakendeFisHtml(fatura: Record<string, any>, bicim: FisBicimi): Promise<FisHtml> {
   const c = await BelgeService.perakendeCikti(fatura, bicim);
   return ciz(c, `${bicim === "80" ? "Perakende Bilgi Fişi" : "e-Arşiv Fatura"}${c.veri?.faturaNo ? ` - ${c.veri.faturaNo}` : ""}`);
-}
-
-/**
- * Perakende fişleri: Fiş içindeki her bir ürün satırı için ayrı bir fiş üretir.
- * Çoklu ürün/satır olduğunda her bir ürün ayrı bir fişte çıkar.
- */
-export async function perakendeFisleriHtml(fatura: Record<string, any>, bicim: FisBicimi): Promise<FisHtml[]> {
-  const satirlar = Array.isArray(fatura.satirlar) ? fatura.satirlar : [];
-  if (satirlar.length <= 1) {
-    const tek = await perakendeFisHtml(fatura, bicim);
-    return [tek];
-  }
-
-  const baseFaturaNo = String(fatura.faturaNo || "");
-
-  const fisler: FisHtml[] = [];
-  for (let idx = 0; idx < satirlar.length; idx++) {
-    const s = satirlar[idx];
-    const tutar = parseDecimal(s.toplamTutar) || parseDecimal(s.tutar) || (parseDecimal(s.miktar || 1) * parseDecimal(s.birimFiyat || 0));
-    const kdv = parseDecimal(s.kdvTutari);
-    const araToplam = tutar - kdv;
-
-    const satirFaturaNo = s.faturaNo || (baseFaturaNo ? incrementDocNo(baseFaturaNo, idx) : "");
-
-    const tekilFatura = {
-      ...fatura,
-      faturaNo: satirFaturaNo,
-      satirlar: [s],
-      araToplam: araToplam > 0 ? araToplam : tutar,
-      toplamKdv: kdv,
-      genelToplam: tutar,
-    };
-
-    const tek = await perakendeFisHtml(tekilFatura, bicim);
-    fisler.push(tek);
-  }
-  return fisler;
 }
 
 /** Ticari satış fişi: kayıtlı fiş ya da ekrandaki fiş (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T17). */

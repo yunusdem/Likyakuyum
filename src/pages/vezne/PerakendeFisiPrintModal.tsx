@@ -6,7 +6,7 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { VezneItem } from "../../services/cashDeskService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
-import { perakendeFisHtml, perakendeFisleriHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
+import { perakendeFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 
@@ -83,7 +83,7 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   }, [show, tip, vezne, user]);
 
   const { fis, hata } = useSablonluFis(show && yaziciHazir && !!fatura, `${printType}|${fatura?.faturaId ?? ""}|${fatura?.faturaNo ?? ""}`,
-    () => perakendeFisleriHtml(faturaRef.current as any, printType === "POS" ? "80" : "A4"));
+    () => perakendeFisHtml(faturaRef.current as any, printType === "POS" ? "80" : "A4"));
 
   const handlePrinterChange = (newVal: string) => {
     setSelectedPrinterId(newVal || null);

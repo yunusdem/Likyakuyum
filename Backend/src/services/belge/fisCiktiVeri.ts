@@ -351,6 +351,8 @@ export interface PerakendeFisGirdisi {
   aliciVknTckn?: string; aliciUnvan?: string; adres?: string; ilce?: string; il?: string; vergiDairesi?: string; eposta?: string; telefon?: string;
   paraKodu?: string; araToplam?: unknown; toplamKdv?: unknown; iskontoOrani?: unknown; iskontoTutari?: unknown; genelToplam?: unknown;
   satirlar?: { satirNo?: unknown; barkod?: string; urunAdi?: string; ayar?: string; miktar?: unknown; birim?: string; gram?: unknown; hasGram?: unknown; birimFiyat?: unknown; kdvOrani?: unknown; kdvTutari?: unknown; toplamTutar?: unknown }[];
+  /** odemeAraciTuru: 0 vezne, 1 cari, 2 POS, 3 hesap */
+  odemeler?: { odemeAraciTuru?: unknown; paraKodu?: string; paraAdi?: string; adet?: unknown; miktar?: unknown; tutar?: unknown }[];
 }
 
 export function perakendeFisVerisi(g: PerakendeFisGirdisi, firma: FirmaKimlik) {
@@ -361,6 +363,12 @@ export function perakendeFisVerisi(g: PerakendeFisGirdisi, firma: FirmaKimlik) {
       gram, has, birimFiyat, kdvOrani: sayiOku(s.kdvOrani), kdvTutari: sayiOku(s.kdvTutari), toplam: sayiOku(s.toplamTutar),
       barkodAyar: [yazi(s.barkod), yazi(s.ayar)].join(" | "), gramYazi: `${tr(gram)}g`,
     };
+  });
+  // Ödeme / tahsilat satırları sarraf fişindeki gibi: POS "POS TL", diğerleri para birimiyle (altın / dövizle ödemede miktar)
+  const odemeler = (Array.isArray(g.odemeler) ? g.odemeler : []).filter((o) => sayiOku(o.tutar) > 0).map((o, i) => {
+    const miktar = sayiOku(o.miktar) || sayiOku(o.adet);
+    const ad = Number(o.odemeAraciTuru) === 2 ? posOdemeAdi(o.paraKodu) : yazi(o.paraKodu) || yazi(o.paraAdi) || "Nakit TL";
+    return { sira: i + 1, ad, miktar, miktarYazi: miktar > 0 ? tr(miktar) : "", tutar: sayiOku(o.tutar) };
   });
   const iskonto = sayiOku(g.iskontoTutari), iskontoOrani = sayiOku(g.iskontoOrani), genel = sayiOku(g.genelToplam);
   const faturaNo = yazi(g.faturaNo), ettn = yazi(g.ettn), kimlik = yazi(g.aliciVknTckn) || "11111111111";
@@ -373,7 +381,7 @@ export function perakendeFisVerisi(g: PerakendeFisGirdisi, firma: FirmaKimlik) {
       unvan: yazi(g.aliciUnvan) || "NİHAİ TÜKETİCİ", kimlikNo: kimlik, vergiDairesi: yazi(g.vergiDairesi), adres: yazi(g.adres) || "-",
       ilce: yazi(g.ilce) || "-", il: yazi(g.il) || "-", telefon: yazi(g.telefon), eposta: yazi(g.eposta),
     },
-    satirlar,
+    satirlar, odemeler, odemeVar: odemeler.length > 0,
     toplam: {
       gram: satirlar.reduce((t, s) => t + s.gram, 0), has: satirlar.reduce((t, s) => t + s.has, 0),
       ara: sayiOku(g.araToplam), kdv: sayiOku(g.toplamKdv), iskonto, iskontoVar: iskonto > 0, iskontoOrani,

@@ -51,6 +51,8 @@ import {
   CariService,
 } from "../../services/cariService";
 import { ebelgeService } from "../../services/ebelgeService";
+import { gibService } from "../../services/gibService";
+import { GIB_BEKLEME_MS, adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
 import {
   DovizFisService,
   KayitsizMusteriItem,
@@ -88,7 +90,7 @@ import { PerakendeFisiPrintModal } from "./PerakendeFisiPrintModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { CompanyService } from "../../services/companyService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
-import { perakendeFisHtml, perakendeFisleriHtml } from "../../utils/belgeSablon/fisCikti";
+import { perakendeFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
 import { KurService } from "../../services/kurService";
@@ -140,6 +142,13 @@ export interface OdemeRow {
   posCihaziId?: number | null;
   urunTipi?: number;
 }
+
+/** Önizleme fişinin ödeme satırları (kayıtlı fişte sunucudan gelir); POS satırı fişte "POS TL" yazar. */
+const fisOdemeSatirlari = (rows: OdemeRow[]): PerakendeFaturaOdemeItem[] =>
+  rows.filter((r) => parseDecimal(r.tutar) > 0).map((r, i) => ({
+    satirNo: i + 1, odemeAraciTuru: r.odemeAraciTuru || 0, paraId: r.paraId ?? null, paraKodu: r.paraKodu || "TL", paraAdi: r.paraAdi || null,
+    cariUnvan: r.cariUnvan || null, adet: parseDecimal(r.adet) || null, miktar: parseDecimal(r.miktar) || null, kur: parseDecimal(r.kur) || 1, tutar: parseDecimal(r.tutar),
+  }));
 
 const DEFAULT_ODEME_URUNLER: UrunItem[] = [
   { id: 1, paraId: 1, kod: "TL", ad: "TÜRK LİRASI", urunTipi: 0, gramaj: 0, hasOrani: 0, alisMilyem: 0, satisMilyem: 0 },
@@ -881,6 +890,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   const lastFocusedCariKodRef = useRef<string>("");
   const lastFocusedUnvanRef = useRef<string>("");
+  // TC / VKN'den uzak sorgu (e-Fatura listesi + GİB, musteriGibAd.ts): numara değişince eski sorgunun yanıtı yok sayılır
+  const uzakSorguSiraRef = useRef(0);
+  const gibHataRef = useRef("");
+  const gibSonucRef = useRef<{ no: string; ad: string } | null>(null);
+  const aliciUnvanDegerRef = useRef(aliciUnvan);
+  aliciUnvanDegerRef.current = aliciUnvan;
+  const aliciVknDegerRef = useRef(aliciVknTckn);
+  aliciVknDegerRef.current = aliciVknTckn;
+  const gibSonrasiRef = useRef<(ad: string, no: string) => void>(() => {});
   const lastFocusedVknRef = useRef<string>("");
   const lastModalCallerRef = useRef<"cariKod" | "unvan" | "vkn" | "productLookup" | "odemeLookup" | null>(null);
   const lastProductRowIdRef = useRef<string | null>(null);
@@ -4150,6 +4168,58 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     }
   };
 
+  // GİB'den ad gelince müşteri seçilmiş gibi otomatik MASAK kontrolü (handleSelectCustomer ile aynı koşullar)
+  gibSonrasiRef.current = (ad: string, no: string) => {
+    const activeStat = selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (istatistikKodu && s.kod === istatistikKodu)) || getDefaultStatistic(faturaTipi as 0 | 1);
+    const isGayriResmi = activeStat && Number(activeStat.fisDizaynTipi) === 1;
+    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && !isGayriResmi && ad && !isAnonymousCustomerName(ad)) {
+      void handleMasakQuery(ad, no);
+    } else {
+      setMasakResult({ matches: [], searched: false });
+    }
+    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && genelToplam >= 185000 && !isGayriResmi && !adres.trim()) {
+      setShowMasakLimitWarningModal(true);
+    }
+  };
+
+  /**
+   * e-Fatura listesinde ad yoksa GİB'den (e-Belge'deki sorgu, musteriGibAd.ts): ad ve boşsa vergi dairesi dolar.
+   * Ad yalnız boşken ya da önceki seçimden / sorgudan kalmışken yazılır; kasiyerin elle yazdığı ada dokunulmaz.
+   */
+  const gibdenAdDoldur = async (no: string, sira: number) => {
+    const guncelMi = () => sira === uzakSorguSiraRef.current && aliciVknDegerRef.current.replace(/\D/g, "") === no;
+    if (!adYazilabilir(aliciUnvanDegerRef.current, lastFocusedUnvanRef.current, isAnonymousCustomerName)) return;
+    try {
+      const sonuc = await gibService.vknSorgu(no);
+      if (!guncelMi()) return;
+      const ad = gibAdi(sonuc);
+      if (sonuc.sonuc !== "BULUNDU" || !ad) {
+        showWarning(`${no} numarası GİB'de kayıtlı değil. Numarayı kontrol edin.`);
+        return;
+      }
+      // Sorgu sürerken kasiyer ad yazdıysa ona dokunulmaz
+      if (!adYazilabilir(aliciUnvanDegerRef.current, lastFocusedUnvanRef.current, isAnonymousCustomerName)) return;
+      setAliciUnvan(ad);
+      setDetayUnvan(ad);
+      lastFocusedUnvanRef.current = ad;
+      gibSonucRef.current = { no, ad };
+      const vd = (sonuc.vergiDairesi || "").trim();
+      if (vd) {
+        setVergiDairesi((v) => v || vd);
+        setDetayVergiDairesi((v) => v || vd);
+      }
+      showSuccess(`Müşteri adı GİB'den alındı: ${ad}`);
+      gibSonrasiRef.current(ad, no);
+    } catch (err: any) {
+      if (!guncelMi()) return;
+      // Aynı hata (ör. GİB hesabı tanımlı değil) her numarada yeniden gösterilmez
+      const mesaj = err?.message || "GİB sorgusu yapılamadı.";
+      if (gibHataRef.current === mesaj) return;
+      gibHataRef.current = mesaj;
+      showWarning(mesaj);
+    }
+  };
+
   // E-Belge / GİB / Cari / Kayıtsız Müşteri TCKN/VKN Sorgulama
   const handleVknLookup = useCallback(async (inputVal: string, isEnterOrBlur = false) => {
     const cleanVal = (inputVal || "").replace(/\D/g, "").slice(0, 11);
@@ -4214,49 +4284,69 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         return;
       }
 
-      // GİB / GİP Mukellef Sorgulama (10 veya 11 hane ise)
-      try {
-        const res = await ebelgeService.mukellefSorgula(cleanVal);
-        if (res && res.mukellefMi && res.kullanicilar && res.kullanicilar.length > 0) {
-          const title = (res.kullanicilar[0].Title || "").trim();
-          if (title) {
-            setAliciUnvan(title);
-            setDetayUnvan(title);
-            setDetayVknTckn(cleanVal);
-            setAliciVknTckn(cleanVal);
-            setCariKod("");
-            setCariKartId(null);
-            lastFocusedCariKodRef.current = "";
-            lastFocusedUnvanRef.current = title;
-            lastFocusedVknRef.current = cleanVal;
-            setSenaryo("TICARIFATURA"); // GİP'te kayıtlı e-Fatura mükellefi ise otomatik e-Fatura
-            if (res.kullanicilar[0].Alias) {
-              setEposta(res.kullanicilar[0].Alias);
-              setDetayEposta(res.kullanicilar[0].Alias);
-            }
-            try {
-              const adrRes = await ebelgeService.aliciAdresleri(cleanVal);
-              if (Array.isArray(adrRes) && adrRes.length > 0) {
-                const first = adrRes[0];
-                const comb = [first.adres, first.ilce, first.il].filter(Boolean).join(" ");
-                if (comb) {
-                  setAdres(comb);
-                  setDetayAdres(comb);
-                }
-                if (first.telefon) {
-                  setTelefon(first.telefon);
-                  setDetayTelefon(first.telefon);
-                }
-                if (first.vergiDairesi) {
-                  setVergiDairesi(first.vergiDairesi);
-                  setDetayVergiDairesi(first.vergiDairesi);
-                }
+      // Aynı numara az önce GİB'den dolduysa yeniden sorulmaz (odaktan çıkınca ad silinip yeniden gelmesin)
+      const onceki = gibSonucRef.current;
+      if (onceki && onceki.no === cleanVal && aliciUnvanDegerRef.current === onceki.ad) {
+        lastFocusedVknRef.current = cleanVal;
+        return;
+      }
+
+      // Uzak sorgu yazma durunca ve yalnız kontrol hanesi tutan numarayla yapılır (TCKN yazılırken 10. hanede gitmez);
+      // bu arada numara değiştiyse eski sorgunun yanıtı yok sayılır
+      const sira = ++uzakSorguSiraRef.current;
+      const guncelMi = () => sira === uzakSorguSiraRef.current && aliciVknDegerRef.current.replace(/\D/g, "") === cleanVal;
+      const uzak = uzakSorguYapilir(cleanVal);
+      if (uzak) {
+        await new Promise((r) => setTimeout(r, GIB_BEKLEME_MS));
+        if (!guncelMi()) return;
+
+        // GİB / GİP Mukellef Sorgulama (10 veya 11 hane ise)
+        try {
+          const res = await ebelgeService.mukellefSorgula(cleanVal);
+          if (!guncelMi()) return;
+          if (res && res.mukellefMi && res.kullanicilar && res.kullanicilar.length > 0) {
+            const title = (res.kullanicilar[0].Title || "").trim();
+            if (title) {
+              setAliciUnvan(title);
+              setDetayUnvan(title);
+              setDetayVknTckn(cleanVal);
+              setAliciVknTckn(cleanVal);
+              setCariKod("");
+              setCariKartId(null);
+              lastFocusedCariKodRef.current = "";
+              lastFocusedUnvanRef.current = title;
+              lastFocusedVknRef.current = cleanVal;
+              setSenaryo("TICARIFATURA"); // GİP'te kayıtlı e-Fatura mükellefi ise otomatik e-Fatura
+              if (res.kullanicilar[0].Alias) {
+                setEposta(res.kullanicilar[0].Alias);
+                setDetayEposta(res.kullanicilar[0].Alias);
               }
-            } catch { }
-            return;
+              try {
+                const adrRes = await ebelgeService.aliciAdresleri(cleanVal);
+                if (guncelMi() && Array.isArray(adrRes) && adrRes.length > 0) {
+                  const first = adrRes[0];
+                  const comb = [first.adres, first.ilce, first.il].filter(Boolean).join(" ");
+                  if (comb) {
+                    setAdres(comb);
+                    setDetayAdres(comb);
+                  }
+                  if (first.telefon) {
+                    setTelefon(first.telefon);
+                    setDetayTelefon(first.telefon);
+                  }
+                  if (first.vergiDairesi) {
+                    setVergiDairesi(first.vergiDairesi);
+                    setDetayVergiDairesi(first.vergiDairesi);
+                  }
+                }
+              } catch { }
+              return;
+            }
           }
-        }
-      } catch { }
+        } catch { }
+
+        if (!guncelMi()) return;
+      }
 
       // Hem DB'de hem GİP'te yoksa
       setCariKod("");
@@ -4279,6 +4369,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       setIlce("");
       setDetayIlce("");
       setSenaryo("EARSIVFATURA");
+      // e-Fatura listesinde ad yoksa GİB'den (şahıs TCKN'leri dahil); yanıt beklenmez, gelince ad yazılır
+      if (uzak) void gibdenAdDoldur(cleanVal, sira);
       return;
     }
 
@@ -4332,7 +4424,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setCariKartId(null);
     lastFocusedCariKodRef.current = "";
     lastFocusedUnvanRef.current = "";
-  }, [cariler, kayitsizMusteriler, findMatchingCustomers, handleSelectCustomer]);
+  }, [cariler, kayitsizMusteriler, findMatchingCustomers, handleSelectCustomer, gibdenAdDoldur]);
 
   // Cari Kodu Arama / Doğrulama
   const handleCariKodLookup = useCallback((inputVal: string, isEnterOrBlur = false) => {
@@ -4455,6 +4547,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       istatistikKodu: (istatistikKodu || "").trim() || null,
       eBelgeDurumu: 0,
       satirlar: previewSatirlar,
+      odemeler: fisOdemeSatirlari(odemeRows),
     };
 
     const resolved = resolveEffectivePrinter({
@@ -4466,7 +4559,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     });
     const isPos = resolved.recommendedPrintType === "POS";
     try {
-      const fisCikti = await perakendeFisleriHtml(previewFatura, isPos ? "80" : "A4");
+      const fisCikti = await perakendeFisHtml(previewFatura, isPos ? "80" : "A4");
       const sonuc = await fisiYazdir(fisCikti, {
         printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
         copies: resolved.kopyaSayisi || 1,
@@ -4545,6 +4638,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       istatistikKodu: (istatistikKodu || "").trim() || null,
       eBelgeDurumu: 0,
       satirlar: previewSatirlar,
+      odemeler: fisOdemeSatirlari(odemeRows),
     };
     setPrintedFatura(previewFatura);
     setIsPendingDirectPrint(false);
@@ -4809,7 +4903,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         const isPos = resolved.recommendedPrintType === "POS";
         // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; çoklu satır varsa hepsi yazdırılır).
         try {
-          const fisCikti = await perakendeFisleriHtml(result || payload, isPos ? "80" : "A4");
+          const fisCikti = await perakendeFisHtml(result || payload, isPos ? "80" : "A4");
           const sonuc = await fisiYazdir(fisCikti, {
             printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
             copies: resolved.kopyaSayisi || 1,
