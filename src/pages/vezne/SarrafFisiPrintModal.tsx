@@ -4,7 +4,7 @@ import { IconPrinter, IconX, IconReceipt, IconFileText } from "@tabler/icons-rea
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
-import { sarrafFisHtml, sarrafFisleriHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
+import { sarrafFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 
@@ -137,10 +137,10 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
       .finally(() => setYaziciHazir(true));
   }, [show, tip, vezne, user]);
 
-  // Kâğıt türü yazıcıdan belli olunca (ve kullanıcı değiştirdikçe) şablondan üretilir.
+  // Kâğıt türü yazıcıdan belli olunca (ve kullanıcı değiştirdikçe) şablondan üretilir; bütün satırlar tek fişte.
   const { fis, hata } = useSablonluFis(show && yaziciHazir, printType, () => {
     const { show: _s, onHide: _o, autoPrint: _a, vezne: _v, ...girdi } = propsRef.current;
-    return sarrafFisleriHtml(girdi, printType === "POS" ? "80" : "A4");
+    return sarrafFisHtml(girdi, printType === "POS" ? "80" : "A4");
   });
 
   const handlePrinterChange = (newVal: string) => {

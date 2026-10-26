@@ -99,51 +99,13 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
   return fisler;
 }
 
-/** Sarraf fişi: ekranın yazdırma anındaki görüntüsü (SarrafFisiPrintModal'ın aldığı alanlar). */
+/**
+ * Sarraf fişi: ekranın yazdırma anındaki görüntüsü (SarrafFisiPrintModal'ın aldığı alanlar).
+ * Fiş tek kayıttır (tek fiş no): bütün ürünler aynı fişte alt alta basılır, fiş satır sayısı kadar uzar.
+ */
 export async function sarrafFisHtml(girdi: Record<string, any>, bicim: FisBicimi): Promise<FisHtml> {
   const c = await BelgeService.sarrafCikti(girdi, bicim);
   return ciz(c, `${c.veri?.baslik || "Sarraf Fişi"}${c.veri?.fisNo ? ` - ${c.veri.fisNo}` : ""}`);
-}
-
-/**
- * Sarraf fişleri: Fiş içindeki her bir ürün/hareket satırı için ayrı bir fiş üretir.
- * Çoklu ürün/satır olduğunda her bir ürün ayrı bir fişte çıkar.
- */
-export async function sarrafFisleriHtml(girdi: Record<string, any>, bicim: FisBicimi): Promise<FisHtml[]> {
-  const satirlar = Array.isArray(girdi.satirlar) ? girdi.satirlar : [];
-  if (satirlar.length <= 1) {
-    const tek = await sarrafFisHtml(girdi, bicim);
-    return [tek];
-  }
-
-  const baseFisNo = String(girdi.fisNo || girdi.belgeNo || "");
-  const baseSeriNo = String(girdi.seriNo || "");
-
-  const fisler: FisHtml[] = [];
-  for (let idx = 0; idx < satirlar.length; idx++) {
-    const s = satirlar[idx];
-    const tutar = parseDecimal(s.tutar);
-    const hasGram = parseDecimal(s.hasGram) || parseDecimal(s.has);
-
-    const satirFisNo = s.fisNo || s.belgeNo || (baseFisNo ? incrementDocNo(baseFisNo, idx) : "");
-    const satirSeriNo = s.seriNo || (baseSeriNo ? incrementDocNo(baseSeriNo, idx) : "");
-
-    const tekilGirdi = {
-      ...girdi,
-      fisNo: satirFisNo,
-      belgeNo: satirFisNo,
-      seriNo: satirSeriNo,
-      satirlar: [s],
-      toplamTutar: tutar,
-      toplamHas: hasGram,
-      odenenTutar: tutar,
-      kalanTutar: 0,
-    };
-
-    const tek = await sarrafFisHtml(tekilGirdi, bicim);
-    fisler.push(tek);
-  }
-  return fisler;
 }
 
 /** Perakende fişi / fatura: kayıtlı fatura ya da kayıt yükü. */
