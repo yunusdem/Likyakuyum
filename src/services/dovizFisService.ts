@@ -103,6 +103,7 @@ export interface DovizFisModel {
   guncelleyenId: number;
   guncellemeZamani: string;
   satirlar: DovizFisSatiriModel[];
+  arbitrajSatirlar?: any[];
 }
 
 export interface DovizFisListItem {
@@ -188,6 +189,7 @@ export interface SaveDovizFisPayload {
   kimlikKaynagi?: string;
   masakListesindeVar?: boolean;
   kullaniciId?: number;
+  arbitrajSatirlar?: any[];
   satirlar: {
     satirNo?: number;
     paraId: number;

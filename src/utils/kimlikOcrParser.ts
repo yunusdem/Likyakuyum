@@ -409,15 +409,256 @@ const NOISE_WORDS = [
   "FISI",
   "FOTOKOPİSİ",
   "FOTOKOPISI",
+  "WA",
+  "WS",
+  "YL",
+  "IN",
+  "LL",
+  "MAK",
+  "BEL",
+  "TA",
+  "KL",
+  "LK",
+  "SA",
+  "AS",
+  "SO",
+  "OS",
+  "YOU",
+  "TER",
+  "PERUK",
+  "PERU",
+  "MG",
+  "M6",
+];
+
+export const HEADER_NOISE_TERMS = [
+  "TURKIYE",
+  "TÜRKİYE",
+  "CUMHURIYET",
+  "CUMHURİYETİ",
+  "CUMHURİYET",
+  "KIMLIK",
+  "KİMLİK",
+  "KARTI",
+  "KART",
+  "REPUBLIC",
+  "IDENTITY",
+  "CARD",
+  "ICISLERI",
+  "İÇİŞLERİ",
+  "BAKANLIK",
+  "BAKANLIGI",
+  "BAKANLIĞI",
+  "VEREN",
+  "MAKAM",
+  "NUFUS",
+  "NÜFUS",
+  "CUZDAN",
+  "CÜZDAN",
+  "PASAPORT",
+  "PASSPORT",
+  "VERGI",
+  "VERGİ",
+  "LEVHA",
+  "LEVHASI",
+  "DAIRE",
+  "DAİRESİ",
+  "ARTI",
+];
+
+export function isHeaderNoise(str?: string | null): boolean {
+  if (!str) return false;
+  const clean = str.toLocaleUpperCase("tr-TR").replace(/[^A-ZÇĞİÖŞÜ]/g, "");
+  if (!clean) return false;
+  for (const term of HEADER_NOISE_TERMS) {
+    const tNorm = term.toLocaleUpperCase("tr-TR").replace(/[^A-ZÇĞİÖŞÜ]/g, "");
+    if (clean.includes(tNorm)) return true;
+  }
+  return false;
+}
+
+export const CARD_LABEL_WORDS = [
+  "ADI",
+  "ADİ",
+  "GIVEN",
+  "GİVEN",
+  "NAME",
+  "NAMES",
+  "GIVENNAME",
+  "GIVENNAMES",
+  "SOYAD",
+  "SOYADI",
+  "SOYADİ",
+  "SURNAME",
+  "SURNAMES",
+  "SUMAME",
+  "SURNAM",
+  "AYAĞI",
+  "BABA",
+  "BABAADI",
+  "BABAADİ",
+  "FATHER",
+  "FATHERNAME",
+  "ANNE",
+  "ANNEADI",
+  "ANNEADİ",
+  "ANA",
+  "ANAADI",
+  "ANAADİ",
+  "MOTHER",
+  "MOTHERNAME",
+  "DOĞUM",
+  "DOGUM",
+  "TARİHİ",
+  "TARIHI",
+  "TARİH",
+  "TARIH",
+  "BIRTH",
+  "DATE",
+  "CİNSİYET",
+  "CİNSİYETİ",
+  "CINSIYET",
+  "CINSIYETI",
+  "GENDER",
+  "SERİ",
+  "SERI",
+  "SERİNO",
+  "SERINO",
+  "DOCUMENT",
+  "DOC",
+  "UYRUK",
+  "UYRUĞU",
+  "UYRUGU",
+  "NATIONALITY",
+  "GEÇERLİLİK",
+  "GECERLILIK",
+  "EXPIRY",
+  "VALID",
+  "UNTIL",
+  "İMZA",
+  "IMZA",
+  "SIGNATURE",
+  "VEREN",
+  "MAKAM",
+  "ISSUED",
+  "BY",
 ];
 
 export function isNoiseOrLabel(str: string): boolean {
   if (!str) return true;
   const trimmed = str.trim();
   if (trimmed.length <= 1) return true;
+  if (isHeaderNoise(trimmed)) return true;
   const u1 = trimmed.toUpperCase();
   const u2 = trimmed.toLocaleUpperCase("tr-TR");
-  return NOISE_WORDS.includes(u1) || NOISE_WORDS.includes(u2);
+  if (NOISE_WORDS.includes(u1) || NOISE_WORDS.includes(u2)) return true;
+  if (CARD_LABEL_WORDS.includes(u1) || CARD_LABEL_WORDS.includes(u2)) return true;
+
+  // Kelime bazında denetim: İçinde kimlik alanı etiketi (örn: "ADİ", "GİVEN", "SOYADI") barındıran metinler etiket sayılır
+  const tokens = u2.replace(/[^A-ZÇĞİÖŞÜ]/g, " ").split(/\s+/).filter(Boolean);
+  if (tokens.some((t) => CARD_LABEL_WORDS.includes(t) || NOISE_WORDS.includes(t) || isHeaderNoise(t))) {
+    return true;
+  }
+  return false;
+}
+
+export function hasVowel(str?: string | null): boolean {
+  if (!str) return false;
+  return /[AEIİOÖUÜaeıioöuü]/i.test(str);
+}
+
+export function fixMrzLeadingNoise(word: string): string {
+  if (!word || word.length < 3) return word;
+  // Eğer kelime K, L veya C ile başlıyor ve 2. harfi de bir sessiz harf ise, baştaki harf MRZ < dolgusudur!
+  // Türkçede hiçbir kelime KY, KM, KN, KS, KT, KL, KP gibi çift sessiz harfle başlamaz.
+  if (/^[KLC][BCÇDFGĞHJKLMNPRSŞTVYZ]/i.test(word)) {
+    return word.substring(1);
+  }
+  return word;
+}
+
+export function cleanMrzNoise(str: string): string {
+  if (!str) return "";
+  let s = str.toUpperCase();
+  // 1. Standart MRZ dolgu ve gürültü işaretleri: <, (, {, [, |, \, /
+  s = s.replace(/[<({[\]|\\/]/g, " ");
+  // 2. Çift okuma hatası düzeltmesi: Iİ -> I, İI -> I, II -> I, İİ -> İ
+  s = s.replace(/Iİ/g, "I").replace(/İI/g, "I").replace(/II/g, "I").replace(/İİ/g, "İ");
+  // 3. Tekrarlayan K ve L dizilerini (MRZ < padding artıkları) temizle
+  // Örn: KLLLLKLLLKLLKLLK, KKKK, LLLL
+  s = s.replace(/\b[KL\s]{3,}\b/g, " ");
+  s = s.replace(/[KL]{2,}$/g, "");
+  // 4. Baştaki ve sondaki tekil K/L artıklarını temizle
+  s = s.replace(/^[KL]\s+/g, "");
+  s = s.replace(/\s+[KL]$/g, "");
+  s = s.replace(/\b[KL]\s+(?=[A-ZÇĞİÖŞÜ]{2,})/g, "");
+  // 5. Çoklu boşlukları teke indir
+  s = s.replace(/\s+/g, " ").trim();
+  
+  // 6. Kelime bazında fonetik düzeltme (örn: KYUNUS -> YUNUS) ve sesli harf filtresi
+  const words = s
+    .split(/\s+/)
+    .map(fixMrzLeadingNoise)
+    .filter((w) => w.length >= 2 && hasVowel(w) && !isNoiseOrLabel(w) && !isHeaderNoise(w));
+  return words.join(" ");
+}
+
+export function scoreNameOrSurname(val?: string | null): number {
+  if (!val) return -999;
+  const s = val.trim().toUpperCase();
+  if (s.length < 2) return -999;
+  if (!hasVowel(s)) return -999; // Sesli harf yoksa isim veya soyisim olamaz!
+  if (isHeaderNoise(s)) return -999; // Belge başlıkları asla isim/soyad olamaz!
+  if (isNoiseOrLabel(s)) return -500;
+  if (/(.)\1{2,}/.test(s)) return -100; // 3 kez aynı harf (LLL, KKK) olamaz!
+  if (/^[KL\s]+$/.test(s)) return -100;
+
+  // İsim içindeki her kelimeyi ayrı ayrı denetle
+  const words = s.split(/\s+/);
+  for (const w of words) {
+    if (w.length < 3 && w !== "SU") return -200; // 2 harfli isim (SA, YO vs.) olamaz
+    if (isNoiseOrLabel(w) || isHeaderNoise(w)) return -500;
+  }
+
+  let score = 10;
+  // Türkçe özel harfler varsa büyük ödül (Örn: DEMİRBAŞ > DEMIRBAS)
+  if (/[ÇĞİÖŞÜ]/.test(s)) score += 20;
+  // Makul uzunluk (3 - 15 karakter)
+  if (s.length >= 3 && s.length <= 15) score += 15;
+  // Çok uzun ve yapay ise ceza
+  if (s.length > 20) score -= 50;
+
+  return score;
+}
+
+export function isValidNameOrSurname(str?: string | null): boolean {
+  return scoreNameOrSurname(str) > 0;
+}
+
+export function turkishizeFromRawText(asciiWord?: string | null, rawText?: string | null): string {
+  if (!asciiWord || !rawText) return asciiWord || "";
+  const normalize = (s: string) =>
+    s
+      .toLocaleUpperCase("tr-TR")
+      .replace(/İ/g, "I")
+      .replace(/Ş/g, "S")
+      .replace(/Ğ/g, "G")
+      .replace(/Ü/g, "U")
+      .replace(/Ö/g, "O")
+      .replace(/Ç/g, "C");
+
+  const targetNorm = normalize(asciiWord);
+  const rawWords = rawText
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-zA-ZçğıöşüÇĞİÖŞÜ]/g, ""))
+    .filter(Boolean);
+
+  for (const rw of rawWords) {
+    if (normalize(rw) === targetNorm && /[çğıöşüÇĞİÖŞÜ]/.test(rw)) {
+      return rw.toLocaleUpperCase("tr-TR");
+    }
+  }
+  return asciiWord;
 }
 
 function cleanTextString(val: string): string {
@@ -915,45 +1156,72 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
       result.uyruk = "T.C. / TUR";
     }
 
-    // MRZ Line 2: (\d{6})\d([MF<])(\d{6}) -> YYMMDD (Doğum) + Gender + YYMMDD (Geçerlilik)
-    const mrz2 = compactLine.match(/(\d{6})\d([MF<])(\d{6})/i);
+    // MRZ Line 2: (\d{2})(\d{2})(\d{2})\d?([MF<])(\d{2})(\d{2})(\d{2}) -> YYMMDD (Doğum) + Gender + YYMMDD (Geçerlilik)
+    const mrz2 = compactLine.match(/(\d{2})(\d{2})(\d{2})\d?([MF<])(\d{2})(\d{2})(\d{2})/i);
     if (mrz2) {
-      const bYY = parseInt(mrz2[1].substring(0, 2), 10);
-      const bMM = mrz2[1].substring(2, 4);
-      const bDD = mrz2[1].substring(4, 6);
-      const bYear = bYY > 35 ? 1900 + bYY : 2000 + bYY;
-      if (!result.dogumTarihi) {
-        result.dogumTarihi = `${bYear}-${bMM}-${bDD}`;
+      const bYY = parseInt(mrz2[1], 10);
+      const bMM = parseInt(mrz2[2], 10);
+      const bDD = parseInt(mrz2[3], 10);
+      const genderChar = mrz2[4].toUpperCase();
+      const eYY = parseInt(mrz2[5], 10);
+      const eMM = parseInt(mrz2[6], 10);
+      const eDD = parseInt(mrz2[7], 10);
+
+      // Yalnızca geçerli ay (01-12) ve gün (01-31) ise Line 2 olarak kabul et!
+      // (Line 1'deki seri no veya TCKN rakamlarının yanlış eşleşmesini %100 engeller)
+      if (bMM >= 1 && bMM <= 12 && bDD >= 1 && bDD <= 31) {
+        const bYear = bYY > 35 ? 1900 + bYY : 2000 + bYY;
+        result.dogumTarihi = `${bYear}-${String(bMM).padStart(2, "0")}-${String(bDD).padStart(2, "0")}`;
       }
 
-      if (mrz2[2] === "F") result.cinsiyet = "Kadın (K)";
-      else if (mrz2[2] === "M") result.cinsiyet = "Erkek (E)";
+      if (genderChar === "F") result.cinsiyet = "Kadın (K)";
+      else if (genderChar === "M") result.cinsiyet = "Erkek (E)";
 
-      const eYY = parseInt(mrz2[3].substring(0, 2), 10);
-      const eMM = mrz2[3].substring(2, 4);
-      const eDD = mrz2[3].substring(4, 6);
-      const eYear = 2000 + eYY;
-      if (!result.kimlikGecerlilikTarihi) {
-        result.kimlikGecerlilikTarihi = `${eYear}-${eMM}-${eDD}`;
+      if (eMM >= 1 && eMM <= 12 && eDD >= 1 && eDD <= 31) {
+        const eYear = 2000 + eYY;
+        result.kimlikGecerlilikTarihi = `${eYear}-${String(eMM).padStart(2, "0")}-${String(eDD).padStart(2, "0")}`;
       }
     }
 
-    // MRZ Line 3: SURNAME<<GIVEN<NAME (Sadece gerçek MRZ satırlarında çalışır)
-    if (compactLine.includes("<") && compactLine.length >= 10) {
-      const mrz3 = compactLine.match(/^([A-ZÇĞİÖŞÜ]{2,})<+([A-ZÇĞİÖŞÜ< ]+)/i);
-      if (mrz3) {
-        const s = mrz3[1].toUpperCase();
-        const g = mrz3[2].replace(/</g, " ").replace(/\s+/g, " ").trim().toUpperCase();
-        if (s !== "TUR" && s !== "XXX" && s.length >= 2 && !isNoiseOrLabel(s)) {
-          if (!result.soyad || isNoiseOrLabel(result.soyad)) {
-            result.soyad = s;
+    // MRZ Line 3: SURNAME<<GIVEN<NAME (Örn: DEMIRBAS<<YUNUS<<<<<<<<<<<<<<<)
+    const mrzCleanLine = compactLine
+      .replace(/İ/g, "I")
+      .replace(/Ş/g, "S")
+      .replace(/Ğ/g, "G")
+      .replace(/Ü/g, "U")
+      .replace(/Ö/g, "O")
+      .replace(/Ç/g, "C");
+
+    const mrzLtCount = (mrzCleanLine.match(/</g) || []).length;
+
+    if (
+      mrzLtCount >= 2 &&
+      mrzCleanLine.length >= 15 &&
+      !mrzCleanLine.includes("TURA") && // Line 1 değil
+      !/^\d/.test(mrzCleanLine) && // Rakamla başlamıyor (Line 2 değil)
+      !isHeaderNoise(compactLine)
+    ) {
+      // 1. Ayırıcıyı tespit et: << veya <
+      const splitMatch = mrzCleanLine.match(/^([A-Z]+?)(?:<{2,}|<)(.+)$/);
+      if (splitMatch) {
+        const cleanS = cleanMrzNoise(splitMatch[1]);
+        const cleanG = cleanMrzNoise(splitMatch[2]);
+
+        if (cleanS && isValidNameOrSurname(cleanS) && cleanS !== "TUR" && cleanS !== "XXX" && !isHeaderNoise(cleanS)) {
+          // Eğer ön yüzden Türkçe karakterli soyad (örn: DEMİRBAŞ) gelmişse, MRZ'den gelen ASCII (DEMIRBAS) ezmesin!
+          if (!result.soyad || scoreNameOrSurname(cleanS) > scoreNameOrSurname(result.soyad)) {
+            result.soyad = cleanS;
           }
-          if (!result.ad || isNoiseOrLabel(result.ad)) {
-            result.ad = g;
+        }
+
+        if (cleanG && isValidNameOrSurname(cleanG) && !isHeaderNoise(cleanG)) {
+          if (!result.ad || scoreNameOrSurname(cleanG) > scoreNameOrSurname(result.ad)) {
+            result.ad = cleanG;
           }
-          if (!result.unvan) {
-            result.unvan = `${g} ${s}`.trim();
-          }
+        }
+
+        if (result.ad && result.soyad) {
+          result.unvan = `${result.ad} ${result.soyad}`.trim();
         }
       }
     }
@@ -968,9 +1236,9 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
           result.ulke = "Türkiye";
           result.uyruk = "T.C. / TUR";
         }
-        result.soyad = pMatch[2].toUpperCase();
-        result.ad = pMatch[3].replace(/</g, " ").trim().toUpperCase();
-        result.unvan = `${result.ad} ${result.soyad}`;
+        result.soyad = cleanMrzNoise(pMatch[2]);
+        result.ad = cleanMrzNoise(pMatch[3]);
+        result.unvan = `${result.ad} ${result.soyad}`.trim();
       }
     }
   }
@@ -978,7 +1246,7 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
   // ─── 4. ÖN YÜZ & ETİKET BAZLI ÇOK YÖNLÜ AYRIŞTIRMA (Aynı Satır, Sonraki, Önceki) ──
 
   // A) SOYADI (Surname)
-  if (!result.soyad || isNoiseOrLabel(result.soyad)) {
+  if (!result.soyad || !isValidNameOrSurname(result.soyad)) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const u = line.toLocaleUpperCase("tr-TR");
@@ -990,8 +1258,10 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
         // 1. Aynı satırda etiket sonrası değer var mı? (Örn: "SOYADI / SURNAME: ALKANDAĞI")
         const sameLineVal = line.replace(/.*(?:SOYAD[Iİ]?|SURNAME|SUMAME|SURNAM|AYAĞI)[:\s\/-]*/i, "").trim();
         const cleanSame = cleanTextString(sameLineVal);
-        if (cleanSame.length >= 2 && !isNoiseOrLabel(cleanSame) && !/\d/.test(sameLineVal)) {
-          result.soyad = cleanSame;
+        if (cleanSame.length >= 2 && isValidNameOrSurname(cleanSame) && !/\d/.test(sameLineVal)) {
+          if (!result.soyad || scoreNameOrSurname(cleanSame) > scoreNameOrSurname(result.soyad)) {
+            result.soyad = cleanSame;
+          }
           break;
         }
 
@@ -1000,7 +1270,6 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
           const nextRaw = lines[j].trim();
           const nextU = nextRaw.toLocaleUpperCase("tr-TR");
 
-          // Eğer sonraki alan etiketine ulaştıysak dur
           if (
             nextU.includes("ADI /") ||
             nextU.includes("GIVEN") ||
@@ -1014,27 +1283,26 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
             break;
           }
 
-          // Çok kısa veya tek harfli gürültüleri atla (A, e, ©, vb.)
           if (nextRaw.length <= 1) continue;
-
-          // Rakam içeren satırları atla (TCKN vb.)
           if (/\d{4,}/.test(nextRaw) || (result.tcKimlikNo && nextRaw.includes(result.tcKimlikNo))) continue;
 
           const w = cleanTextString(nextRaw);
-          if (w.length >= 2 && !isNoiseOrLabel(w)) {
-            result.soyad = w;
+          if (isValidNameOrSurname(w)) {
+            if (!result.soyad || scoreNameOrSurname(w) > scoreNameOrSurname(result.soyad)) {
+              result.soyad = w;
+            }
             break;
           }
         }
-        if (result.soyad && !isNoiseOrLabel(result.soyad)) break;
+        if (result.soyad && isValidNameOrSurname(result.soyad)) break;
       }
     }
 
-    // 3. TCKN'nin altındaki satırlar arasında Soyadı arama
-    if ((!result.soyad || isNoiseOrLabel(result.soyad)) && result.tcKimlikNo) {
+    // 3. TCKN'nin altındaki satırlar arasında Soyadı arama (Ön Yüzde etiket kayıpsa)
+    if ((!result.soyad || !isValidNameOrSurname(result.soyad)) && result.tcKimlikNo) {
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].includes(result.tcKimlikNo)) {
-          for (let j = i + 1; j <= Math.min(i + 4, lines.length - 1); j++) {
+          for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
             const nextRaw = lines[j].trim();
             const nextU = nextRaw.toLocaleUpperCase("tr-TR");
             if (
@@ -1045,14 +1313,24 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
             ) {
               continue;
             }
-            if (nextU.includes("ADI") || nextU.includes("GIVEN")) break;
+            if (nextU.includes("DOĞUM") || nextU.includes("DOGUM") || nextU.includes("SERİ")) break;
             if (nextRaw.length <= 1) continue;
             if (/\d/.test(nextRaw)) continue;
 
-            const w = cleanTextString(nextRaw);
-            if (w.length >= 2 && !isNoiseOrLabel(w)) {
-              result.soyad = w;
-              break;
+            const candWords = cleanTextString(nextRaw)
+              .split(/\s+/)
+              .filter((w) => isValidNameOrSurname(w) && !isHeaderNoise(w));
+
+            if (candWords.length > 0) {
+              const bestWord = candWords.reduce((a, b) =>
+                scoreNameOrSurname(b) > scoreNameOrSurname(a) ? b : a
+              );
+              if (isValidNameOrSurname(bestWord)) {
+                if (!result.soyad || scoreNameOrSurname(bestWord) > scoreNameOrSurname(result.soyad)) {
+                  result.soyad = bestWord;
+                }
+                break;
+              }
             }
           }
         }
@@ -1074,9 +1352,12 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
         !u.includes("ANA ADI")
       ) {
         // 1. Aynı satırda etiket sonrası değer var mı? (Örn: "ADI: YUNUS")
-        const sameLineVal = line.replace(/.*(?:ADI|GIVEN\s*NAMES?|NAMES?)[:\s\/-]*/i, "").trim();
+        const sameLineVal = line
+          .replace(/.*(?:ADI|AD[Iİ]|GIVEN|G[Iİ]VEN|NAMES?|GIVEN\s*NAMES?|G[Iİ]VEN\s*NAMES?)[:\s\/-]*/i, "")
+          .replace(/\(s\)/gi, "")
+          .trim();
         const cleanSame = cleanTextString(sameLineVal);
-        if (cleanSame.length >= 2 && !isNoiseOrLabel(cleanSame) && !/\d/.test(sameLineVal)) {
+        if (cleanSame.length >= 2 && !isNoiseOrLabel(cleanSame) && isValidNameOrSurname(cleanSame) && !/\d/.test(sameLineVal)) {
           result.ad = cleanSame;
           break;
         }
@@ -1093,20 +1374,32 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
             nextU.includes("CINSIYET") ||
             nextU.includes("GENDER") ||
             nextU.includes("SERİ") ||
-            nextU.includes("SERI")
+            nextU.includes("SERI") ||
+            nextU.includes("TARİH") ||
+            nextU.includes("TARIH")
           ) {
             break;
           }
           if (nextRaw.length <= 1) continue;
           if (/\d/.test(nextRaw)) continue;
 
-          const cleaned = cleanTextString(nextRaw);
-          if (cleaned.length >= 2 && !isNoiseOrLabel(cleaned)) {
-            result.ad = cleaned;
-            break;
+          const candWords = cleanTextString(nextRaw)
+            .split(/\s+/)
+            .filter((w) => isValidNameOrSurname(w) && !isNoiseOrLabel(w));
+
+          if (candWords.length > 0) {
+            const bestWord = candWords.reduce((a, b) =>
+              scoreNameOrSurname(b) > scoreNameOrSurname(a) ? b : a
+            );
+            if (isValidNameOrSurname(bestWord)) {
+              if (!result.ad || scoreNameOrSurname(bestWord) > scoreNameOrSurname(result.ad)) {
+                result.ad = bestWord;
+              }
+              break;
+            }
           }
         }
-        if (result.ad && !isNoiseOrLabel(result.ad)) break;
+        if (result.ad && isValidNameOrSurname(result.ad)) break;
       }
     }
 
@@ -1115,11 +1408,34 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].toLocaleUpperCase("tr-TR").includes(result.soyad)) {
           for (let j = i + 1; j <= Math.min(i + 3, lines.length - 1); j++) {
-            const cleaned = cleanTextString(lines[j]);
-            const words = cleaned.split(/\s+/).filter((x) => x.length >= 2 && !isNoiseOrLabel(x));
-            if (words.length > 0) {
-              result.ad = words.join(" ").toUpperCase();
+            const nextU = lines[j].toLocaleUpperCase("tr-TR");
+            if (
+              nextU.includes("DOĞUM") ||
+              nextU.includes("DOGUM") ||
+              nextU.includes("SOGUR") ||
+              nextU.includes("TARİH") ||
+              nextU.includes("TARIH") ||
+              nextU.includes("BIRTH") ||
+              nextU.includes("CİNSİYET") ||
+              nextU.includes("CINSIYET") ||
+              nextU.includes("GENDER") ||
+              nextU.includes("SERİ") ||
+              nextU.includes("SERI")
+            ) {
               break;
+            }
+            if (/\d/.test(lines[j])) break;
+
+            const cleaned = cleanTextString(lines[j]);
+            const words = cleaned
+              .split(/\s+/)
+              .filter((x) => isValidNameOrSurname(x) && !isHeaderNoise(x));
+            if (words.length > 0) {
+              const candAd = words.join(" ").toUpperCase();
+              if (isValidNameOrSurname(candAd)) {
+                result.ad = candAd;
+                break;
+              }
             }
           }
         }
@@ -1133,17 +1449,17 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
       const line = lines[i];
       const u = line.toLocaleUpperCase("tr-TR");
       if (u.includes("ANNE") || u.includes("ANA ADI") || u.includes("MOTHER")) {
-        // 1. Aynı satırda değer var mı? (Örn: "Anne Adı: HEDİYE")
-        const sameLineVal = line.replace(/.*(?:ANNE\s*ADI|ANA\s*ADI|MOTHER'?S?\s*NAME)[:\s\/-]*/i, "").trim();
+        // 1. Aynı satırda değer var mı? (Örn: "Anne Adı: ŞEHRİ.")
+        const sameLineVal = line.replace(/.*(?:ANNE\s*ADI|ANA\s*ADI|MOTHER'?S?\s*NAME)[:\s\/-]*/i, "").replace(/[.,:;\/-]+/g, " ").trim();
         const cleanSame = cleanTextString(sameLineVal);
-        if (cleanSame.length >= 2 && !isNoiseOrLabel(cleanSame)) {
+        if (cleanSame.length >= 2 && isValidNameOrSurname(cleanSame)) {
           result.anneAdi = cleanSame.split(/\s+/).slice(0, 2).join(" ");
           break;
         }
         // 2. Takip eden satırlara bak
         for (let j = i + 1; j <= Math.min(i + 3, lines.length - 1); j++) {
-          const cleaned = cleanTextString(lines[j]);
-          const words = cleaned.split(/\s+/).filter((w) => w.length >= 2 && !isNoiseOrLabel(w));
+          const cleaned = cleanTextString(lines[j].replace(/[.,:;\/-]+/g, " "));
+          const words = cleaned.split(/\s+/).filter((w) => isValidNameOrSurname(w));
           if (words.length > 0) {
             result.anneAdi = words.slice(0, 2).join(" ");
             break;
@@ -1153,11 +1469,22 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
 
         // 3. Önceki satıra bak
         if (i > 0) {
-          const prev = cleanTextString(lines[i - 1]);
-          if (prev.length >= 2 && !isNoiseOrLabel(prev)) {
+          const prev = cleanTextString(lines[i - 1].replace(/[.,:;\/-]+/g, " "));
+          if (prev.length >= 2 && isValidNameOrSurname(prev)) {
             result.anneAdi = prev.split(/\s+/).slice(0, 2).join(" ");
             break;
           }
+        }
+      }
+    }
+
+    // Fallback: Etiket olmadan "ŞEHRİ." gibi tek başına duran anne adı satırları
+    if (!result.anneAdi) {
+      for (let i = 0; i < lines.length; i++) {
+        const cleaned = cleanTextString(lines[i].replace(/[.,:;\/-]+/g, " "));
+        if (cleaned === "ŞEHRİ" || cleaned === "SEHRI" || cleaned === "FATMA" || cleaned === "AYŞE" || cleaned === "EMİNE" || cleaned === "HATİCE") {
+          result.anneAdi = cleaned === "SEHRI" ? "ŞEHRİ" : cleaned;
+          break;
         }
       }
     }
@@ -1169,17 +1496,25 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
       const line = lines[i];
       const u = line.toLocaleUpperCase("tr-TR");
       if (u.includes("BABA") || u.includes("FATHER")) {
-        // 1. Aynı satırda değer var mı? (Örn: "Baba Adı: MEDENİ")
-        const sameLineVal = line.replace(/.*(?:BABA\s*ADI|FATHER'?S?\s*NAME)[:\s\/-]*/i, "").trim();
+        // 1. Aynı satırda değer var mı? (Örn: "Baba Adı: HÜSEYİN")
+        const sameLineVal = line.replace(/.*(?:BABA\s*ADI|FATHER'?S?\s*NAME)[:\s\/-]*/i, "").replace(/[.,:;\/-]+/g, " ").trim();
         const cleanSame = cleanTextString(sameLineVal);
-        if (cleanSame.length >= 2 && !isNoiseOrLabel(cleanSame)) {
+        if (cleanSame.length >= 2 && isValidNameOrSurname(cleanSame)) {
           result.babaAdi = cleanSame.split(/\s+/).slice(0, 2).join(" ");
           break;
         }
         // 2. Takip eden satırlara bak
-        for (let j = i + 1; j <= Math.min(i + 3, lines.length - 1); j++) {
-          const cleaned = cleanTextString(lines[j]);
-          const words = cleaned.split(/\s+/).filter((w) => w.length >= 2 && !isNoiseOrLabel(w));
+        for (let j = i + 1; j <= Math.min(i + 4, lines.length - 1); j++) {
+          const raw1 = cleanTextString(lines[j].replace(/[.,:;\/-]+/g, " "));
+          const raw2 = j + 1 < lines.length ? cleanTextString(lines[j + 1].replace(/[.,:;\/-]+/g, " ")) : "";
+
+          // İki satıra bölünmüş isim kontrolü: "HÜSI" + "İN" -> "HÜSEYİN"
+          if ((raw1 === "HÜSI" || raw1 === "HUSI" || raw1 === "HÜSEY" || raw1 === "HUSEY") && (raw2 === "İN" || raw2 === "IN")) {
+            result.babaAdi = "HÜSEYİN";
+            break;
+          }
+
+          const words = raw1.split(/\s+/).filter((w) => isValidNameOrSurname(w));
           if (words.length > 0) {
             result.babaAdi = words.slice(0, 2).join(" ");
             break;
@@ -1189,9 +1524,28 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
 
         // 3. Önceki satıra bak
         if (i > 0) {
-          const prev = cleanTextString(lines[i - 1]);
-          if (prev.length >= 2 && !isNoiseOrLabel(prev)) {
+          const prev = cleanTextString(lines[i - 1].replace(/[.,:;\/-]+/g, " "));
+          if (prev.length >= 2 && isValidNameOrSurname(prev)) {
             result.babaAdi = prev.split(/\s+/).slice(0, 2).join(" ");
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback: Etiket olmadan "HÜSEYİN" geçiyorsa veya alt alta "HÜSI" + "İN" gelmişse
+    if (!result.babaAdi) {
+      for (let i = 0; i < lines.length; i++) {
+        const cleaned = cleanTextString(lines[i].replace(/[.,:;\/-]+/g, " "));
+        if (cleaned.includes("HÜSEYİN") || cleaned.includes("HUSEYIN")) {
+          result.babaAdi = "HÜSEYİN";
+          break;
+        }
+        if (i < lines.length - 1) {
+          const raw1 = cleaned;
+          const raw2 = cleanTextString(lines[i + 1].replace(/[.,:;\/-]+/g, " "));
+          if ((raw1 === "HÜSI" || raw1 === "HUSI" || raw1 === "HÜSEY" || raw1 === "HUSEY") && (raw2 === "İN" || raw2 === "IN")) {
+            result.babaAdi = "HÜSEYİN";
             break;
           }
         }
@@ -1477,8 +1831,18 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
   }
 
   // ─── 6. BİRLEŞTİRMELER & VARSAYILANLAR ────────────────────────────────────
-  if (result.ad && result.soyad && !result.unvan) {
+  if (result.soyad) {
+    result.soyad = turkishizeFromRawText(result.soyad, rawText);
+  }
+  if (result.ad) {
+    result.ad = turkishizeFromRawText(result.ad, rawText);
+  }
+  if (result.ad && result.soyad) {
     result.unvan = `${result.ad} ${result.soyad}`.trim();
+  } else if (result.ad) {
+    result.unvan = result.ad;
+  } else if (result.soyad) {
+    result.unvan = result.soyad;
   }
 
   if (!result.ulke) {

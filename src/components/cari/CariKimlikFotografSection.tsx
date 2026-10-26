@@ -14,6 +14,7 @@ import {
   IconPlus,
   IconTrash,
   IconArrowsExchange,
+  IconEdit,
 } from "@tabler/icons-react";
 import {
   performOcrAndExtractData,
@@ -23,6 +24,9 @@ import {
   isNoiseOrLabel,
   isValidTcKimlikNo,
   cleanSeri,
+  scoreNameOrSurname,
+  isValidNameOrSurname,
+  turkishizeFromRawText,
 } from "../../utils/kimlikOcrParser";
 import { CariFotografItem } from "../../services/cariService";
 
@@ -75,6 +79,27 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   // Büyütme (Zoom) Modalı
   const [showZoomModal, setShowZoomModal] = useState(false);
+
+  // OCR Verilerini Doğrudan Düzenleme Modu
+  const [isEditingOcr, setIsEditingOcr] = useState<boolean>(false);
+
+  // Okunan Bilgiler panelinden doğrudan veri düzenleme
+  const handleEditOcrField = (field: keyof OcrExtractedData, value: any) => {
+    if (!extractedData) return;
+    const updated: OcrExtractedData = { ...extractedData, [field]: value };
+    if (field === "ad" || field === "soyad") {
+      const ad = field === "ad" ? value : updated.ad || "";
+      const soyad = field === "soyad" ? value : updated.soyad || "";
+      updated.unvan = `${ad} ${soyad}`.trim();
+    }
+    if (field === "tcKimlikNo") {
+      updated.vergiKimlikNo = value;
+    }
+    setExtractedData(updated);
+    if (isApplied && onOcrApply) {
+      onOcrApply(updated);
+    }
+  };
 
   // Aktif Fotoğraf İndeksi (Arkalı Önlü fotoğraflar arasında geçiş)
   const [activeIndex, setActiveIndex] = useState<number>(0);
@@ -237,18 +262,16 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
             mergedData.vergiKimlikNo = res.vergiKimlikNo;
           }
 
-          // Ad: Noise değilse ve daha temiz/uzunsa veya mergedData'da gürültü varsa al
-          if (res.ad && !isNoiseOrLabel(res.ad)) {
-            if (!mergedData.ad || isNoiseOrLabel(mergedData.ad) || (res.ad.length > mergedData.ad.length && !mergedData.ad.includes(res.ad))) {
+          // Ad: Kalite puanı daha yüksek olanı tercih et
+          if (res.ad && isValidNameOrSurname(res.ad)) {
+            if (!mergedData.ad || !isValidNameOrSurname(mergedData.ad) || scoreNameOrSurname(res.ad) >= scoreNameOrSurname(mergedData.ad)) {
               mergedData.ad = res.ad;
             }
           }
 
-          // Soyad: Noise değilse al. Eğer yeni gelen soyad Türkçe karakter içeriyorsa veya mergedData'daki boş/gürültüyse tercih et
-          if (res.soyad && !isNoiseOrLabel(res.soyad)) {
-            if (!mergedData.soyad || isNoiseOrLabel(mergedData.soyad)) {
-              mergedData.soyad = res.soyad;
-            } else if (/[ÇĞİÖŞÜçğıöşü]/.test(res.soyad) && !/[ÇĞİÖŞÜçğıöşü]/.test(mergedData.soyad)) {
+          // Soyad: Kalite puanı daha yüksek olanı tercih et (örn: DEMİRBAŞ > DEMIRBAS > YL)
+          if (res.soyad && isValidNameOrSurname(res.soyad)) {
+            if (!mergedData.soyad || !isValidNameOrSurname(mergedData.soyad) || scoreNameOrSurname(res.soyad) >= scoreNameOrSurname(mergedData.soyad)) {
               mergedData.soyad = res.soyad;
             }
           }
@@ -276,13 +299,13 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           if (!mergedData.cinsiyet && res.cinsiyet) mergedData.cinsiyet = res.cinsiyet;
 
           // Anne ve Baba Adı (özellikle arka yüzden gelir)
-          if (res.anneAdi && !isNoiseOrLabel(res.anneAdi)) {
-            if (!mergedData.anneAdi || isNoiseOrLabel(mergedData.anneAdi)) {
+          if (res.anneAdi && isValidNameOrSurname(res.anneAdi)) {
+            if (!mergedData.anneAdi || !isValidNameOrSurname(mergedData.anneAdi) || scoreNameOrSurname(res.anneAdi) > scoreNameOrSurname(mergedData.anneAdi)) {
               mergedData.anneAdi = res.anneAdi;
             }
           }
-          if (res.babaAdi && !isNoiseOrLabel(res.babaAdi)) {
-            if (!mergedData.babaAdi || isNoiseOrLabel(mergedData.babaAdi)) {
+          if (res.babaAdi && isValidNameOrSurname(res.babaAdi)) {
+            if (!mergedData.babaAdi || !isValidNameOrSurname(mergedData.babaAdi) || scoreNameOrSurname(res.babaAdi) > scoreNameOrSurname(mergedData.babaAdi)) {
               mergedData.babaAdi = res.babaAdi;
             }
           }
@@ -300,11 +323,11 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           mergedData.rawText += "\n---\n" + (res.rawText || "");
         }
 
-        // Son temizlik: noise kelimeleri sil
-        if (mergedData.ad && isNoiseOrLabel(mergedData.ad)) delete mergedData.ad;
-        if (mergedData.soyad && isNoiseOrLabel(mergedData.soyad)) delete mergedData.soyad;
-        if (mergedData.anneAdi && isNoiseOrLabel(mergedData.anneAdi)) delete mergedData.anneAdi;
-        if (mergedData.babaAdi && isNoiseOrLabel(mergedData.babaAdi)) delete mergedData.babaAdi;
+        // Son temizlik: geçersiz veya noise kelimeleri sil
+        if (mergedData.ad && !isValidNameOrSurname(mergedData.ad)) delete mergedData.ad;
+        if (mergedData.soyad && !isValidNameOrSurname(mergedData.soyad)) delete mergedData.soyad;
+        if (mergedData.anneAdi && !isValidNameOrSurname(mergedData.anneAdi)) delete mergedData.anneAdi;
+        if (mergedData.babaAdi && !isValidNameOrSurname(mergedData.babaAdi)) delete mergedData.babaAdi;
 
         // Seri No'yu son kez cleanSeri ile doğrula
         if (mergedData.kimlikSeriNo) {
@@ -314,16 +337,26 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           }
         }
 
+        // Ham metindeki Türkçe karakterleri (örn. DEMİRBAŞ) geri yükle
+        if (mergedData.soyad) {
+          mergedData.soyad = turkishizeFromRawText(mergedData.soyad, mergedData.rawText);
+        }
+        if (mergedData.ad) {
+          mergedData.ad = turkishizeFromRawText(mergedData.ad, mergedData.rawText);
+        }
+
         // Cari Ünvan'ı Ad ve Soyad ile güncelle
         if (mergedData.ad && mergedData.soyad) {
           mergedData.unvan = `${mergedData.ad} ${mergedData.soyad}`.trim();
+        } else if (mergedData.ad) {
+          mergedData.unvan = mergedData.ad;
+        } else if (mergedData.soyad) {
+          mergedData.unvan = mergedData.soyad;
         }
 
         setExtractedData(mergedData);
-        if (onOcrApply) {
-          onOcrApply(mergedData);
-          setIsApplied(true);
-        }
+        // Form alanları otomatik doldurulmaz; kullanıcı "Alanları Doldur" butonuna basınca aktarılır
+        setIsApplied(false);
         return mergedData;
       } catch (err: any) {
         setOcrError("Kimlik metinleri okunurken hata: " + (err.message || err));
@@ -765,7 +798,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                   ? "btn-secondary"
                   : isApplied
                   ? "btn-outline-success"
-                  : "btn-primary text-white"
+                  : "btn-success text-white"
               }`}
               style={{
                 borderRadius: "8px",
@@ -838,9 +871,28 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               <span className="text-success fw-bold d-flex align-items-center gap-1">
                 <IconCheck size={12} /> Okunan Bilgiler
               </span>
-              <span className="badge bg-primary-subtle text-primary border border-primary-subtle" style={{ fontSize: "9px" }}>
-                {extractedData.belgeTuru === 1 ? "Pasaport" : extractedData.belgeTuru === 2 ? "Vergi Levhası" : "T.C. Kimlik"}
-              </span>
+              <div className="d-flex align-items-center gap-1">
+                <button
+                  type="button"
+                  className={`btn btn-xs ${isEditingOcr ? "btn-success text-white" : "btn-outline-primary"} py-0 px-1.5`}
+                  style={{ fontSize: "9px", lineHeight: "1.2" }}
+                  onClick={() => setIsEditingOcr(!isEditingOcr)}
+                  title={isEditingOcr ? "Düzenlemeyi Bitir" : "Okunan Bilgileri Düzenle"}
+                >
+                  {isEditingOcr ? (
+                    <>
+                      <IconCheck size={10} className="me-0.5" /> Tamam
+                    </>
+                  ) : (
+                    <>
+                      <IconEdit size={10} className="me-0.5" /> Düzenle
+                    </>
+                  )}
+                </button>
+                <span className="badge bg-primary-subtle text-primary border border-primary-subtle" style={{ fontSize: "9px" }}>
+                  {extractedData.belgeTuru === 1 ? "Pasaport" : extractedData.belgeTuru === 2 ? "Vergi Levhası" : "T.C. Kimlik"}
+                </span>
+              </div>
             </div>
 
             <div className="d-flex flex-column gap-1">
@@ -855,36 +907,86 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               {/* TCKN / VKN */}
               <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                 <span className="text-muted">{extractedData.belgeTuru === 2 ? "VKN / TCKN:" : "T.C. Kimlik No:"}</span>
-                <strong className="text-dark font-monospace text-primary">
-                  {extractedData.tcKimlikNo || extractedData.vergiKimlikNo || "—"}
-                </strong>
+                {isEditingOcr ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm py-0 px-1 text-end font-monospace fw-bold"
+                    style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                    value={extractedData.tcKimlikNo || extractedData.vergiKimlikNo || ""}
+                    onChange={(e) => handleEditOcrField("tcKimlikNo", e.target.value)}
+                  />
+                ) : (
+                  <strong className="text-dark font-monospace text-primary">
+                    {extractedData.tcKimlikNo || extractedData.vergiKimlikNo || "—"}
+                  </strong>
+                )}
               </div>
 
               {/* Cari Ünvan / Ad */}
               <div className="d-flex justify-content-between align-items-start py-0.5 border-bottom border-light">
                 <span className="text-muted flex-shrink-0">Cari Ünvan:</span>
-                <strong className="text-dark text-end ms-1 text-break">
-                  {extractedData.unvan || `${extractedData.ad || ""} ${extractedData.soyad || ""}`.trim() || "—"}
-                </strong>
+                {isEditingOcr ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm py-0 px-1 text-end fw-semibold"
+                    style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                    value={extractedData.unvan || `${extractedData.ad || ""} ${extractedData.soyad || ""}`.trim()}
+                    onChange={(e) => handleEditOcrField("unvan", e.target.value)}
+                  />
+                ) : (
+                  <strong className="text-dark text-end ms-1 text-break">
+                    {extractedData.unvan || `${extractedData.ad || ""} ${extractedData.soyad || ""}`.trim() || "—"}
+                  </strong>
+                )}
               </div>
 
               {/* Adı */}
               <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                 <span className="text-muted">Adı:</span>
-                <strong className="text-dark">{extractedData.ad || "—"}</strong>
+                {isEditingOcr ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm py-0 px-1 text-end fw-semibold"
+                    style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                    value={extractedData.ad || ""}
+                    onChange={(e) => handleEditOcrField("ad", e.target.value)}
+                  />
+                ) : (
+                  <strong className="text-dark">{extractedData.ad || "—"}</strong>
+                )}
               </div>
 
               {/* Soyadı */}
               <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                 <span className="text-muted">Soyadı:</span>
-                <strong className="text-dark">{extractedData.soyad || "—"}</strong>
+                {isEditingOcr ? (
+                  <input
+                    type="text"
+                    className="form-control form-control-sm py-0 px-1 text-end fw-semibold"
+                    style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                    value={extractedData.soyad || ""}
+                    onChange={(e) => handleEditOcrField("soyad", e.target.value)}
+                  />
+                ) : (
+                  <strong className="text-dark">{extractedData.soyad || "—"}</strong>
+                )}
               </div>
 
               {/* Kimlik Seri No (Kimlik için) */}
               {extractedData.belgeTuru === 0 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Kimlik Seri No:</span>
-                  <strong className="text-dark font-monospace">{extractedData.kimlikSeriNo || "—"}</strong>
+                  {isEditingOcr ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm py-0 px-1 text-end font-monospace"
+                      style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                      value={extractedData.kimlikSeriNo || ""}
+                      onChange={(e) => handleEditOcrField("kimlikSeriNo", e.target.value)}
+                    />
+                  ) : (
+                    <strong className="text-dark font-monospace">{extractedData.kimlikSeriNo || "—"}</strong>
+                  )}
                 </div>
               )}
 
@@ -892,7 +994,17 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               {(extractedData.belgeTuru === 1 || extractedData.pasaportNo) && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Pasaport No:</span>
-                  <strong className="text-dark font-monospace">{extractedData.pasaportNo || "—"}</strong>
+                  {isEditingOcr ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm py-0 px-1 text-end font-monospace"
+                      style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                      value={extractedData.pasaportNo || ""}
+                      onChange={(e) => handleEditOcrField("pasaportNo", e.target.value)}
+                    />
+                  ) : (
+                    <strong className="text-dark font-monospace">{extractedData.pasaportNo || "—"}</strong>
+                  )}
                 </div>
               )}
 
@@ -900,9 +1012,19 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               {extractedData.belgeTuru !== 2 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Doğum Tarihi:</span>
-                  <strong className="text-dark font-monospace">
-                    {extractedData.dogumTarihi ? formatDateTr(extractedData.dogumTarihi) : "—"}
-                  </strong>
+                  {isEditingOcr ? (
+                    <input
+                      type="date"
+                      className="form-control form-control-sm py-0 px-1 text-end font-monospace"
+                      style={{ fontSize: "9px", height: "20px", maxWidth: "125px" }}
+                      value={extractedData.dogumTarihi || ""}
+                      onChange={(e) => handleEditOcrField("dogumTarihi", e.target.value)}
+                    />
+                  ) : (
+                    <strong className="text-dark font-monospace">
+                      {extractedData.dogumTarihi ? formatDateTr(extractedData.dogumTarihi) : "—"}
+                    </strong>
+                  )}
                 </div>
               )}
 
@@ -910,9 +1032,19 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               {extractedData.belgeTuru !== 2 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Geçerlilik Tarihi:</span>
-                  <strong className="text-dark font-monospace">
-                    {extractedData.kimlikGecerlilikTarihi ? formatDateTr(extractedData.kimlikGecerlilikTarihi) : "—"}
-                  </strong>
+                  {isEditingOcr ? (
+                    <input
+                      type="date"
+                      className="form-control form-control-sm py-0 px-1 text-end font-monospace"
+                      style={{ fontSize: "9px", height: "20px", maxWidth: "125px" }}
+                      value={extractedData.kimlikGecerlilikTarihi || ""}
+                      onChange={(e) => handleEditOcrField("kimlikGecerlilikTarihi", e.target.value)}
+                    />
+                  ) : (
+                    <strong className="text-dark font-monospace">
+                      {extractedData.kimlikGecerlilikTarihi ? formatDateTr(extractedData.kimlikGecerlilikTarihi) : "—"}
+                    </strong>
+                  )}
                 </div>
               )}
 
@@ -920,7 +1052,20 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               {extractedData.belgeTuru !== 2 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Cinsiyet:</span>
-                  <strong className="text-dark">{extractedData.cinsiyet || "—"}</strong>
+                  {isEditingOcr ? (
+                    <select
+                      className="form-select form-select-sm py-0 px-1 text-end"
+                      style={{ fontSize: "9px", height: "20px", maxWidth: "125px" }}
+                      value={extractedData.cinsiyet || ""}
+                      onChange={(e) => handleEditOcrField("cinsiyet", e.target.value)}
+                    >
+                      <option value="">Seçiniz</option>
+                      <option value="Erkek (E)">Erkek (E)</option>
+                      <option value="Kadın (K)">Kadın (K)</option>
+                    </select>
+                  ) : (
+                    <strong className="text-dark">{extractedData.cinsiyet || "—"}</strong>
+                  )}
                 </div>
               )}
 
@@ -936,7 +1081,16 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               {extractedData.belgeTuru !== 2 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Baba Adı:</span>
-                  {extractedData.babaAdi ? (
+                  {isEditingOcr ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm py-0 px-1 text-end fw-semibold"
+                      style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                      value={extractedData.babaAdi || ""}
+                      placeholder="Baba Adı"
+                      onChange={(e) => handleEditOcrField("babaAdi", e.target.value)}
+                    />
+                  ) : extractedData.babaAdi ? (
                     <strong className="text-dark">{extractedData.babaAdi}</strong>
                   ) : extractedData.belgeTuru === 0 && photoList.length < 2 ? (
                     <span
@@ -959,7 +1113,16 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               {extractedData.belgeTuru !== 2 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Anne Adı:</span>
-                  {extractedData.anneAdi ? (
+                  {isEditingOcr ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm py-0 px-1 text-end fw-semibold"
+                      style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                      value={extractedData.anneAdi || ""}
+                      placeholder="Anne Adı"
+                      onChange={(e) => handleEditOcrField("anneAdi", e.target.value)}
+                    />
+                  ) : extractedData.anneAdi ? (
                     <strong className="text-dark">{extractedData.anneAdi}</strong>
                   ) : extractedData.belgeTuru === 0 && photoList.length < 2 ? (
                     <span
@@ -977,6 +1140,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                   )}
                 </div>
               )}
+
 
               {/* Doğum Yeri (Sadece Pasaport için gösterilir, Kimlikte yoktur) */}
               {extractedData.belgeTuru === 1 && (
