@@ -1,8 +1,8 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "Mükerrer ve çift fiş basımını önleyen deduplication motoru ve akıllı kilit",
+  "releaseNotes": "Ultra hızlı sessiz yazdırma motoru (Gecikme süresi 0.3 saniyeye düşürüldü)",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-10-24T11:35:00Z"
+  "updatedAt": "2026-10-26T16:15:00Z"
 }

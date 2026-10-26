@@ -1,0 +1,1235 @@
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Modal, Button, ProgressBar, Spinner, Alert, Dropdown } from "react-bootstrap";
+import {
+  IconCamera,
+  IconUpload,
+  IconZoomIn,
+  IconCheck,
+  IconAlertCircle,
+  IconSparkles,
+  IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
+  IconFileText,
+  IconPlus,
+  IconTrash,
+  IconArrowsExchange,
+} from "@tabler/icons-react";
+import {
+  performOcrAndExtractData,
+  OcrExtractedData,
+  isKimlikBackFace,
+  isKimlikFrontFace,
+  isNoiseOrLabel,
+  isValidTcKimlikNo,
+  cleanSeri,
+} from "../../utils/kimlikOcrParser";
+import { CariFotografItem } from "../../services/cariService";
+
+export interface CariKimlikFotografSectionProps {
+  currentPhoto?: CariFotografItem | null;
+  currentPhotos?: CariFotografItem[];
+  pendingBase64?: string | null;
+  pendingPhotos?: string[];
+  selectedBelgeTuru: number; // 0: Kimlik, 1: Pasaport, 2: Vergi Levhası
+  onBelgeTuruChange: (turu: number) => void;
+  onPhotoSelected: (base64: string, file?: File) => void;
+  onPhotosSelected?: (base64List: string[]) => void;
+  onPhotoDeleted: (index?: number, photoId?: number) => void;
+  onOcrApply: (data: OcrExtractedData) => void;
+  disabled?: boolean;
+}
+
+export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps> = ({
+  currentPhoto,
+  currentPhotos,
+  pendingBase64,
+  pendingPhotos,
+  selectedBelgeTuru,
+  onBelgeTuruChange,
+  onPhotoSelected,
+  onPhotosSelected,
+  onPhotoDeleted,
+  onOcrApply,
+  disabled = false,
+}) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Yerel fotoğraf listesi
+  const [localPhotos, setLocalPhotos] = useState<string[]>([]);
+
+  // Kamera Durumları
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // OCR Durumları
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStatus, setScanStatus] = useState("");
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [extractedData, setExtractedData] = useState<OcrExtractedData | null>(null);
+  const [isApplied, setIsApplied] = useState(false);
+
+  // Büyütme (Zoom) Modalı
+  const [showZoomModal, setShowZoomModal] = useState(false);
+
+  // Aktif Fotoğraf İndeksi (Arkalı Önlü fotoğraflar arasında geçiş)
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+
+  // Üst bileşenden gelen pendingPhotos senkronizasyonu
+  useEffect(() => {
+    if (pendingPhotos && pendingPhotos.length > 0) {
+      setLocalPhotos(pendingPhotos);
+    } else if (!pendingBase64 && (!pendingPhotos || pendingPhotos.length === 0)) {
+      if (!currentPhotos || currentPhotos.length === 0) {
+        setLocalPhotos([]);
+        setExtractedData(null);
+        setIsApplied(false);
+      }
+    }
+  }, [pendingPhotos, pendingBase64, currentPhotos]);
+
+  // Görüntülenecek Fotoğraf Listesini Birleştir
+  const photoList = useMemo(() => {
+    const list: Array<{ id?: number; base64: string; label: string; isSaved: boolean }> = [];
+
+    // 1. Bekleyen fotoğraflar
+    const pendingSources = localPhotos.length > 0 ? localPhotos : pendingPhotos || [];
+    if (pendingSources.length > 0) {
+      pendingSources.forEach((b64, idx) => {
+        if (b64) {
+          list.push({
+            base64: b64,
+            label: idx === 0 ? "1. Ön Yüz" : idx === 1 ? "2. Arka Yüz" : `${idx + 1}. Belge`,
+            isSaved: false,
+          });
+        }
+      });
+    } else if (pendingBase64) {
+      list.push({
+        base64: pendingBase64,
+        label: "1. Ön Yüz",
+        isSaved: false,
+      });
+    }
+
+    // 2. Veritabanından gelen fotoğraflar
+    if (list.length === 0) {
+      if (currentPhotos && currentPhotos.length > 0) {
+        currentPhotos.forEach((cp, idx) => {
+          const b64 = cp.dataUrl || (cp as any).fotografBase64 || "";
+          if (b64) {
+            list.push({
+              id: cp.fotografId,
+              base64: b64,
+              label: idx === 0 ? "1. Ön Yüz" : idx === 1 ? "2. Arka Yüz" : `${idx + 1}. Belge`,
+              isSaved: true,
+            });
+          }
+        });
+      } else if (currentPhoto) {
+        const b64 = currentPhoto.dataUrl || (currentPhoto as any).fotografBase64 || "";
+        if (b64) {
+          list.push({
+            id: currentPhoto.fotografId,
+            base64: b64,
+            label: "1. Ön Yüz",
+            isSaved: true,
+          });
+        }
+      }
+    }
+
+    return list;
+  }, [localPhotos, pendingPhotos, pendingBase64, currentPhotos, currentPhoto]);
+
+  const safeActiveIndex = activeIndex < photoList.length ? activeIndex : 0;
+  const activePhoto = photoList[safeActiveIndex] || null;
+  const displayImage = activePhoto?.base64 || null;
+  const isSavedInSql = !!activePhoto?.isSaved;
+
+  // Kamera Kapatma
+  const stopCamera = useCallback(() => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    setIsCameraActive(false);
+    setCameraError(null);
+  }, [cameraStream]);
+
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [cameraStream]);
+
+  // Otomatik OCR Taraması Çalıştır (Çoklu fotoğrafları zekice birleştirir)
+  const triggerAutoOcr = useCallback(
+    async (photosToScan: string[]) => {
+      if (!photosToScan || photosToScan.length === 0) return null;
+
+      setIsScanning(true);
+      setScanProgress(0);
+      setScanStatus("Kimlik okunuyor...");
+      setOcrError(null);
+      setIsApplied(false);
+
+      try {
+        let currentPhotos = [...photosToScan];
+        const scanResults: OcrExtractedData[] = [];
+
+        for (let i = 0; i < currentPhotos.length; i++) {
+          const photoSrc = currentPhotos[i];
+          const label = i === 0 ? "1. Fotoğraf" : "2. Fotoğraf";
+          setScanStatus(`${currentPhotos.length > 1 ? `[${label}] ` : ""}Okunuyor...`);
+
+          const res = await performOcrAndExtractData(
+            photoSrc,
+            selectedBelgeTuru,
+            (progress, status) => {
+              const stepRatio = 100 / currentPhotos.length;
+              const currentTotal = Math.round(i * stepRatio + (progress * stepRatio) / 100);
+              setScanProgress(currentTotal);
+              setScanStatus(`${currentPhotos.length > 1 ? `[${label}] ` : ""}${status}`);
+            }
+          );
+          scanResults.push(res);
+        }
+
+        // Eğer 2 kimlik fotoğrafı varsa ve ters yüklenmişse (0: Arka Yüz, 1: Ön Yüz):
+        // Otomatik olarak yerlerini değiştir, böylece "1. Ön" daima ön yüzü göstersin!
+        if (selectedBelgeTuru === 0 && currentPhotos.length === 2 && scanResults.length === 2) {
+          const is0Back = isKimlikBackFace(scanResults[0]);
+          const is1Front = isKimlikFrontFace(scanResults[1]);
+          if (is0Back && is1Front) {
+            const reorderedPhotos = [currentPhotos[1], currentPhotos[0]];
+            const reorderedResults = [scanResults[1], scanResults[0]];
+            currentPhotos = reorderedPhotos;
+            setLocalPhotos(reorderedPhotos);
+            if (onPhotosSelected) onPhotosSelected(reorderedPhotos);
+            scanResults[0] = reorderedResults[0];
+            scanResults[1] = reorderedResults[1];
+          }
+        }
+
+        // Birleştir: Ön yüz ve Arka yüz verilerini kusursuz harmanla
+        let mergedData: OcrExtractedData = { ...scanResults[0] };
+        for (let i = 1; i < scanResults.length; i++) {
+          const res = scanResults[i];
+
+          // TCKN: Eğer res'te geçerli (checksum tutan) TCKN varsa, veya mergedData'da hiç yoksa al
+          if (res.tcKimlikNo) {
+            if (!mergedData.tcKimlikNo) {
+              mergedData.tcKimlikNo = res.tcKimlikNo;
+            } else if (!isValidTcKimlikNo(mergedData.tcKimlikNo) && isValidTcKimlikNo(res.tcKimlikNo)) {
+              mergedData.tcKimlikNo = res.tcKimlikNo;
+            }
+          }
+
+          // VKN
+          if (!mergedData.vergiKimlikNo && res.vergiKimlikNo) {
+            mergedData.vergiKimlikNo = res.vergiKimlikNo;
+          }
+
+          // Ad: Noise değilse ve daha temiz/uzunsa veya mergedData'da gürültü varsa al
+          if (res.ad && !isNoiseOrLabel(res.ad)) {
+            if (!mergedData.ad || isNoiseOrLabel(mergedData.ad) || (res.ad.length > mergedData.ad.length && !mergedData.ad.includes(res.ad))) {
+              mergedData.ad = res.ad;
+            }
+          }
+
+          // Soyad: Noise değilse al. Eğer yeni gelen soyad Türkçe karakter içeriyorsa veya mergedData'daki boş/gürültüyse tercih et
+          if (res.soyad && !isNoiseOrLabel(res.soyad)) {
+            if (!mergedData.soyad || isNoiseOrLabel(mergedData.soyad)) {
+              mergedData.soyad = res.soyad;
+            } else if (/[ÇĞİÖŞÜçğıöşü]/.test(res.soyad) && !/[ÇĞİÖŞÜçğıöşü]/.test(mergedData.soyad)) {
+              mergedData.soyad = res.soyad;
+            }
+          }
+
+          // Unvan
+          if (!mergedData.unvan && res.unvan) {
+            mergedData.unvan = res.unvan;
+          }
+
+          // Seri No: 9 karakterli geçerli seri no (cleanSeri) öncelikli
+          if (res.kimlikSeriNo) {
+            const cleanCur = cleanSeri(mergedData.kimlikSeriNo);
+            const cleanNew = cleanSeri(res.kimlikSeriNo);
+            if (!cleanCur && cleanNew) {
+              mergedData.kimlikSeriNo = cleanNew;
+            } else if (cleanCur && cleanNew && cleanCur.length !== 9 && cleanNew.length === 9) {
+              mergedData.kimlikSeriNo = cleanNew;
+            }
+          }
+
+          // Tarihler & Cinsiyet
+          if (!mergedData.dogumTarihi && res.dogumTarihi) mergedData.dogumTarihi = res.dogumTarihi;
+          if (!mergedData.kimlikGecerlilikTarihi && res.kimlikGecerlilikTarihi)
+            mergedData.kimlikGecerlilikTarihi = res.kimlikGecerlilikTarihi;
+          if (!mergedData.cinsiyet && res.cinsiyet) mergedData.cinsiyet = res.cinsiyet;
+
+          // Anne ve Baba Adı (özellikle arka yüzden gelir)
+          if (res.anneAdi && !isNoiseOrLabel(res.anneAdi)) {
+            if (!mergedData.anneAdi || isNoiseOrLabel(mergedData.anneAdi)) {
+              mergedData.anneAdi = res.anneAdi;
+            }
+          }
+          if (res.babaAdi && !isNoiseOrLabel(res.babaAdi)) {
+            if (!mergedData.babaAdi || isNoiseOrLabel(mergedData.babaAdi)) {
+              mergedData.babaAdi = res.babaAdi;
+            }
+          }
+
+          if (!mergedData.dogumYeri && res.dogumYeri) mergedData.dogumYeri = res.dogumYeri;
+          if (!mergedData.il && res.il) mergedData.il = res.il;
+          if (!mergedData.ilce && res.ilce) mergedData.ilce = res.ilce;
+          if (!mergedData.vergiDairesiAdi && res.vergiDairesiAdi) mergedData.vergiDairesiAdi = res.vergiDairesiAdi;
+          if (!mergedData.pasaportNo && res.pasaportNo) mergedData.pasaportNo = res.pasaportNo;
+          if (!mergedData.uyruk && res.uyruk) mergedData.uyruk = res.uyruk;
+          if (!mergedData.ulke && res.ulke) mergedData.ulke = res.ulke;
+          if (!mergedData.adres && res.adres) mergedData.adres = res.adres;
+          if (!mergedData.faaliyetKonusu && res.faaliyetKonusu) mergedData.faaliyetKonusu = res.faaliyetKonusu;
+
+          mergedData.rawText += "\n---\n" + (res.rawText || "");
+        }
+
+        // Son temizlik: noise kelimeleri sil
+        if (mergedData.ad && isNoiseOrLabel(mergedData.ad)) delete mergedData.ad;
+        if (mergedData.soyad && isNoiseOrLabel(mergedData.soyad)) delete mergedData.soyad;
+        if (mergedData.anneAdi && isNoiseOrLabel(mergedData.anneAdi)) delete mergedData.anneAdi;
+        if (mergedData.babaAdi && isNoiseOrLabel(mergedData.babaAdi)) delete mergedData.babaAdi;
+
+        // Seri No'yu son kez cleanSeri ile doğrula
+        if (mergedData.kimlikSeriNo) {
+          const validated = cleanSeri(mergedData.kimlikSeriNo);
+          if (validated) {
+            mergedData.kimlikSeriNo = validated;
+          }
+        }
+
+        // Cari Ünvan'ı Ad ve Soyad ile güncelle
+        if (mergedData.ad && mergedData.soyad) {
+          mergedData.unvan = `${mergedData.ad} ${mergedData.soyad}`.trim();
+        }
+
+        setExtractedData(mergedData);
+        if (onOcrApply) {
+          onOcrApply(mergedData);
+          setIsApplied(true);
+        }
+        return mergedData;
+      } catch (err: any) {
+        setOcrError("Kimlik metinleri okunurken hata: " + (err.message || err));
+        return null;
+      } finally {
+        setIsScanning(false);
+      }
+    },
+    [selectedBelgeTuru, onPhotosSelected, onOcrApply]
+  );
+
+  // Ön Yüz ile Arka Yüzün Yerini Değiştir (Kullanıcı dilediğinde tek tıkla ters çevirir)
+  const handleSwapPhotos = () => {
+    if (localPhotos.length >= 2) {
+      const swapped = [localPhotos[1], localPhotos[0], ...localPhotos.slice(2)];
+      setLocalPhotos(swapped);
+      if (onPhotosSelected) onPhotosSelected(swapped);
+      triggerAutoOcr(swapped);
+    }
+  };
+
+  // Kamera Başlat
+  const startCamera = async () => {
+    try {
+      setCameraError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+      });
+      setCameraStream(stream);
+      setIsCameraActive(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      }, 150);
+    } catch (err: any) {
+      setCameraError("Kameraya erişilemedi: " + (err.message || "İzin verilmedi"));
+    }
+  };
+
+  // Kameradan Çekim Yap
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current || document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const base64 = canvas.toDataURL("image/jpeg", 0.92);
+    stopCamera();
+
+    const updated = [...localPhotos, base64];
+    setLocalPhotos(updated);
+    setActiveIndex(updated.length - 1);
+
+    if (onPhotosSelected) {
+      onPhotosSelected(updated);
+    } else {
+      onPhotoSelected(base64);
+    }
+
+    triggerAutoOcr(updated);
+  };
+
+  // Dosya(lar)dan Seçme
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    const base64List: string[] = [];
+    let loaded = 0;
+
+    fileArray.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const b64 = event.target?.result as string;
+        if (b64 && b64.startsWith("data:")) {
+          base64List.push(b64);
+        }
+        loaded++;
+
+        if (loaded === fileArray.length) {
+          if (base64List.length > 0) {
+            const updated = [...localPhotos, ...base64List];
+            setLocalPhotos(updated);
+            setActiveIndex(updated.length - 1);
+
+            if (onPhotosSelected) {
+              onPhotosSelected(updated);
+            } else {
+              onPhotoSelected(base64List[0]);
+            }
+
+            triggerAutoOcr(updated);
+          }
+        }
+      };
+      reader.onerror = () => {
+        loaded++;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    e.target.value = "";
+  };
+
+  // 2. Fotoğraf (Arka Yüz) Yükleme Tetikleyici
+  const handleAddSecondPhotoClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  // Aktif Fotoğrafı Sil
+  const handleDeleteActivePhoto = () => {
+    if (!activePhoto) return;
+    const targetIdx = safeActiveIndex;
+    const targetId = activePhoto.id;
+
+    const nextLocal = localPhotos.filter((_, i) => i !== targetIdx);
+    setLocalPhotos(nextLocal);
+
+    if (onPhotosSelected) {
+      onPhotosSelected(nextLocal);
+    }
+    onPhotoDeleted(targetIdx, targetId);
+
+    if (safeActiveIndex > 0) {
+      setActiveIndex(safeActiveIndex - 1);
+    } else {
+      setActiveIndex(0);
+    }
+  };
+
+  // "İlgili Alanları Doldur" butonu tıklandığında
+  const handleFillFieldsClick = async () => {
+    if (extractedData) {
+      onOcrApply(extractedData);
+      setIsApplied(true);
+      return;
+    }
+
+    if (photoList.length > 0) {
+      const sources = photoList.map((p) => p.base64);
+      const res = await triggerAutoOcr(sources);
+      if (res) {
+        onOcrApply(res);
+        setIsApplied(true);
+      }
+    }
+  };
+
+  // Tarihleri Türkçe formatta (GG.AA.YYYY) gösterme yardımcısı
+  const formatDateTr = (iso?: string) => {
+    if (!iso) return "-";
+    const parts = iso.split("-");
+    if (parts.length === 3) {
+      return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+    return iso;
+  };
+
+  return (
+    <div className="d-flex flex-column align-items-center w-100">
+      {/* 1. Belge Türü Seçimi (Kimlik / Pasaport / Vergi Levhası) */}
+      <div
+        className="d-flex align-items-center gap-1 mb-1.5 w-100 bg-light p-0.5 rounded-2 border"
+        title="Belge Türü Seçimi (Kimlik / Pasaport / Vergi Levhası)"
+      >
+        <button
+          type="button"
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
+            selectedBelgeTuru === 0 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+          }`}
+          onClick={() => onBelgeTuruChange(0)}
+          disabled={disabled}
+          style={{ fontSize: "10px", lineHeight: "1.8" }}
+        >
+          Kimlik
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
+            selectedBelgeTuru === 1 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+          }`}
+          onClick={() => onBelgeTuruChange(1)}
+          disabled={disabled}
+          style={{ fontSize: "10px", lineHeight: "1.8" }}
+        >
+          Pasaport
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
+            selectedBelgeTuru === 2 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+          }`}
+          onClick={() => onBelgeTuruChange(2)}
+          disabled={disabled}
+          style={{ fontSize: "10px", lineHeight: "1.8" }}
+        >
+          Vergi
+        </button>
+      </div>
+
+      {/* 2. Arkalı Önlü Fotoğraf Sekmesi */}
+      {photoList.length > 0 && (
+        <div className="d-flex align-items-center justify-content-between w-100 mb-1 px-0.5">
+          <div className="d-flex align-items-center gap-1 flex-wrap">
+            {photoList.map((p, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className={`btn btn-sm px-1.5 py-0 border ${
+                  idx === safeActiveIndex
+                    ? "btn-primary text-white fw-bold shadow-2xs"
+                    : "btn-light text-secondary"
+                }`}
+                style={{ fontSize: "9.5px", borderRadius: "6px", lineHeight: "1.6" }}
+                onClick={() => setActiveIndex(idx)}
+                title={`${p.label} - Görüntüle`}
+              >
+                {idx === 0 ? "1. Ön" : idx === 1 ? "2. Arka" : `${idx + 1}`}
+              </button>
+            ))}
+
+            {photoList.length === 1 && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-success px-1.5 py-0 border-dashed"
+                style={{ fontSize: "9px", borderRadius: "6px", lineHeight: "1.6" }}
+                onClick={handleAddSecondPhotoClick}
+                title="2. Arka Yüz Fotoğrafını Ekle"
+              >
+                + Arka
+              </button>
+            )}
+
+            {/* Ön / Arka Yer Değiştir Butonu */}
+            {photoList.length >= 2 && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-primary px-1 py-0 d-flex align-items-center gap-0.5 fw-semibold shadow-2xs"
+                style={{ fontSize: "9px", borderRadius: "6px", lineHeight: "1.6" }}
+                onClick={handleSwapPhotos}
+                title="Ön yüz ile arka yüz fotoğraflarının sırasını değiştir"
+              >
+                <IconArrowsExchange size={11} stroke={2.2} />
+                <span>Değiştir</span>
+              </button>
+            )}
+          </div>
+          <span className="text-muted small" style={{ fontSize: "9.5px" }}>
+            {safeActiveIndex + 1}/{photoList.length}
+          </span>
+        </div>
+      )}
+
+      {/* 3. Fotoğraf Önizleme Kutusu */}
+      <div
+        className="position-relative border rounded-3 bg-white d-flex flex-column align-items-center justify-content-center overflow-hidden mb-1.5 shadow-2xs w-100"
+        style={{
+          height: "125px",
+          borderWidth: "1.5px",
+          borderColor: displayImage ? "#0d6efd" : "#ced4da",
+          backgroundColor: "#fcfcfc",
+          cursor: "pointer",
+        }}
+        onClick={() => {
+          if (displayImage) {
+            setShowZoomModal(true);
+          } else {
+            fileInputRef.current?.click();
+          }
+        }}
+        title={displayImage ? "Büyütmek için tıklayın" : "Fotoğraf yüklemek için tıklayın"}
+      >
+        {displayImage ? (
+          <>
+            <img
+              src={displayImage}
+              alt="Kimlik Fotoğrafı"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                padding: "3px",
+              }}
+            />
+            <div
+              className="position-absolute top-0 start-0 m-1 bg-dark bg-opacity-70 text-white rounded-1 px-1 py-0.5"
+              style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "0.2px" }}
+            >
+              {activePhoto?.label || "1. Ön Yüz"}
+            </div>
+
+            <div
+              className="position-absolute bottom-0 end-0 m-1 bg-dark bg-opacity-60 text-white rounded-circle p-1 d-flex align-items-center justify-content-center"
+              style={{ width: "20px", height: "20px" }}
+              title="Büyüt"
+            >
+              <IconZoomIn size={11} />
+            </div>
+          </>
+        ) : (
+          <div className="d-flex flex-column align-items-center justify-content-center text-center p-2">
+            <IconCamera
+              size={36}
+              stroke={1.3}
+              className="text-secondary opacity-60 mb-1"
+            />
+            <span
+              className="fw-semibold text-secondary"
+              style={{ fontSize: "11px", letterSpacing: "-0.2px" }}
+            >
+              Fotoğraf Yok
+            </span>
+            <span className="text-muted" style={{ fontSize: "9px" }}>
+              Ön / Arka Yüz Seç
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Butonlar: 2. Fotoğraf Ekleme, Yükle/Değiştir ve Sil */}
+      <div className="d-flex flex-column gap-1 w-100">
+        {photoList.length === 1 && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-success w-100 d-flex align-items-center justify-content-center gap-1 py-1 px-1 fw-bold shadow-2xs"
+            onClick={handleAddSecondPhotoClick}
+            style={{
+              borderRadius: "8px",
+              fontSize: "11px",
+              lineHeight: "1.4",
+            }}
+            title="Arka Yüz veya 2. Belge Fotoğrafını Ekle"
+          >
+            <IconPlus size={13} stroke={2.5} />
+            <span>2. Arka Yüz Ekle</span>
+          </button>
+        )}
+
+        {/* YÜKLE / DEĞİŞTİR Açılır Butonu */}
+        <Dropdown className="w-100">
+          <Dropdown.Toggle
+            as="button"
+            type="button"
+            className="btn w-100 d-flex align-items-center justify-content-center gap-1 py-1 px-1 fw-bold shadow-2xs"
+            disabled={disabled}
+            style={{
+              borderRadius: "8px",
+              border: "1.5px solid #20c997",
+              color: "#198754",
+              backgroundColor: "transparent",
+              fontSize: "11.5px",
+              letterSpacing: "0.3px",
+              lineHeight: "1.4",
+            }}
+          >
+            <IconCamera size={13} stroke={1.8} />
+            <span>{photoList.length === 0 ? "FOTOĞRAF YÜKLE" : "YENİ / DEĞİŞTİR"}</span>
+            <IconChevronDown size={12} stroke={2} />
+          </Dropdown.Toggle>
+
+          <Dropdown.Menu className="shadow border-0 py-1" style={{ fontSize: "11.5px", minWidth: "180px" }}>
+            <Dropdown.Item
+              onClick={() => fileInputRef.current?.click()}
+              className="d-flex align-items-center gap-2 py-1.5"
+            >
+              <IconUpload size={14} className="text-success" />
+              <span>Dosyadan Seç {photoList.length > 0 ? "(Yeni/Arka Yüz)" : ""}</span>
+            </Dropdown.Item>
+            <Dropdown.Item
+              onClick={startCamera}
+              className="d-flex align-items-center gap-2 py-1.5"
+            >
+              <IconCamera size={14} className="text-primary" />
+              <span>Kameradan Çek {photoList.length > 0 ? "(Yeni/Arka Yüz)" : ""}</span>
+            </Dropdown.Item>
+            {photoList.length > 0 && (
+              <>
+                <Dropdown.Divider />
+                <Dropdown.Item
+                  onClick={() => triggerAutoOcr(photoList.map((p) => p.base64))}
+                  className="d-flex align-items-center gap-2 py-1.5"
+                  disabled={isScanning}
+                >
+                  <IconSparkles size={14} className="text-warning" />
+                  <span>Yeniden Oku (OCR)</span>
+                </Dropdown.Item>
+                <Dropdown.Item
+                  onClick={() => setShowZoomModal(true)}
+                  className="d-flex align-items-center gap-2 py-1.5"
+                >
+                  <IconZoomIn size={14} className="text-secondary" />
+                  <span>Fotoğrafları İncele</span>
+                </Dropdown.Item>
+              </>
+            )}
+          </Dropdown.Menu>
+        </Dropdown>
+
+        {/* SİL Butonu */}
+        {photoList.length > 0 && (
+          <button
+            type="button"
+            className="btn w-100 d-flex align-items-center justify-content-center gap-1 py-1 px-1 fw-semibold shadow-2xs"
+            disabled={photoList.length === 0 || disabled}
+            onClick={handleDeleteActivePhoto}
+            style={{
+              borderRadius: "8px",
+              border: "1px solid #ff7675",
+              color: "#e03131",
+              backgroundColor: "transparent",
+              fontSize: "11px",
+              lineHeight: "1.4",
+            }}
+            title={photoList.length > 1 ? `Aktif Olanı Sil (${activePhoto?.label})` : "Fotoğrafı Sil"}
+          >
+            <IconTrash size={12} stroke={1.8} />
+            <span>{photoList.length > 1 ? `Sil (${activePhoto?.label})` : "Fotoğrafı Sil"}</span>
+          </button>
+        )}
+
+        {/* 5. İLGİLİ ALANLARI DOLDUR BUTONU */}
+        {photoList.length > 0 && (
+          <div className="w-100 mt-1">
+            <button
+              type="button"
+              className={`btn w-100 d-flex align-items-center justify-content-center gap-1 py-1.5 px-1 fw-bold shadow-sm ${
+                isScanning
+                  ? "btn-secondary"
+                  : isApplied
+                  ? "btn-outline-success"
+                  : "btn-primary text-white"
+              }`}
+              style={{
+                borderRadius: "8px",
+                fontSize: "11px",
+                letterSpacing: "0.2px",
+              }}
+              disabled={disabled || isScanning}
+              onClick={handleFillFieldsClick}
+              title="Görsellerden okunan kimlik bilgilerini form alanlarına aktar"
+            >
+              {isScanning ? (
+                <>
+                  <Spinner size="sm" animation="border" style={{ width: "12px", height: "12px" }} />
+                  <span>Okunuyor...</span>
+                </>
+              ) : isApplied ? (
+                <>
+                  <IconCheck size={13} />
+                  <span>Alanlar Dolduruldu</span>
+                </>
+              ) : (
+                <>
+                  <IconFileText size={13} />
+                  <span>Alanları Doldur</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Eksik Arka Yüz Bilgilendirme Kartı */}
+        {selectedBelgeTuru === 0 && photoList.length === 1 && !extractedData?.babaAdi && !extractedData?.anneAdi && (
+          <div
+            className="mt-2 p-2 rounded-3 border border-warning-subtle text-start w-100 shadow-2xs"
+            style={{ backgroundColor: "#fff9db", fontSize: "10px", lineHeight: "1.35" }}
+          >
+            <div className="d-flex align-items-center justify-content-between mb-1">
+              <span className="fw-bold text-dark d-flex align-items-center gap-1">
+                <span>💡 1. Ön Yüz Okundu</span>
+              </span>
+              <span className="badge bg-warning text-dark" style={{ fontSize: "8.5px" }}>
+                Arka Yüz Eksik
+              </span>
+            </div>
+            <div className="text-secondary mb-1.5" style={{ fontSize: "9.5px" }}>
+              Yeni çipli kimliklerde <strong>Anne Adı</strong> ve <strong>Baba Adı</strong> arka yüzde yer alır.
+              <br />
+              <span className="text-muted" style={{ fontSize: "9px" }}>
+                (Doğum Yeri ve İl/İlçe yeni kimliklerde çipte saklanır, kart üstünde yazmaz).
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-warning btn-sm w-100 py-1 px-1 fw-bold d-flex align-items-center justify-content-center gap-1 shadow-2xs"
+              style={{ fontSize: "10px", borderRadius: "6px" }}
+              onClick={handleAddSecondPhotoClick}
+            >
+              <span>➕ 2. Arka Yüzü Yükle</span>
+            </button>
+          </div>
+        )}
+
+        {/* 6. EKSİKSİZ OKUNAN BELGE BİLGİLERİ TABLOSU (Kullanıcının talep ettiği satır satır liste) */}
+        {extractedData && (
+          <div
+            className="mt-2 p-2 bg-white border border-success-subtle rounded-3 shadow-2xs text-start w-100"
+            style={{ fontSize: "10px", lineHeight: "1.4" }}
+          >
+            <div className="d-flex align-items-center justify-content-between border-bottom pb-1 mb-1.5">
+              <span className="text-success fw-bold d-flex align-items-center gap-1">
+                <IconCheck size={12} /> Okunan Bilgiler
+              </span>
+              <span className="badge bg-primary-subtle text-primary border border-primary-subtle" style={{ fontSize: "9px" }}>
+                {extractedData.belgeTuru === 1 ? "Pasaport" : extractedData.belgeTuru === 2 ? "Vergi Levhası" : "T.C. Kimlik"}
+              </span>
+            </div>
+
+            <div className="d-flex flex-column gap-1">
+              {/* Belge Türü */}
+              <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                <span className="text-muted">Belge Türü:</span>
+                <strong className="text-dark">
+                  {extractedData.belgeTuru === 1 ? "Pasaport" : extractedData.belgeTuru === 2 ? "Vergi Levhası" : "T.C. Kimlik Kartı"}
+                </strong>
+              </div>
+
+              {/* TCKN / VKN */}
+              <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                <span className="text-muted">{extractedData.belgeTuru === 2 ? "VKN / TCKN:" : "T.C. Kimlik No:"}</span>
+                <strong className="text-dark font-monospace text-primary">
+                  {extractedData.tcKimlikNo || extractedData.vergiKimlikNo || "—"}
+                </strong>
+              </div>
+
+              {/* Cari Ünvan / Ad */}
+              <div className="d-flex justify-content-between align-items-start py-0.5 border-bottom border-light">
+                <span className="text-muted flex-shrink-0">Cari Ünvan:</span>
+                <strong className="text-dark text-end ms-1 text-break">
+                  {extractedData.unvan || `${extractedData.ad || ""} ${extractedData.soyad || ""}`.trim() || "—"}
+                </strong>
+              </div>
+
+              {/* Adı */}
+              <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                <span className="text-muted">Adı:</span>
+                <strong className="text-dark">{extractedData.ad || "—"}</strong>
+              </div>
+
+              {/* Soyadı */}
+              <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                <span className="text-muted">Soyadı:</span>
+                <strong className="text-dark">{extractedData.soyad || "—"}</strong>
+              </div>
+
+              {/* Kimlik Seri No (Kimlik için) */}
+              {extractedData.belgeTuru === 0 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Kimlik Seri No:</span>
+                  <strong className="text-dark font-monospace">{extractedData.kimlikSeriNo || "—"}</strong>
+                </div>
+              )}
+
+              {/* Pasaport No (Pasaport için) */}
+              {(extractedData.belgeTuru === 1 || extractedData.pasaportNo) && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Pasaport No:</span>
+                  <strong className="text-dark font-monospace">{extractedData.pasaportNo || "—"}</strong>
+                </div>
+              )}
+
+              {/* Doğum Tarihi (Sadece Kimlik ve Pasaport) */}
+              {extractedData.belgeTuru !== 2 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Doğum Tarihi:</span>
+                  <strong className="text-dark font-monospace">
+                    {extractedData.dogumTarihi ? formatDateTr(extractedData.dogumTarihi) : "—"}
+                  </strong>
+                </div>
+              )}
+
+              {/* Geçerlilik Tarihi */}
+              {extractedData.belgeTuru !== 2 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Geçerlilik Tarihi:</span>
+                  <strong className="text-dark font-monospace">
+                    {extractedData.kimlikGecerlilikTarihi ? formatDateTr(extractedData.kimlikGecerlilikTarihi) : "—"}
+                  </strong>
+                </div>
+              )}
+
+              {/* Cinsiyet */}
+              {extractedData.belgeTuru !== 2 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Cinsiyet:</span>
+                  <strong className="text-dark">{extractedData.cinsiyet || "—"}</strong>
+                </div>
+              )}
+
+              {/* Ülke & Uyruk */}
+              <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                <span className="text-muted">Ülke / Uyruk:</span>
+                <strong className="text-dark">
+                  {(extractedData.ulke || "Türkiye")} / {(extractedData.uyruk || "T.C.")}
+                </strong>
+              </div>
+
+              {/* Baba Adı (Sadece Kimlik ve Pasaport) */}
+              {extractedData.belgeTuru !== 2 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Baba Adı:</span>
+                  {extractedData.babaAdi ? (
+                    <strong className="text-dark">{extractedData.babaAdi}</strong>
+                  ) : extractedData.belgeTuru === 0 && photoList.length < 2 ? (
+                    <span
+                      className="text-danger fw-bold"
+                      style={{ cursor: "pointer", textDecoration: "underline" }}
+                      onClick={handleAddSecondPhotoClick}
+                      title="2. Arka Yüzü ekleyerek okutabilirsiniz"
+                    >
+                      + Arka Yüzü Yükle ↗
+                    </span>
+                  ) : (
+                    <span className="text-muted fst-italic">
+                      {extractedData.belgeTuru === 0 ? "Okunamadı" : "Belgede Yok"}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Anne Adı (Sadece Kimlik ve Pasaport) */}
+              {extractedData.belgeTuru !== 2 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Anne Adı:</span>
+                  {extractedData.anneAdi ? (
+                    <strong className="text-dark">{extractedData.anneAdi}</strong>
+                  ) : extractedData.belgeTuru === 0 && photoList.length < 2 ? (
+                    <span
+                      className="text-danger fw-bold"
+                      style={{ cursor: "pointer", textDecoration: "underline" }}
+                      onClick={handleAddSecondPhotoClick}
+                      title="2. Arka Yüzü ekleyerek okutabilirsiniz"
+                    >
+                      + Arka Yüzü Yükle ↗
+                    </span>
+                  ) : (
+                    <span className="text-muted fst-italic">
+                      {extractedData.belgeTuru === 0 ? "Okunamadı" : "Belgede Yok"}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Doğum Yeri (Sadece Pasaport için gösterilir, Kimlikte yoktur) */}
+              {extractedData.belgeTuru === 1 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Doğum Yeri:</span>
+                  <strong className="text-dark">{extractedData.dogumYeri || "—"}</strong>
+                </div>
+              )}
+
+              {/* İl (Sadece Vergi Levhası için gösterilir, Kimlikte yoktur) */}
+              {extractedData.belgeTuru === 2 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">İl:</span>
+                  <strong className="text-dark">{extractedData.il || "—"}</strong>
+                </div>
+              )}
+
+              {/* İlçe (Sadece Vergi Levhası için gösterilir, Kimlikte yoktur) */}
+              {extractedData.belgeTuru === 2 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">İlçe:</span>
+                  <strong className="text-dark">{extractedData.ilce || "—"}</strong>
+                </div>
+              )}
+
+              {/* Vergi Dairesi (Vergi Levhası veya Varsa) */}
+              {(extractedData.belgeTuru === 2 || extractedData.vergiDairesiAdi) && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Vergi Dairesi:</span>
+                  <strong className="text-dark">{extractedData.vergiDairesiAdi || "—"}</strong>
+                </div>
+              )}
+
+              {/* Adres (Vergi Levhası veya Varsa) */}
+              {(extractedData.belgeTuru === 2 || extractedData.adres) && (
+                <div className="d-flex flex-column py-0.5 border-bottom border-light">
+                  <span className="text-muted">Adres:</span>
+                  <span className="text-dark fw-semibold text-break">{extractedData.adres || "—"}</span>
+                </div>
+              )}
+
+              {/* Ana Faaliyet (Vergi Levhası veya Varsa) */}
+              {(extractedData.belgeTuru === 2 || extractedData.faaliyetKonusu) && (
+                <div className="d-flex flex-column py-0.5">
+                  <span className="text-muted">Ana Faaliyet:</span>
+                  <span className="text-dark fw-semibold text-break">{extractedData.faaliyetKonusu || "—"}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!isSavedInSql && photoList.length > 0 && (
+          <div className="text-center mt-0.5">
+            <span
+              className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-semibold"
+              style={{ fontSize: "8.5px" }}
+            >
+              ● Kayıt Bekliyor ({photoList.length})
+            </span>
+          </div>
+        )}
+
+        {/* Gizli Dosya Seçici */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          accept="image/*,application/pdf"
+          multiple
+          onClick={(e) => {
+            (e.target as any).value = null;
+          }}
+          onChange={handleFileChange}
+        />
+
+        {/* İlerleme Çubuğu */}
+        {isScanning && (
+          <div className="bg-white p-1 rounded-2 border mt-1 w-100">
+            <div
+              className="d-flex justify-content-between align-items-center mb-1"
+              style={{ fontSize: "9px" }}
+            >
+              <span
+                className="fw-semibold text-primary d-flex align-items-center gap-1 text-truncate"
+                style={{ maxWidth: "120px" }}
+              >
+                <Spinner size="sm" animation="grow" style={{ width: "6px", height: "6px" }} /> {scanStatus}
+              </span>
+              <span className="fw-bold">{scanProgress}%</span>
+            </div>
+            <ProgressBar now={scanProgress} variant="primary" animated style={{ height: "4px" }} />
+          </div>
+        )}
+
+        {/* Hata Bildirimi */}
+        {ocrError && (
+          <Alert
+            variant="danger"
+            className="py-1 px-1 mb-0 mt-1 small d-flex align-items-center gap-1 w-100"
+            dismissible
+            onClose={() => setOcrError(null)}
+            style={{ fontSize: "9px" }}
+          >
+            <IconAlertCircle size={12} className="flex-shrink-0" />
+            <span className="text-truncate">{ocrError}</span>
+          </Alert>
+        )}
+      </div>
+
+      {/* Kamera Modalı */}
+      <Modal show={isCameraActive} onHide={stopCamera} centered size="lg">
+        <Modal.Header closeButton className="py-2">
+          <Modal.Title className="h6 d-flex align-items-center gap-2 mb-0">
+            <IconCamera size={18} className="text-primary" />
+            <span>Kimlik / Pasaport Fotoğrafı Çek</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3 text-center bg-dark">
+          {cameraError ? (
+            <Alert variant="danger" className="mb-0 text-start">
+              {cameraError}
+            </Alert>
+          ) : (
+            <div className="position-relative d-inline-block w-100" style={{ maxWidth: "640px" }}>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ width: "100%", maxHeight: "420px", borderRadius: "8px", objectFit: "contain" }}
+              />
+              <div
+                className="position-absolute top-50 start-50 translate-middle border border-warning border-2 rounded-3"
+                style={{
+                  width: "80%",
+                  height: "65%",
+                  pointerEvents: "none",
+                  boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.4)",
+                }}
+              >
+                <span className="badge bg-warning text-dark position-absolute top-0 start-50 translate-middle-x mt-2">
+                  Belgeyi Bu Alana Hizalayın
+                </span>
+              </div>
+            </div>
+          )}
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+        </Modal.Body>
+        <Modal.Footer className="py-2 d-flex justify-content-between">
+          <Button variant="secondary" size="sm" onClick={stopCamera}>
+            İptal
+          </Button>
+          <Button
+            variant="success"
+            className="fw-bold px-4 text-white d-flex align-items-center gap-2"
+            onClick={capturePhoto}
+            disabled={!isCameraActive || !!cameraError}
+          >
+            <IconCamera size={18} />
+            <span>Fotoğrafı Çek & Ekle</span>
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Büyütme Modalı */}
+      <Modal show={showZoomModal} onHide={() => setShowZoomModal(false)} centered size="xl">
+        <Modal.Header closeButton className="py-2">
+          <Modal.Title className="h6 d-flex align-items-center gap-2 mb-0">
+            <IconZoomIn size={18} className="text-primary" />
+            <span>
+              {selectedBelgeTuru === 1 ? "Pasaport" : selectedBelgeTuru === 2 ? "Vergi Levhası" : "T.C. Kimlik"}{" "}
+              Fotoğrafı
+              {photoList.length > 1
+                ? ` (${safeActiveIndex + 1} / ${photoList.length} - ${activePhoto?.label})`
+                : ""}
+            </span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3 text-center bg-light">
+          {displayImage ? (
+            <div className="d-flex flex-column align-items-center justify-content-center">
+              <img
+                src={displayImage}
+                alt="Belge Tam Boyut"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "70vh",
+                  objectFit: "contain",
+                  borderRadius: "8px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                }}
+              />
+
+              {photoList.length > 1 && (
+                <div className="d-flex align-items-center justify-content-center gap-2 mt-3 bg-white p-2 rounded-3 shadow-sm border">
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    disabled={safeActiveIndex === 0}
+                    onClick={() => setActiveIndex(Math.max(0, safeActiveIndex - 1))}
+                  >
+                    <IconChevronLeft size={16} /> Önceki
+                  </Button>
+                  <div className="d-flex gap-1.5 mx-2">
+                    {photoList.map((p, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className={`btn btn-sm ${
+                          idx === safeActiveIndex ? "btn-primary text-white" : "btn-outline-secondary"
+                        }`}
+                        onClick={() => setActiveIndex(idx)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    disabled={safeActiveIndex === photoList.length - 1}
+                    onClick={() => setActiveIndex(Math.min(photoList.length - 1, safeActiveIndex + 1))}
+                  >
+                    Sonraki <IconChevronRight size={16} />
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-muted my-4">Görüntülenecek fotoğraf bulunamadı.</p>
+          )}
+        </Modal.Body>
+        <Modal.Footer className="py-2 d-flex justify-content-between">
+          <Button variant="secondary" size="sm" onClick={() => setShowZoomModal(false)}>
+            Kapat
+          </Button>
+          {displayImage && (
+            <Button
+              variant="primary"
+              size="sm"
+              className="d-flex align-items-center gap-1.5"
+              onClick={() => {
+                setShowZoomModal(false);
+                triggerAutoOcr(photoList.map((p) => p.base64));
+              }}
+            >
+              <IconSparkles size={16} />
+              <span>Belgeyi Yeniden Oku</span>
+            </Button>
+          )}
+        </Modal.Footer>
+      </Modal>
+    </div>
+  );
+};

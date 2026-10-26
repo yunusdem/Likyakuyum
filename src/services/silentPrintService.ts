@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.0.7";
+export const TARGET_PRINTER_AGENT_VERSION = "1.0.8";
 
 /**
  * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
@@ -615,9 +615,6 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
   activePrintSignatures.set(signature, now);
 
   const jobId = "job_" + now + "_" + Math.random().toString(36).substring(2, 8);
-
-  // Arka planda ajan sürümünü kontrol et ve gerekiyorsa otomatik güncelle
-  checkAndAutoUpdatePrinterAgent().catch(() => {});
 
   // Yazıcıya gönderim süresince ekranda dönen yüklenme ikonu gösterilir
   showPrintLoadingOverlay(printerName);

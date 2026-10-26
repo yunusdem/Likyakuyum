@@ -28,6 +28,7 @@ export class DovizFisController {
       vezneId: req.query.vezneId ? Number(req.query.vezneId) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : 100,
       baslangic: await gunSiniri(req),
+      isArbitraj: req.query.isArbitraj !== undefined ? (req.query.isArbitraj === "true" || req.query.isArbitraj === "1") : undefined,
     };
     const list = await DovizFisService.getFisList(filter, dbContext);
     return ApiResponse.ok(res, "Döviz fişleri listelendi.", list);

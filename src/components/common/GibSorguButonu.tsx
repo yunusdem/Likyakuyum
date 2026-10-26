@@ -42,7 +42,7 @@ const GibSorguButonu: React.FC<Props> = ({ no, mevcut, uygula, onMesaj, tekAdAla
       className="text-nowrap"
     >
       {bekliyor ? <Spinner size="sm" animation="border" /> : <IconBuildingBank size={16} />}
-      <span className="ms-1">GİB'den Sorgula</span>
+      <span className="ms-1">GİB</span>
     </Button>
   );
 };

@@ -1,4 +1,5 @@
 import { adminYapilandirildiMi } from "../../config/adminDb.config.js";
+import { env } from "../../config/env.config.js";
 import { BulutSqlRepository } from "../../models/admin/bulutSql.repository.js";
 import { logger } from "../../utils/logger.js";
 import { trZaman } from "../../utils/zaman.utils.js";
@@ -61,6 +62,12 @@ export class BulutZamanlayici {
     static baslat() {
         if (zamanlayici)
             return;
+        // Test ortamı gece yedek/silme yapmaz: aynı SQL sunucusunda canlının yedek dosyalarını ezmesin, veritabanı silmesin
+        // (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
+        if (env.ORTAM === "test") {
+            logger.info("[BULUT] Test ortamı; gece yedek/silme işi kapalı.");
+            return;
+        }
         if (!klonYapilandirildiMi() || !adminYapilandirildiMi()) {
             logger.info("[BULUT] Klonlama hesabı veya admin veritabanı tanımlı değil; gece yedek/silme işi kapalı.");
             return;

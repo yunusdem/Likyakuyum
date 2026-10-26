@@ -76,6 +76,7 @@ export interface DovizFisModel {
   gmTeyitSayi?: string;
   gmFaturaNo?: string;
   arbitrajId?: number | null;
+  isArbitraj?: boolean;
   telefonNo?: string;
   meslekId?: number | null;
   dogumTarihi?: string | null;
@@ -119,6 +120,9 @@ export interface DovizFisListItem {
   vezneKod?: string;
   vezneAd?: string;
   iptal: boolean;
+  isArbitraj?: boolean;
+  arbitrajId?: number | null;
+  gelisNedeni?: string;
 }
 
 export interface SaveDovizFisPayload {
@@ -130,6 +134,7 @@ export interface SaveDovizFisPayload {
   seriNo?: string;
   belgeNo?: string;
   gelisNedeni?: string;
+  isArbitraj?: boolean;
   kurTuru?: number;
   istatistikId?: number | null;
   cariKartId?: number | null;
@@ -183,7 +188,6 @@ export interface SaveDovizFisPayload {
   kimlikKaynagi?: string;
   masakListesindeVar?: boolean;
   kullaniciId?: number;
-  isArbitraj?: boolean;
   satirlar: {
     satirNo?: number;
     paraId: number;
@@ -218,6 +222,7 @@ export class DovizFisService {
     tip?: number;
     vezneId?: number;
     limit?: number;
+    isArbitraj?: boolean;
   }): Promise<DovizFisListItem[]> {
     const res = await apiClient.get<DovizFisListItem[]>("/doviz-fis", params);
     return res.data || [];

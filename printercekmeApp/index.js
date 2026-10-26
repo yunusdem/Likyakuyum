@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.0.7";
+const CURRENT_VERSION = "1.0.8";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -98,8 +98,20 @@ app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+// Global yazıcı durum önbelleği (PowerShell Get-Printer gecikmesini 0 ms'ye indirir)
+const printerCache = {
+  list: [],
+  lastUpdated: 0,
+};
+
 // ─── Sistem Yazıcılarını Algılama Fonksiyonu ────────────────────────────────
-async function getSystemPrinters() {
+async function getSystemPrinters(forceRefresh = false) {
+  // Önbellek geçerliyse (son 60 saniye içinde taranmışsa) PowerShell çalıştırmadan anında döndür (0 ms)
+  const now = Date.now();
+  if (!forceRefresh && printerCache.list && printerCache.list.length > 0 && (now - printerCache.lastUpdated < 60000)) {
+    return printerCache.list;
+  }
+
   const printers = [];
 
   try {
@@ -604,12 +616,6 @@ if ($matched) {
   return res.json({ success: true, printerName });
 });
 
-// Global yazıcı durum önbelleği (PowerShell Get-Printer gecikmesini sıfırlar)
-const printerCache = {
-  list: [],
-  lastUpdated: 0,
-};
-
 // HTML'den temiz düz metin çıkaran yardımcı fonksiyon
 function extractTextFromHtmlSimple(html) {
   if (!html) return "";
@@ -778,12 +784,44 @@ async function executePrintJob(job) {
           try {
             pngFile = path.join(tmpDir, `print_${timestamp}.png`);
             const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
-            const renderCmd = `"${chromiumPath}" --headless=new --disable-gpu --no-sandbox --allow-file-access-from-files --hide-scrollbars --window-size=304,1600 --screenshot="${pngFile}" "${fileUrl}"`;
+            const fastChromiumFlags = [
+              "--headless=new",
+              "--disable-gpu",
+              "--no-sandbox",
+              "--allow-file-access-from-files",
+              "--hide-scrollbars",
+              "--window-size=304,1600",
+              "--disable-extensions",
+              "--disable-background-networking",
+              "--disable-background-timer-throttling",
+              "--disable-backgrounding-occluded-windows",
+              "--disable-breakpad",
+              "--disable-component-update",
+              "--disable-default-apps",
+              "--disable-dev-shm-usage",
+              "--disable-domain-reliability",
+              "--disable-features=AudioServiceOutOfProcess",
+              "--disable-hang-monitor",
+              "--disable-ipc-flooding-protection",
+              "--disable-popup-blocking",
+              "--disable-prompt-on-repost",
+              "--disable-renderer-backgrounding",
+              "--disable-sync",
+              "--disable-translate",
+              "--metrics-recording-only",
+              "--no-first-run",
+              "--no-default-browser-check",
+              "--mute-audio",
+              "--disable-software-rasterizer",
+              "--run-all-compositor-stages-before-draw",
+              "--virtual-time-budget=200",
+            ].join(" ");
+            const renderCmd = `"${chromiumPath}" ${fastChromiumFlags} --screenshot="${pngFile}" "${fileUrl}"`;
             try {
-              await execAsync(renderCmd, { timeout: 6000 });
+              await execAsync(renderCmd, { timeout: 4000 });
             } catch {
               const fallbackCmd = `"${chromiumPath}" --headless --disable-gpu --no-sandbox --allow-file-access-from-files --hide-scrollbars --window-size=304,1600 --screenshot="${pngFile}" "${fileUrl}"`;
-              await execAsync(fallbackCmd, { timeout: 6000 });
+              await execAsync(fallbackCmd, { timeout: 4000 });
             }
             if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
               pngFile = "";
@@ -801,70 +839,10 @@ async function executePrintJob(job) {
 
       console.log(`[printercekmeApp] Yerel yazdırma işlemi başlatılıyor: "${targetPrinter || 'Varsayılan'}" (PNG: ${Boolean(pngFile)})`);
 
-      // Windows Doğrudan GDI ve Spooler Yazdırma Scripti
+      // Windows Doğrudan GDI ve Spooler Yazdırma Scripti (Yüksek Hızlı Motor)
       const psScript = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-# Native Spooler ve Raw Printer P/Invoke tanımları
-try {
-  Add-Type -TypeDefinition @"
-using System;
-using System.IO;
-using System.Runtime.InteropServices;
-public class NativeSpool {
-    [DllImport("winspool.drv", CharSet = CharSet.Auto, SetLastError = true)]
-    public static extern bool SetDefaultPrinter(string Name);
-}
-public class RawPrinter {
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    public class DOCINFOA {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
-    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-    public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
-    [DllImport("winspool.drv", EntryPoint = "ClosePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
-    [DllImport("winspool.drv", EntryPoint = "EndDocPrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", EntryPoint = "StartPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", EntryPoint = "EndPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", EntryPoint = "WritePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
-
-    public static bool SendBytesToPrinter(string szPrinterName, byte[] pBytes) {
-        IntPtr hPrinter = IntPtr.Zero;
-        DOCINFOA di = new DOCINFOA();
-        di.pDocName = "Likya_Fis";
-        di.pDataType = "RAW";
-        if (OpenPrinter(szPrinterName.Normalize(), out hPrinter, IntPtr.Zero)) {
-            if (StartDocPrinter(hPrinter, 1, di)) {
-                if (StartPagePrinter(hPrinter)) {
-                    IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(pBytes.Length);
-                    Marshal.Copy(pBytes, 0, pUnmanagedBytes, pBytes.Length);
-                    int dwWritten = 0;
-                    bool success = WritePrinter(hPrinter, pUnmanagedBytes, pBytes.Length, out dwWritten);
-                    Marshal.FreeCoTaskMem(pUnmanagedBytes);
-                    EndPagePrinter(hPrinter);
-                    EndDocPrinter(hPrinter);
-                    ClosePrinter(hPrinter);
-                    return success;
-                }
-                EndDocPrinter(hPrinter);
-            }
-            ClosePrinter(hPrinter);
-        }
-        return false;
-    }
-}
-"@ -ErrorAction SilentlyContinue
-} catch {}
 
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
@@ -877,114 +855,120 @@ $pngPath = '${escapedPngPath}'
 $copies = ${numCopies}
 $isPos = ${isPos ? "$true" : "$false"}
 
-# 1. Windows 10/11 Varsayılan Yönetimini Devre Dışı Bırak
-try {
-  Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name 'LegacyDefaultPrinterMode' -Value 1 -ErrorAction SilentlyContinue
-} catch {}
-
-# 2. Sistemdeki Yüklü Yazıcıları Tara
-$installed = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
-
-function Clean-PName($str) {
-  if (-not $str) { return "" }
-  $s = $str -replace '\\s*\\([0-9]+\\s*yönlendirildi\\)', ''
-  $s = $s -replace '\\s*\\(yönlendirildi\\s*[0-9]+\\)', ''
-  $s = $s -replace '\\s*\\([^\\)]*redirected[^\\)]*\\)', ''
-  $s = $s -replace '\\s*\\([^\\)]*session[^\\)]*\\)', ''
-  $s = $s -replace '[^a-zA-Z0-9]', ''
-  return $s.ToLower().Trim()
-}
-
-function Test-IsVirtual($str) {
-  if (-not $str) { return $true }
-  $low = $str.ToLower()
-  $virts = @("onenote", "pdf", "xps", "fax", "document writer", "root print queue", "anydesk", "teamviewer")
-  foreach ($v in $virts) {
-    if ($low.IndexOf($v) -ge 0) { return $true }
-  }
-  return $false
-}
-
-function Test-IsPos($str) {
-  if (-not $str) { return $false }
-  if (Test-IsVirtual $str) { return $false }
-  $low = $str.ToLower()
-  $posKeys = @("pos", "thermal", "termal", "receipt", "fis", "fiş", "80", "58", "xp-", "xprinter", "epson", "bixolon", "hprt", "rp80", "rp-80", "citizen", "star", "sam4s", "zj-", "argox", "zebra", "tsc", "godex", "kuveyt", "hugin", "inter")
-  foreach ($k in $posKeys) {
-    if ($low.IndexOf($k) -ge 0) { return $true }
-  }
-  return $false
-}
-
+# 1. Hızlı Doğrudan Hedef Yazıcı Doğrulaması (Ağ taraması yapmadan < 1ms)
 $exactPrinter = $null
-
-# 2.A: Hedef Yazıcı Eşleştirmesi
 if ($rawTarget -and $rawTarget.Trim() -ne '') {
-  foreach ($p in $installed) {
-    if ($p.Equals($rawTarget, [System.StringComparison]::OrdinalIgnoreCase)) {
-      $exactPrinter = $p
-      break
+  try {
+    $quickDoc = New-Object System.Drawing.Printing.PrintDocument
+    $quickDoc.PrinterSettings.PrinterName = $rawTarget
+    if ($quickDoc.PrinterSettings.IsValid) {
+      $exactPrinter = $rawTarget
     }
+  } catch {}
+}
+
+# 2. Eğer hedef doğrudan doğrulanmadıysa sistem yazıcılarını tara
+if (-not $exactPrinter) {
+  $installed = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
+
+  function Clean-PName($str) {
+    if (-not $str) { return "" }
+    $s = $str -replace '\\s*\\([0-9]+\\s*yönlendirildi\\)', ''
+    $s = $s -replace '\\s*\\(yönlendirildi\\s*[0-9]+\\)', ''
+    $s = $s -replace '\\s*\\([^\\)]*redirected[^\\)]*\\)', ''
+    $s = $s -replace '\\s*\\([^\\)]*session[^\\)]*\\)', ''
+    $s = $s -replace '[^a-zA-Z0-9]', ''
+    return $s.ToLower().Trim()
   }
-  if (-not $exactPrinter) {
+
+  function Test-IsVirtual($str) {
+    if (-not $str) { return $true }
+    $low = $str.ToLower()
+    $virts = @("onenote", "pdf", "xps", "fax", "document writer", "root print queue", "anydesk", "teamviewer")
+    foreach ($v in $virts) {
+      if ($low.IndexOf($v) -ge 0) { return $true }
+    }
+    return $false
+  }
+
+  function Test-IsPos($str) {
+    if (-not $str) { return $false }
+    if (Test-IsVirtual $str) { return $false }
+    $low = $str.ToLower()
+    $posKeys = @("pos", "thermal", "termal", "receipt", "fis", "fiş", "80", "58", "xp-", "xprinter", "epson", "bixolon", "hprt", "rp80", "rp-80", "citizen", "star", "sam4s", "zj-", "argox", "zebra", "tsc", "godex", "kuveyt", "hugin", "inter")
+    foreach ($k in $posKeys) {
+      if ($low.IndexOf($k) -ge 0) { return $true }
+    }
+    return $false
+  }
+
+  if ($rawTarget -and $rawTarget.Trim() -ne '') {
     foreach ($p in $installed) {
-      if (-not (Test-IsVirtual $p)) {
-        if ($p.IndexOf($rawTarget, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or $rawTarget.IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-          $exactPrinter = $p
-          break
-        }
+      if ($p.Equals($rawTarget, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $exactPrinter = $p
+        break
       }
     }
-  }
-  if (-not $exactPrinter) {
-    $cleanRaw = Clean-PName $rawTarget
-    if ($cleanRaw.Length -ge 3) {
+    if (-not $exactPrinter) {
       foreach ($p in $installed) {
         if (-not (Test-IsVirtual $p)) {
-          $cleanP = Clean-PName $p
-          if ($cleanP -eq $cleanRaw -or $cleanP.IndexOf($cleanRaw) -ge 0 -or $cleanRaw.IndexOf($cleanP) -ge 0) {
+          if ($p.IndexOf($rawTarget, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or $rawTarget.IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
             $exactPrinter = $p
             break
           }
         }
       }
     }
-  }
-}
-
-# 2.B: Hedef bulunamadıysa POS cihazlarını tara
-if ((-not $exactPrinter -or (Test-IsVirtual $exactPrinter)) -and $isPos) {
-  foreach ($p in $installed) {
-    if (Test-IsPos $p) {
-      $exactPrinter = $p
-      break
+    if (-not $exactPrinter) {
+      $cleanRaw = Clean-PName $rawTarget
+      if ($cleanRaw.Length -ge 3) {
+        foreach ($p in $installed) {
+          if (-not (Test-IsVirtual $p)) {
+            $cleanP = Clean-PName $p
+            if ($cleanP -eq $cleanRaw -or $cleanP.IndexOf($cleanRaw) -ge 0 -or $cleanRaw.IndexOf($cleanP) -ge 0) {
+              $exactPrinter = $p
+              break
+            }
+          }
+        }
+      }
     }
   }
-}
 
-# 2.C: İlk fiziksel yazıcıyı seç
-if (-not $exactPrinter) {
-  foreach ($p in $installed) {
-    if (-not (Test-IsVirtual $p)) {
-      $exactPrinter = $p
-      break
+  # POS cihazlarını tara
+  if ((-not $exactPrinter -or (Test-IsVirtual $exactPrinter)) -and $isPos) {
+    foreach ($p in $installed) {
+      if (Test-IsPos $p) {
+        $exactPrinter = $p
+        break
+      }
     }
+  }
+
+  # İlk fiziksel yazıcıyı seç
+  if (-not $exactPrinter) {
+    foreach ($p in $installed) {
+      if (-not (Test-IsVirtual $p)) {
+        $exactPrinter = $p
+        break
+      }
+    }
+  }
+
+  if (-not $exactPrinter -or (Test-IsVirtual $exactPrinter)) {
+    $allPrintersStr = ($installed -join ', ')
+    Write-Output "ERROR: Hedef yazıcı ('$rawTarget') bu bilgisayarda bulunamadı ve fiziksel yazıcı algılanamadı. Sistemdeki yazıcılar: [$allPrintersStr]"
+    exit 1
   }
 }
 
-# 2.D: Hiçbir fiziksel yazıcı yoksa hata ver
-if (-not $exactPrinter -or (Test-IsVirtual $exactPrinter)) {
-  $allPrintersStr = ($installed -join ', ')
-  Write-Output "ERROR: Hedef yazıcı ('$rawTarget') bu bilgisayarda bulunamadı ve fiziksel yazıcı algılanamadı. Sistemdeki yazıcılar: [$allPrintersStr]"
-  exit 1
-}
-
-# 3. Hedef Yazıcıyı Windows Varsayılanı Yap (Chrome Ctrl+P'nin de bunu otomatik seçmesi için)
+# 3. Gerekirse Varsayılan Yazıcı Yap (Eğer zaten varsayılansa bekleme yapma)
 try {
-  [NativeSpool]::SetDefaultPrinter($exactPrinter) | Out-Null
-} catch {
-  try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($exactPrinter) } catch {}
-}
+  $currentDef = (New-Object System.Drawing.Printing.PrinterSettings).PrinterName
+  if ($currentDef -ne $exactPrinter) {
+    (New-Object -ComObject WScript.Network).SetDefaultPrinter($exactPrinter)
+  }
+} catch {}
 
 $spooledSuccess = $false
 
@@ -1060,9 +1044,63 @@ try {
   Write-Warning ("GDI PrintDocument hatası: " + $_.Exception.Message)
 }
 
-# 5. YÖNTEM 2 (Yedek): Raw Spooler Doğrudan ESC/POS Gönderimi
+# 5. YÖNTEM 2 (Yedek): Sadece GDI başarısız olursa Raw Spooler Doğrudan ESC/POS Gönderimi
 if (-not $spooledSuccess -and $textPath -and (Test-Path $textPath) -and $isPos) {
   try {
+    try {
+      Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class RawPrinter {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public class DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+    [DllImport("winspool.drv", EntryPoint = "ClosePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+    [DllImport("winspool.drv", EntryPoint = "EndDocPrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "StartPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "EndPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "WritePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+    public static bool SendBytesToPrinter(string szPrinterName, byte[] pBytes) {
+        IntPtr hPrinter = IntPtr.Zero;
+        DOCINFOA di = new DOCINFOA();
+        di.pDocName = "Likya_Fis";
+        di.pDataType = "RAW";
+        if (OpenPrinter(szPrinterName.Normalize(), out hPrinter, IntPtr.Zero)) {
+            if (StartDocPrinter(hPrinter, 1, di)) {
+                if (StartPagePrinter(hPrinter)) {
+                    IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(pBytes.Length);
+                    Marshal.Copy(pBytes, 0, pUnmanagedBytes, pBytes.Length);
+                    int dwWritten = 0;
+                    bool success = WritePrinter(hPrinter, pUnmanagedBytes, pBytes.Length, out dwWritten);
+                    Marshal.FreeCoTaskMem(pUnmanagedBytes);
+                    EndPagePrinter(hPrinter);
+                    EndDocPrinter(hPrinter);
+                    ClosePrinter(hPrinter);
+                    return success;
+                }
+                EndDocPrinter(hPrinter);
+            }
+            ClosePrinter(hPrinter);
+        }
+        return false;
+    }
+}
+"@ -ErrorAction SilentlyContinue
+    } catch {}
+
     $rawStr = [System.IO.File]::ReadAllText($textPath, [System.Text.Encoding]::UTF8)
     if ($rawStr) {
       # ESC/POS Initialize (ESC @) + Türkçe Windows-1254/CP857 Kod Sayfası + Metin + Kağıt Kesme (GS V 1)
@@ -1182,15 +1220,22 @@ wss.on("connection", (ws) => {
 
   let isPrinting = false;
 
-  const sendPrinters = async () => {
+  const sendPrinters = async (force = false) => {
     try {
-      const list = await getSystemPrinters();
-      if (ws.readyState === ws.OPEN && !isPrinting) {
-        // İstemcinin beklediği doğrudan JSON yazıcı listesi
-        ws.send(JSON.stringify(list || []));
+      // Önbellekte liste varsa HEMEN ANINDA gönder (PowerShell beklemesi 0 ms)
+      if (printerCache.list && printerCache.list.length > 0 && ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify(printerCache.list));
+      }
+      // Yazdırma işlemi devam ediyorsa veya önbellek yeniyse gereksiz arka plan taraması yapma
+      const now = Date.now();
+      if (!isPrinting && (force || !printerCache.list || printerCache.list.length === 0 || (now - printerCache.lastUpdated >= 60000))) {
+        const list = await getSystemPrinters(force);
+        if (ws.readyState === ws.OPEN && !isPrinting) {
+          ws.send(JSON.stringify(list || []));
+        }
       }
     } catch (err) {
-      if (ws.readyState === ws.OPEN && !isPrinting) {
+      if (ws.readyState === ws.OPEN && !isPrinting && (!printerCache.list || printerCache.list.length === 0)) {
         ws.send(JSON.stringify([]));
       }
     }

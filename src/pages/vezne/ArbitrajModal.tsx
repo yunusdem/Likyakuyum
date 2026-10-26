@@ -18,6 +18,7 @@ import { KurRowItem } from "../../services/kurService";
 import { CariKartItem, CariService } from "../../services/cariService";
 import { StatisticItem, StatisticService } from "../../services/statisticService";
 import { TodvzTanimDto } from "../../services/companyService";
+import { DovizFisService, DovizFisListItem } from "../../services/dovizFisService";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 
 export interface ArbitrajCurrencyItem {
@@ -83,6 +84,8 @@ export interface ArbitrajApplyResult {
   cariKodu?: string;
   vknTckn?: string;
   istatistikKodu?: string;
+  seriNo?: string;
+  belgeNo?: string;
   lines?: any[];
   allLines?: ArbitrajModalLine[];
   detay?: ArbitrajDetayModel;
@@ -128,6 +131,7 @@ interface ArbitrajModalProps {
   companyDefinitions?: TodvzTanimDto | null;
   initialDetay?: ArbitrajDetayModel;
   pageType: "doviz" | "sarraf";
+  currentUser?: any;
   onApplyToFis?: (result: ArbitrajApplyResult) => void;
   onSaveDirect?: (result: ArbitrajApplyResult, shouldPrint?: boolean) => Promise<boolean | void>;
   onOpenPrintModal?: (result: ArbitrajApplyResult) => void;
@@ -160,6 +164,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   companyDefinitions = null,
   initialDetay,
   pageType,
+  currentUser = null,
   onApplyToFis,
   onSaveDirect,
   kurKurusSayisi = 4,
@@ -176,8 +181,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   });
-  const [seriNo, setSeriNo] = useState<string>("ARB");
-  const [belgeNo, setBelgeNo] = useState<string>("Otomatik");
+  const [seriNo, setSeriNo] = useState<string>("");
+  const [belgeNo, setBelgeNo] = useState<string>("");
   const [gelisNedeni, setGelisNedeni] = useState<string>("");
   const [cariId, setCariId] = useState<number | null>(selectedCariId);
   const [cariKodu, setCariKodu] = useState<string>(selectedCariKod || "");
@@ -239,6 +244,109 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const tipSelectRef = useRef<HTMLSelectElement | null>(null);
   const initialFocusDoneRef = useRef<boolean>(false);
 
+  // Active statistic object
+  const activeStat = useMemo(() => {
+    const rawKod = (istatistikKod || "").trim().toLowerCase();
+    if (!rawKod) return null;
+    return localStatList.find((s) => (s.kod && s.kod.toLowerCase() === rawKod) || String(s.id) === rawKod) || null;
+  }, [istatistikKod, localStatList]);
+
+  // Fiş yönüne göre filtrelenmiş istatistik listesi (Döviz Fişi kuralı ile birebir):
+  // Alış (alis): SADECE 0 (Alış) ve 2 (Alış-Satış)
+  // Satış (satis): SADECE 1 (Satış) ve 2 (Alış-Satış)
+  // Satışta alış, alışta satış istatistikleri KESİNLİKLE gözükmez!
+  const filteredStatList = useMemo(() => {
+    return (localStatList || []).filter((s) => {
+      const fType = Number(s.fisTipi);
+      return islemYonu === "alis" ? fType === 0 || fType === 2 : fType === 1 || fType === 2;
+    });
+  }, [localStatList, islemYonu]);
+
+  // İstatistik Kodu Yön Validasyonu (Alışta satış, satışta alış engeli)
+  const istatistikValidation = useMemo(() => {
+    const val = (istatistikKod || "").trim();
+    if (!val) {
+      return { isValid: false, errorMessage: "İstatistik kodu boş bırakılamaz!" };
+    }
+    const q = val.toLowerCase();
+    const found = (localStatList || []).find(
+      (s) => (s.kod && s.kod.toLowerCase() === q) || String(s.id) === q
+    );
+    if (!found) {
+      return { isValid: false, errorMessage: `Tanımsız istatistik kodu: "${val}"!` };
+    }
+    const fType = Number(found.fisTipi);
+    const isAllowed = islemYonu === "alis" ? fType === 0 || fType === 2 : fType === 1 || fType === 2;
+    if (!isAllowed) {
+      const currentTypeText = islemYonu === "alis" ? "Alış" : "Satış";
+      const allowedText = islemYonu === "alis" ? "Alış (0) ve Alış-Satış (2)" : "Satış (1) ve Alış-Satış (2)";
+      const foundTypeText = fType === 0 ? "Alış (0)" : fType === 1 ? "Satış (1)" : "Alış-Satış (2)";
+      return {
+        isValid: false,
+        errorMessage: `${currentTypeText} fişinde "${found.kod}" (${foundTypeText}) istatistiği kullanılamaz! Sadece ${allowedText} istatistik kodları girilebilir.`,
+      };
+    }
+    return { isValid: true, errorMessage: null, stat: found };
+  }, [istatistikKod, localStatList, islemYonu]);
+
+  // Fiş yönüne göre (Alış ise Alış, Satış ise Satış) varsayılan istatistiği belirler
+  const getDefaultIstatistik = useCallback(
+    (direction: "alis" | "satis"): StatisticItem | null => {
+      const targetTip = direction === "alis" ? 0 : 1;
+      if (!localStatList || localStatList.length === 0) return null;
+
+      // 1. Kullanıcı Tanımları (Öncelikli - Tip kontrolü zorunlu)
+      const userStatCode = targetTip === 0 ? currentUser?.buyStatCode : currentUser?.sellStatCode;
+      if (userStatCode && userStatCode.trim()) {
+        const cleanUserCode = userStatCode.trim().toLowerCase();
+        const foundUser = localStatList.find(
+          (s) => (s.kod && s.kod.toLowerCase() === cleanUserCode) || String(s.id) === cleanUserCode
+        );
+        if (foundUser) {
+          const fType = Number(foundUser.fisTipi);
+          if (targetTip === 0 ? fType === 0 || fType === 2 : fType === 1 || fType === 2) {
+            return foundUser;
+          }
+        }
+      }
+
+      // 2. Firma Tanımları Kontrolü (Tip kontrolü zorunlu)
+      if (companyDefinitions) {
+        const companyStatId =
+          targetTip === 0
+            ? companyDefinitions.ARBITRAJ_ALIS_ISTATISTIK_ID || companyDefinitions.ALIS_ISTATISTIK_ID
+            : companyDefinitions.ARBITRAJ_SATIS_ISTATISTIK_ID || companyDefinitions.SATIS_ISTATISTIK_ID;
+        if (companyStatId) {
+          const cleanComp = String(companyStatId).trim().toLowerCase();
+          const foundComp = localStatList.find(
+            (s) => String(s.id).trim() === cleanComp || (s.kod && s.kod.trim().toLowerCase() === cleanComp)
+          );
+          if (foundComp) {
+            const fType = Number(foundComp.fisTipi);
+            if (targetTip === 0 ? fType === 0 || fType === 2 : fType === 1 || fType === 2) {
+              return foundComp;
+            }
+          }
+        }
+      }
+
+      // 3. Fiş tipine göre filtrelenmiş listedeki İLK VERİ (Alış: 0 veya 2, Satış: 1 veya 2)
+      const matchingList = localStatList.filter((s) => {
+        const fType = Number(s.fisTipi);
+        return targetTip === 0 ? fType === 0 || fType === 2 : fType === 1 || fType === 2;
+      });
+      if (matchingList.length > 0) return matchingList[0];
+
+      // 4. Fallback: sabit varsayılan kodlar (Alış→9249, Satış→10285)
+      const fallbackKod = targetTip === 0 ? "9249" : "10285";
+      const fallbackMatched = localStatList.find((s) => (s.kod || "").trim() === fallbackKod);
+      if (fallbackMatched) return fallbackMatched;
+
+      return null;
+    },
+    [currentUser, companyDefinitions, localStatList]
+  );
+
   // Parse helper
   const parseNum = useCallback((val: number | string | undefined): number => {
     if (val === undefined || val === null || val === "") return 0;
@@ -247,27 +355,36 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     return isNaN(num) ? 0 : num;
   }, []);
 
-  // Yeni boş satır üretici helper
+  // Yeni boş satır üretici helper - seçili istatistiğin Kom %, BMV %, KMV % oranlarını koşulsuz uygular
   const createBlankLine = useCallback(
-    (satirNo: number = 1): ArbitrajModalLine => ({
-      id: String(Date.now() + Math.random()),
-      satirNo,
-      paraId: 0,
-      kod: "",
-      ad: "",
-      miktar: "",
-      kur: "",
-      tutar: "",
-      komisyonOrani: "",
-      komisyon: "",
-      bmvOrani: "",
-      bmv: "",
-      kmvOrani: "",
-      kmv: "",
-      isMaden: false,
-      milyem: 1000,
-    }),
-    []
+    (satirNo: number = 1, customStat?: StatisticItem | null, customDir?: "alis" | "satis"): ArbitrajModalLine => {
+      const stat = customStat !== undefined ? customStat : activeStat;
+      const kmvMode = companyDefinitions?.KMV_UYGULAMA_SEKLI ?? 3;
+      const bmvRate = stat?.bmvOrani !== undefined && Number(stat.bmvOrani) > 0 ? Number(stat.bmvOrani) : 0;
+      const rawKmv = stat?.kmvOrani !== undefined && Number(stat.kmvOrani) > 0 ? Number(stat.kmvOrani) : 0;
+      const kmvRate = kmvMode !== 1 ? rawKmv : 0;
+      const komRate = stat?.komisyonOrani !== undefined && Number(stat.komisyonOrani) > 0 ? Number(stat.komisyonOrani) : 0;
+
+      return {
+        id: String(Date.now() + Math.random()),
+        satirNo,
+        paraId: 0,
+        kod: "",
+        ad: "",
+        miktar: "",
+        kur: "",
+        tutar: "",
+        komisyonOrani: komRate > 0 ? komRate.toString() : "",
+        komisyon: "",
+        bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
+        bmv: "",
+        kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
+        kmv: "",
+        isMaden: false,
+        milyem: 1000,
+      };
+    },
+    [activeStat, companyDefinitions]
   );
 
   // Tablo içi hücre odaklama helper'ı (yeni satır render gecikmelerini de çözer)
@@ -436,16 +553,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     [kurSatirlar, kurTuru]
   );
 
-  // Active statistic object
-  const activeStat = useMemo(() => {
-    const rawKod = (istatistikKod || "").trim();
-    if (!rawKod) return null;
-    return localStatList.find((s) => s.kod === rawKod || (s as any).kod === rawKod) || null;
-  }, [istatistikKod, localStatList]);
-
-  // Calculation function matching DovizFisiPage.tsx rules exactly:
-  // - ALIŞ (islemYonu === "alis"): KMV & BMV are ZERO. Only Komisyon applies.
-  // - SATIŞ (islemYonu === "satis"): BMV & KMV calculate according to active statistic & company definitions.
+  // Calculation function:
+  // Seçili istatistiğin Komisyon %, BMV %, KMV % oranlarına göre tam hesaplama yapar
   const calculateRow = useCallback(
     (params: {
       miktar: number | string;
@@ -456,7 +565,6 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       kmvOrani?: number | string;
       currentDirection?: "alis" | "satis";
     }) => {
-      const dir = params.currentDirection || islemYonu;
       const m = parseNum(params.miktar);
       const k = parseNum(params.kur);
       const isTL = (params.kod || "").toUpperCase().trim() === "TL" || (params.kod || "").toUpperCase().trim() === "TRY";
@@ -471,28 +579,12 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         komVal = parseFloat((brutTutar * (komRate / 100)).toFixed(2)).toFixed(2);
       }
 
-      // ALIŞTA KMV VE BMV KESİNLİKLE YOKTUR! SADECE KOMİSYON!
-      if (dir === "alis") {
-        return {
-          brutTutar,
-          tutar: brutTutar > 0 ? brutTutar.toFixed(tlKurusSayisi) : "0.00",
-          bmvOrani: "",
-          bmv: "",
-          kmvOrani: "",
-          kmv: "",
-          komisyonOrani: komRate > 0 ? komRate.toString() : "",
-          komisyon: komVal,
-        };
-      }
-
-      // SATIŞTA:
       const bmvRate = parseNum(params.bmvOrani || "0");
-      const kmvRate = parseNum(params.kmvOrani || "0");
-
       if (bmvRate > 0 && brutTutar > 0) {
         bmvVal = parseFloat((brutTutar * (bmvRate / 100)).toFixed(2)).toFixed(2);
       }
 
+      const kmvRate = parseNum(params.kmvOrani || "0");
       const effectiveKmvFactor = kmvRate >= 1 && kmvRate <= 10 ? kmvRate / 1000 : kmvRate / 100;
       const kmvMode =
         companyDefinitions?.KMV_UYGULAMA_SEKLI === 1 ||
@@ -501,13 +593,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           ? companyDefinitions.KMV_UYGULAMA_SEKLI
           : 3;
 
-      if (kmvMode === 1) {
-        kmvVal = "";
-      } else {
-        if (kmvRate > 0 && brutTutar > 0) {
-          const calculatedKmv = parseFloat((brutTutar * effectiveKmvFactor).toFixed(2));
-          kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(2) : "";
-        }
+      if (kmvMode !== 1 && kmvRate > 0 && brutTutar > 0) {
+        const calculatedKmv = parseFloat((brutTutar * effectiveKmvFactor).toFixed(2));
+        kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(2) : "";
       }
 
       return {
@@ -521,7 +609,45 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         komisyon: komVal,
       };
     },
-    [islemYonu, parseNum, tlKurusSayisi, companyDefinitions]
+    [parseNum, tlKurusSayisi, companyDefinitions]
+  );
+
+  // İstatistik oranlarını satırlara uygulama helper'ı
+  const applyStatisticRatesToLines = useCallback(
+    (
+      stat: StatisticItem | null,
+      dir: "alis" | "satis",
+      targetLines: ArbitrajModalLine[]
+    ): ArbitrajModalLine[] => {
+      const kmvMode = companyDefinitions?.KMV_UYGULAMA_SEKLI ?? 3;
+      const bmvRate = stat?.bmvOrani !== undefined && Number(stat.bmvOrani) > 0 ? Number(stat.bmvOrani) : 0;
+      const rawKmv = stat?.kmvOrani !== undefined && Number(stat.kmvOrani) > 0 ? Number(stat.kmvOrani) : 0;
+      const kmvRate = kmvMode !== 1 ? rawKmv : 0;
+      const komRate = stat?.komisyonOrani !== undefined && Number(stat.komisyonOrani) > 0 ? Number(stat.komisyonOrani) : 0;
+
+      return targetLines.map((row) => {
+        const calc = calculateRow({
+          miktar: row.miktar,
+          kur: row.kur,
+          kod: row.kod,
+          bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
+          kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
+          komisyonOrani: komRate > 0 ? komRate.toString() : "",
+          currentDirection: dir,
+        });
+        return {
+          ...row,
+          bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
+          bmv: calc.bmv,
+          kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
+          kmv: calc.kmv,
+          komisyonOrani: komRate > 0 ? komRate.toString() : "",
+          komisyon: calc.komisyon,
+          tutar: calc.tutar,
+        };
+      });
+    },
+    [calculateRow, companyDefinitions]
   );
 
   // Initialize modal state ONLY when modal transitions from closed to open
@@ -567,34 +693,49 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           setIslemYonu(savedArbitraj.islemYonu);
           setGelisNedeni(savedArbitraj.islemYonu === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
         }
+        if (savedArbitraj.seriNo) setSeriNo(savedArbitraj.seriNo);
+        else setSeriNo("");
+        if (savedArbitraj.belgeNo) setBelgeNo(savedArbitraj.belgeNo);
+        else setBelgeNo("");
         if (savedArbitraj.cariUnvan) setUnvan(savedArbitraj.cariUnvan);
         if (savedArbitraj.vknTckn) setFormVknTckn(savedArbitraj.vknTckn);
         if (savedArbitraj.istatistikKodu) setIstatistikKod(savedArbitraj.istatistikKodu);
         if (savedArbitraj.cariId) setCariId(savedArbitraj.cariId);
         if (savedArbitraj.cariKodu) setCariKodu(savedArbitraj.cariKodu);
+        if (savedArbitraj.detay) {
+          const d = savedArbitraj.detay;
+          if (d.adres) setDetayAdres(d.adres);
+          if (d.telefon) setDetayTelefon(d.telefon);
+          if (d.eposta) setDetayEposta(d.eposta);
+          if (d.babaAdi) setDetayBabaAdi(d.babaAdi);
+          if (d.anneAdi) setDetayAnneAdi(d.anneAdi);
+          if (d.pasaportNo) setDetayPasaportNo(d.pasaportNo);
+          if (d.yetkiliKisi) setDetayYetkiliKisi(d.yetkiliKisi);
+          if (d.meslek) setDetayMeslek(d.meslek);
+          if (d.il) setDetayIl(d.il);
+          if (d.ilce) setDetayIlce(d.ilce);
+          if (d.postaKodu) setDetayPostaKodu(d.postaKodu);
+        }
       } else {
         // Fişin tersi açılır: Arka Alışsa Satış, Satışsa Alış
         const dir: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
         setIslemYonu(dir);
-        setGelisNedeni("");
+        setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
         setCariId(selectedCariId);
         setCariKodu(selectedCariKod || "");
         setUnvan(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
         setFormVknTckn(vknTckn || "");
+        setSeriNo("");
+        setBelgeNo("");
 
-        // İstatistik belirle (Varsa Firma Tanımlarındaki Arbitraj istatistiği, yoksa aktarılan)
-        let initialStat = istatistikKodu || "9249";
-        if (dir === "alis" && companyDefinitions?.ARBITRAJ_ALIS_ISTATISTIK_ID) {
-          const foundStat = localStatList.find((s) => s.id === companyDefinitions.ARBITRAJ_ALIS_ISTATISTIK_ID);
-          if (foundStat?.kod) initialStat = foundStat.kod;
-        } else if (dir === "satis" && companyDefinitions?.ARBITRAJ_SATIS_ISTATISTIK_ID) {
-          const foundStat = localStatList.find((s) => s.id === companyDefinitions.ARBITRAJ_SATIS_ISTATISTIK_ID);
-          if (foundStat?.kod) initialStat = foundStat.kod;
-        }
-        setIstatistikKod(initialStat);
+        // Fiş yönüne uygun (Alış ise Alış, Satış ise Satış) varsayılan istatistiği belirle:
+        const initialStatObj = getDefaultIstatistik(dir);
+        const initialStatCode = initialStatObj?.kod || (dir === "alis" ? "9249" : "10285");
+        setIstatistikKod(initialStatCode);
 
-        // Satırlar ve tablo ilk satır otomatik boş olarak açılır
-        setLines([createBlankLine(1)]);
+        // Satırlar ilk satır otomatik boş olarak açılır ve istatistik oranlarını alır
+        const blankRow = createBlankLine(1, initialStatObj, dir);
+        setLines([blankRow]);
       }
     }
     prevShowRef.current = show;
@@ -677,54 +818,30 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const handleToggleIslemYonu = (targetDir?: "alis" | "satis") => {
     const newDir: "alis" | "satis" = targetDir || (islemYonu === "satis" ? "alis" : "satis");
     setIslemYonu(newDir);
-    if (gelisNedeni && gelisNedeni.toLowerCase().includes("arbitraj")) {
-      setGelisNedeni(newDir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
-    }
+    setGelisNedeni(newDir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
 
-    // İstatistik oranlarını al
-    let statBmv = "";
-    let statKmv = "";
-    let statKom = "";
-    if (activeStat && newDir === "satis") {
-      statBmv = activeStat.bmvOrani ? String(activeStat.bmvOrani) : "";
-      statKmv = activeStat.kmvOrani ? String(activeStat.kmvOrani) : "0.2";
-      statKom = activeStat.komisyonOrani ? String(activeStat.komisyonOrani) : "";
-    } else if (activeStat && newDir === "alis") {
-      statKom = activeStat.komisyonOrani ? String(activeStat.komisyonOrani) : "";
-    }
+    // Alışta alış, satışta satış istatistiği belirle:
+    const newStat = getDefaultIstatistik(newDir);
+    const newStatKod = newStat?.kod || (newDir === "alis" ? "9249" : "10285");
+    setIstatistikKod(newStatKod);
 
-    setLines((prev) =>
-      prev.map((l) => {
+    setLines((prev) => {
+      const updated = prev.map((l) => {
         const item = currencyList.find((c) => c.kod.toUpperCase() === l.kod.toUpperCase());
         const rate = item ? getRateForItem(item, newDir, kurTuru) : parseNum(l.kur);
-        const calc = calculateRow({
-          miktar: l.miktar,
-          kur: rate.toFixed(kurKurusSayisi),
-          kod: l.kod,
-          komisyonOrani: statKom || l.komisyonOrani,
-          bmvOrani: newDir === "alis" ? "" : (statBmv || l.bmvOrani),
-          kmvOrani: newDir === "alis" ? "" : (statKmv || l.kmvOrani),
-          currentDirection: newDir,
-        });
         return {
           ...l,
-          kur: rate.toFixed(kurKurusSayisi),
-          tutar: calc.tutar,
-          komisyonOrani: calc.komisyonOrani,
-          komisyon: calc.komisyon,
-          bmvOrani: calc.bmvOrani,
-          bmv: calc.bmv,
-          kmvOrani: calc.kmvOrani,
-          kmv: calc.kmv,
+          kur: rate > 0 ? rate.toFixed(kurKurusSayisi) : l.kur,
         };
-      })
-    );
+      });
+      return applyStatisticRatesToLines(newStat, newDir, updated);
+    });
   };
 
   // Recalculate a line on field edit
   const handleUpdateLine = (
     lineId: string,
-    field: "miktar" | "kur" | "tutar" | "kod" | "ad" | "komisyonOrani",
+    field: "miktar" | "kur" | "tutar" | "kod" | "ad" | "komisyonOrani" | "bmvOrani" | "kmvOrani",
     value: string
   ) => {
     setLines((prev) =>
@@ -739,13 +856,20 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
             const calcMiktar =
               rate > 0 && targetTl > 0 ? targetTl / rate : parseNum(l.miktar) > 0 ? parseNum(l.miktar) : 100;
 
+            const stat = activeStat;
+            const kmvMode = companyDefinitions?.KMV_UYGULAMA_SEKLI ?? 3;
+            const bmvRate = stat?.bmvOrani !== undefined && Number(stat.bmvOrani) > 0 ? Number(stat.bmvOrani) : 0;
+            const rawKmv = stat?.kmvOrani !== undefined && Number(stat.kmvOrani) > 0 ? Number(stat.kmvOrani) : 0;
+            const kmvRate = kmvMode !== 1 ? rawKmv : 0;
+            const komRate = stat?.komisyonOrani !== undefined && Number(stat.komisyonOrani) > 0 ? Number(stat.komisyonOrani) : 0;
+
             const calc = calculateRow({
               miktar: calcMiktar.toFixed(found.isMaden ? 3 : dovizKurusSayisi),
               kur: rate.toFixed(kurKurusSayisi),
               kod: found.kod,
-              komisyonOrani: l.komisyonOrani,
-              bmvOrani: l.bmvOrani,
-              kmvOrani: l.kmvOrani,
+              komisyonOrani: l.komisyonOrani || (komRate > 0 ? komRate.toString() : ""),
+              bmvOrani: l.bmvOrani || (bmvRate > 0 ? bmvRate.toString() : ""),
+              kmvOrani: l.kmvOrani || (kmvRate > 0 ? kmvRate.toString() : ""),
               currentDirection: islemYonu,
             });
 
@@ -757,8 +881,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
               kur: rate.toFixed(kurKurusSayisi),
               miktar: calcMiktar.toFixed(found.isMaden ? 3 : dovizKurusSayisi),
               tutar: calc.tutar,
+              komisyonOrani: calc.komisyonOrani,
               komisyon: calc.komisyon,
+              bmvOrani: calc.bmvOrani,
               bmv: calc.bmv,
+              kmvOrani: calc.kmvOrani,
               kmv: calc.kmv,
               isMaden: found.isMaden,
               milyem: found.milyem || 1000,
@@ -774,6 +901,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         let newMiktar = field === "miktar" ? value : l.miktar;
         let newKur = field === "kur" ? value : l.kur;
         let newKomOrani = field === "komisyonOrani" ? value : l.komisyonOrani;
+        let newBmvOrani = field === "bmvOrani" ? value : l.bmvOrani;
+        let newKmvOrani = field === "kmvOrani" ? value : l.kmvOrani;
 
         if (field === "tutar") {
           const tNum = parseNum(value);
@@ -788,8 +917,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           kur: newKur,
           kod: l.kod,
           komisyonOrani: newKomOrani,
-          bmvOrani: l.bmvOrani,
-          kmvOrani: l.kmvOrani,
+          bmvOrani: newBmvOrani,
+          kmvOrani: newKmvOrani,
           currentDirection: islemYonu,
         });
 
@@ -799,7 +928,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           kur: newKur,
           komisyonOrani: calc.komisyonOrani,
           komisyon: calc.komisyon,
+          bmvOrani: calc.bmvOrani,
           bmv: calc.bmv,
+          kmvOrani: calc.kmvOrani,
           kmv: calc.kmv,
           tutar: calc.tutar,
         };
@@ -811,6 +942,12 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const handleSelectCurrencyForLine = (lineId: string, item: ArbitrajCurrencyItem) => {
     const rate = getRateForItem(item, islemYonu, kurTuru);
     const targetTl = Number(hedefTlTutar) > 0 ? Number(hedefTlTutar) : 0;
+    const stat = activeStat;
+    const kmvMode = companyDefinitions?.KMV_UYGULAMA_SEKLI ?? 3;
+    const bmvRate = stat?.bmvOrani !== undefined && Number(stat.bmvOrani) > 0 ? Number(stat.bmvOrani) : 0;
+    const rawKmv = stat?.kmvOrani !== undefined && Number(stat.kmvOrani) > 0 ? Number(stat.kmvOrani) : 0;
+    const kmvRate = kmvMode !== 1 ? rawKmv : 0;
+    const komRate = stat?.komisyonOrani !== undefined && Number(stat.komisyonOrani) > 0 ? Number(stat.komisyonOrani) : 0;
 
     setLines((prev) => {
       const exists = prev.some((l) => l.id === lineId);
@@ -821,6 +958,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           miktar: calcMiktar.toFixed(item.isMaden ? 3 : dovizKurusSayisi),
           kur: rate.toFixed(kurKurusSayisi),
           kod: item.kod,
+          bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
+          kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
+          komisyonOrani: komRate > 0 ? komRate.toString() : "",
           currentDirection: islemYonu,
         });
 
@@ -852,13 +992,17 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         const calcMiktar =
           rate > 0 && targetTl > 0 ? targetTl / rate : parseNum(l.miktar) > 0 ? parseNum(l.miktar) : 100;
 
+        const effectiveBmvOrani = l.bmvOrani || (bmvRate > 0 ? bmvRate.toString() : "");
+        const effectiveKmvOrani = l.kmvOrani || (kmvRate > 0 ? kmvRate.toString() : "");
+        const effectiveKomOrani = l.komisyonOrani || (komRate > 0 ? komRate.toString() : "");
+
         const calc = calculateRow({
           miktar: calcMiktar.toFixed(item.isMaden ? 3 : dovizKurusSayisi),
           kur: rate.toFixed(kurKurusSayisi),
           kod: item.kod,
-          komisyonOrani: l.komisyonOrani,
-          bmvOrani: l.bmvOrani,
-          kmvOrani: l.kmvOrani,
+          komisyonOrani: effectiveKomOrani,
+          bmvOrani: effectiveBmvOrani,
+          kmvOrani: effectiveKmvOrani,
           currentDirection: islemYonu,
         });
 
@@ -870,8 +1014,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           kur: rate.toFixed(kurKurusSayisi),
           miktar: calcMiktar.toFixed(item.isMaden ? 3 : dovizKurusSayisi),
           tutar: calc.tutar,
+          komisyonOrani: calc.komisyonOrani,
           komisyon: calc.komisyon,
+          bmvOrani: calc.bmvOrani,
           bmv: calc.bmv,
+          kmvOrani: calc.kmvOrani,
           kmv: calc.kmv,
           isMaden: item.isMaden,
           milyem: item.milyem || 1000,
@@ -921,19 +1068,14 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   }, [lines, parseNum]);
 
   const totalBmv = useMemo(() => {
-    if (islemYonu === "alis") return 0;
     return lines.reduce((acc, row) => acc + parseNum(row.bmv), 0);
-  }, [lines, islemYonu, parseNum]);
+  }, [lines, parseNum]);
 
   const totalKmv = useMemo(() => {
-    if (islemYonu === "alis") return 0;
     return lines.reduce((acc, row) => acc + parseNum(row.kmv), 0);
-  }, [lines, islemYonu, parseNum]);
+  }, [lines, parseNum]);
 
   const totalMasraf = useMemo(() => {
-    if (islemYonu === "alis") {
-      return parseFloat(totalKomisyon.toFixed(2));
-    }
     const kmvMode =
       companyDefinitions?.KMV_UYGULAMA_SEKLI === 1 ||
       companyDefinitions?.KMV_UYGULAMA_SEKLI === 2 ||
@@ -942,7 +1084,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         : 3;
     const effectiveKmv = kmvMode === 3 ? totalKmv : 0;
     return parseFloat((totalBmv + effectiveKmv + totalKomisyon).toFixed(2));
-  }, [islemYonu, totalKomisyon, totalBmv, totalKmv, companyDefinitions]);
+  }, [totalKomisyon, totalBmv, totalKmv, companyDefinitions]);
 
   // Son Toplam:
   // Alış fişinde: Ödenecek TL = Toplam Tutar - Toplam Masraf
@@ -1054,6 +1196,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
   // Save / Apply Arbitraj (shouldPrint: F10 ile basılırsa true, normal kaydet ile false)
   const handleSaveArbitraj = async (shouldPrint: boolean = true) => {
+    if (!istatistikValidation.isValid) {
+      setSaveMessage({ type: "danger", text: istatistikValidation.errorMessage || "Geçersiz istatistik kodu!" });
+      return;
+    }
+
     const validLines = lines.filter((l) => (l.kod && l.kod.trim() !== "") && (parseNum(l.miktar) > 0 || parseNum(l.tutar) > 0));
     if (validLines.length === 0 || totalTutar <= 0) {
       setSaveMessage({ type: "danger", text: "Lütfen geçerli bir döviz satırı ve tutar giriniz." });
@@ -1088,6 +1235,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       cariKodu: cariKodu,
       vknTckn: formVknTckn,
       istatistikKodu: istatistikKod,
+      seriNo: seriNo.trim() || undefined,
+      belgeNo: belgeNo.trim() || undefined,
       allLines: validLines,
       lines: validLines,
       detay: {
@@ -1151,6 +1300,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
   // F9) Arbitraj Yazdırma Modalı Aç
   const handleOpenPrintModal = () => {
+    if (!istatistikValidation.isValid) {
+      setSaveMessage({ type: "danger", text: istatistikValidation.errorMessage || "Geçersiz istatistik kodu!" });
+      return;
+    }
+
     const validLines = lines.filter((l) => (l.kod && l.kod.trim() !== "") && (parseNum(l.miktar) > 0 || parseNum(l.tutar) > 0));
     if (validLines.length === 0 || totalTutar <= 0) {
       setSaveMessage({ type: "danger", text: "Lütfen yazdırmak için geçerli bir döviz satırı ve tutar giriniz." });
@@ -1185,6 +1339,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       cariKodu: cariKodu,
       vknTckn: formVknTckn,
       istatistikKodu: istatistikKod,
+      seriNo: seriNo.trim() || undefined,
+      belgeNo: belgeNo.trim() || undefined,
       allLines: validLines,
       lines: validLines,
       detay: {
@@ -1330,12 +1486,49 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const istatistikColumns: LookupColumn<StatisticItem>[] = useMemo(() => [
     {
       header: "İstatistik Kodu",
-      width: "130px",
+      width: "120px",
       render: (s) => <span className="font-monospace fw-bold text-primary">{s.kod}</span>,
     },
     {
       header: "Açıklama / Tanım",
       render: (s) => <span>{(s as any).aciklama || (s as any).ad || (s as any).tanim || s.kod}</span>,
+    },
+    {
+      header: "Fiş Tipi",
+      width: "100px",
+      render: (s) => {
+        const fType = Number(s.fisTipi);
+        const label = fType === 0 ? "Alış" : fType === 1 ? "Satış" : "Alış-Satış";
+        const bg = fType === 0 ? "success" : fType === 1 ? "danger" : "primary";
+        return <Badge bg={bg} className="px-2 py-0.5">{label}</Badge>;
+      },
+    },
+    {
+      header: "Kom %",
+      width: "75px",
+      render: (s) => (
+        <span className="font-monospace fw-semibold text-end d-block">
+          {Number(s.komisyonOrani || 0) > 0 ? `%${s.komisyonOrani}` : "-"}
+        </span>
+      ),
+    },
+    {
+      header: "BMV %",
+      width: "75px",
+      render: (s) => (
+        <span className="font-monospace fw-semibold text-end d-block">
+          {Number(s.bmvOrani || 0) > 0 ? `%${s.bmvOrani}` : "-"}
+        </span>
+      ),
+    },
+    {
+      header: "KMV %",
+      width: "75px",
+      render: (s) => (
+        <span className="font-monospace fw-semibold text-end d-block">
+          {Number(s.kmvOrani || 0) > 0 ? `%${s.kmvOrani}` : "-"}
+        </span>
+      ),
     },
   ], []);
 
@@ -1734,7 +1927,25 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                       <Form.Control
                         type="text"
                         value={istatistikKod}
-                        onChange={(e) => setIstatistikKod(e.target.value)}
+                        isInvalid={!istatistikValidation.isValid}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setIstatistikKod(val);
+                          const found = filteredStatList.find(
+                            (s) => (s.kod || "").toLowerCase() === val.trim().toLowerCase()
+                          );
+                          if (found) {
+                            setLines((prev) => applyStatisticRatesToLines(found, islemYonu, prev));
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!istatistikValidation.isValid) {
+                            setSaveMessage({
+                              type: "danger",
+                              text: istatistikValidation.errorMessage || "Geçersiz istatistik kodu!",
+                            });
+                          }
+                        }}
                         onDoubleClick={() => {
                           setLookupSearchTerm(istatistikKod);
                           setLookupType("istatistik");
@@ -1747,21 +1958,43 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                         }}
                         placeholder="İstatistik Kodu..."
                         className="font-monospace fw-bold px-2 py-1"
-                        style={{ fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ fontSize: "12.5px", borderColor: !istatistikValidation.isValid ? "#dc2626" : "#cbd5e1" }}
                       />
                       <Button
                         variant="outline-secondary"
                         className="px-2 py-0 bg-white"
-                        style={{ borderColor: "#cbd5e1" }}
+                        style={{ borderColor: !istatistikValidation.isValid ? "#dc2626" : "#cbd5e1" }}
                         onClick={() => {
                           setLookupSearchTerm(istatistikKod);
                           setLookupType("istatistik");
                         }}
-                        title="İstatistik Kodu Seç (Dürbün)"
+                        title={`İstatistik Kodu Seç (Dürbün) - ${islemYonu === "alis" ? "Alış/Alış-Satış" : "Satış/Alış-Satış"}`}
                       >
                         <IconBinoculars size={14} />
                       </Button>
                     </InputGroup>
+                    {activeStat && (
+                      <div className="d-flex align-items-center gap-1.5 mt-0.5" style={{ fontSize: "11px" }}>
+                        <span className="fw-semibold text-truncate text-secondary" style={{ maxWidth: "160px" }}>
+                          {(activeStat as any).aciklama || (activeStat as any).ad || activeStat.kod}
+                        </span>
+                        {Number(activeStat.komisyonOrani || 0) > 0 && (
+                          <span className="badge bg-primary-subtle text-primary border px-1 py-0" style={{ fontSize: "10px" }}>
+                            Kom %{activeStat.komisyonOrani}
+                          </span>
+                        )}
+                        {Number(activeStat.bmvOrani || 0) > 0 && (
+                          <span className="badge bg-danger-subtle text-danger border px-1 py-0" style={{ fontSize: "10px" }}>
+                            BMV %{activeStat.bmvOrani}
+                          </span>
+                        )}
+                        {Number(activeStat.kmvOrani || 0) > 0 && (
+                          <span className="badge bg-warning-subtle text-warning-emphasis border px-1 py-0" style={{ fontSize: "10px" }}>
+                            KMV %{activeStat.kmvOrani}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1795,17 +2028,17 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                     <th style={{ width: "135px" }}>Tutar (TL)</th>
                     <th style={{ width: "65px" }}>Kom %</th>
                     <th style={{ width: "90px" }}>Komisyon</th>
-                    {isSatis && <th style={{ width: "65px" }}>BMV %</th>}
-                    {isSatis && <th style={{ width: "90px" }}>BMV</th>}
-                    {isSatis && <th style={{ width: "65px" }}>KMV %</th>}
-                    {isSatis && <th style={{ width: "90px" }}>KMV</th>}
+                    <th style={{ width: "65px" }}>BMV %</th>
+                    <th style={{ width: "90px" }}>BMV</th>
+                    <th style={{ width: "65px" }}>KMV %</th>
+                    <th style={{ width: "90px" }}>KMV</th>
                     <th style={{ width: "40px" }}>İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lines.length === 0 ? (
                     <tr>
-                      <td colSpan={isSatis ? 13 : 9} className="text-center py-3 text-muted">
+                      <td colSpan={13} className="text-center py-3 text-muted">
                         Arbitraj tablosu boştur.
                       </td>
                     </tr>
@@ -2029,17 +2262,18 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
                                 e.preventDefault();
-                                if (idx >= lines.length - 1) {
-                                  handleAddBlankLine();
-                                  focusArbCell(idx + 1, "kod");
-                                } else {
-                                  focusArbCell(idx + 1, "kod");
-                                }
+                                focusArbCell(idx, "bmvOrani");
                               } else if (e.key === "ArrowLeft") {
                                 const el = e.currentTarget;
                                 if (el.selectionStart === 0 && el.selectionEnd === 0) {
                                   e.preventDefault();
                                   focusArbCell(idx, "tutar");
+                                }
+                              } else if (e.key === "ArrowRight") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "bmvOrani");
                                 }
                               }
                             }}
@@ -2055,54 +2289,87 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                             value={l.komisyon || ""}
                           />
                         </td>
-                        {isSatis && (
-                          <td>
-                            <Form.Control
-                              size="sm"
-                              readOnly
-                              tabIndex={-1}
-                              className="text-center font-monospace px-1 bg-light"
-                              style={{ fontSize: "12px", height: "26px" }}
-                              value={l.bmvOrani || ""}
-                            />
-                          </td>
-                        )}
-                        {isSatis && (
-                          <td>
-                            <Form.Control
-                              size="sm"
-                              readOnly
-                              tabIndex={-1}
-                              className="text-end font-monospace px-1.5 bg-light"
-                              style={{ fontSize: "12px", height: "26px" }}
-                              value={l.bmv || ""}
-                            />
-                          </td>
-                        )}
-                        {isSatis && (
-                          <td>
-                            <Form.Control
-                              size="sm"
-                              readOnly
-                              tabIndex={-1}
-                              className="text-center font-monospace px-1 bg-light"
-                              style={{ fontSize: "12px", height: "26px" }}
-                              value={l.kmvOrani || ""}
-                            />
-                          </td>
-                        )}
-                        {isSatis && (
-                          <td>
-                            <Form.Control
-                              size="sm"
-                              readOnly
-                              tabIndex={-1}
-                              className="text-end font-monospace px-1.5 bg-light"
-                              style={{ fontSize: "12px", height: "26px" }}
-                              value={l.kmv || ""}
-                            />
-                          </td>
-                        )}
+                        <td>
+                          <Form.Control
+                            id={`arb-cell-${idx}-bmvOrani`}
+                            size="sm"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="text-center font-monospace px-1"
+                            style={{ fontSize: "12px", height: "26px" }}
+                            value={l.bmvOrani || ""}
+                            onChange={(e) => handleUpdateLine(l.id, "bmvOrani", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+                                e.preventDefault();
+                                focusArbCell(idx, "kmvOrani");
+                              } else if (e.key === "ArrowLeft") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === 0 && el.selectionEnd === 0) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "komisyonOrani");
+                                }
+                              } else if (e.key === "ArrowRight") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === el.value.length && el.selectionEnd === el.value.length) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "kmvOrani");
+                                }
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <Form.Control
+                            size="sm"
+                            readOnly
+                            tabIndex={-1}
+                            className="text-end font-monospace px-1.5 bg-light"
+                            style={{ fontSize: "12px", height: "26px" }}
+                            value={l.bmv || ""}
+                          />
+                        </td>
+                        <td>
+                          <Form.Control
+                            id={`arb-cell-${idx}-kmvOrani`}
+                            size="sm"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            className="text-center font-monospace px-1"
+                            style={{ fontSize: "12px", height: "26px" }}
+                            value={l.kmvOrani || ""}
+                            onChange={(e) => handleUpdateLine(l.id, "kmvOrani", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+                                e.preventDefault();
+                                if (idx >= lines.length - 1) {
+                                  handleAddBlankLine();
+                                  focusArbCell(idx + 1, "kod");
+                                } else {
+                                  focusArbCell(idx + 1, "kod");
+                                }
+                              } else if (e.key === "ArrowLeft") {
+                                const el = e.currentTarget;
+                                if (el.selectionStart === 0 && el.selectionEnd === 0) {
+                                  e.preventDefault();
+                                  focusArbCell(idx, "bmvOrani");
+                                }
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <Form.Control
+                            size="sm"
+                            readOnly
+                            tabIndex={-1}
+                            className="text-end font-monospace px-1.5 bg-light"
+                            style={{ fontSize: "12px", height: "26px" }}
+                            value={l.kmv || ""}
+                          />
+                        </td>
                         <td className="text-center">
                           <Button
                             variant="outline-danger"
@@ -2722,8 +2989,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       <LookupModal<StatisticItem>
         show={lookupType === "istatistik"}
         onHide={() => setLookupType(null)}
-        title="İstatistik Kodu Seçimi"
-        items={statisticList}
+        title={`İstatistik Kodu Seçimi (${islemYonu === "alis" ? "Alış Fişi - Sadece Alış ve Alış-Satış Kodları" : "Satış Fişi - Sadece Satış ve Alış-Satış Kodları"})`}
+        items={filteredStatList}
         columns={istatistikColumns}
         initialSearchTerm={lookupSearchTerm}
         filterFn={(s, term) => {
@@ -2737,6 +3004,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         onSelect={(s) => {
           setIstatistikKod(s.kod);
           setLookupType(null);
+          setLines((prev) => applyStatisticRatesToLines(s, islemYonu, prev));
         }}
       />
     </>

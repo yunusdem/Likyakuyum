@@ -285,6 +285,11 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
                 {toplamFisSayisi} Fiş
               </span>
             )}
+            {!props.fisId && (
+              <span className="badge bg-warning text-dark border border-warning-subtle fw-bold ms-1" style={{ fontSize: "11px" }}>
+                Teklif (Kayıtsız)
+              </span>
+            )}
           </Modal.Title>
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <div className="d-flex align-items-center gap-1">
