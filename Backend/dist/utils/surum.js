@@ -32,3 +32,41 @@ export const calisanSurum = () => {
     }
     return (onbellek = "0.0.0");
 };
+/**
+ * Çalışan kodun git commit'i (.git/HEAD okunur; git programı gerekmez). Kopya .git içermiyorsa null.
+ * Test / canlı ayrımında panel ve sağlık ucu bunu gösterir (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md).
+ */
+export const depoKoku = () => {
+    const burasi = path.dirname(fileURLToPath(import.meta.url));
+    // Backend/src/utils ya da Backend/dist/utils → depo kökü
+    return path.resolve(burasi, "../../..");
+};
+export const gitCommit = (kok) => {
+    try {
+        const git = path.join(kok, ".git");
+        const head = fs.readFileSync(path.join(git, "HEAD"), "utf8").trim();
+        if (!head.startsWith("ref:"))
+            return head || null;
+        const ref = head.slice(4).trim();
+        try {
+            return fs.readFileSync(path.join(git, ref), "utf8").trim() || null;
+        }
+        catch {
+            const packed = fs.readFileSync(path.join(git, "packed-refs"), "utf8");
+            const satir = packed
+                .split("\n")
+                .map((l) => l.trim())
+                .find((l) => l.endsWith(" " + ref));
+            return satir ? satir.split(" ")[0] : null;
+        }
+    }
+    catch {
+        return null;
+    }
+};
+let commitOnbellek;
+export const calisanCommit = () => {
+    if (commitOnbellek !== undefined)
+        return commitOnbellek;
+    return (commitOnbellek = gitCommit(depoKoku()));
+};

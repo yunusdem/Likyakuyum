@@ -52,6 +52,8 @@ export interface CariKartItem {
   whatsappAdi: string | null;
   eFaturaPostaKutusu: string | null;
   eIrsaliyePostaKutusu: string | null;
+  fotografId?: number | null;
+  fotograf?: CariFotografItem | null;
   borcBakiye?: number;
   alacakBakiye?: number;
   netBakiye?: number;
@@ -59,6 +61,16 @@ export interface CariKartItem {
   hasBakiye?: number;
   hasYon?: "B" | "A" | "-";
   bakiyeOzet?: string;
+}
+
+export interface CariFotografItem {
+  fotografId: number;
+  cariKartId: number;
+  belgeTuru: number; // 0: Kimlik, 1: Pasaport, 2: Vergi Levhası, 3: Diğer
+  dosyaAdi: string;
+  mimeTipi: string;
+  dataUrl: string;
+  eklemeZamani?: string | null;
 }
 
 export interface CariKartFormData {
@@ -114,6 +126,14 @@ export interface CariKartFormData {
   whatsappAdi: string | null;
   eFaturaPostaKutusu: string | null;
   eIrsaliyePostaKutusu: string | null;
+  fotografId?: number | null;
+  fotograf?: CariFotografItem | null;
+  fotografData?: {
+    base64: string;
+    belgeTuru?: number;
+    dosyaAdi?: string;
+    mimeTipi?: string;
+  };
 }
 
 export interface LookupItem {
@@ -313,5 +333,38 @@ export class CariService {
       ad: data.ad,
       kod: data.kod,
     };
+  }
+
+  // ─── Kimlik / Pasaport / Vergi Levhası Fotoğraf İşlemleri ─────────────────
+
+  public static async getCariFotograf(cariKartId: number | string): Promise<{ fotograf: CariFotografItem | null; fotograflar: CariFotografItem[] }> {
+    const res = await apiClient.get<any>(`/cari/${cariKartId}/fotograf`);
+    const data = res.data;
+    if (!data) return { fotograf: null, fotograflar: [] };
+    const fotograflar: CariFotografItem[] = Array.isArray(data.fotograflar)
+      ? data.fotograflar
+      : data.fotograf
+      ? [data.fotograf]
+      : data.fotografId
+      ? [data]
+      : [];
+    const fotograf = data.fotograf || (fotograflar.length > 0 ? fotograflar[0] : null);
+    return { fotograf, fotograflar };
+  }
+
+  public static async saveCariFotograf(
+    cariKartId: number | string,
+    payload: { base64: string; belgeTuru?: number; dosyaAdi?: string; mimeTipi?: string }
+  ): Promise<CariFotografItem> {
+    const res = await apiClient.post<CariFotografItem>(`/cari/${cariKartId}/fotograf`, payload);
+    FastLookupCache.invalidate("cariKartlar");
+    return res.data;
+  }
+
+  public static async deleteCariFotograf(cariKartId: number | string, fotografId?: number): Promise<boolean> {
+    const url = fotografId ? `/cari/${cariKartId}/fotograf?fotografId=${fotografId}` : `/cari/${cariKartId}/fotograf`;
+    const res = await apiClient.delete(url);
+    FastLookupCache.invalidate("cariKartlar");
+    return res.success;
   }
 }

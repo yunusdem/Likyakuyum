@@ -43,7 +43,8 @@ export class CariController {
      */
     static createCariKart = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
-        const created = await CariService.createCariKart(req.body, dbContext);
+        const kullaniciId = req.user?.userId ? Number(req.user.userId) : undefined;
+        const created = await CariService.createCariKart(req.body, dbContext, kullaniciId);
         return ApiResponse.created(res, "Cari kart başarıyla oluşturuldu.", created);
     });
     /**
@@ -51,7 +52,8 @@ export class CariController {
      */
     static updateCariKart = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
-        const updated = await CariService.updateCariKart(req.params.id, req.body, dbContext);
+        const kullaniciId = req.user?.userId ? Number(req.user.userId) : undefined;
+        const updated = await CariService.updateCariKart(req.params.id, req.body, dbContext, kullaniciId);
         return ApiResponse.ok(res, "Cari kart başarıyla güncellendi.", updated);
     });
     /**
@@ -61,5 +63,31 @@ export class CariController {
         const dbContext = CariController.getDbContext(req);
         await CariService.deleteCariKart(req.params.id, dbContext);
         return ApiResponse.ok(res, "Cari kart başarıyla silindi.", { id: req.params.id });
+    });
+    // ─── Fotoğraf Endpoints ───────────────────────────────────────────────────
+    /**
+     * GET /api/v1/cari/:id/fotograf
+     */
+    static getCariFotograf = asyncHandler(async (req, res) => {
+        const dbContext = CariController.getDbContext(req);
+        const foto = await CariService.getCariFotograf(req.params.id, dbContext);
+        return ApiResponse.ok(res, "Cari fotoğrafı getirildi.", foto);
+    });
+    /**
+     * POST /api/v1/cari/:id/fotograf
+     */
+    static saveCariFotograf = asyncHandler(async (req, res) => {
+        const dbContext = CariController.getDbContext(req);
+        const kullaniciId = req.user?.userId ? Number(req.user.userId) : undefined;
+        const foto = await CariService.saveCariFotograf(req.params.id, req.body, kullaniciId, dbContext);
+        return ApiResponse.ok(res, "Cari fotoğrafı başarıyla kaydedildi.", foto);
+    });
+    /**
+     * DELETE /api/v1/cari/:id/fotograf
+     */
+    static deleteCariFotograf = asyncHandler(async (req, res) => {
+        const dbContext = CariController.getDbContext(req);
+        await CariService.deleteCariFotograf(req.params.id, dbContext);
+        return ApiResponse.ok(res, "Cari fotoğrafı başarıyla silindi.");
     });
 }

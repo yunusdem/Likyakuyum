@@ -9,11 +9,12 @@ import { IzlemeController } from "../controllers/admin/izleme.controller.js";
 import { PosAdminController } from "../controllers/admin/posAdmin.controller.js";
 import { PanoApiAdminController } from "../controllers/admin/panoApiAdmin.controller.js";
 import { DestekAdminController } from "../controllers/admin/destekAdmin.controller.js";
+import { DagitimController } from "../controllers/admin/dagitim.controller.js";
 import { adminKonuListeSchema, adminMesajSchema, adminKonuGuncelleSchema, bildirimOlusturSchema, bildirimGuncelleSchema, destekIdSchema, } from "../schemas/destek.schema.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { adminKapisi, adminAuthenticate, adminGirisSiniri, sifreBelirlenmisOlmali, adminHataIsleyici, epostaOnaySiniri, } from "../middlewares/adminAuth.middleware.js";
 import { ApiError } from "../utils/ApiError.js";
-import { adminGirisSchema, adminSifreDegistirSchema, adminEkleSchema, adminGuncelleSchema, adminIdSchema, firmaEkleSchema, bulutFirmaSchema, firmaSilSchema, indirSchema, lisansKodSchema, lisansIptalSchema, ayarKaydetSchema, surumGuncelleSchema, hedefSurumSchema, firmaGuncelleSchema, firmaDurumSchema, firmaDogrulamaSchema, lisansEkleSchema, kullaniciEkleSchema, kullaniciGuncelleSchema, modulKatalogSchema, firmaModulSchema, girisLogSchema, islemLogSchema, oturumKapatSchema, epostaDogrulamaElleSchema, epostaOnaySchema, adminFirmaPanoSchema, paketIlkIcerikSchema, paketYazSchema, paketOnizlemeSchema, } from "../schemas/admin.schema.js";
+import { adminGirisSchema, adminSifreDegistirSchema, adminEkleSchema, adminGuncelleSchema, adminIdSchema, firmaEkleSchema, bulutFirmaSchema, firmaSilSchema, indirSchema, lisansKodSchema, lisansIptalSchema, ayarKaydetSchema, surumGuncelleSchema, dagitimBaslatSchema, dagitimIdSchema, hedefSurumSchema, firmaGuncelleSchema, firmaDurumSchema, firmaDogrulamaSchema, lisansEkleSchema, kullaniciEkleSchema, kullaniciGuncelleSchema, modulKatalogSchema, firmaModulSchema, girisLogSchema, islemLogSchema, oturumKapatSchema, epostaDogrulamaElleSchema, epostaOnaySchema, adminFirmaPanoSchema, paketIlkIcerikSchema, paketYazSchema, paketOnizlemeSchema, } from "../schemas/admin.schema.js";
 // Ana admin paneli API'si (docs/ADMIN_PANEL_YOL_HARITASI.md). Kullanıcı tarafının authenticate'i burada kullanılmaz.
 const router = Router();
 router.use(adminKapisi);
@@ -64,6 +65,12 @@ router.get("/firmalar/:id/kurulum/firma-dosyasi", validate(adminIdSchema), Firma
 router.post("/firmalar/:id/kurulum/baglanti", validate(adminIdSchema), FirmaController.kurulumBaglantisi);
 router.put("/firmalar/:id/hedef-surum", validate(hedefSurumSchema), FirmaController.hedefSurum);
 router.get("/surumler", FirmaController.surumler);
+// Dağıtım: test / canlı sürüm durumu, panelden güncelleme (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
+router.get("/dagitim/ozet", DagitimController.ozet);
+router.get("/dagitim", DagitimController.durum);
+router.post("/dagitim", validate(dagitimBaslatSchema), DagitimController.baslat);
+router.post("/dagitim/goruldu", DagitimController.goruldu);
+router.get("/dagitim/:id/log", validate(dagitimIdSchema), DagitimController.log);
 router.put("/surumler/:surum", validate(surumGuncelleSchema), FirmaController.surumGuncelle);
 router.put("/ayarlar", validate(ayarKaydetSchema), FirmaController.ayarKaydet);
 router.get("/kullanicilar", KullaniciController.tumu);

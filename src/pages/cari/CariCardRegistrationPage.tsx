@@ -50,7 +50,10 @@ import {
   CariKartItem,
   CariKartFormData,
   CariLookups,
+  CariFotografItem,
 } from "../../services/cariService";
+import { CariKimlikFotografSection } from "../../components/cari/CariKimlikFotografSection";
+import { OcrExtractedData } from "../../utils/kimlikOcrParser";
 import { ebelgeService } from "../../services/ebelgeService";
 import { KnskCariAlani } from "../ebelge/EBelgeKnsk";
 import { Country, State, City } from "country-state-city";
@@ -215,6 +218,230 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
   const [selectedStateCode, setSelectedStateCode] = useState<string>("");
   const [selectedProvinceName, setSelectedProvinceName] = useState<string>("");
   const [selectedDistrictName, setSelectedDistrictName] = useState<string>("");
+
+  // Kimlik / Pasaport / Vergi Levhası Fotoğraf Durumları (Arkalı Önlü Çoklu Fotoğraf)
+  const [currentPhoto, setCurrentPhoto] = useState<CariFotografItem | null>(null);
+  const [currentPhotos, setCurrentPhotos] = useState<CariFotografItem[]>([]);
+  const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
+  const [selectedBelgeTuru, setSelectedBelgeTuru] = useState<number>(0);
+
+  const handlePhotoSelected = (base64: string) => {
+    setPendingPhotos((prev) => [...prev, base64]);
+  };
+
+  const handlePhotosSelected = (base64List: string[]) => {
+    setPendingPhotos(base64List);
+  };
+
+  const handlePhotoDeleted = async (index?: number, photoId?: number) => {
+    if (pendingPhotos.length > 0) {
+      if (index !== undefined && index >= 0 && index < pendingPhotos.length) {
+        setPendingPhotos((prev) => prev.filter((_, i) => i !== index));
+      } else {
+        setPendingPhotos([]);
+      }
+      return;
+    }
+
+    if (selectedCari?.id) {
+      try {
+        await CariService.deleteCariFotograf(selectedCari.id, photoId);
+        if (photoId) {
+          setCurrentPhotos((prev) => prev.filter((p) => p.fotografId !== photoId));
+          setCurrentPhoto((prev) => (prev?.fotografId === photoId ? null : prev));
+        } else {
+          setCurrentPhotos([]);
+          setCurrentPhoto(null);
+        }
+        setAlertSuccess("Kimlik fotoğrafı veritabanından başarıyla silindi.");
+      } catch (err: any) {
+        setAlertError("Fotoğraf silinirken hata oluştu: " + (err.message || err));
+      }
+    } else {
+      setCurrentPhotos([]);
+      setCurrentPhoto(null);
+    }
+  };
+
+  const handleOcrApply = (extracted: OcrExtractedData) => {
+    setFormData((prev) => {
+      const next = { ...prev };
+
+      // 1. Kimlik Belge Türü (0: Kimlik, 1: Pasaport, 2: Vergi Levhası)
+      if (extracted.belgeTuru !== undefined) {
+        next.kimlikBelgeTuru = extracted.belgeTuru;
+        setSelectedBelgeTuru(extracted.belgeTuru);
+      }
+
+      // 2. TCKN / VKN (Vergi Kimlik No)
+      if (extracted.vergiKimlikNo) {
+        next.vergiKimlikNo = extracted.vergiKimlikNo;
+      } else if (extracted.tcKimlikNo) {
+        next.vergiKimlikNo = extracted.tcKimlikNo;
+      }
+
+      // 3. Cari Ünvan / Ad (Ad + Soyad veya Ticaret Ünvanı)
+      if (extracted.unvan) {
+        next.ad = extracted.unvan;
+      } else if (extracted.ad && extracted.soyad) {
+        next.ad = `${extracted.ad} ${extracted.soyad}`.trim();
+      } else if (extracted.ad) {
+        next.ad = extracted.ad;
+      }
+
+      // 4. Kimlik Seri No
+      if (extracted.kimlikSeriNo) {
+        next.kimlikSeriNo = extracted.kimlikSeriNo;
+      }
+
+      // 5. Pasaport No
+      if (extracted.pasaportNo) {
+        next.pasaportNo = extracted.pasaportNo;
+      }
+
+      // 6. Doğum Tarihi (YYYY-MM-DD)
+      if (extracted.dogumTarihi) {
+        next.dogumTarihi = extracted.dogumTarihi;
+      }
+
+      // 7. Kimlik Geçerlilik Tarihi (YYYY-MM-DD)
+      if (extracted.kimlikGecerlilikTarihi) {
+        next.kimlikGecerlilikTarihi = extracted.kimlikGecerlilikTarihi;
+      }
+
+      // 8. Baba Adı
+      if (extracted.babaAdi) {
+        next.babaAdi = extracted.babaAdi;
+      }
+
+      // 9. Anne Adı
+      if (extracted.anneAdi) {
+        next.anneAdi = extracted.anneAdi;
+      }
+
+      // 10. Doğum Yeri
+      if (extracted.dogumYeri) {
+        next.dogumYeri = extracted.dogumYeri;
+      } else if (extracted.il || extracted.ilce) {
+        next.dogumYeri = [extracted.ilce, extracted.il].filter(Boolean).join(" / ");
+      }
+
+      // 11. Ülke & Uyruk
+      // Türk kimliği veya Türkiye belirtilmişse veya Vergi Levhası ise
+      if (
+        extracted.ulke === "Türkiye" ||
+        extracted.uyruk === "TUR" ||
+        extracted.belgeTuru === 0 ||
+        extracted.belgeTuru === 2
+      ) {
+        const matchTr = lookups.ulkeList.find((u) => {
+          const n = normalizeTr(u.ad);
+          return n.includes("turk") || (u.kod && u.kod.trim().toUpperCase() === "TR");
+        });
+        const turkeyId = matchTr ? matchTr.id : 218;
+        next.ulkeId = turkeyId;
+        next.uyrukId = turkeyId;
+      } else if (extracted.uyruk && lookups.ulkeList.length > 0) {
+        const matchUlke = lookups.ulkeList.find((u) => {
+          if (u.kod && u.kod.trim().toUpperCase() === extracted.uyruk?.toUpperCase()) return true;
+          return normalizeTr(u.ad).includes(normalizeTr(extracted.uyruk || ""));
+        });
+        if (matchUlke) {
+          next.ulkeId = matchUlke.id;
+          next.uyrukId = matchUlke.id;
+        }
+      }
+
+      // 12. İl & İlçe Eşleme
+      // extracted.il veya extracted.dogumYeri üzerinden il bul
+      const ilCandidate = extracted.il || extracted.dogumYeri;
+      let matchedIlId: number | null = null;
+      if (ilCandidate && lookups.ilList.length > 0) {
+        const normCand = normalizeTr(ilCandidate);
+        const matchIl = lookups.ilList.find((il) => {
+          const normIl = normalizeTr(il.ad);
+          return normIl === normCand || normCand.includes(normIl) || normIl.includes(normCand);
+        });
+        if (matchIl) {
+          matchedIlId = matchIl.id;
+          next.ilId = matchIl.id;
+          const stateMatch = availableStates.find((s) => normalizeTr(s.name) === normalizeTr(matchIl.ad));
+          if (stateMatch) {
+            setSelectedStateCode(stateMatch.isoCode);
+            setSelectedProvinceName(stateMatch.name);
+          } else {
+            setSelectedStateCode(String(matchIl.id).padStart(2, "0"));
+            setSelectedProvinceName(matchIl.ad);
+          }
+        }
+      }
+
+      // extracted.ilce veya il bulunamadıysa doğum yerinin ilçe olup olmadığını kontrol et
+      const ilceCandidate = extracted.ilce || (!matchedIlId ? extracted.dogumYeri : null);
+      if (ilceCandidate && lookups.ilceList.length > 0) {
+        const normIlceCand = normalizeTr(ilceCandidate);
+        const matchIlce = lookups.ilceList.find((ilc) => {
+          const normIlc = normalizeTr(ilc.ad);
+          const nameMatches = normIlc === normIlceCand || normIlceCand.includes(normIlc) || normIlc.includes(normIlceCand);
+          if (!nameMatches) return false;
+          if (matchedIlId && ilc.ustId) {
+            return ilc.ustId === matchedIlId;
+          }
+          return true;
+        });
+
+        if (matchIlce) {
+          next.ilceId = matchIlce.id;
+          setSelectedDistrictName(matchIlce.ad);
+
+          if (!next.ilId && matchIlce.ustId) {
+            next.ilId = matchIlce.ustId;
+            const parentIl = lookups.ilList.find((il) => il.id === matchIlce.ustId);
+            if (parentIl) {
+              const stateMatch = availableStates.find((s) => normalizeTr(s.name) === normalizeTr(parentIl.ad));
+              if (stateMatch) {
+                setSelectedStateCode(stateMatch.isoCode);
+                setSelectedProvinceName(stateMatch.name);
+              } else {
+                setSelectedStateCode(String(parentIl.id).padStart(2, "0"));
+                setSelectedProvinceName(parentIl.ad);
+              }
+            }
+          }
+        }
+      }
+
+      // 13. Vergi Dairesi (lookup listesinde isim benzerliği varsa)
+      if (extracted.vergiDairesiAdi && lookups.vergiDairesiList.length > 0) {
+        const norm = normalizeTr(extracted.vergiDairesiAdi);
+        const match = lookups.vergiDairesiList.find(
+          (vd) => normalizeTr(vd.ad).includes(norm) || norm.includes(normalizeTr(vd.ad))
+        );
+        if (match) {
+          next.vergiDairesiId = match.id;
+        }
+      }
+
+      // 14. Adres
+      if (extracted.adres) {
+        next.adres = extracted.adres;
+      }
+
+      // 15. Vergi Levhası ve Kişilik Tipi
+      if (extracted.belgeTuru === 2) {
+        next.vergiLevhasiAlindi = true;
+        if (extracted.tcKimlikNo && extracted.tcKimlikNo.length === 11) {
+          next.kisilikTipi = 1; // Gerçek Kişi
+        } else if (extracted.vergiKimlikNo && extracted.vergiKimlikNo.length === 10) {
+          next.kisilikTipi = 2; // Tüzel Kişi
+        }
+      }
+
+      return next;
+    });
+
+    setAlertSuccess("✅ Belgedeki bilgiler başarıyla okundu ve cari kart alanlarına aktarıldı.");
+  };
 
   // Posta Kodu alanı ID değil, doğrudan yazılan posta kodu metnine göre çalışır;
   // seçili kaydın gerçek POSTA_KODU_ID'sine karşılık gelen metni burada senkronlar.
@@ -553,6 +780,25 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
     });
     setFieldErrors({});
     setAlertError(null);
+
+    // Kimlik/Belge Fotoğraflarını Getir (Çoklu Fotoğraf Desteği)
+    CariService.getCariFotograf(item.id)
+      .then((res) => {
+        const list = res.fotograflar || (res.fotograf ? [res.fotograf] : []);
+        setCurrentPhotos(list);
+        setCurrentPhoto(res.fotograf || (list.length > 0 ? list[0] : null));
+        setPendingPhotos([]);
+        if (res.fotograf?.belgeTuru !== undefined) {
+          setSelectedBelgeTuru(res.fotograf.belgeTuru);
+        } else if (item.kimlikBelgeTuru !== null && item.kimlikBelgeTuru !== undefined) {
+          setSelectedBelgeTuru(Number(item.kimlikBelgeTuru));
+        }
+      })
+      .catch(() => {
+        setCurrentPhotos([]);
+        setCurrentPhoto(null);
+        setPendingPhotos([]);
+      });
   };
 
   const handleNavigate = (direction: "first" | "prev" | "next" | "last") => {
@@ -569,6 +815,10 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
 
   const handleClear = () => {
     setSelectedCari(null);
+    setCurrentPhotos([]);
+    setCurrentPhoto(null);
+    setPendingPhotos([]);
+    setSelectedBelgeTuru(0);
     setIsNewRecord(true);
     setFormData({
       ...initialFormState,
@@ -922,23 +1172,80 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       setIsSaving(true);
       setAlertError(null);
 
+      const photoPayload = pendingPhotos.length > 0
+        ? {
+            fotografData: {
+              base64: pendingPhotos[0],
+              belgeTuru: selectedBelgeTuru,
+              dosyaAdi:
+                selectedBelgeTuru === 1
+                  ? "pasaport_1.jpg"
+                  : selectedBelgeTuru === 2
+                  ? "vergi_levhasi_1.jpg"
+                  : "kimlik_on.jpg",
+              mimeTipi: "image/jpeg",
+            },
+          }
+        : {};
+
+      let savedCariId: number | null = null;
+      let savedRecord: CariKartItem | null = null;
       if (isNewRecord || !selectedCari) {
-        const created = await CariService.createCariKart(payload);
+        const created = await CariService.createCariKart({
+          ...payload,
+          ...photoPayload,
+        });
+        savedCariId = created.id;
+        savedRecord = created;
+        if (created.fotograf) setCurrentPhoto(created.fotograf);
         setAlertSuccess(`✅ "${created.ad}" [${created.kod}] cari kartı başarıyla eklendi.`);
-        if (isModal && onSuccess) {
-          onSuccess(created);
-          return;
-        }
-        await loadData(isEditPage ? cariList.length : undefined);
       } else {
-        const updated = await CariService.updateCariKart(selectedCari.id, payload);
+        const updated = await CariService.updateCariKart(selectedCari.id, {
+          ...payload,
+          ...photoPayload,
+        });
+        savedCariId = selectedCari.id;
+        savedRecord = updated;
+        if (updated.fotograf) setCurrentPhoto(updated.fotograf);
         setAlertSuccess(`✅ "${updated.ad}" [${updated.kod}] cari kart bilgileri başarıyla güncellendi.`);
-        if (isModal && onSuccess) {
-          onSuccess(updated);
-          return;
-        }
-        await loadData(selectedIndex);
       }
+
+      // Fotoğrafları doğrudan SQL Server TODVZ_FOTOGRAF tablosuna kaydet (Arkalı Önlü vb.)
+      const photosToSave = [...pendingPhotos];
+      if (savedCariId && photosToSave.length > 0) {
+        for (let i = 0; i < photosToSave.length; i++) {
+          try {
+            await CariService.saveCariFotograf(savedCariId, {
+              base64: photosToSave[i],
+              belgeTuru: selectedBelgeTuru,
+              dosyaAdi:
+                selectedBelgeTuru === 1
+                  ? `pasaport_${i + 1}.jpg`
+                  : selectedBelgeTuru === 2
+                  ? `vergi_levhasi_${i + 1}.jpg`
+                  : `kimlik_${i === 0 ? "on" : i === 1 ? "arka" : i + 1}.jpg`,
+              mimeTipi: "image/jpeg",
+            });
+          } catch (fErr) {
+            console.warn("Fotoğraf SQL Server'a kaydedilemedi:", fErr);
+          }
+        }
+      }
+      setPendingPhotos([]);
+
+      if (savedCariId) {
+        try {
+          const refreshed = await CariService.getCariFotograf(savedCariId);
+          setCurrentPhotos(refreshed.fotograflar);
+          setCurrentPhoto(refreshed.fotograf);
+        } catch {}
+      }
+
+      if (isModal && onSuccess && savedRecord) {
+        onSuccess(savedRecord);
+        return;
+      }
+      await loadData(isEditPage ? (isNewRecord ? cariList.length : selectedIndex) : undefined);
     } catch (err: any) {
       const rawMsg = err.message || "İşlem sırasında bir hata oluştu.";
       setAlertError(`❌ Kayıt Başarısız: ${rawMsg}`);
@@ -1131,13 +1438,14 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       {/* 2. Main Container Card (Tam Genişlik, Liste Kaldırıldı, Yatay Inputlar) */}
       <Card className="border shadow-sm rounded-3 mb-4 w-100 bg-white">
         <Card.Body className="p-3 p-md-4">
-          <div className="w-100">
-            <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || "general")}>
-              <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
-                <Tab.Content>
-                  {/* TAB 1: Temel & Kimlik */}
-                  <Tab.Pane eventKey="general">
-                    <div style={{ maxWidth: "390px" }}>
+          <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || "general")}>
+            <Form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
+              <Tab.Content>
+                {/* TAB 1: Temel & Kimlik */}
+                <Tab.Pane eventKey="general">
+                  <div className="d-flex flex-column flex-md-row align-items-start gap-3">
+                    {/* Sol Taraf: Form Inputları (390px) */}
+                    <div style={{ width: "100%", maxWidth: "390px" }}>
                       <Form.Group as={Row} className="mb-2.5 align-items-center gx-2">
                         <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap">
                           Cari Kodu
@@ -1349,7 +1657,28 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                       </Col>
                     </Form.Group>
                     </div>
-                  </Tab.Pane>
+
+                    {/* Fotoğraf Yükleme Bölümü (Sadece Temel Sekmesinde, Formun Hemen Yanında) */}
+                    <div style={{ width: "235px", minWidth: "235px" }} className="flex-shrink-0 mt-1">
+                      <CariKimlikFotografSection
+                        currentPhoto={currentPhoto}
+                        currentPhotos={currentPhotos}
+                        pendingPhotos={pendingPhotos}
+                        pendingBase64={pendingPhotos[0] || null}
+                        selectedBelgeTuru={selectedBelgeTuru}
+                        onBelgeTuruChange={(turu) => {
+                          setSelectedBelgeTuru(turu);
+                          handleInputChange("kimlikBelgeTuru", turu);
+                        }}
+                        onPhotoSelected={handlePhotoSelected}
+                        onPhotosSelected={handlePhotosSelected}
+                        onPhotoDeleted={handlePhotoDeleted}
+                        onOcrApply={handleOcrApply}
+                        disabled={isSaving}
+                      />
+                    </div>
+                  </div>
+                </Tab.Pane>
 
                   {/* TAB 2: İletişim & Adres */}
                   <Tab.Pane eventKey="contact">
@@ -2022,7 +2351,6 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                 </Tab.Content>
               </Form>
             </Tab.Container>
-          </div>
         </Card.Body>
       </Card>
 

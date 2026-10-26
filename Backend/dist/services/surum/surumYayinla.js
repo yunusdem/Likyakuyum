@@ -9,7 +9,7 @@ import { AdminLogSqlRepository } from "../../models/admin/adminLogSql.repository
 import { trZaman } from "../../utils/zaman.utils.js";
 import { ZipYazici, klasorEkle } from "../../utils/zip.js";
 import { klasorKopyala } from "../../utils/dosya.utils.js";
-import { enYuksekGoc, gocDosyalari, semaGocUygula } from "../semaGoc.service.js";
+import { enYuksekGoc, gocDosyalari, gocKlasoru, semaGocUygula } from "../semaGoc.service.js";
 import { kd, klonIle, klonYapilandirildiMi } from "../admin/klon.service.js";
 import { butunlukListesiUret, paketImzala, sha256Dosya } from "./paketImza.js";
 import { DestekService } from "../destek/destek.service.js";
@@ -115,21 +115,47 @@ export const semaYay = async (log = () => undefined) => {
         sonuc.sablon = "atlandı (klonlama hesabı yok)";
         return sonuc;
     }
-    try {
-        const r = await klonIle("LIKYA_SABLON", (pool) => semaGocUygula(pool, dosyalar));
-        if (r.uygulanan.length) {
-            const yedek = await AyarSqlRepository.oku("SABLON_YEDEK_DOSYASI");
-            await klonIle("master", (pool) => pool.request().input("yol", sql.NVarChar(400), yedek).query(`BACKUP DATABASE ${kd("LIKYA_SABLON")} TO DISK = @yol WITH INIT, FORMAT, CHECKSUM`));
+    // Test ortamı (likyakuyum.com) ortak LIKYA_SABLON'a ve onun .bak yedeğine dokunmaz: şablon canlının yeni firma kaynağıdır,
+    // onaylanmamış göç oraya yazılmasın (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md)
+    if (env.ORTAM === "test") {
+        sonuc.sablon = "atlandı (test ortamı)";
+    }
+    else
+        try {
+            const r = await klonIle("LIKYA_SABLON", (pool) => semaGocUygula(pool, dosyalar));
+            if (r.uygulanan.length) {
+                const yedek = await AyarSqlRepository.oku("SABLON_YEDEK_DOSYASI");
+                await klonIle("master", (pool) => pool.request().input("yol", sql.NVarChar(400), yedek).query(`BACKUP DATABASE ${kd("LIKYA_SABLON")} TO DISK = @yol WITH INIT, FORMAT, CHECKSUM`));
+            }
+            sonuc.sablon = r.uygulanan.length ? `güncellendi (${r.uygulanan.join(", ")}), yedek yenilendi` : "güncel";
         }
-        sonuc.sablon = r.uygulanan.length ? `güncellendi (${r.uygulanan.join(", ")}), yedek yenilendi` : "güncel";
+        catch (err) {
+            sonuc.sablon = `HATA: ${err?.message}`;
+        }
+    log(`Şablon: ${sonuc.sablon}`);
+    // Yönetim veritabanı (LIKYA_ADMIN) göçleri: Backend/migrations-admin, klon hesabıyla (db_owner; docs/sql/LIKYA_ADMIN_DAGITIM.sql).
+    // Uygulamanın kendi SQL kullanıcısında DDL yetkisi olmadığından SSMS'te elle yapılan ALTER'lar buraya taşındı (K4).
+    try {
+        const yonetimDosyalari = gocDosyalari(path.resolve(gocKlasoru(), "..", "migrations-admin"));
+        const r = await klonIle(env.ADMIN_DB_NAME, (p) => semaGocUygula(p, yonetimDosyalari));
+        sonuc.yonetim = r.uygulanan.length ? `güncellendi (${r.uygulanan.join(", ")})` : "güncel";
     }
     catch (err) {
-        sonuc.sablon = `HATA: ${err?.message}`;
+        sonuc.yonetim = `HATA: ${String(err?.message || err).slice(0, 200)}`;
     }
-    log(`Şablon: ${sonuc.sablon}`);
+    log(`Yönetim (${env.ADMIN_DB_NAME}): ${sonuc.yonetim}`);
     const pool = await getAdminPool();
     const firmalar = (await pool.request().query(`SELECT FIRMA_ID, FIRMA_KODU, DB_NAME FROM dbo.ADM_FIRMA WHERE BAGLANTI_MODU = 'cloud' AND DURUM IN ('AKTIF','DONDURULMUS','PASIF','SILINECEK')`)).recordset;
+    // Kaydı bulutta görünüp veritabanı bu sunucuda hiç olmayan firma (ör. taşınmış / silinmiş) hata değil, atlanır:
+    // aksi halde panelden her dağıtım bu firma yüzünden "şema göçü hata verdi" deyip geri dönüyordu.
+    // Bağlantı ya da göç hatası olan VAR olan veritabanları yine HATA sayılır.
+    const sunucudakiler = new Set(await klonIle("master", async (p) => (await p.request().query(`SELECT name FROM sys.databases`)).recordset.map((r) => String(r.name).toLowerCase())));
     for (const f of firmalar) {
+        if (!sunucudakiler.has(String(f.DB_NAME || "").toLowerCase())) {
+            sonuc.firmalar.push({ firmaKodu: f.FIRMA_KODU, sonuc: `atlandı (${f.DB_NAME || "-"} veritabanı bu sunucuda yok)` });
+            log(`${f.FIRMA_KODU}: ${sonuc.firmalar[sonuc.firmalar.length - 1].sonuc}`);
+            continue;
+        }
         try {
             const r = await klonIle(f.DB_NAME, (p) => semaGocUygula(p, dosyalar));
             await pool.request().input("id", sql.Int, f.FIRMA_ID).input("s", sql.Int, r.sonraki).query(`UPDATE dbo.ADM_FIRMA SET SEMA_SURUMU = @s WHERE FIRMA_ID = @id`);

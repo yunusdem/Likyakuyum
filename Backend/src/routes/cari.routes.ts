@@ -14,5 +14,9 @@ router.get("/:id", CariController.getCariKartById);
 router.put("/:id", kayitYetkisi("cariKart", kimlikVar()), CariController.updateCariKart);
 router.delete("/:id", kayitYetkisi("cariKart", kimlikVar()), CariController.deleteCariKart);
 
+// Fotoğraf işlemleri (TODVZ_FOTOGRAF & SODVZ_FOTOGRAF_KAYDET)
+router.get("/:id/fotograf", CariController.getCariFotograf);
+router.post("/:id/fotograf", kayitYetkisi("cariKart", kimlikVar()), CariController.saveCariFotograf);
+router.delete("/:id/fotograf", kayitYetkisi("cariKart", kimlikVar()), CariController.deleteCariFotograf);
 
 export default router;

@@ -25,7 +25,6 @@ export class CariController {
    * GET /api/v1/cari
    */
   public static listCariKartlar = asyncHandler(async (req: Request, res: Response) => {
-
     const dbContext = CariController.getDbContext(req);
     const list = await CariService.listCariKartlar(dbContext);
     // "Cari bakiye görebilir" yetkisi yoksa bakiye alanları gönderilmez (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
@@ -50,7 +49,8 @@ export class CariController {
    */
   public static createCariKart = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = CariController.getDbContext(req);
-    const created = await CariService.createCariKart(req.body, dbContext);
+    const kullaniciId = (req.user as any)?.userId ? Number((req.user as any).userId) : undefined;
+    const created = await CariService.createCariKart(req.body, dbContext, kullaniciId);
     return ApiResponse.created(res, "Cari kart başarıyla oluşturuldu.", created);
   });
 
@@ -59,7 +59,8 @@ export class CariController {
    */
   public static updateCariKart = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = CariController.getDbContext(req);
-    const updated = await CariService.updateCariKart(req.params.id, req.body, dbContext);
+    const kullaniciId = (req.user as any)?.userId ? Number((req.user as any).userId) : undefined;
+    const updated = await CariService.updateCariKart(req.params.id, req.body, dbContext, kullaniciId);
     return ApiResponse.ok(res, "Cari kart başarıyla güncellendi.", updated);
   });
 
@@ -70,5 +71,47 @@ export class CariController {
     const dbContext = CariController.getDbContext(req);
     await CariService.deleteCariKart(req.params.id, dbContext);
     return ApiResponse.ok(res, "Cari kart başarıyla silindi.", { id: req.params.id });
+  });
+
+  // ─── Fotoğraf Endpoints ───────────────────────────────────────────────────
+
+  /**
+   * GET /api/v1/cari/:id/fotograf
+   */
+  public static getCariFotograf = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = CariController.getDbContext(req);
+    const fotos = await CariService.getAllCariFotograflar(req.params.id, dbContext);
+    const primary = fotos.length > 0 ? fotos[0] : null;
+    return ApiResponse.ok(res, "Cari fotoğrafları getirildi.", {
+      fotograf: primary,
+      fotograflar: fotos,
+      // Doğrudan primary özelliklerini de döndürerek geriye dönük tam uyumluluk sağla
+      ...(primary || {}),
+    });
+  });
+
+  /**
+   * POST /api/v1/cari/:id/fotograf
+   */
+  public static saveCariFotograf = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = CariController.getDbContext(req);
+    const kullaniciId = (req.user as any)?.userId ? Number((req.user as any).userId) : undefined;
+    const foto = await CariService.saveCariFotograf(
+      req.params.id,
+      req.body,
+      kullaniciId,
+      dbContext
+    );
+    return ApiResponse.ok(res, "Cari fotoğrafı başarıyla kaydedildi.", foto);
+  });
+
+  /**
+   * DELETE /api/v1/cari/:id/fotograf
+   */
+  public static deleteCariFotograf = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = CariController.getDbContext(req);
+    const fotografId = req.query.fotografId ? Number(req.query.fotografId) : undefined;
+    await CariService.deleteCariFotograf(req.params.id, fotografId, dbContext);
+    return ApiResponse.ok(res, "Cari fotoğrafı başarıyla silindi.");
   });
 }

@@ -109,6 +109,8 @@ export interface CariKartModel {
   whatsappAdi: string | null;
   eFaturaPostaKutusu: string | null;
   eIrsaliyePostaKutusu: string | null;
+  fotografId?: number | null;
+  fotograf?: any;
   borcBakiye?: number;
   alacakBakiye?: number;
   netBakiye?: number;
@@ -171,6 +173,13 @@ export interface CariKartInputDto {
   whatsappAdi?: string | null;
   eFaturaPostaKutusu?: string | null;
   eIrsaliyePostaKutusu?: string | null;
+  fotografId?: number | null;
+  fotografData?: {
+    base64: string;
+    belgeTuru?: number;
+    dosyaAdi?: string;
+    mimeTipi?: string;
+  };
 }
 
 const toInt = (val: any): number | null => {
