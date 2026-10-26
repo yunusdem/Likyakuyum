@@ -13,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 import QRCode from "qrcode";
 import { CariService } from "../../services/cariService";
-import { TodvzTanimDto } from "../../services/companyService";
+import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { tutarYaziylaTr } from "../../utils/tutarYaziyla";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { useAuth } from "../../context/AuthContext";
@@ -22,6 +22,41 @@ import { triggerSilentPrint } from "../../services/silentPrintService";
 const formatNumberTr = (val: number, decimals: number = 2) => {
   if (val === undefined || val === null || isNaN(val)) return "0,00";
   return val.toLocaleString("tr-TR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+};
+
+// Boş / tanımsız değerleri kalemle doldurulabilmesi için temiz string'e dönüştür
+const cleanValue = (val?: string | null): string => {
+  if (!val) return "";
+  const s = String(val).trim();
+  if (
+    s === "-" ||
+    s === "—" ||
+    s.toLowerCase() === "tanımsız" ||
+    s.toLowerCase() === "null" ||
+    s.toLowerCase() === "undefined"
+  ) {
+    return "";
+  }
+  return s;
+};
+
+const formatDateTr = (dateStr?: string | null): string => {
+  if (!dateStr) return "";
+  const clean = dateStr.trim();
+  if (!clean || clean === "-" || clean === "—") return "";
+  if (clean.includes("T")) {
+    const p = clean.split("T")[0].split("-");
+    if (p.length === 3) return `${p[2]}.${p[1]}.${p[0]}`;
+  }
+  if (clean.includes("-")) {
+    const p = clean.split("-");
+    if (p.length === 3) return `${p[2]}.${p[1]}.${p[0]}`;
+  }
+  if (clean.includes("/")) {
+    const p = clean.split("/");
+    if (p.length === 3) return `${p[0].padStart(2, "0")}.${p[1].padStart(2, "0")}.${p[2]}`;
+  }
+  return clean;
 };
 
 export interface DovizTeklifTaniModalProps {
@@ -37,6 +72,7 @@ export interface DovizTeklifTaniModalProps {
   cariKartId?: number | null;
   // Detay alanları
   detayUyruk?: string;
+  detayDogumTarihi?: string;
   detayDogumYeri?: string;
   detayBabaAdi?: string;
   detayAnneAdi?: string;
@@ -47,6 +83,7 @@ export interface DovizTeklifTaniModalProps {
   detayAdres?: string;
   detayPasaportNo?: string;
   detayCariTipi?: string;
+  detayVergiDairesi?: string;
   // Satırlar & tutarlar
   lines: Array<{
     paraKodu: string;
@@ -56,17 +93,27 @@ export interface DovizTeklifTaniModalProps {
     tutar: number | string;
     usdKarsiligi?: number | string;
     bmv?: number | string;
+    kmv?: number | string;
     ettn?: string;
   }>;
   toplamTutar?: number;
   totalMasraf?: number;
   sonToplam?: number;
   bsmvTutari?: number;
+  totalKmv?: number;
+  komisyonTutari?: number;
   giseUsdKuru?: number;
   istatistikKodu?: string;
   gelisNedeni?: string;
+  geldigiUlke?: string;
+  vezneKod?: string;
+  vezneAd?: string;
   // Firma bilgileri
   companyDefinitions?: TodvzTanimDto | null;
+  firmaVergiDairesi?: string;
+  firmaIlce?: string;
+  firmaIl?: string;
+  ettn?: string;
 }
 
 export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
@@ -81,6 +128,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   vergiKimlikNo = "",
   cariKartId,
   detayUyruk = "",
+  detayDogumTarihi = "",
   detayDogumYeri = "",
   detayBabaAdi = "",
   detayAnneAdi = "",
@@ -91,15 +139,25 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   detayAdres = "",
   detayPasaportNo = "",
   detayCariTipi = "",
+  detayVergiDairesi = "",
   lines = [],
   toplamTutar = 0,
   totalMasraf = 0,
   sonToplam = 0,
   bsmvTutari = 0,
+  totalKmv = 0,
+  komisyonTutari = 0,
   giseUsdKuru = 1,
   istatistikKodu = "",
   gelisNedeni = "",
+  geldigiUlke = "",
+  vezneKod = "",
+  vezneAd = "",
   companyDefinitions,
+  firmaVergiDairesi = "",
+  firmaIlce = "",
+  firmaIl = "",
+  ettn = "",
 }) => {
   const { user } = useAuth();
 
@@ -117,6 +175,21 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   const [isSavingToCari, setIsSavingToCari] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
+
+  // Firma tanımları prop gelmediyse veya geciktiyse kendisi servis üzerinden çeker
+  const [internalCompDef, setInternalCompDef] = useState<TodvzTanimDto | null>(null);
+
+  useEffect(() => {
+    if (show && !companyDefinitions && !internalCompDef) {
+      CompanyService.getDefinitions()
+        .then((def) => {
+          if (def) setInternalCompDef(def);
+        })
+        .catch(() => {});
+    }
+  }, [show, companyDefinitions, internalCompDef]);
+
+  const activeCompDef = companyDefinitions || internalCompDef;
 
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
@@ -302,16 +375,17 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     }
   }, [show, cariKartId]);
 
-  // Karekod üretimi (Fişte ne varsa o kodlanır)
+  // Karekod üretimi (Fişte ve Firma Tanımlarında ne varsa o kodlanır)
   useEffect(() => {
     if (!show) return;
     const qrPayload = JSON.stringify({
-      belgeNo: belgeNo || seriNo || "",
-      tarih: tarih || "",
-      musteri: unvan || "",
-      tckn: vergiKimlikNo || "",
-      tutar: sonToplam || 0,
+      belgeNo: cleanValue(belgeNo) || cleanValue(seriNo) || "",
       tip: tip === 0 ? "ALIM" : "SATIM",
+      tarih: cleanValue(tarih),
+      vkn: cleanValue(activeCompDef?.VERGI_KIMLIK_NO),
+      musteri: cleanValue(vergiKimlikNo),
+      tutar: sonToplam || 0,
+      ettn: cleanValue(lines?.[0]?.ettn) || cleanValue(ettn) || null,
     });
 
     QRCode.toDataURL(qrPayload, {
@@ -321,7 +395,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     })
       .then((url) => setQrCodeDataUrl(url))
       .catch(() => {});
-  }, [show, belgeNo, seriNo, tarih, unvan, vergiKimlikNo, sonToplam, tip]);
+  }, [show, belgeNo, seriNo, tarih, vergiKimlikNo, sonToplam, tip, activeCompDef, lines, ettn]);
 
   // Fotoğraf Yükleme İşleyicisi (Dosya Seçimi)
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, isFront: boolean) => {
@@ -490,19 +564,68 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     }
   };
 
-  // Hesaplanan Metin ve Değerler (Fişte ne varsa sadece onlar)
+  const kimlikTuruBelgeNo = (() => {
+    const pNo = cleanValue(detayPasaportNo);
+    const sNo = cleanValue(seriNo);
+    const tcNo = cleanValue(vergiKimlikNo);
+    if (pNo) return `PASAPORT / ${pNo}`;
+    if (sNo) return `T.C. KİMLİK KARTI / ${sNo}`;
+    if (tcNo) return "T.C. KİMLİK KARTI";
+    return "";
+  })();
+
+  // Hesaplanan Metin ve Değerler (Fişte ve Firma Tanımlarında ne varsa sadece onlar, statik/sahte veri YOK)
   const isAlis = tip === 0;
   const islemTuruText = isAlis ? "ALIS" : "SATIS";
-  const effectiveBelgeNo = belgeNo || seriNo || "";
-  const displaySaat = saat || "";
-  const displayTarih = tarih || "";
+  const effectiveBelgeNo = cleanValue(belgeNo) || cleanValue(seriNo) || "";
+  const displaySaat = cleanValue(saat);
+  const displayTarih = cleanValue(tarih);
 
-  // Firma bilgileri (Sistemde tanımlı olan neyse o, sahte/mock veri yok)
-  const firmaAdi = companyDefinitions?.FIRMA_ADI || "";
-  const subeAdi = companyDefinitions?.SUBE_ADI ? `${companyDefinitions.SUBE_ADI}` : "";
-  const firmaAdres = companyDefinitions?.ADRES || "";
-  const firmaVkn = companyDefinitions?.VERGI_KIMLIK_NO || "";
-  const subeKodu = companyDefinitions?.SUBE_KODU ? String(companyDefinitions.SUBE_KODU) : "1";
+  // Firma bilgileri (Sistemde tanımlı olan neyse o, statik mock veri asla yok)
+  const firmaAdi = cleanValue(activeCompDef?.FIRMA_ADI);
+  const firmaSubeKodu = cleanValue(activeCompDef?.SUBE_KODU ? String(activeCompDef.SUBE_KODU) : "");
+  const firmaDosyaNo = cleanValue(activeCompDef?.DOSYA_NO);
+  const firmaTel = cleanValue(activeCompDef?.TELEFON);
+  const firmaWeb = cleanValue(activeCompDef?.WEB_ADRESI);
+  const firmaEposta = cleanValue(activeCompDef?.EPOSTA);
+  const firmaVkn = cleanValue(activeCompDef?.VERGI_KIMLIK_NO);
+  const firmaVd = cleanValue(
+    firmaVergiDairesi ||
+    (activeCompDef as any)?.VERGI_DAIRESI_ADI ||
+    (activeCompDef?.VERGI_DAIRESI_ID ? String(activeCompDef.VERGI_DAIRESI_ID) : "")
+  );
+  const firmaMersis = cleanValue(activeCompDef?.MERSIS_NO);
+  const firmaTicSicil = cleanValue(activeCompDef?.TICARET_SICIL_NO);
+
+  // İl / İlçe ile birleşik firma adresi
+  const firmaAdresTemel = cleanValue(activeCompDef?.ADRES);
+  const firmaIlceIl = [cleanValue(firmaIlce), cleanValue(firmaIl)].filter(Boolean).join(" / ");
+  const firmaAdres = firmaAdresTemel
+    ? (firmaIlceIl && !firmaAdresTemel.toLowerCase().includes(cleanValue(firmaIl).toLowerCase())
+        ? `${firmaAdresTemel} ${firmaIlceIl}`
+        : firmaAdresTemel)
+    : firmaIlceIl;
+
+  // VD / VKN birleşik
+  const firmaVdVkn = [firmaVd, firmaVkn].filter(Boolean).join(" / ");
+
+  // Mersis / Tic.Sic.No birleşik
+  const firmaMersisSicil = [firmaMersis, firmaTicSicil].filter(Boolean).join(" / ");
+
+  // Şube / İst. No: subeKodu - dosyaNo / istatistikKodu
+  const firmaSubeNo = [firmaSubeKodu, firmaDosyaNo].filter(Boolean).join(" - ");
+  const subeIstNo = [firmaSubeNo, cleanValue(istatistikKodu)].filter(Boolean).join(" / ");
+
+  // Kuruş basamak sayıları (Firma Tanımlarından)
+  const tlKurusSayisi = activeCompDef?.TL_KURUS_SAYISI !== undefined && activeCompDef?.TL_KURUS_SAYISI !== null
+    ? Math.max(2, Number(activeCompDef.TL_KURUS_SAYISI))
+    : 2;
+  const dovizKurusSayisi = activeCompDef?.DOVIZ_KURUS_SAYISI !== undefined && activeCompDef?.DOVIZ_KURUS_SAYISI !== null
+    ? Number(activeCompDef.DOVIZ_KURUS_SAYISI)
+    : 2;
+  const kurKurusSayisi = activeCompDef?.KUR_KURUS_SAYISI !== undefined && activeCompDef?.KUR_KURUS_SAYISI !== null
+    ? Number(activeCompDef.KUR_KURUS_SAYISI)
+    : 4;
 
   // Müşteri bilgileri (Sadece fişte girilmiş olanlar)
   const musteriAdres = detayAdres || [detayIlce, detayIl].filter(Boolean).join(" / ") || "";
@@ -510,6 +633,13 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   // Döviz satırları (Fişteki gerçek satırlar)
   const validLines = (lines || []).filter((l) => Number(l.miktar) > 0 || Number(l.tutar) > 0);
   const primaryLine = validLines[0] || null;
+
+  // ETTN (Sadece fişte/satırda varsa)
+  const effectiveEttn = cleanValue(primaryLine?.ettn) || cleanValue(ettn);
+
+  // Vezne ve Geldiği Ülke
+  const displayVezne = cleanValue(vezneKod) || cleanValue(vezneAd) || (firmaSubeKodu ? firmaSubeKodu.padStart(2, "0") : "");
+  const displayGeldigiUlke = cleanValue(geldigiUlke) || cleanValue(gelisNedeni) || cleanValue(detayUyruk) || (cleanValue(vergiKimlikNo) ? "Türkiye" : "");
 
   // Tutar Yazıyla (Sadece fişte tutar varsa yazılır)
   const tutarYaziyla = sonToplam > 0 ? tutarYaziylaTr(Number(sonToplam)) : "";
@@ -529,9 +659,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           <div className="d-flex align-items-center justify-content-between w-100 me-2 flex-wrap gap-2">
             <div className="d-flex align-items-center gap-2">
               <IconFileText size={20} className="text-primary" />
-              <span className="fw-bold fs-6">Döviz İşlem Evrak & Gerçek Kişi Tanı Formu (A4 Teklif)</span>
-              <Badge bg="warning" text="dark" className="border border-warning-subtle fw-bold" style={{ fontSize: "11px" }}>
-                Fiş Kaydedilmeden Yazdırılır (Teklif)
+              <span className="fw-bold fs-6">Müşteri Tanı Formu & Döviz İşlem Evrakı (A4)</span>
+              <Badge bg="info" className="text-white fw-bold shadow-xs" style={{ fontSize: "11px" }}>
+                Shift+F10 (Kayıt Etmeden)
               </Badge>
               {cariKartId && (
                 <Badge bg="info" className="text-white" style={{ fontSize: "11px" }}>
@@ -769,7 +899,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           </div>
 
           {/* ════════════════════════════════════════════════════════════════════════════════════════════════
-              BİREBİR A4 EVRAK ÇIKTISI (KESİNLİKLE TEK SAYFA - 2. SAYFAYA TAŞMAZ, YAZILAR ÜST ÜSTE BİNMEZ)
+              BİREBİR A4 EVRAK ÇIKTISI (GÖRSELDEKİ TARZDA - TEK SAYFA, KALEMLE DOLDURULABİLİR)
           ════════════════════════════════════════════════════════════════════════════════════════════════ */}
           <div className="d-flex justify-content-center">
             <div
@@ -781,7 +911,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                 maxHeight: "282mm",
                 padding: "6mm 10mm",
                 boxSizing: "border-box",
-                fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif",
+                fontFamily: "Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                 fontSize: "9px",
                 lineHeight: "1.25",
                 color: "#000",
@@ -790,373 +920,453 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                 breakInside: "avoid",
               }}
             >
-              {/* 1. BAŞLIK */}
-              <div
-                className="text-center fw-bold text-uppercase py-1 mb-1.5"
-                style={{
-                  fontSize: "12px",
-                  letterSpacing: "0.5px",
-                  borderBottom: "1.5px solid #000",
-                  lineHeight: "1.2",
-                }}
-              >
-                DOVIZ ISLEM EVRAK - GERCEK KISI TANI FORMU
-              </div>
-
-              {/* 2. KİMLİK FOTOĞRAFLARI (YAN YANA İKİ KUTU - Sabit Oran, Taşma Yapmaz) */}
-              <div className="d-flex gap-2.5 mb-1.5" style={{ height: "110px", width: "100%" }}>
-                {/* Sol: Ön Yüz */}
-                <div
-                  className="flex-fill border border-dark rounded-1 d-flex align-items-center justify-content-center p-1"
-                  style={{ backgroundColor: "#fafafa", height: "100%", overflow: "hidden" }}
-                >
-                  {frontPhoto ? (
-                    <img
-                      src={frontPhoto}
-                      alt="Kimlik Ön Yüz"
-                      style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: "2px" }}
-                    />
-                  ) : (
-                    <div className="text-center text-muted fst-italic" style={{ fontSize: "10px" }}>
-                      [ TÜRKİYE CUMHURİYETİ KİMLİK KARTI - ÖN YÜZ FOTOKOPİSİ ALANI ]
-                    </div>
-                  )}
+              {/* 1. ÜST BAŞLIK */}
+              <div style={{ marginBottom: "7px" }}>
+                <div style={{ fontWeight: "bold", fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.2px" }}>
+                  {firmaAdi}
                 </div>
-
-                {/* Sağ: Arka Yüz */}
-                <div
-                  className="flex-fill border border-dark rounded-1 d-flex align-items-center justify-content-center p-1"
-                  style={{ backgroundColor: "#fafafa", height: "100%", overflow: "hidden" }}
-                >
-                  {backPhoto ? (
-                    <img
-                      src={backPhoto}
-                      alt="Kimlik Arka Yüz"
-                      style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", borderRadius: "2px" }}
-                    />
-                  ) : (
-                    <div className="text-center text-muted fst-italic" style={{ fontSize: "10px" }}>
-                      [ TÜRKİYE CUMHURİYETİ KİMLİK KARTI - ARKA YÜZ FOTOKOPİSİ ALANI ]
-                    </div>
-                  )}
+                <div style={{ fontWeight: "bold", fontSize: "11px", textTransform: "uppercase", marginTop: "2px" }}>
+                  GERÇEK KİŞİLER İÇİN MÜŞTERİ TANI FORMU
                 </div>
               </div>
 
-              {/* 3. İŞLEM ÖZET SATIRLARI (Sadece fişteki gerçek bilgiler) */}
-              <div
-                className="py-1 px-1 mb-1.5"
-                style={{
-                  borderTop: "1px solid #000",
-                  borderBottom: "1px solid #000",
-                  fontSize: "9px",
-                  lineHeight: "1.3",
-                }}
-              >
-                <div className="d-flex justify-content-between">
-                  <span>
-                    <strong>Islem No:</strong> {effectiveBelgeNo || "—"}
-                  </span>
-                  <span>
-                    <strong>Tarih:</strong> {displayTarih} {displaySaat}
-                  </span>
-                  <span>
-                    <strong>İşlem:</strong> {islemTuruText}
-                  </span>
-                </div>
-                <div className="d-flex justify-content-between">
-                  <span>
-                    <strong>Musteri:</strong> {unvan || "—"}
-                  </span>
-                  <span>
-                    <strong>TC:</strong> {vergiKimlikNo || "—"}
-                  </span>
-                  <span>
-                    <strong>Seri:</strong> {seriNo || "—"}
-                  </span>
-                </div>
-                <div className="d-flex justify-content-between fw-bold">
-                  <span>
-                    {validLines.length > 0
-                      ? validLines.map((l) => `${l.paraKodu} ${formatNumberTr(Number(l.miktar), 2)} x ${formatNumberTr(Number(l.kur), 4)} = ${formatNumberTr(Number(l.tutar), 2)} TL`).join(" | ")
-                      : "—"}
-                  </span>
-                  <span>USD: {primaryLine ? formatNumberTr(Number(primaryLine.usdKarsiligi || primaryLine.miktar), 2) : "0,00"}</span>
-                  <span>Vergi: {formatNumberTr(Number(bsmvTutari || 0), 2)}</span>
-                  <span>Vergili: {formatNumberTr(Number(sonToplam || 0), 2)} TL</span>
-                </div>
-              </div>
-
-              {/* 4. e-DÖVİZ VE KIYMETLİ MADEN ALIM / SATIM BELGESİ (GİB ŞABLONU) */}
-              <div className="border border-dark mb-1.5 p-1.5" style={{ backgroundColor: "#ffffff" }}>
-                {/* Üst Logo ve Başlık Satırı */}
-                <div className="d-flex justify-content-between align-items-center pb-1 border-bottom border-dark">
-                  {/* Müessese Bilgileri */}
-                  <div style={{ width: "45%", fontSize: "8.5px", lineHeight: "1.2" }}>
-                    <div className="fw-bold text-decoration-underline mb-0.5">DÜZENLEYEN YETKİLİ MÜESSESE BİLGİLERİ</div>
-                    <div className="fw-bold">{firmaAdi} {subeAdi}</div>
-                    <div>{firmaAdres}</div>
-                    <div>VKN: {firmaVkn}</div>
-                  </div>
-
-                  {/* GİB Logo ve Başlık */}
-                  <div className="text-center" style={{ width: "35%" }}>
-                    <img
-                      src="/images/logo/logo-gib.png"
-                      alt="GİB"
-                      style={{ height: "34px", objectFit: "contain", marginBottom: "1px" }}
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = "none";
-                      }}
-                    />
-                    <div className="fw-bold" style={{ fontSize: "9px", lineHeight: "1.15" }}>
-                      e-DÖVİZ VE KIYMETLİ MADEN<br />
-                      {isAlis ? "ALIM BELGESİ" : "SATIM BELGESİ"}
-                    </div>
-                  </div>
-
-                  {/* QR Kod */}
-                  <div className="text-end" style={{ width: "20%" }}>
-                    {qrCodeDataUrl ? (
-                      <img src={qrCodeDataUrl} alt="QR Kod" style={{ width: "55px", height: "55px" }} />
-                    ) : (
-                      <div className="border border-dark d-inline-block text-center p-1" style={{ width: "55px", height: "55px", fontSize: "7.5px" }}>
-                        KAREKOD
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Müşteri ve Belge Bilgileri İkili Blok */}
-                <div className="d-flex border-bottom border-dark" style={{ minHeight: "58px" }}>
-                  {/* Sol Kutu: Döviz Satan/Alan Bilgileri */}
-                  <div className="p-1 border-end border-dark" style={{ width: "60%", fontSize: "8.5px", lineHeight: "1.25" }}>
-                    <div className="fw-bold text-decoration-underline mb-0.5">
-                      DÖVİZ {isAlis ? "SATAN" : "ALAN"} KİŞİ/KURULUŞ BİLGİLERİ
-                    </div>
-                    <div className="fw-bold">{unvan || "—"}</div>
-                    <div>{musteriAdres}</div>
-                    <div>TCKN: {vergiKimlikNo || "—"}</div>
-                    <div>MUSTERITURU: {detayCariTipi === "Firma" ? "TUZELKISI" : "GERCEKKISI"}</div>
-                    {primaryLine?.ettn && (
-                      <div className="font-monospace text-muted" style={{ fontSize: "7.5px" }}>
-                        ETTN: {primaryLine.ettn}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Sağ Kutu: Belge Bilgileri */}
-                  <div className="p-1" style={{ width: "40%", fontSize: "8.5px", lineHeight: "1.25" }}>
-                    <div className="fw-bold text-decoration-underline mb-0.5">
-                      {isAlis ? "ALIM" : "SATIM"} BELGESİ BİLGİLERİ
-                    </div>
-                    <div className="d-flex justify-content-between">
-                      <span>Belge Numarası:</span> <strong>{effectiveBelgeNo || "—"}</strong>
-                    </div>
-                    <div className="d-flex justify-content-between">
-                      <span>Düzenleme Tarihi:</span> <span>{displayTarih} {displaySaat}</span>
-                    </div>
-                    <div className="d-flex justify-content-between">
-                      <span>Dosya No-Şube Kodu:</span> <span>{subeKodu}</span>
-                    </div>
-                    <div className="d-flex justify-content-between">
-                      <span>İstatistik No.(lar):</span> <span>{istatistikKodu || "—"}</span>
-                    </div>
-                    <div className="d-flex justify-content-between">
-                      <span>Senaryo:</span> <span>EDOVIZBELGE</span>
-                    </div>
-                    <div className="d-flex justify-content-between">
-                      <span>Tip:</span> <strong>{isAlis ? "ALIM" : "SATIM"}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Satın Alınan / Satılan Döviz Tablosu */}
-                <div className="pt-1">
-                  <div className="fw-bold text-center border-bottom border-dark pb-0.5 mb-1" style={{ fontSize: "9px" }}>
-                    {isAlis ? "SATIN ALINAN" : "SATILAN"} DÖVİZE/EFEKTİFE AİT BİLGİLER
-                  </div>
-
-                  <div className="d-flex" style={{ fontSize: "8.5px" }}>
-                    {/* Sol Taraf: Finansal Rakamlar */}
-                    <table className="table table-sm table-bordered border-dark mb-0" style={{ width: "55%", fontSize: "8px" }}>
-                      <tbody>
-                        {validLines.length > 0 ? (
-                          validLines.map((line, idx) => (
-                            <React.Fragment key={idx}>
-                              <tr>
-                                <td style={{ width: "60%", padding: "1.5px 4px" }}>Döviz/Efektifinin Miktarı / Birimi</td>
-                                <td className="text-end fw-bold" style={{ padding: "1.5px 4px" }}>{formatNumberTr(Number(line.miktar), 2)} {line.paraKodu}</td>
-                              </tr>
-                              <tr>
-                                <td style={{ padding: "1.5px 4px" }}>Uygulanan Kur</td>
-                                <td className="text-end fw-bold" style={{ padding: "1.5px 4px" }}>{formatNumberTr(Number(line.kur), 4)}</td>
-                              </tr>
-                              <tr>
-                                <td style={{ padding: "1.5px 4px" }}>TL Karşılığı</td>
-                                <td className="text-end fw-bold" style={{ padding: "1.5px 4px" }}>{formatNumberTr(Number(line.tutar), 2)} TRY</td>
-                              </tr>
-                              <tr>
-                                <td style={{ padding: "1.5px 4px" }}>ABD Doları Karşılığı</td>
-                                <td className="text-end" style={{ padding: "1.5px 4px" }}>{formatNumberTr(Number(line.usdKarsiligi || line.miktar), 2)} USD</td>
-                              </tr>
-                            </React.Fragment>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={2} className="text-center text-muted py-1" style={{ padding: "1.5px 4px" }}>Döviz kalemi bulunmamaktadır</td>
-                          </tr>
-                        )}
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>BSMV</td>
-                          <td className="text-end" style={{ padding: "1.5px 4px" }}>{formatNumberTr(Number(bsmvTutari || 0), 2)} TL</td>
-                        </tr>
-                        <tr className="table-light">
-                          <td className="fw-bold" style={{ padding: "1.5px 4px" }}>Toplam Tutar</td>
-                          <td className="text-end fw-bold" style={{ padding: "1.5px 4px" }}>{formatNumberTr(Number(sonToplam || 0), 2)} TL</td>
-                        </tr>
-                      </tbody>
-                    </table>
-
-                    {/* Sağ Taraf: İthalat/Gümrük/Beyan Metadata (Sağ tarafları tamamen boş) */}
-                    <table className="table table-sm table-bordered border-dark mb-0 ms-1" style={{ width: "45%", fontSize: "7.5px" }}>
-                      <tbody>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Ait Olduğu Fatura No</td>
-                          <td style={{ width: "40%", padding: "1.5px 4px" }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Geldiği Ülke</td>
-                          <td style={{ padding: "1.5px 4px" }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Geliş Nedeni</td>
-                          <td style={{ padding: "1.5px 4px" }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Gümrük Beyannamelerinin Tarihi</td>
-                          <td style={{ padding: "1.5px 4px" }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Gümrük Beyannamesi No</td>
-                          <td style={{ padding: "1.5px 4px" }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Döviz Beyan Tutanağı Tarihi</td>
-                          <td style={{ padding: "1.5px 4px" }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Döviz Beyan Tutanağı Sayısı</td>
-                          <td style={{ padding: "1.5px 4px" }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Gümrük Müdürlüğü Teyid Yazısı Tarihi</td>
-                          <td style={{ padding: "1.5px 4px" }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1.5px 4px" }}>Gümrük Müdürlüğü Teyid Yazısı Sayısı</td>
-                          <td style={{ padding: "1.5px 4px" }}></td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="pt-0.5 mt-0.5 border-top border-dark fw-bold" style={{ fontSize: "8.5px" }}>
-                    Not: {tutarYaziyla || "—"}
-                  </div>
-                </div>
-              </div>
-
-              {/* 5. MASAK GERÇEK KİŞİ TANI FORMU TABLOSU
-                  (Kişisel bilgiler bölümündeki tüm alanlar elle doldurulmak üzere TAMAMEN BOŞ) */}
+              {/* 2. MÜŞTERİ TANI FORMU TABLOSU (Görseldeki Gibi - Bilgi yoksa - vs konulmaz, boş bırakılır) */}
               <table
-                className="table table-sm table-bordered border-dark mb-1.5"
                 style={{
                   width: "100%",
-                  fontSize: "9px",
                   borderCollapse: "collapse",
+                  border: "1.5px solid #000",
+                  fontSize: "9.5px",
+                  lineHeight: "1.25",
+                  marginBottom: "9px",
                 }}
               >
                 <tbody>
                   <tr>
-                    <td className="fw-bold bg-light" style={{ width: "28%", padding: "3.5px 6px" }}>
-                      UYRUK
+                    <td style={{ width: "210px", fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Adı ve soyadı
                     </td>
-                    <td style={{ padding: "3.5px 6px", height: "20px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px", fontWeight: "500", textTransform: "uppercase" }}>
+                      {cleanValue(unvan)}
+                    </td>
                   </tr>
                   <tr>
-                    <td className="fw-bold bg-light" style={{ padding: "3.5px 6px" }}>
-                      DOGUM YERI
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Doğum tarihi
                     </td>
-                    <td style={{ padding: "3.5px 6px", height: "20px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px" }}>
+                      {formatDateTr(detayDogumTarihi)}
+                    </td>
                   </tr>
                   <tr>
-                    <td className="fw-bold bg-light" style={{ padding: "3.5px 6px" }}>
-                      ANNE - BABA ISMI
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Doğum yeri
                     </td>
-                    <td style={{ padding: "3.5px 6px", height: "20px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px", textTransform: "uppercase" }}>
+                      {cleanValue(detayDogumYeri)}
+                    </td>
                   </tr>
                   <tr>
-                    <td className="fw-bold bg-light" style={{ padding: "3.5px 6px" }}>
-                      MESLEGI VE UNVANI
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      T.C. kimlik numarası
                     </td>
-                    <td style={{ padding: "3.5px 6px", height: "20px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px" }}>
+                      {cleanValue(vergiKimlikNo)}
+                    </td>
                   </tr>
                   <tr>
-                    <td className="fw-bold bg-light" style={{ padding: "3.5px 6px" }}>
-                      TELEFON NUMARASI
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Kimlik türü / belge no
                     </td>
-                    <td style={{ padding: "3.5px 6px", height: "20px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px" }}>
+                      {kimlikTuruBelgeNo}
+                    </td>
                   </tr>
                   <tr>
-                    <td className="fw-bold bg-light" style={{ padding: "3.5px 6px" }}>
-                      ACIK ADRES - 1
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Uyruğu
                     </td>
-                    <td style={{ padding: "3.5px 6px", height: "20px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px", textTransform: "uppercase" }}>
+                      {cleanValue(detayUyruk) || (cleanValue(vergiKimlikNo) ? "TÜRKİYE" : "")}
+                    </td>
                   </tr>
                   <tr>
-                    <td className="fw-bold bg-light" style={{ padding: "3.5px 6px" }}>
-                      ACIK ADRES - 2
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Adresi
                     </td>
-                    <td style={{ padding: "3.5px 6px", height: "20px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px", textTransform: "uppercase" }}>
+                      {cleanValue(musteriAdres)}
+                    </td>
+                  </tr>
+                  <tr style={{ height: "13px" }}>
+                    <td style={{ border: "1px solid #000", padding: "1px 6px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "1px 6px" }}></td>
                   </tr>
                   <tr>
-                    <td className="fw-bold bg-light" style={{ padding: "3.5px 6px" }}>
-                      ACIKLAMA ( NOT )
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Mesleği
                     </td>
-                    <td style={{ padding: "3.5px 6px", height: "20px" }}></td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px", textTransform: "uppercase" }}>
+                      {cleanValue(detayMeslek)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Telefonu
+                    </td>
+                    <td style={{ border: "1px solid #000", padding: "2px 6px" }}>
+                      {cleanValue(detayTelefon)}
+                    </td>
                   </tr>
                 </tbody>
               </table>
 
-              {/* 6. YASAL TAAHHÜT METNİ VE İMZA ALANI (Üst üste binmez, temiz aralık) */}
-              <div style={{ fontSize: "8px", lineHeight: "1.25" }}>
-                <div>
-                  Yukarıda belirtilen bilgilerin dogru oldugunu, herhangi bir degisiklik olmasi durumunda ilgili degisikligin tarafiniza derhal bildirilecegini sahsim adina kabul, beyan ve taahhut ederim.
-                </div>
-                <div className="d-flex justify-content-between align-items-center mt-2 pt-1">
-                  <div style={{ fontSize: "9.5px" }}>
-                    <span className="fw-bold">AD SOYAD :</span> &nbsp;&nbsp;
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: "180px",
-                        borderBottom: "1px solid #000",
-                        verticalAlign: "bottom",
-                      }}
-                    ></span>
+              {/* 3. İKİ SÜTUNLU ALT GÖVDE: SOLDA FOTOKOPİ, SAĞDA DÖVİZ İŞLEM FİŞİ */}
+              <div style={{ display: "flex", gap: "12px", width: "100%", alignItems: "flex-start" }}>
+                {/* SOL SÜTUN: KİMLİK / PASAPORT FOTOKOPİSİ */}
+                <div style={{ width: "47%", display: "flex", flexDirection: "column" }}>
+                  <div style={{ fontWeight: "bold", fontSize: "10.5px", textTransform: "uppercase", marginBottom: "5px" }}>
+                    KİMLİK / PASAPORT FOTOKOPİSİ
                   </div>
-                  <div style={{ fontSize: "9.5px" }}>
-                    <span className="fw-bold">TARİH - İMZA :</span> &nbsp;&nbsp;
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: "160px",
-                        borderBottom: "1px solid #000",
-                        verticalAlign: "bottom",
-                      }}
-                    ></span>
+
+                  {/* Fotoğraf Kutusu: Üstte Arka Yüz, Altta Ön Yüz */}
+                  <div
+                    style={{
+                      border: "1.5px solid #000",
+                      width: "100%",
+                      height: "270px",
+                      display: "flex",
+                      flexDirection: "column",
+                      backgroundColor: "#ffffff",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {backPhoto && frontPhoto ? (
+                      <>
+                        <div
+                          style={{
+                            height: "50%",
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderBottom: "1px solid #e2e8f0",
+                            overflow: "hidden",
+                            padding: "2px",
+                          }}
+                        >
+                          <img
+                            src={backPhoto}
+                            alt="Kimlik Arka Yüz"
+                            style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            height: "50%",
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            overflow: "hidden",
+                            padding: "2px",
+                          }}
+                        >
+                          <img
+                            src={frontPhoto}
+                            alt="Kimlik Ön Yüz"
+                            style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }}
+                          />
+                        </div>
+                      </>
+                    ) : frontPhoto ? (
+                      <div
+                        style={{
+                          height: "100%",
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "2px",
+                        }}
+                      >
+                        <img
+                          src={frontPhoto}
+                          alt="Kimlik Fotoğrafı"
+                          style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }}
+                        />
+                      </div>
+                    ) : backPhoto ? (
+                      <div
+                        style={{
+                          height: "100%",
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "2px",
+                        }}
+                      >
+                        <img
+                          src={backPhoto}
+                          alt="Kimlik Fotoğrafı"
+                          style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }}
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          height: "100%",
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#fafafa",
+                        }}
+                      ></div>
+                    )}
+                  </div>
+
+                  {/* Beyan ve İmza Alanı */}
+                  <div style={{ marginTop: "11px", fontSize: "9px", lineHeight: "1.35", color: "#000" }}>
+                    <div>
+                      Döviz alım satım işlemlerinde başkası hesabına hareket etmediğimi beyan ve kabul ederim.
+                    </div>
+                    <div style={{ marginTop: "24px", fontWeight: "bold" }}>
+                      Müşterinin adı, soyadı ve imzası
+                    </div>
+                    <div style={{ marginTop: "46px", fontSize: "8.5px" }}>
+                      Ek: 1. Kimlik ve/veya Pasaport Fotokopisi
+                    </div>
                   </div>
                 </div>
+
+                {/* SAĞ SÜTUN: DÖVİZ İŞLEM FİŞİ */}
+                <div style={{ width: "53%", display: "flex", flexDirection: "column" }}>
+                  <div style={{ fontWeight: "bold", fontSize: "10.5px", textTransform: "uppercase", marginBottom: "5px" }}>
+                    DÖVİZ İŞLEM FİŞİ
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid #000",
+                      width: "100%",
+                      padding: "5px 7px",
+                      fontSize: "8px",
+                      lineHeight: "1.2",
+                      backgroundColor: "#ffffff",
+                    }}
+                  >
+                    {/* GİB Logo ve QR Satırı */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "3px" }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "70%" }}>
+                        <img
+                          src="/images/logo/logo-gib.png"
+                          alt="GİB"
+                          style={{ height: "36px", objectFit: "contain", marginBottom: "1px" }}
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = "none";
+                          }}
+                        />
+                        <div style={{ fontSize: "8px", fontWeight: "bold", textAlign: "center", lineHeight: "1.15" }}>
+                          e-DÖVİZ VE KIYMETLİ<br />
+                          MADEN {isAlis ? "ALIM" : "SATIM"} BELGESİ
+                        </div>
+                      </div>
+
+                      <div style={{ width: "30%", textAlign: "right" }}>
+                        {qrCodeDataUrl ? (
+                          <img src={qrCodeDataUrl} alt="QR Kod" style={{ width: "56px", height: "56px" }} />
+                        ) : (
+                          <div style={{ width: "56px", height: "56px", border: "1px solid #000", display: "inline-block" }}></div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Müessese Bilgileri */}
+                    <div style={{ textAlign: "center", marginTop: "4px" }}>
+                      <div style={{ fontWeight: "bold", fontSize: "8px", textTransform: "uppercase" }}>
+                        DÜZENLEYEN YETKİLİ MÜESSESE BİLGİLERİ
+                      </div>
+                      <div style={{ fontWeight: "bold", fontSize: "8.5px" }}>
+                        {firmaAdi}
+                      </div>
+                      {firmaAdres ? (
+                        <div style={{ fontSize: "7.5px" }}>
+                          {firmaAdres}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div style={{ fontSize: "7.5px", marginTop: "3px", lineHeight: "1.2" }}>
+                      <div><strong>Tel</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {firmaTel}</div>
+                      <div><strong>Web Sitesi</strong> : {firmaWeb}</div>
+                      <div><strong>E-posta</strong> &nbsp;&nbsp;&nbsp;: {firmaEposta}</div>
+                      <div><strong>VD / VKN</strong> &nbsp;: {firmaVdVkn}</div>
+                      <div><strong>Mersis / Tic.Sic.No</strong> : {firmaMersisSicil}</div>
+                    </div>
+
+                    {/* Alım / Satım Belgesi Bilgileri Tablosu */}
+                    <table
+                      style={{
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        border: "1px solid #000",
+                        marginTop: "5px",
+                        fontSize: "7.5px",
+                      }}
+                    >
+                      <thead>
+                        <tr>
+                          <th
+                            colSpan={2}
+                            style={{
+                              textAlign: "center",
+                              border: "1px solid #000",
+                              padding: "1px 3px",
+                              fontSize: "8px",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            {isAlis ? "ALIM" : "SATIŞ"} BELGESİ BİLGİLERİ
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={{ width: "36%", padding: "1px 3px", border: "1px solid #000" }}>Belge No</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold" }}>{effectiveBelgeNo}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Tarih</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>{displayTarih} {displaySaat}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Şube / İst. No</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>{subeIstNo}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Sen. / Tip</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>EDOVIZBELGE / {isAlis ? "ALIM" : "SATIM"}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* Müşteri Bilgileri */}
+                    <div style={{ marginTop: "4px", fontSize: "7.5px", lineHeight: "1.2" }}>
+                      <div style={{ fontWeight: "bold", fontSize: "8px", textTransform: "uppercase" }}>
+                        DÖVİZ {isAlis ? "SATAN" : "ALAN"} KİŞİ / KURULUŞ BİLGİLERİ
+                      </div>
+                      <div style={{ fontWeight: "bold", fontSize: "8.5px", textTransform: "uppercase" }}>
+                        {cleanValue(unvan) || "İSİM BEYAN EDİLMEMİŞTİR"}
+                      </div>
+                      <div style={{ textTransform: "uppercase" }}>{cleanValue(musteriAdres)}</div>
+                      <div>
+                        Uyruk : {cleanValue(detayUyruk) || (cleanValue(vergiKimlikNo) ? "TR" : "")} / Pasaport no : {cleanValue(detayPasaportNo)}
+                      </div>
+                      <div>
+                        VD : {cleanValue(detayVergiDairesi)} / TCKN : {cleanValue(vergiKimlikNo)}
+                      </div>
+                      <div>
+                        Müşteri Türü : {detayCariTipi === "Firma" ? "TUZELKISI" : "GERCEKKISI"} / Mesleği : {cleanValue(detayMeslek).toUpperCase()}
+                      </div>
+                      {effectiveEttn ? (
+                        <div style={{ fontSize: "7px", color: "#333" }}>
+                          ETTN : {effectiveEttn}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {/* Satın Alınan Döviz Tablosu */}
+                    <table
+                      style={{
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        border: "1px solid #000",
+                        marginTop: "5px",
+                        fontSize: "7.5px",
+                      }}
+                    >
+                      <thead>
+                        <tr>
+                          <th
+                            colSpan={2}
+                            style={{
+                              textAlign: "center",
+                              border: "1px solid #000",
+                              padding: "1px 3px",
+                              fontSize: "8px",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            {isAlis ? "SATIN ALINAN" : "SATILAN"} DÖVİZE/EFEKTİFE AİT BİLGİLER
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={{ width: "55%", padding: "1px 3px", border: "1px solid #000" }}>
+                            Döviz / Efektifin Mik. / Brm
+                          </td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                            {primaryLine ? `${formatNumberTr(Number(primaryLine.miktar), dovizKurusSayisi)} ${primaryLine.paraKodu}` : ""}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Uygulanan Kur</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                            {primaryLine ? formatNumberTr(Number(primaryLine.kur), kurKurusSayisi) : ""}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>TL Karşılığı</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                            {primaryLine ? `${formatNumberTr(Number(primaryLine.tutar), tlKurusSayisi)} TL` : ""}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>ABD Doları Karşılığı</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                            {primaryLine ? `${formatNumberTr(Number(primaryLine.usdKarsiligi || primaryLine.miktar), 2)} USD` : ""}
+                          </td>
+                        </tr>
+                        {Number(bsmvTutari || 0) > 0 ? (
+                          <tr>
+                            <td style={{ padding: "1px 3px", border: "1px solid #000" }}>BSMV</td>
+                            <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                              {formatNumberTr(Number(bsmvTutari || 0), tlKurusSayisi)} TL
+                            </td>
+                          </tr>
+                        ) : null}
+                        {Number(totalKmv || 0) > 0 ? (
+                          <tr>
+                            <td style={{ padding: "1px 3px", border: "1px solid #000" }}>KMV</td>
+                            <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                              {formatNumberTr(Number(totalKmv || 0), tlKurusSayisi)} TL
+                            </td>
+                          </tr>
+                        ) : null}
+                        <tr>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold" }}>Toplam Tutar</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                            {formatNumberTr(Number(sonToplam || 0), tlKurusSayisi)} TL
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* Alt Bilgiler */}
+                    <div style={{ marginTop: "3px", fontSize: "7.5px", lineHeight: "1.25" }}>
+                      <div>Geldiği Ülke : {displayGeldigiUlke}</div>
+                      <div>Komisyon : {formatNumberTr(Number(komisyonTutari || 0), tlKurusSayisi)} &nbsp;&nbsp;&nbsp;&nbsp; Vezne adı : {displayVezne}</div>
+                      <div>Yazıyla {tutarYaziyla}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. ALT YASAL MEVZUAT BİLGİLENDİRMESİ */}
+              <div style={{ marginTop: "9px", fontSize: "7.5px", lineHeight: "1.2", color: "#333" }}>
+                * Bu formdaki bilgiler ve ekli belgeler; 5549 Sayılı Suç Gelirlerinin Aklanmasının Önlenmesi ve Terörün Finansmanının Önlenmesine Dair Tedbirler Hakkında Yönetmeliğin ilgili maddeleri kapsamında talep edilmektedir.
               </div>
             </div>
           </div>

@@ -2345,8 +2345,17 @@ export class DovizFisSqlRepository {
             GM_TEYIT_TARIH = @GM_TEYIT_TARIH,
             GM_FATURA_NO = @GM_FATURA_NO,
             TIP = @TIP,
+            ARBITRAJ_ID = COALESCE(@EFF_ARBITRAJ_ID, ARBITRAJ_ID),
+            IS_ARBITRAJ = CASE WHEN @IS_ARBITRAJ = 1 OR @USER_RAW_GELIS_NEDENI LIKE '%Arbitraj%' THEN 1 ELSE IS_ARBITRAJ END,
             GUNCELLEME_ZAMANI = GETDATE()
           WHERE FIS_ID = @P_FIS_ID;
+
+          IF @EFF_ARBITRAJ_ID IS NOT NULL AND @EFF_ARBITRAJ_ID > 0
+          BEGIN
+            UPDATE [dbo].[TODVZ_FIS]
+            SET ARBITRAJ_ID = @P_FIS_ID
+            WHERE FIS_ID = @EFF_ARBITRAJ_ID AND (ARBITRAJ_ID IS NULL OR ARBITRAJ_ID <> @P_FIS_ID);
+          END
 
           -- İşçilik Hareketini TODVZ_HESAP_HAREKETI tablosuna işleme (Firma Tanımlarındaki ISCILIK_HESABI)
           DECLARE @ISCILIK_HESAP_KODU VARCHAR(50) = NULL;
@@ -2396,8 +2405,8 @@ export class DovizFisSqlRepository {
 
         SELECT 
           @P_FIS_ID AS OUT_FIS_ID, 
-          COALESCE(@USER_RAW_SERI_NO, @P_SERI_NO) AS OUT_SERI_NO, 
-          COALESCE(@USER_RAW_BELGE_NO, @P_BELGE_NO) AS OUT_BELGE_NO, 
+          COALESCE(NULLIF(LTRIM(RTRIM(@USER_RAW_SERI_NO)), ''), @P_SERI_NO) AS OUT_SERI_NO, 
+          COALESCE(NULLIF(LTRIM(RTRIM(@USER_RAW_BELGE_NO)), ''), @P_BELGE_NO) AS OUT_BELGE_NO, 
           @P_YENI_KAYIT AS OUT_YENI_KAYIT;
       `;
 
@@ -2687,6 +2696,7 @@ export class DovizFisSqlRepository {
       gmTeyitSayi: row.GM_TEYIT_SAYI || "",
       gmFaturaNo: row.GM_FATURA_NO || "",
       arbitrajId: row.ARBITRAJ_ID || null,
+      isArbitraj: Boolean(row.IS_ARBITRAJ || (row.GELIS_NEDENI && String(row.GELIS_NEDENI).toLowerCase().includes("arbitraj"))),
       telefonNo: row.TELEFON_NO || "",
       meslekId: row.MESLEK_ID || null,
       dogumTarihi: formatDbDate(row.DOGUM_TARIHI),
@@ -2719,7 +2729,7 @@ export class DovizFisSqlRepository {
    * Find all Döviz Fişi with search / filter
    */
   public static async findAll(
-    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null },
+    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; isArbitraj?: boolean },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<any[]> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
@@ -2743,12 +2753,21 @@ export class DovizFisSqlRepository {
         F.IPTAL AS iptal,
         V.KOD AS vezneKod,
         V.AD AS vezneAd,
+        F.ARBITRAJ_ID AS arbitrajId,
+        CASE WHEN F.IS_ARBITRAJ = 1 OR F.GELIS_NEDENI LIKE '%Arbitraj%' THEN 1 ELSE 0 END AS isArbitraj,
+        F.GELIS_NEDENI AS gelisNedeni,
         (SELECT COUNT(*) FROM [dbo].[TODVZ_FIS_SATIRI] S WHERE S.FIS_ID = F.FIS_ID) AS satirSayisi,
         COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) AS siralama
       FROM [dbo].[TODVZ_FIS] F
       LEFT JOIN [dbo].[TODVZ_VEZNE] V ON V.VEZNE_ID = F.VEZNE_ID
       WHERE 1 = 1
     `;
+
+    if (filter?.isArbitraj === false) {
+      query += ` AND (F.IS_ARBITRAJ = 0 OR F.IS_ARBITRAJ IS NULL) AND (F.GELIS_NEDENI IS NULL OR F.GELIS_NEDENI NOT LIKE '%Arbitraj%')`;
+    } else if (filter?.isArbitraj === true) {
+      query += ` AND (F.IS_ARBITRAJ = 1 OR F.GELIS_NEDENI LIKE '%Arbitraj%')`;
+    }
 
     if (filter?.tip !== undefined && !isNaN(filter.tip)) {
       query += ` AND F.TIP = @TIP`;

@@ -20,6 +20,9 @@ import {
   OcrExtractedData,
   isKimlikBackFace,
   isKimlikFrontFace,
+  isNoiseOrLabel,
+  isValidTcKimlikNo,
+  cleanSeri,
 } from "../../utils/kimlikOcrParser";
 import { CariFotografItem } from "../../services/cariService";
 
@@ -219,20 +222,71 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         let mergedData: OcrExtractedData = { ...scanResults[0] };
         for (let i = 1; i < scanResults.length; i++) {
           const res = scanResults[i];
-          if (!mergedData.tcKimlikNo && res.tcKimlikNo) mergedData.tcKimlikNo = res.tcKimlikNo;
-          if (!mergedData.vergiKimlikNo && res.vergiKimlikNo) mergedData.vergiKimlikNo = res.vergiKimlikNo;
-          if (!mergedData.ad && res.ad) mergedData.ad = res.ad;
-          if (!mergedData.soyad && res.soyad) mergedData.soyad = res.soyad;
-          if (!mergedData.unvan && res.unvan) mergedData.unvan = res.unvan;
-          // Seri No hangisinde bulunduysa al
-          if (!mergedData.kimlikSeriNo && res.kimlikSeriNo) mergedData.kimlikSeriNo = res.kimlikSeriNo;
+
+          // TCKN: Eğer res'te geçerli (checksum tutan) TCKN varsa, veya mergedData'da hiç yoksa al
+          if (res.tcKimlikNo) {
+            if (!mergedData.tcKimlikNo) {
+              mergedData.tcKimlikNo = res.tcKimlikNo;
+            } else if (!isValidTcKimlikNo(mergedData.tcKimlikNo) && isValidTcKimlikNo(res.tcKimlikNo)) {
+              mergedData.tcKimlikNo = res.tcKimlikNo;
+            }
+          }
+
+          // VKN
+          if (!mergedData.vergiKimlikNo && res.vergiKimlikNo) {
+            mergedData.vergiKimlikNo = res.vergiKimlikNo;
+          }
+
+          // Ad: Noise değilse ve daha temiz/uzunsa veya mergedData'da gürültü varsa al
+          if (res.ad && !isNoiseOrLabel(res.ad)) {
+            if (!mergedData.ad || isNoiseOrLabel(mergedData.ad) || (res.ad.length > mergedData.ad.length && !mergedData.ad.includes(res.ad))) {
+              mergedData.ad = res.ad;
+            }
+          }
+
+          // Soyad: Noise değilse al. Eğer yeni gelen soyad Türkçe karakter içeriyorsa veya mergedData'daki boş/gürültüyse tercih et
+          if (res.soyad && !isNoiseOrLabel(res.soyad)) {
+            if (!mergedData.soyad || isNoiseOrLabel(mergedData.soyad)) {
+              mergedData.soyad = res.soyad;
+            } else if (/[ÇĞİÖŞÜçğıöşü]/.test(res.soyad) && !/[ÇĞİÖŞÜçğıöşü]/.test(mergedData.soyad)) {
+              mergedData.soyad = res.soyad;
+            }
+          }
+
+          // Unvan
+          if (!mergedData.unvan && res.unvan) {
+            mergedData.unvan = res.unvan;
+          }
+
+          // Seri No: 9 karakterli geçerli seri no (cleanSeri) öncelikli
+          if (res.kimlikSeriNo) {
+            const cleanCur = cleanSeri(mergedData.kimlikSeriNo);
+            const cleanNew = cleanSeri(res.kimlikSeriNo);
+            if (!cleanCur && cleanNew) {
+              mergedData.kimlikSeriNo = cleanNew;
+            } else if (cleanCur && cleanNew && cleanCur.length !== 9 && cleanNew.length === 9) {
+              mergedData.kimlikSeriNo = cleanNew;
+            }
+          }
+
+          // Tarihler & Cinsiyet
           if (!mergedData.dogumTarihi && res.dogumTarihi) mergedData.dogumTarihi = res.dogumTarihi;
           if (!mergedData.kimlikGecerlilikTarihi && res.kimlikGecerlilikTarihi)
             mergedData.kimlikGecerlilikTarihi = res.kimlikGecerlilikTarihi;
           if (!mergedData.cinsiyet && res.cinsiyet) mergedData.cinsiyet = res.cinsiyet;
+
           // Anne ve Baba Adı (özellikle arka yüzden gelir)
-          if (!mergedData.anneAdi && res.anneAdi) mergedData.anneAdi = res.anneAdi;
-          if (!mergedData.babaAdi && res.babaAdi) mergedData.babaAdi = res.babaAdi;
+          if (res.anneAdi && !isNoiseOrLabel(res.anneAdi)) {
+            if (!mergedData.anneAdi || isNoiseOrLabel(mergedData.anneAdi)) {
+              mergedData.anneAdi = res.anneAdi;
+            }
+          }
+          if (res.babaAdi && !isNoiseOrLabel(res.babaAdi)) {
+            if (!mergedData.babaAdi || isNoiseOrLabel(mergedData.babaAdi)) {
+              mergedData.babaAdi = res.babaAdi;
+            }
+          }
+
           if (!mergedData.dogumYeri && res.dogumYeri) mergedData.dogumYeri = res.dogumYeri;
           if (!mergedData.il && res.il) mergedData.il = res.il;
           if (!mergedData.ilce && res.ilce) mergedData.ilce = res.ilce;
@@ -242,10 +296,34 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           if (!mergedData.ulke && res.ulke) mergedData.ulke = res.ulke;
           if (!mergedData.adres && res.adres) mergedData.adres = res.adres;
           if (!mergedData.faaliyetKonusu && res.faaliyetKonusu) mergedData.faaliyetKonusu = res.faaliyetKonusu;
-          mergedData.rawText += "\n---\n" + res.rawText;
+
+          mergedData.rawText += "\n---\n" + (res.rawText || "");
+        }
+
+        // Son temizlik: noise kelimeleri sil
+        if (mergedData.ad && isNoiseOrLabel(mergedData.ad)) delete mergedData.ad;
+        if (mergedData.soyad && isNoiseOrLabel(mergedData.soyad)) delete mergedData.soyad;
+        if (mergedData.anneAdi && isNoiseOrLabel(mergedData.anneAdi)) delete mergedData.anneAdi;
+        if (mergedData.babaAdi && isNoiseOrLabel(mergedData.babaAdi)) delete mergedData.babaAdi;
+
+        // Seri No'yu son kez cleanSeri ile doğrula
+        if (mergedData.kimlikSeriNo) {
+          const validated = cleanSeri(mergedData.kimlikSeriNo);
+          if (validated) {
+            mergedData.kimlikSeriNo = validated;
+          }
+        }
+
+        // Cari Ünvan'ı Ad ve Soyad ile güncelle
+        if (mergedData.ad && mergedData.soyad) {
+          mergedData.unvan = `${mergedData.ad} ${mergedData.soyad}`.trim();
         }
 
         setExtractedData(mergedData);
+        if (onOcrApply) {
+          onOcrApply(mergedData);
+          setIsApplied(true);
+        }
         return mergedData;
       } catch (err: any) {
         setOcrError("Kimlik metinleri okunurken hata: " + (err.message || err));
@@ -254,7 +332,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         setIsScanning(false);
       }
     },
-    [selectedBelgeTuru, onPhotosSelected]
+    [selectedBelgeTuru, onPhotosSelected, onOcrApply]
   );
 
   // Ön Yüz ile Arka Yüzün Yerini Değiştir (Kullanıcı dilediğinde tek tıkla ters çevirir)

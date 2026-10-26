@@ -448,6 +448,7 @@ export const DovizFisiPage: React.FC = () => {
   const [arbitrajActiveInfo, setArbitrajActiveInfo] = useState<{ girisKod: string; cikisKod: string; parite: number; islemYonu: string } | null>(null);
   const [savedArbitrajInfo, setSavedArbitrajInfo] = useState<{
     fisId: number;
+    mainFisId?: number;
     seriNo?: string;
     belgeNo?: string;
     tutar?: number;
@@ -588,7 +589,8 @@ export const DovizFisiPage: React.FC = () => {
   const [vergiKimlikNo, setVergiKimlikNo] = useState<string>("");
   const [gelisNedeni, setGelisNedeni] = useState<string>("");
   const isArbitrajActive = Boolean(
-    gelisNedeni && gelisNedeni.trim().toLowerCase() === "arbitraj"
+    (gelisNedeni && gelisNedeni.trim().toLowerCase().includes("arbitraj")) ||
+    savedArbitrajInfo !== null
   );
   const [kurTuru, setKurTuru] = useState<number>(0); // 0: Efektif, 1: Döviz
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
@@ -1110,7 +1112,9 @@ export const DovizFisiPage: React.FC = () => {
   const loadLookupsAndList = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const fisListPromise = DovizFisService.getFisList({ limit: 500 }).catch(() => [] as DovizFisListItem[]);
+      const fisListPromise = DovizFisService.getFisList({ limit: 500, isArbitraj: false })
+        .then((l) => l.filter((f) => !f.isArbitraj && !(f.gelisNedeni && f.gelisNedeni.toLowerCase().includes("arbitraj"))))
+        .catch(() => [] as DovizFisListItem[]);
 
       const [cariler, vezneler, paralar, kurTabloRes, gunlukKurTabloRes, istatistikler, fisler, cariLk, compDef, kayitsizlar] = await Promise.all([
         CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
@@ -1186,10 +1190,11 @@ export const DovizFisiPage: React.FC = () => {
 
       // Lazily populate search list in background in Kayıt mode
       if (!isDuzeltmeMode && fisler.length === 0) {
-        DovizFisService.getFisList({ limit: 100 })
+        DovizFisService.getFisList({ limit: 100, isArbitraj: false })
           .then((bgFisler) => {
-            if (bgFisler && bgFisler.length > 0) {
-              setSavedFisList(bgFisler);
+            const filtered = (bgFisler || []).filter((f) => !f.isArbitraj && !(f.gelisNedeni && f.gelisNedeni.toLowerCase().includes("arbitraj")));
+            if (filtered.length > 0) {
+              setSavedFisList(filtered);
             }
           })
           .catch(() => {});
@@ -1350,9 +1355,84 @@ export const DovizFisiPage: React.FC = () => {
       setCariKod(matchedCari);
       setVergiKimlikNo(fis.vergiKimlikNo || "");
       setGelisNedeni(fis.gelisNedeni || "");
-      if (fis.gelisNedeni && fis.gelisNedeni.toLowerCase().includes("arbitraj")) {
+      if (fis.arbitrajId) {
+        try {
+          const arbFis = await DovizFisService.getFisById(fis.arbitrajId);
+          if (arbFis) {
+            const loadedArbitrajApply: ArbitrajApplyResult = {
+              toplamTl: arbFis.toplamTutar || 0,
+              seriNo: arbFis.seriNo || "",
+              belgeNo: arbFis.belgeNo || String(arbFis.fisId),
+              lines: (arbFis.satirlar || []).map((s: any) => ({
+                paraId: s.paraId || 0,
+                kod: s.paraKodu || "",
+                ad: s.paraAdi || "",
+                miktar: s.miktar || 0,
+                kur: s.kur || 0,
+                tutar: s.tutar || 0,
+                bmv: s.bmv || 0,
+                kmv: s.kmv || 0,
+                komisyon: s.komisyon || 0,
+                komisyonOrani: s.komisyonOrani || 0,
+                bmvOrani: s.bmvOrani || 0,
+                kmvOrani: s.kmvOrani || 0,
+              })),
+              allLines: (arbFis.satirlar || []).map((s: any, idx: number) => ({
+                id: String(idx + 1),
+                satirNo: idx + 1,
+                paraId: s.paraId || 0,
+                kod: s.paraKodu || "",
+                ad: s.paraAdi || "",
+                miktar: s.miktar || 0,
+                kur: s.kur || 0,
+                tutar: s.tutar || 0,
+                bmv: s.bmv || 0,
+                kmv: s.kmv || 0,
+                komisyon: s.komisyon || 0,
+                komisyonOrani: s.komisyonOrani || 0,
+                bmvOrani: s.bmvOrani || 0,
+                kmvOrani: s.kmvOrani || 0,
+              })),
+              islemYonu: arbFis.tip === 1 ? "satis" : "alis",
+              cariId: arbFis.cariKartId || null,
+              cariUnvan: arbFis.unvan || "",
+              cariKodu: (arbFis as any).cariKod || matchedCari || "",
+              vknTckn: arbFis.vergiKimlikNo || "",
+              istatistikKodu: arbFis.istatistikKodu || "",
+              detay: {
+                adres: arbFis.adres || "",
+                ilce: arbFis.ilce || "",
+                il: arbFis.il || "",
+                postaKodu: arbFis.postaKodu || "",
+                telefon: arbFis.telefonNo || "",
+                eposta: arbFis.eposta || "",
+                babaAdi: arbFis.babaAdi || "",
+                anneAdi: arbFis.anneAdi || "",
+                pasaportNo: arbFis.pasaportNo || "",
+                yetkiliKisi: arbFis.yetkiliKisi || "",
+                yetkiliKisiId: arbFis.yetkiliKisiId || null,
+              },
+            };
+            setSavedArbitrajInfo({
+              fisId: arbFis.fisId,
+              mainFisId: fis.fisId,
+              seriNo: arbFis.seriNo || "",
+              belgeNo: arbFis.belgeNo || String(arbFis.fisId),
+              tutar: arbFis.toplamTutar,
+              tip: arbFis.tip,
+              result: loadedArbitrajApply,
+            });
+          } else {
+            setSavedArbitrajInfo(null);
+          }
+        } catch {
+          setSavedArbitrajInfo(null);
+        }
+      } else if (fis.gelisNedeni && fis.gelisNedeni.toLowerCase().includes("arbitraj")) {
         const loadedArbitrajApply: ArbitrajApplyResult = {
           toplamTl: fis.toplamTutar || 0,
+          seriNo: fis.seriNo || "",
+          belgeNo: fis.belgeNo || String(fis.fisId),
           lines: (fis.satirlar || []).map((s: any) => ({
             paraId: s.paraId || 0,
             kod: s.paraKodu || "",
@@ -1389,10 +1469,24 @@ export const DovizFisiPage: React.FC = () => {
           cariKodu: matchedCari || "",
           vknTckn: fis.vergiKimlikNo || "",
           istatistikKodu: fis.istatistikKodu || "",
+          detay: {
+            adres: fis.adres || "",
+            ilce: fis.ilce || "",
+            il: fis.il || "",
+            postaKodu: fis.postaKodu || "",
+            telefon: fis.telefonNo || "",
+            eposta: fis.eposta || "",
+            babaAdi: fis.babaAdi || "",
+            anneAdi: fis.anneAdi || "",
+            pasaportNo: fis.pasaportNo || "",
+            yetkiliKisi: fis.yetkiliKisi || "",
+            yetkiliKisiId: fis.yetkiliKisiId || null,
+          },
         };
         setSavedArbitrajInfo({
           fisId: fis.fisId,
-          seriNo: fis.seriNo || "ARB",
+          mainFisId: fis.fisId,
+          seriNo: fis.seriNo || "",
           belgeNo: fis.belgeNo || String(fis.fisId),
           tutar: fis.toplamTutar,
           tip: fis.tip,
@@ -1642,7 +1736,8 @@ export const DovizFisiPage: React.FC = () => {
     setIsLoadingFisList(true);
     setShowSearchModal(true);
     try {
-      const fisler = await DovizFisService.getFisList({ limit: 500 });
+      const rawFisler = await DovizFisService.getFisList({ limit: 500, isArbitraj: false });
+      const fisler = rawFisler.filter((f) => !f.isArbitraj && !(f.gelisNedeni && f.gelisNedeni.toLowerCase().includes("arbitraj")));
       setSavedFisList(fisler);
     } catch (e) {
       console.error(e);
@@ -4009,7 +4104,8 @@ export const DovizFisiPage: React.FC = () => {
       const saved = await DovizFisService.saveFis(payload);
 
       await fetchVezneBalances(vezneId);
-      const freshList = await DovizFisService.getFisList({ limit: 500 });
+      const rawFresh = await DovizFisService.getFisList({ limit: 500, isArbitraj: false });
+      const freshList = rawFresh.filter((f) => !f.isArbitraj && !(f.gelisNedeni && f.gelisNedeni.toLowerCase().includes("arbitraj")));
       setSavedFisList(freshList);
 
       const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
@@ -4183,7 +4279,8 @@ export const DovizFisiPage: React.FC = () => {
         message: "Döviz fişi başarıyla silindi.",
       });
       await fetchVezneBalances(vezneId);
-      const freshList = await DovizFisService.getFisList({ limit: 100 });
+      const rawFresh = await DovizFisService.getFisList({ limit: 100, isArbitraj: false });
+      const freshList = rawFresh.filter((f) => !f.isArbitraj && !(f.gelisNedeni && f.gelisNedeni.toLowerCase().includes("arbitraj")));
       setSavedFisList(freshList);
       if (freshList.length > 0) {
         await loadFisById(freshList[0].fisId);
@@ -4200,7 +4297,8 @@ export const DovizFisiPage: React.FC = () => {
 
   const handleFirst = async () => {
     try {
-      const freshList = await DovizFisService.getFisList({ limit: 500 });
+      const rawFresh = await DovizFisService.getFisList({ limit: 500, isArbitraj: false });
+      const freshList = rawFresh.filter((f) => !f.isArbitraj && !(f.gelisNedeni && f.gelisNedeni.toLowerCase().includes("arbitraj")));
       if (freshList && freshList.length > 0) {
         setSavedFisList(freshList);
         const idx = 0;
@@ -4233,7 +4331,8 @@ export const DovizFisiPage: React.FC = () => {
 
   const handleLast = async () => {
     try {
-      const freshList = await DovizFisService.getFisList({ limit: 500 });
+      const rawFresh = await DovizFisService.getFisList({ limit: 500, isArbitraj: false });
+      const freshList = rawFresh.filter((f) => !f.isArbitraj && !(f.gelisNedeni && f.gelisNedeni.toLowerCase().includes("arbitraj")));
       if (freshList && freshList.length > 0) {
         setSavedFisList(freshList);
         const idx = freshList.length - 1;
@@ -4310,10 +4409,10 @@ export const DovizFisiPage: React.FC = () => {
           tutar: tutarVal,
           komisyonOrani: Number(parseDecimal(String(l.komisyonOrani || "0"))) || 0,
           komisyon: Number(parseDecimal(String(l.komisyon || "0"))) || 0,
-          bmvOrani: isAlis ? 0 : Number(parseDecimal(String(l.bmvOrani || "0"))) || 0,
-          bmv: isAlis ? 0 : Number(parseDecimal(String(l.bmv || "0"))) || 0,
-          kmvOrani: isAlis ? 0 : Number(parseDecimal(String(l.kmvOrani || "0"))) || 0,
-          kmv: isAlis ? 0 : Number(parseDecimal(String(l.kmv || "0"))) || 0,
+          bmvOrani: Number(parseDecimal(String(l.bmvOrani || "0"))) || 0,
+          bmv: Number(parseDecimal(String(l.bmv || "0"))) || 0,
+          kmvOrani: Number(parseDecimal(String(l.kmvOrani || "0"))) || 0,
+          kmv: Number(parseDecimal(String(l.kmv || "0"))) || 0,
           kdvOrani: 0,
           kdv: 0,
           seriNo: l.seriNo,
@@ -4326,12 +4425,107 @@ export const DovizFisiPage: React.FC = () => {
       const totalKom = arbSatirlar.reduce((acc, r) => acc + (r.komisyon || 0), 0);
       const totalB = arbSatirlar.reduce((acc, r) => acc + (r.bmv || 0), 0);
       const totalK = arbSatirlar.reduce((acc, r) => acc + (r.kmv || 0), 0);
-      const totalM = isAlis ? totalKom : totalB + totalK + totalKom;
+      const totalM = totalB + totalK + totalKom;
       const sonT = isAlis ? totalT - totalM : totalT + totalM;
 
       const now = new Date();
       const finalTarih = now.toISOString().split("T")[0];
       const finalZaman = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+      let effectiveMainFisId: number | undefined = (fisId && fisId > 0) ? fisId : undefined;
+
+      // Eğer ana fiş henüz kaydedilmemişse (!fisId), arka planda önce ana fişi kaydet
+      if (!effectiveMainFisId) {
+        const validMainLines = lines.filter((l) => {
+          const hasKod = l.paraKodu && String(l.paraKodu).trim() !== "";
+          const m = Number(parseDecimal(String(l.miktar || "0"))) || 0;
+          const t = Number(parseDecimal(String(l.tutar || "0"))) || 0;
+          return hasKod && (m > 0 || t > 0);
+        });
+
+        if (validMainLines.length > 0) {
+          let mainYetkiliId = (detayYetkiliKisiId && Number(detayYetkiliKisiId) > 0) ? Number(detayYetkiliKisiId) : undefined;
+          if (!mainYetkiliId && detayYetkiliKisi.trim()) {
+            const foundY = cariList.find(
+              (x) => (x.yetkiliKisi || "").toLowerCase().trim() === detayYetkiliKisi.toLowerCase().trim() ||
+                (x.ad || "").toLowerCase().trim() === detayYetkiliKisi.toLowerCase().trim() ||
+                String(x.kod || "").trim() === detayYetkiliKisi.trim()
+            );
+            if (foundY) mainYetkiliId = Number(foundY.id);
+          }
+
+          const mainPayload: SaveDovizFisPayload = {
+            vezneId,
+            tip,
+            tarih: finalTarih,
+            zaman: finalZaman,
+            seriNo: seriNo.trim() || undefined,
+            belgeNo: belgeNo.trim() || undefined,
+            gelisNedeni: gelisNedeni.trim() || undefined,
+            isArbitraj: false,
+            kurTuru: 0,
+            istatistikId: istatistikId || undefined,
+            cariKartId: cariKartId || null,
+            unvan: unvan.trim() || DEFAULT_CUSTOMER_NAME,
+            vergiKimlikNo: vergiKimlikNo.trim() || "",
+            kisilikTipi: 0,
+            toplamTutar: Number(totalTutar) || 0,
+            odemeTutari: Number(sonToplam) || 0,
+            kmvUygulamaSekli: companyDefinitions?.KMV_UYGULAMA_SEKLI ?? 3,
+            kullaniciId: user?.id ? Number(user.id) || undefined : undefined,
+            satirlar: validMainLines.map((l, idx) => {
+              let pId = Number(l.paraId);
+              if (!pId || pId <= 0) {
+                const match = paraList.find((p) => p.kod.toUpperCase() === (l.paraKodu || "").toUpperCase());
+                pId = match ? match.id : 1;
+              }
+              const m = parseMiktar(l.miktar);
+              const k = parseKur(l.kur);
+              const tutarNum = parseDecimal(l.tutar || "0");
+              return {
+                satirNo: idx,
+                paraId: pId,
+                paraKodu: l.paraKodu || "",
+                paraAdi: l.paraAdi || "",
+                miktar: m,
+                kur: k,
+                iscilik: 0,
+                giseKuru: k,
+                tutar: tutarNum > 0 ? tutarNum : m * k,
+                komisyonOrani: Number(parseDecimal(l.komisyonOrani || "0")) || 0,
+                komisyon: Number(parseDecimal(l.komisyon || "0")) || 0,
+                bmvOrani: Number(parseDecimal(l.bmvOrani || "0")) || 0,
+                bmv: Number(parseDecimal(l.bmv || "0")) || 0,
+                kmvOrani: Number(parseDecimal(l.kmvOrani || "0")) || 0,
+                kmv: Number(parseDecimal(l.kmv || "0")) || 0,
+                kdvOrani: 0,
+                kdv: 0,
+                seriNo: l.seriNo || undefined,
+                belgeNo: l.belgeNo || undefined,
+                ettn: l.ettn || undefined,
+              };
+            }),
+            adres: detayAdres.trim() || undefined,
+            ilce: detayIlce.trim() || undefined,
+            il: detayIl.trim() || undefined,
+            postaKodu: detayPostaKodu.trim() || undefined,
+            telefonNo: detayTelefon.trim() || undefined,
+            eposta: detayEposta.trim() || undefined,
+            babaAdi: detayBabaAdi.trim() || undefined,
+            anneAdi: detayAnneAdi.trim() || undefined,
+            pasaportNo: detayPasaportNo.trim() || undefined,
+            yetkiliKisi: detayYetkiliKisi.trim() || undefined,
+            yetkiliKisiId: mainYetkiliId,
+            meslekId: detayMeslekId,
+          };
+
+          const savedMain = await DovizFisService.saveFis(mainPayload);
+          effectiveMainFisId = savedMain.fisId;
+          setFisId(savedMain.fisId);
+          if (savedMain.seriNo) setSeriNo(savedMain.seriNo);
+          if (savedMain.belgeNo) setBelgeNo(savedMain.belgeNo);
+        }
+      }
 
       const payload: SaveDovizFisPayload = {
         vezneId,
@@ -4340,6 +4534,9 @@ export const DovizFisiPage: React.FC = () => {
         zaman: finalZaman,
         gelisNedeni: "Arbitraj",
         isArbitraj: true,
+        arbitrajId: effectiveMainFisId,
+        seriNo: result.seriNo ? result.seriNo.trim() : undefined,
+        belgeNo: result.belgeNo ? result.belgeNo.trim() : undefined,
         kurTuru: 0,
         istatistikId: (() => {
           if (!result.istatistikKodu) return null;
@@ -4372,16 +4569,21 @@ export const DovizFisiPage: React.FC = () => {
       // 1) Backend'e kaydet
       const saved = await DovizFisService.saveFis(payload);
 
-      // 2) Vezne bakiyeleri ve fiş listesini güncelle
+      // 2) Vezne bakiyeleri ve fiş listesini güncelle (Sadece normal fişler filtrelenir)
       await fetchVezneBalances(vezneId);
-      const freshList = await DovizFisService.getFisList({ limit: 500 });
+      const freshList = (await DovizFisService.getFisList({ limit: 500, isArbitraj: false }))
+        .filter((f) => !f.isArbitraj && !(f.gelisNedeni && f.gelisNedeni.toLowerCase().includes("arbitraj")));
       setSavedFisList(freshList);
+      if (effectiveMainFisId) {
+        const foundIdx = freshList.findIndex((f) => f.fisId === effectiveMainFisId);
+        if (foundIdx >= 0) setCurrentIndex(foundIdx);
+      }
 
       // 3) Yazıcıya gönder (Eğer kullanıcı F10 ile kaydet & yazdır seçtiyse)
       if (shouldPrint) {
         const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
         const baseBelgeNo = saved.belgeNo || String(saved.fisId);
-        const baseSeriNo = saved.seriNo || "ARB";
+        const baseSeriNo = saved.seriNo || "";
         const sourceLines = (saved.satirlar && saved.satirlar.length > 0) ? saved.satirlar : arbSatirlar;
         const mappedLines = sourceLines.map((l: any, idx: number) => {
           const rowBelgeNo = (l.belgeNo && l.belgeNo !== baseBelgeNo) ? l.belgeNo : (baseBelgeNo ? incrementDocNo(baseBelgeNo, idx) : "");
@@ -4457,11 +4659,16 @@ export const DovizFisiPage: React.FC = () => {
       // Arbitraj verileri döviz fişine aktarılmaz; yalnızca Arbitraj modalı tekrar açıldığında görünmesi için saklanır
       setSavedArbitrajInfo({
         fisId: saved.fisId,
-        seriNo: saved.seriNo || "ARB",
+        mainFisId: effectiveMainFisId || saved.fisId,
+        seriNo: saved.seriNo || "",
         belgeNo: saved.belgeNo || String(saved.fisId),
         tutar: totalT,
         tip: arbitrajTip,
-        result: result,
+        result: {
+          ...result,
+          seriNo: saved.seriNo || result.seriNo || "",
+          belgeNo: saved.belgeNo || result.belgeNo || String(saved.fisId),
+        },
       });
 
       // 5) Kullanıcıya bildirim ver
@@ -4484,6 +4691,31 @@ export const DovizFisiPage: React.FC = () => {
       dovizKurusSayisi,
       kurKurusSayisi,
       tlKurusSayisi,
+      fisId,
+      lines,
+      tip,
+      seriNo,
+      belgeNo,
+      gelisNedeni,
+      istatistikId,
+      cariKartId,
+      unvan,
+      vergiKimlikNo,
+      totalTutar,
+      sonToplam,
+      detayAdres,
+      detayIlce,
+      detayIl,
+      detayPostaKodu,
+      detayTelefon,
+      detayEposta,
+      detayBabaAdi,
+      detayAnneAdi,
+      detayPasaportNo,
+      detayYetkiliKisi,
+      detayYetkiliKisiId,
+      lookupData,
+      detayMeslekId,
     ]
   );
 
@@ -4689,7 +4921,7 @@ export const DovizFisiPage: React.FC = () => {
 
   const handleOpenPrintPreview = useCallback(() => {
     const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
-    const baseBelgeNo = belgeNo || "";
+    const baseBelgeNo = belgeNo || (fisId ? String(fisId) : (seriNo || "TEKLİF"));
     const baseSeriNo = seriNo || "";
     setPrintSnapshot({
       fisId,
@@ -4875,12 +5107,6 @@ export const DovizFisiPage: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key ? e.key.toUpperCase() : "";
       const isEscape = key === "ESCAPE" || e.code === "Escape" || e.keyCode === 27;
-
-      // Eğer ekranda açık bir modal varsa kısayolları çalıştırma (Escape hariç)
-      if (document.querySelector(".modal.show")) {
-        if (!isEscape) return;
-      }
-
       const isF1 = key === "F1" || e.code === "F1" || e.keyCode === 112;
       const isF2 = key === "F2" || e.code === "F2" || e.keyCode === 113;
       const isF3 = key === "F3" || e.code === "F3" || e.keyCode === 114;
@@ -4892,6 +5118,18 @@ export const DovizFisiPage: React.FC = () => {
       const isF9 = key === "F9" || e.code === "F9" || e.keyCode === 120;
       const isF10 = key === "F10" || e.code === "F10" || e.keyCode === 121;
       const isF12 = key === "F12" || e.code === "F12" || e.keyCode === 123;
+
+      // Eğer ekranda açık bir modal varsa kısayolları çalıştırma (Escape ve Shift+F10 hariç)
+      if (document.querySelector(".modal.show")) {
+        if (isF10 && e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeAllModals();
+          setShowTeklifTaniModal(true);
+          return;
+        }
+        if (!isEscape) return;
+      }
 
       if (isF12) {
         const activeEl = document.activeElement as HTMLElement | null;
@@ -5044,7 +5282,11 @@ export const DovizFisiPage: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        handleTriggerF10();
+        if (e.shiftKey) {
+          setShowTeklifTaniModal(true);
+        } else {
+          handleTriggerF10();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown, true);
@@ -5374,7 +5616,7 @@ export const DovizFisiPage: React.FC = () => {
                 textTransform: "uppercase",
               }}
             >
-              {tip === 0 ? "ALIŞ" : "SATIŞ"}
+              {isArbitrajActive ? `ARBİTRAJ ${tip === 0 ? "ALIŞ" : "SATIŞ"}` : (tip === 0 ? "ALIŞ" : "SATIŞ")}
             </div>
             {(arbitrajActiveInfo || isArbitrajActive) && (
               <Badge
@@ -6726,10 +6968,20 @@ export const DovizFisiPage: React.FC = () => {
                   variant="primary"
                   className="px-2.5 py-0.5 border text-white fw-bold shadow-xs d-inline-flex align-items-center gap-1"
                   style={{ fontSize: "11.5px", backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
-                  onClick={() => setShowTeklifTaniModal(true)}
-                  title="Teklif ve Müşteri Tanı Formu Yazdır (A4 - Kayıt Etmeden)"
+                  onClick={handleOpenPrintPreview}
+                  title="Fişi kaydetmeden standart döviz fişi olarak yazdır / önizle (Teklif)"
                 >
-                  <IconPrinter size={14} /> Teklif Yazdır (A4)
+                  <IconPrinter size={14} /> Teklif Yazdır
+                </Button>
+                <Button
+                  size="sm"
+                  variant="info"
+                  className="px-2.5 py-0.5 border text-white fw-bold shadow-xs d-inline-flex align-items-center gap-1"
+                  style={{ fontSize: "11.5px", backgroundColor: "#0284c7", borderColor: "#0369a1" }}
+                  onClick={() => setShowTeklifTaniModal(true)}
+                  title="Gerçek Kişiler İçin Müşteri Tanı Formu ve Döviz Fişi (A4 - Shift+F10)"
+                >
+                  <IconFileText size={14} /> Shift+F10) Müşteri Tanı Formu
                 </Button>
                 <Button
                   size="sm"
@@ -7468,14 +7720,29 @@ export const DovizFisiPage: React.FC = () => {
           </Button>
           <div className="d-flex align-items-center gap-2">
             <Button
+              variant="outline-primary"
+              size="sm"
+              className="d-flex align-items-center gap-1 fw-bold shadow-xs"
+              onClick={() => {
+                setShowDetayModal(false);
+                handleOpenPrintPreview();
+              }}
+              title="Fişi kaydetmeden standart döviz fişi olarak yazdır / önizle (Teklif)"
+            >
+              <IconPrinter size={16} /> Teklif Yazdır
+            </Button>
+            <Button
               variant="primary"
               size="sm"
               className="d-flex align-items-center gap-1 fw-bold shadow-xs"
-              style={{ backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
-              onClick={() => setShowTeklifTaniModal(true)}
-              title="Fişi kayıt etmeden A4 Teklif ve Müşteri Tanı Formu yazdır"
+              style={{ backgroundColor: "#0284c7", borderColor: "#0369a1" }}
+              onClick={() => {
+                setShowDetayModal(false);
+                setShowTeklifTaniModal(true);
+              }}
+              title="Gerçek Kişiler İçin Müşteri Tanı Formu (A4 - Shift+F10)"
             >
-              <IconPrinter size={16} /> Teklif & Tanı Formu Yazdır (A4)
+              <IconFileText size={16} /> Shift+F10) Müşteri Tanı Formu
             </Button>
             <Button
               variant="success"
@@ -7921,9 +8188,10 @@ export const DovizFisiPage: React.FC = () => {
           ilce: detayIlce,
           postaKodu: detayPostaKodu,
         }}
+        currentUser={user}
         pageType="doviz"
         fisTip={tip}
-        savedArbitraj={(isArbitrajActive || (savedArbitrajInfo?.fisId && savedArbitrajInfo.fisId === fisId)) ? (savedArbitrajInfo?.result || null) : null}
+        savedArbitraj={savedArbitrajInfo ? (savedArbitrajInfo.result || null) : null}
         onSaveDirect={handleSaveArbitrajDirectAndPrint}
         onApplyToFis={handleApplyArbitrajToDovizFis}
         onOpenPrintModal={handleOpenArbitrajPrintModal}
@@ -8123,6 +8391,7 @@ export const DovizFisiPage: React.FC = () => {
         vergiKimlikNo={vergiKimlikNo}
         cariKartId={cariKartId}
         detayUyruk={detayUyruk || detayUlke}
+        detayDogumTarihi={detayDogumTarihi}
         detayDogumYeri={detayDogumYeri}
         detayBabaAdi={detayBabaAdi}
         detayAnneAdi={detayAnneAdi}
@@ -8133,6 +8402,7 @@ export const DovizFisiPage: React.FC = () => {
         detayAdres={detayAdres}
         detayPasaportNo={detayPasaportNo}
         detayCariTipi={detayHukukiYapi}
+        detayVergiDairesi={lookupData.vergiDairesiList?.find((v: any) => v.id === detayVergiDairesiId)?.ad || ""}
         lines={lines.map((l: any) => ({
           paraKodu: l.paraKodu,
           paraAdi: l.paraAdi,
@@ -8141,18 +8411,41 @@ export const DovizFisiPage: React.FC = () => {
           tutar: l.tutar,
           usdKarsiligi: l.usdKarsiligi,
           bmv: l.bmv,
+          kmv: l.kmv,
+          ettn: l.ettn || (l as any).guid,
         }))}
         toplamTutar={totalTutar}
         totalMasraf={totalMasraf}
         sonToplam={sonToplam}
         bsmvTutari={calculatedBsmv}
+        totalKmv={totalKmv}
+        komisyonTutari={totalKomisyon}
         giseUsdKuru={(() => {
           const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
           return usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 1;
         })()}
         istatistikKodu={istatistikKodu}
         gelisNedeni={gelisNedeni}
+        geldigiUlke={detayUyruk || detayUlke || ""}
+        vezneKod={vezneKod || vezneList.find((v) => v.id === vezneId)?.kod || ""}
+        vezneAd={vezneList.find((v) => v.id === vezneId)?.ad || vezneAd || ""}
         companyDefinitions={companyDefinitions}
+        firmaVergiDairesi={
+          lookupData.vergiDairesiList?.find((v: any) => v.id === companyDefinitions?.VERGI_DAIRESI_ID)?.ad ||
+          (companyDefinitions as any)?.VERGI_DAIRESI_ADI ||
+          ""
+        }
+        firmaIlce={
+          lookupData.ilceList?.find((i: any) => i.id === companyDefinitions?.ILCE_ID)?.ad ||
+          (companyDefinitions as any)?.ILCE_ADI ||
+          ""
+        }
+        firmaIl={
+          lookupData.ilList?.find((i: any) => i.id === companyDefinitions?.IL_ID)?.ad ||
+          (companyDefinitions as any)?.IL_ADI ||
+          ""
+        }
+        ettn={lines?.[0]?.ettn || (lines?.[0] as any)?.guid || ""}
       />
 
       {/* F3) İstatistik Kodu Seçim Modalı */}

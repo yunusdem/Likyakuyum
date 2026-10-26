@@ -38,6 +38,7 @@ import {
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
+import LookupDurbunSelect from "../../components/common/LookupDurbunSelect";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { GibKullanici, gibAliasToEposta, gibKullanicilariTekillestir } from "../../utils/gibKullanici";
 import GibSorguButonu from "../../components/common/GibSorguButonu";
@@ -710,6 +711,17 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       setAlertError(err.message || "Cari kartlar yüklenirken bir hata oluştu.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRefreshLookups = async (): Promise<CariLookups> => {
+    try {
+      const fresh = await CariService.getLookups(true);
+      setLookups(fresh);
+      return fresh;
+    } catch (err) {
+      console.error("Lookups yenilenirken hata:", err);
+      return lookups;
     }
   };
 
@@ -1546,17 +1558,18 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                         Vergi Dairesi
                       </Form.Label>
                       <Col>
-                        <Form.Select
-                          value={formData.vergiDairesiId ?? ""}
-                          onChange={(e) => handleInputChange("vergiDairesiId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                        >
-                          <option value="">Seçilmedi</option>
-                          {lookups.vergiDairesiList.map((vd) => (
-                            <option key={vd.id} value={vd.id}>
-                              {vd.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
+                        <LookupDurbunSelect
+                          id="vergiDairesiSelect"
+                          label="Vergi Dairesi"
+                          value={formData.vergiDairesiId}
+                          items={lookups.vergiDairesiList}
+                          onChange={(id) => handleInputChange("vergiDairesiId", id)}
+                          tur={0}
+                          nextFocusId="yetkiliKisiInput"
+                          onRefreshLookups={handleRefreshLookups}
+                          onSuccessMessage={(msg) => setAlertSuccess(msg)}
+                          onErrorMessage={(msg) => setAlertError(msg)}
+                        />
                       </Col>
                     </Form.Group>
 
@@ -1566,6 +1579,7 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                       </Form.Label>
                       <Col>
                         <Form.Control
+                          id="yetkiliKisiInput"
                           type="text"
                           maxLength={200}
                           value={formData.yetkiliKisi || ""}
@@ -1580,17 +1594,18 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                         Hukuki Yapı
                       </Form.Label>
                       <Col>
-                        <Form.Select
-                          value={formData.hukukiYapiId ?? ""}
-                          onChange={(e) => handleInputChange("hukukiYapiId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                        >
-                          <option value="">Seçilmedi</option>
-                          {lookups.hukukiYapiList.map((hy) => (
-                            <option key={hy.id} value={hy.id}>
-                              {hy.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
+                        <LookupDurbunSelect
+                          id="hukukiYapiSelect"
+                          label="Hukuki Yapı"
+                          value={formData.hukukiYapiId}
+                          items={lookups.hukukiYapiList}
+                          onChange={(id) => handleInputChange("hukukiYapiId", id)}
+                          tur={5}
+                          nextFocusId="cariBakiyeSiniriInput"
+                          onRefreshLookups={handleRefreshLookups}
+                          onSuccessMessage={(msg) => setAlertSuccess(msg)}
+                          onErrorMessage={(msg) => setAlertError(msg)}
+                        />
                       </Col>
                     </Form.Group>
 
@@ -1600,6 +1615,7 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                       </Form.Label>
                       <Col>
                         <Form.Control
+                          id="cariBakiyeSiniriInput"
                           type="text"
                           inputMode="decimal"
                           value={formData.cariBakiyeSiniri !== null && formData.cariBakiyeSiniri !== undefined ? formData.cariBakiyeSiniri : ""}
@@ -1930,17 +1946,18 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                         Meslek
                       </Form.Label>
                       <Col>
-                        <Form.Select
-                          value={formData.meslekId ?? ""}
-                          onChange={(e) => handleInputChange("meslekId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                        >
-                          <option value="">Seçilmedi</option>
-                          {lookups.meslekList.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
+                        <LookupDurbunSelect
+                          id="meslekSelect"
+                          label="Meslek"
+                          value={formData.meslekId}
+                          items={lookups.meslekList}
+                          onChange={(id) => handleInputChange("meslekId", id)}
+                          tur={9}
+                          nextFocusId="sektorSelect"
+                          onRefreshLookups={handleRefreshLookups}
+                          onSuccessMessage={(msg) => setAlertSuccess(msg)}
+                          onErrorMessage={(msg) => setAlertError(msg)}
+                        />
                       </Col>
                     </Form.Group>
 
@@ -1949,17 +1966,18 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                         Sektör
                       </Form.Label>
                       <Col>
-                        <Form.Select
-                          value={formData.sektorId ?? ""}
-                          onChange={(e) => handleInputChange("sektorId", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
-                        >
-                          <option value="">Seçilmedi</option>
-                          {lookups.sektorList.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
+                        <LookupDurbunSelect
+                          id="sektorSelect"
+                          label="Sektör"
+                          value={formData.sektorId}
+                          items={lookups.sektorList}
+                          onChange={(id) => handleInputChange("sektorId", id)}
+                          tur={8}
+                          nextFocusId="kimlikGecerlilikTarihiInput"
+                          onRefreshLookups={handleRefreshLookups}
+                          onSuccessMessage={(msg) => setAlertSuccess(msg)}
+                          onErrorMessage={(msg) => setAlertError(msg)}
+                        />
                       </Col>
                     </Form.Group>
 
@@ -1969,6 +1987,7 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                       </Form.Label>
                       <Col>
                         <Form.Control
+                          id="kimlikGecerlilikTarihiInput"
                           type="date"
                           value={formData.kimlikGecerlilikTarihi || ""}
                           onChange={(e) => handleInputChange("kimlikGecerlilikTarihi", e.target.value)}
