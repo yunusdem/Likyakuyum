@@ -116,7 +116,8 @@ export function sablonDenetle(ham: unknown, tur: FisTuru, varsayilan: BelgeSablo
     if (o.italik !== undefined && typeof o.italik !== "boolean") hata(`"italik" true ya da false olmalı.`, ad, "italik");
     for (const h of ["hiza", "hizaDeger"]) if (o[h] !== undefined && !HIZALAR.includes(o[h])) hata(`"${h}" left, center ya da right olmalı.`, ad, h);
     if (o.cerceve !== undefined && !["hucre", "yok"].includes(o.cerceve)) hata("\"cerceve\" hucre ya da yok olmalı.", ad, "cerceve");
-    for (const b of ["kalin", "altCizgi", "kesikli", "daralt", "zorunlu", "kalinDeger", "baslikSatiri"]) if (o[b] !== undefined && typeof o[b] !== "boolean") hata(`"${b}" true ya da false olmalı.`, ad, b);
+    if (o.satirAyraci !== undefined && !["noktali", "kesikli", "duz"].includes(o.satirAyraci)) hata("\"satirAyraci\" noktali, kesikli ya da duz olmalı.", ad, "satirAyraci");
+    for (const b of ["kalin", "altCizgi", "kesikli", "noktali", "daralt", "zorunlu", "kalinDeger", "baslikSatiri"]) if (o[b] !== undefined && typeof o[b] !== "boolean") hata(`"${b}" true ya da false olmalı.`, ad, b);
 
     // Metin alanları ve türe özel yapı
     const metin = (alan: string, gerekli = false) => {

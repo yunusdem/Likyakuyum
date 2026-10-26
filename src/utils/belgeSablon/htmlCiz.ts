@@ -67,7 +67,7 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
         cizgiler.push(`<rect x="${say(k + say(c.x))}" y="${say(k + say(c.y))}" width="${Math.max(0, say(c.g))}" height="${Math.max(0, say(c.h))}" fill="${c.zemin ? renk(c.zemin, "none") : "none"}"${say(c.kalinlik) > 0 ? ` stroke="#000" stroke-width="${Math.max(1, say(c.kalinlik))}"` : ""}/>`);
         break;
       case "cizgi":
-        cizgiler.push(`<line x1="${say(k + say(c.x1))}" y1="${say(k + say(c.y1))}" x2="${say(k + say(c.x2))}" y2="${say(k + say(c.y2))}" stroke="#000" stroke-width="${Math.max(1, say(c.kalinlik))}"${c.kesikli ? ' stroke-dasharray="3 2"' : ""}/>`);
+        cizgiler.push(`<line x1="${say(k + say(c.x1))}" y1="${say(k + say(c.y1))}" x2="${say(k + say(c.x2))}" y2="${say(k + say(c.y2))}" stroke="#000" stroke-width="${Math.max(1, say(c.kalinlik))}"${c.noktali ? ' stroke-dasharray="1 1.5"' : c.kesikli ? ' stroke-dasharray="3 2"' : ""}/>`);
         break;
       case "metin":
         ustKatman.push(metinHtml(c, k, k));

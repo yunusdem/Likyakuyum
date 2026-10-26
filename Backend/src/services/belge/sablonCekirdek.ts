@@ -51,9 +51,11 @@ export type BelgeOge = OgeOrtak & (
       /** Etiket / değer düzeni (her kayıt birkaç satır) */
       etiketG?: number; satirlar?: TabloSatiri[]; hizaDeger?: Hiza; kalinDeger?: boolean;
       /** Sütun düzeni (her kayıt bir satır) */
-      sutunlar?: ListeSutunu[]; baslikSatiri?: boolean; baslikZemin?: string; baslikBoyut?: number; altSatirlar?: ListeAltSatiri[] }
+      sutunlar?: ListeSutunu[]; baslikSatiri?: boolean; baslikZemin?: string; baslikBoyut?: number; altSatirlar?: ListeAltSatiri[];
+      /** Sütun düzeninde kayıtlar arasına çizgi (aralığın ortasına; çerçevesiz listede) */
+      satirAyraci?: "noktali" | "kesikli" | "duz" }
   | { tip: "kutu"; x: number; y: number; g: number; h: number; kalinlik?: number; zemin?: string }
-  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik?: number; kesikli?: boolean }
+  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik?: number; kesikli?: boolean; noktali?: boolean }
   | { tip: "resim"; dosya: string; x: number; y: number; g?: number; h?: number }
   /** Firmanın yüklediği logo / imza-kaşe görseli; `gorsel` görselin firmada verilen adıdır. */
   | { tip: "logo" | "imza"; gorsel: string; x: number; y: number; g?: number; h?: number }
@@ -79,7 +81,7 @@ export interface BelgeSablon {
 
 export type Cizim =
   | { tip: "metin"; x: number; y: number; g: number; metin: string; boyut: number; kalin: boolean; hiza: Hiza; renk: string; altCizgi: boolean; tekSatir: boolean; font?: string; italik?: boolean }
-  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik: number; kesikli: boolean }
+  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik: number; kesikli: boolean; noktali?: boolean }
   | { tip: "kutu"; x: number; y: number; g: number; h: number; kalinlik: number; zemin?: string }
   /** `dosya`: belge klasöründeki dosya adı ya da firma görseli için `firma:<ad>`; `siyahBeyaz`: termal ruloda firma görseli */
   | { tip: "resim"; dosya: string; x: number; y: number; g: number; h: number; siyahBeyaz?: boolean }
@@ -372,7 +374,8 @@ export const renkGecerli = (r: unknown): r is string => typeof r === "string" &&
 /** Çok sütunlu liste: başlık satırı + kayıt başına bir satır (+ sütun altı ek satırlar); yükseklik döner. */
 function sutunluListe(
   o: { x: number; y: number; g: number; satirH?: number; boyut?: number; aralik?: number; bosMetin?: string; cerceve?: "hucre" | "yok";
-    sutunlar: ListeSutunu[]; baslikSatiri?: boolean; baslikZemin?: string; baslikBoyut?: number; altSatirlar?: ListeAltSatiri[] },
+    sutunlar: ListeSutunu[]; baslikSatiri?: boolean; baslikZemin?: string; baslikBoyut?: number; altSatirlar?: ListeAltSatiri[];
+    satirAyraci?: "noktali" | "kesikli" | "duz" },
   dizi: any[], veri: Record<string, any>, varsayilanBoyut: number, yt: string, c: Cizim[],
 ): number {
   const boyut = o.boyut ?? varsayilanBoyut;
@@ -406,7 +409,15 @@ function sutunluListe(
   const altH = (a: ListeAltSatiri) => altBoyut(a) * SATIR_ORANI + 0.5;
   dizi.forEach((kayit, k) => {
     const bag = { ...veri, s: kayit, sira: k + 1 };
-    if (k > 0) y += o.aralik ?? 0;
+    if (k > 0) {
+      const aralik = o.aralik ?? 0;
+      // Kayıtlar arası ayraç: aralığın ortasına, liste genişliğinde
+      if (o.satirAyraci && !hucre) {
+        const ay = y + aralik / 2;
+        c.push({ tip: "cizgi", x1: o.x, y1: ay, x2: o.x + toplamG, y2: ay, kalinlik: 0.5, kesikli: o.satirAyraci === "kesikli", ...(o.satirAyraci === "noktali" ? { noktali: true } : {}) });
+      }
+      y += aralik;
+    }
     // Ana satır: çok satırlı sütun varsa satır uzar
     const hucreler = sutunlar.map((s, i) => {
       const metin = doldur(s.deger, bag);
@@ -523,7 +534,7 @@ function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: n
       c.push({ tip: "kutu", x: o.x, y: o.y, g: o.g, h: o.h, kalinlik: o.kalinlik ?? 0.6, ...(renkGecerli(o.zemin) ? { zemin: o.zemin } : {}) });
       break;
     case "cizgi":
-      c.push({ tip: "cizgi", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, kalinlik: o.kalinlik ?? 0.8, kesikli: !!o.kesikli });
+      c.push({ tip: "cizgi", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, kalinlik: o.kalinlik ?? 0.8, kesikli: !!o.kesikli, ...(o.noktali ? { noktali: true } : {}) });
       break;
     case "resim":
       c.push({ tip: "resim", dosya: o.dosya, x: o.x, y: o.y, g: o.g ?? 60, h: o.h ?? 60 });
