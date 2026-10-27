@@ -15,6 +15,7 @@ import {
   IconTrash,
   IconArrowsExchange,
   IconEdit,
+  IconCrop,
 } from "@tabler/icons-react";
 import {
   performOcrAndExtractData,
@@ -30,6 +31,7 @@ import {
 } from "../../utils/kimlikOcrParser";
 import { autoCropIdCard } from "../../utils/imageCropUtils";
 import { CariFotografItem } from "../../services/cariService";
+import { ImageCropperModal } from "../common/ImageCropperModal";
 
 export interface CariKimlikFotografSectionProps {
   currentPhoto?: CariFotografItem | null;
@@ -80,6 +82,9 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   // Büyütme (Zoom) Modalı
   const [showZoomModal, setShowZoomModal] = useState(false);
+
+  // Manuel Kırpma (Crop) Modalı
+  const [showCropModal, setShowCropModal] = useState(false);
 
   // OCR Verilerini Doğrudan Düzenleme Modu
   const [isEditingOcr, setIsEditingOcr] = useState<boolean>(false);
@@ -379,6 +384,34 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
     }
   };
 
+  // Manuel Kırpma Tamamlandığında
+  const handleCropDone = (croppedBase64: string) => {
+    if (!croppedBase64) return;
+    const targetIdx = safeActiveIndex;
+
+    let baseList = localPhotos.length > 0 ? [...localPhotos] : photoList.map((p) => p.base64);
+
+    if (baseList.length === 0) {
+      baseList = [croppedBase64];
+    } else if (targetIdx < baseList.length) {
+      baseList[targetIdx] = croppedBase64;
+    } else {
+      baseList.push(croppedBase64);
+    }
+
+    setLocalPhotos(baseList);
+    setShowCropModal(false);
+
+    if (onPhotosSelected) {
+      onPhotosSelected(baseList);
+    } else if (onPhotoSelected) {
+      onPhotoSelected(baseList[0]);
+    }
+
+    // Kırpılan görsel üzerinden OCR'ı tekrar çalıştır
+    triggerAutoOcr(baseList);
+  };
+
   // Kamera Başlat
   const startCamera = async () => {
     try {
@@ -669,6 +702,18 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
             </div>
 
             <div
+              className="position-absolute top-0 end-0 m-1 bg-dark bg-opacity-70 text-white rounded-circle p-1 d-flex align-items-center justify-content-center shadow-sm"
+              style={{ width: "22px", height: "22px", cursor: "pointer", zIndex: 2 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowCropModal(true);
+              }}
+              title="Kimlik Fotoğrafını Kırp"
+            >
+              <IconCrop size={12} stroke={2} />
+            </div>
+
+            <div
               className="position-absolute bottom-0 end-0 m-1 bg-dark bg-opacity-60 text-white rounded-circle p-1 d-flex align-items-center justify-content-center"
               style={{ width: "20px", height: "20px" }}
               title="Büyüt"
@@ -715,6 +760,23 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           </button>
         )}
 
+        {displayImage && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary w-100 d-flex align-items-center justify-content-center gap-1 py-1 px-1 fw-bold shadow-2xs"
+            onClick={() => setShowCropModal(true)}
+            style={{
+              borderRadius: "8px",
+              fontSize: "11px",
+              lineHeight: "1.4",
+            }}
+            title="Kimlik fotoğrafını manuel olarak kırp ve düzenle"
+          >
+            <IconCrop size={13} stroke={2.2} />
+            <span>Fotoğrafı Kırp</span>
+          </button>
+        )}
+
         {/* YÜKLE / DEĞİŞTİR Açılır Butonu */}
         <Dropdown className="w-100">
           <Dropdown.Toggle
@@ -755,6 +817,13 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
             {photoList.length > 0 && (
               <>
                 <Dropdown.Divider />
+                <Dropdown.Item
+                  onClick={() => setShowCropModal(true)}
+                  className="d-flex align-items-center gap-2 py-1.5"
+                >
+                  <IconCrop size={14} className="text-primary" />
+                  <span>Fotoğrafı Kırp</span>
+                </Dropdown.Item>
                 <Dropdown.Item
                   onClick={() => triggerAutoOcr(photoList.map((p) => p.base64))}
                   className="d-flex align-items-center gap-2 py-1.5"
@@ -1388,21 +1457,46 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
             Kapat
           </Button>
           {displayImage && (
-            <Button
-              variant="primary"
-              size="sm"
-              className="d-flex align-items-center gap-1.5"
-              onClick={() => {
-                setShowZoomModal(false);
-                triggerAutoOcr(photoList.map((p) => p.base64));
-              }}
-            >
-              <IconSparkles size={16} />
-              <span>Belgeyi Yeniden Oku</span>
-            </Button>
+            <div className="d-flex align-items-center gap-2">
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="d-flex align-items-center gap-1.5"
+                onClick={() => {
+                  setShowZoomModal(false);
+                  setShowCropModal(true);
+                }}
+              >
+                <IconCrop size={16} />
+                <span>Fotoğrafı Kırp</span>
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="d-flex align-items-center gap-1.5"
+                onClick={() => {
+                  setShowZoomModal(false);
+                  triggerAutoOcr(photoList.map((p) => p.base64));
+                }}
+              >
+                <IconSparkles size={16} />
+                <span>Belgeyi Yeniden Oku</span>
+              </Button>
+            </div>
           )}
         </Modal.Footer>
       </Modal>
+
+      {/* Manuel Kırpma (Crop) Modalı */}
+      {displayImage && (
+        <ImageCropperModal
+          show={showCropModal}
+          onHide={() => setShowCropModal(false)}
+          imageSrc={displayImage}
+          onCropDone={handleCropDone}
+          title={`${activePhoto?.label || "Kimlik"} Fotoğrafını Kırp`}
+        />
+      )}
     </div>
   );
 };
