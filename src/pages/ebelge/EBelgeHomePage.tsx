@@ -15,6 +15,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { EbelgeAyar, EbelgeYerelTaslak, EBELGE_YEREL_TASLAK_FORMU, ebelgeService, ebelgeTutar } from "../../services/ebelgeService";
 import { KnskYaklasanlarKarti } from "./EBelgeKnsk";
+import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
 
 /**
  * e-Belge ana sayfası (hub).
@@ -218,6 +219,9 @@ const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHid
 
 const EBelgeHomePage: React.FC = () => {
   const navigate = useNavigate();
+  // e-Gider kartı yalnız lisansında e-Gider seçeneği açık firmada (docs/E_GIDER_YOL_HARITASI.md K15)
+  const ozellik = useUrunOzellikleri();
+  const kartlar = KARTLAR.filter((k) => k.yol !== "/e-belge/gider" || ozellik.egider);
   const [vknPopup, setVknPopup] = useState(false);
   const [ayar, setAyar] = useState<EbelgeAyar | null>(null);
   const [yukleniyor, setYukleniyor] = useState<boolean>(true);
@@ -282,7 +286,7 @@ const EBelgeHomePage: React.FC = () => {
       <KnskYaklasanlarKarti />
 
       <Row className="g-3">
-        {KARTLAR.map((kart) => (
+        {kartlar.map((kart) => (
           <Col xs={12} md={6} xl={4} key={kart.yol}>
             <Card
               className="shadow-sm border border-secondary-subtle rounded-3 h-100"

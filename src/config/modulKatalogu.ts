@@ -46,6 +46,17 @@ export const UST_KISAYOLLAR: { key: string; baslik: string; to?: string }[] = [
 
 export const UST_KISAYOL_GRUBU = "ust";
 
+/**
+ * Menüde maddesi olmayan ama lisansa ayrıca bağlanan sayfalar. Panelde ana menüsünün altında seçenek olarak görünür;
+ * sayfa ancak ana sayfası (anaYol) AÇIK ve kendi kodu açıksa açılır. Menüye madde eklenmediği için kullanıcı menü
+ * harflerine dokunulmaz, kullanıcı yetkisi ana sayfanınkiyle denetlenir.
+ * e-Gider Pusulası (docs/E_GIDER_YOL_HARITASI.md K15, K18, K21): Kuyum paketinde ve ERP'de açık.
+ */
+export const SANAL_SAYFALAR: { kod: string; ustKodu: string; baslik: string; yol: string; anaYol: string }[] = [
+  { kod: "ebelge:e-belge/gider", ustKodu: "ebelge", baslik: "e-Gider Pusulası", yol: "e-belge/gider", anaYol: "e-belge" },
+];
+const SANAL_KODLAR = new Set(SANAL_SAYFALAR.map((s) => s.kod));
+
 const TR: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", Ç: "c", Ğ: "g", İ: "i", I: "i", Ö: "o", Ş: "s", Ü: "u" };
 const adaCevir = (metin: string): string =>
   metin
@@ -82,6 +93,13 @@ export const modulKatalogu = (): ModulKaydi[] => {
     if (!ana.key || ana.grouptitle) continue;
     liste.push({ modulKodu: ana.key, ustKodu: null, baslik: ana.title || ana.key, tur: "ANA", sira: sira++ });
     if (ana.children?.length) altlariEkle(ana.key, ana.key, ana.children);
+  }
+
+  // Menü dışı sanal sayfalar: ana menüsünün altında seçenek
+  for (const s of SANAL_SAYFALAR) {
+    if (!liste.some((m) => m.modulKodu === s.kod)) {
+      liste.push({ modulKodu: s.kod, ustKodu: s.ustKodu, baslik: s.baslik, tur: "ALT", sira: sira++ });
+    }
   }
 
   // Üst kısayollar panelde tek başlık altında görünsün diye sanal bir grup altında tutulur
@@ -246,7 +264,7 @@ const SAYFA_TAKMA_ADLARI: Record<string, string> = {
   "e-belge/dogrula": "e-belge",
   "e-belge/giden": "e-belge",
   "e-belge/irsaliye": "e-belge",
-  "e-belge/gider": "e-belge",
+  // e-belge/gider takma ad değil: kendi sanal kodu var (SANAL_SAYFALAR)
   "e-belge/kaynak": "e-belge",
   "e-belge/mustahsil": "e-belge",
   "ayarlar/e-belge": "e-belge",
@@ -267,6 +285,9 @@ const yolAnahtari = (yol: string): string => yolTemizle(yol).replace(/\/+$/, "")
  */
 const adresZincirleri = (pathname: string): string[][] => {
   const ham = yolAnahtari(pathname);
+  // Sanal sayfa: ana sayfasının zincirlerine kendi kodu eklenir (ikisi de açık olmalı)
+  const sanal = SANAL_SAYFALAR.find((s) => s.yol === ham);
+  if (sanal) return adresZincirleri(sanal.anaYol).map((z) => [...z, sanal.kod]);
   const yol = SAYFA_TAKMA_ADLARI[ham] ?? ham;
   if (!yol) return [];
   const zincirler: string[][] = [];
@@ -299,7 +320,9 @@ export const sayfaKapaliMi = (acik: string[] | null | undefined, pathname: strin
 
 /** Kod zinciri (ana menü → madde …) kullanıcının menü yetkisinde açık mı */
 const zincirKullaniciyaAcik = (y: KullaniciYetkisi, zincir: string[]): boolean => {
-  const madde = zincir[1] ?? zincir[0];
+  // Sanal sayfa kodunun menü harfi yok: kullanıcı yetkisi ana sayfasının menü maddesiyle denetlenir
+  const gercek = zincir.filter((k) => !SANAL_KODLAR.has(k));
+  const madde = gercek[1] ?? gercek[0];
   const bilgi = kodHarfleri().get(madde);
   return !bilgi || menuMaddesiAcik(y, bilgi.anaKey, bilgi.harf);
 };
@@ -332,7 +355,7 @@ const OZELLIK_SAYFALARI = {
   ticari: ["ticari/satis-fisi", "ticari/satis-fisi-duzeltme", "ticari/satis-listesi"],
 } as const;
 
-export type UrunOzellikleri = Record<keyof typeof OZELLIK_SAYFALARI | "kuyum", boolean>;
+export type UrunOzellikleri = Record<keyof typeof OZELLIK_SAYFALARI | "kuyum" | "egider", boolean>;
 
 export const urunOzellikleri = (acik: string[] | null | undefined): UrunOzellikleri => {
   const bak = (yollar: readonly string[]) => !acik || yollar.some((y) => !sayfaKapaliMi(acik, y));
@@ -348,5 +371,7 @@ export const urunOzellikleri = (acik: string[] | null | undefined): UrunOzellikl
     ticari: bak(OZELLIK_SAYFALARI.ticari),
     // Kuyumcu ayarları (işçilik, has altın, sarrafiye sınırı…): kuyum fişlerinden biri açıksa
     kuyum: sarraf || perakende || etiket,
+    // e-Gider Pusulası (docs/E_GIDER_YOL_HARITASI.md K15): kendi lisans seçeneği
+    egider: !acik || !sayfaKapaliMi(acik, "e-belge/gider"),
   };
 };

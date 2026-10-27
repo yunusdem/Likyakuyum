@@ -427,6 +427,25 @@ export class EbelgeSqlRepository {
   }
 
   /**
+   * Firma tanımındaki vergi dairesi adı (TODVZ_TANIM.VERGI_DAIRESI_ID → TODVZ_TABLO_MADDESI, TUR=0). Gider pusulasında
+   * düzenleyenin vergi dairesi zorunlu içerik (VUK 234); ayrı sorgu: kolon/tablo yoksa firma bilgisinin geri kalanı bozulmasın.
+   */
+  public static async getFirmaVergiDairesi(dbContext?: DbContext): Promise<string> {
+    const pool = await this.getPool(dbContext);
+    try {
+      const res = await pool.request().query(`
+        SELECT TOP 1 LTRIM(RTRIM(ISNULL(VD.AD, ''))) AS ad
+        FROM [dbo].[TODVZ_TANIM] T
+        LEFT JOIN [dbo].[TODVZ_TABLO_MADDESI] VD ON VD.TABLO_MADDESI_ID = T.VERGI_DAIRESI_ID AND VD.TUR = 0
+      `);
+      return String(res.recordset[0]?.ad || "").trim();
+    } catch (err) {
+      logger.warn("EbelgeSqlRepository.getFirmaVergiDairesi uyarısı:", err);
+      return "";
+    }
+  }
+
+  /**
    * Ayar kaydını API'ye uygun, şifresi maskelenmiş biçimde döndürür.
    */
   public static toAyarView(kayit: EbelgeAyarKayit): EbelgeAyarView {

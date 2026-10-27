@@ -393,7 +393,7 @@ const EBelgeGidenPage: React.FC = () => {
               <Form.Label className="small mb-1">Belge türü</Form.Label>
               <Form.Select size="sm" value={belgeTuru} onChange={e => setBelgeTuru(e.target.value)} disabled={topluBusy}>
                 <option value="">Tümü</option><option value="EFatura">e-Fatura</option><option value="EArsiv">e-Arşiv</option>
-                {(ozellik.sarraf || ozellik.perakende) && <option value="EGiderPusulasi">e-Gider</option>}<option value="EIrsaliye">e-İrsaliye</option>{ozellik.doviz && <option value="EDoviz">e-Döviz</option>}<option value="EMustahsil">e-Müstahsil</option>
+                {(ozellik.sarraf || ozellik.perakende || ozellik.egider) && <option value="EGiderPusulasi">e-Gider</option>}<option value="EIrsaliye">e-İrsaliye</option>{ozellik.doviz && <option value="EDoviz">e-Döviz</option>}<option value="EMustahsil">e-Müstahsil</option>
               </Form.Select>
             </Col>
             <Col xs={6} md={3} lg={2}><Form.Label className="small mb-1">İlk tarih</Form.Label>

@@ -399,6 +399,10 @@ export interface EbelgeKaynakDetay {
 }
 export interface EbelgeKaynakHazir extends EbelgeKaynakKimlik {
   belgeNo: string; unvan: string; tutar: number; belgeTuruAdi: string; parmakizi: string; senaryo: string; durum: string; paraBirimi?: string;
+  /** Gönderimden önce kullanıcıya sorulacak uyarı (KDV'li sarraf alışı → KDV 0; docs/E_GIDER_YOL_HARITASI.md K9) */
+  uyari?: string;
+  /** Uyarı onaylandı: KDV'li sarraf alışı KDV 0 olarak gönderilir */
+  kdvSifir?: boolean;
 }
 export interface EbelgeMustahsilIstegi {
   belgeNo:string; tarih:string; saat?:string; paraBirimi:"TRY"; smsKodu:string; smsSaglayiciAdi:string; smsSaglayiciVkn:string;
@@ -409,8 +413,18 @@ export interface EbelgeGiderIstegi {
   belgeNo: string; tarih: string; belgeTipi: "SATIS" | "IADE"; paraBirimi: "TRY";
   alici: EbelgeTaraf;
   vergiTuruKodu: string;
-  satirlar: { ad: string; miktar: number; birimKodu: string; birimFiyat: number; vergiOrani: number }[];
+  satirlar: { ad: string; aciklama?: string; miktar: number; birimKodu: string; birimFiyat: number; vergiOrani: number }[];
   iadeDayanak?: { belgeTipi: "EARSIV_FATURA" | "BELGESIZ" | "SATIS_FISI"; belgeNo?: string; belgeTarihi: string };
+  notlar?: string[];
+}
+
+/** Gider pusulası yerel hesabı (sunucu üretir; stopajda ödenecek = mal − stopaj) */
+export interface EbelgeGiderOzet {
+  malHizmetToplam: number;
+  vergiToplam: number;
+  vergiDahilToplam?: number;
+  odenecekTutar: number;
+  kesinti?: boolean;
 }
 
 export interface EbelgeMukellefSonucu {
@@ -641,7 +655,7 @@ export const ebelgeService = {
   async mustahsilGelen(params?:any){return (await apiClient.get<any[]>("/e-belge/mustahsil/gelen",{params})).data;},
   async mustahsilGelenStatu(uuid:string,statu:"Okunmadı"|"Okundu"|"Islendi"|"Islenmedi"){return (await apiClient.post<any>(`/e-belge/mustahsil/gelen/${encodeURIComponent(uuid)}/statu`,{statu})).data;},
   async giderOnizle(girdi: EbelgeGiderIstegi) {
-    return (await apiClient.post<{ ozet: { malHizmetToplam: number; vergiToplam: number; odenecekTutar: number }; iceDogrulamasiYapildi: false }>("/e-belge/gider-pusulasi/onizle", girdi)).data;
+    return (await apiClient.post<{ ozet: EbelgeGiderOzet; uyarilar?: string[]; iceDogrulamasiYapildi: false }>("/e-belge/gider-pusulasi/onizle", girdi)).data;
   },
   async giderGonder(girdi: EbelgeGiderIstegi) {
     return (await apiClient.post<{ uuid: string; belgeNo: string; durum: string; mesaj: string }>("/e-belge/gider-pusulasi/gonder", girdi, { timeoutMs: 300_000 })).data;
@@ -963,7 +977,7 @@ export const ebelgeService = {
   },
 
   /** Fatura no önerileri: ayarlarda tanımlı her seri için ICE'deki son sıra + 1 (formun en üstündeki seçim) */
-  async faturaNoOnerileri(belgeTuru: "EFatura" | "EArsiv", yil: number): Promise<EbelgeFaturaNoOnerisi[]> {
+  async faturaNoOnerileri(belgeTuru: "EFatura" | "EArsiv" | "EGider", yil: number): Promise<EbelgeFaturaNoOnerisi[]> {
     const res = await apiClient.get<EbelgeFaturaNoOnerisi[]>("/e-belge/giden/fatura-no-onerileri", { belgeTuru, yil });
     return res.data || [];
   },

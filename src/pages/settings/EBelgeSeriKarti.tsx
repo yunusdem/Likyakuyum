@@ -15,14 +15,14 @@ const TURLER: { kod: SeriTuru; ad: string; iceBul: boolean }[] = [
   { kod: "EFatura", ad: "e-Fatura", iceBul: true },
   { kod: "EArsiv", ad: "e-Arşiv", iceBul: true },
   // Perakende ve Sarraf alış fişleri bu seriyle numaralanır ve gider pusulası olarak gider (docs/PERAKENDE_EBELGE_YOL_HARITASI.md P3)
-  { kod: "EGider", ad: "e-Gider pusulası (Sarraf / Perakende alış)", iceBul: false },
+  { kod: "EGider", ad: "e-Gider pusulası (Sarraf / Perakende alış, elle giriş)", iceBul: false },
 ];
 
 const EBelgeSeriKarti: React.FC = () => {
   const { showSuccess, showToast } = useToast();
-  // e-Gider serisi yalnız Sarraf ya da Perakende fişi lisanstaysa gösterilir
+  // e-Gider serisi Sarraf / Perakende fişi ya da e-Gider seçeneği lisanstaysa gösterilir (elle girişte de bu seri önerilir)
   const ozellik = useUrunOzellikleri();
-  const turler = TURLER.filter((t) => t.kod !== "EGider" || ozellik.sarraf || ozellik.perakende);
+  const turler = TURLER.filter((t) => t.kod !== "EGider" || ozellik.sarraf || ozellik.perakende || ozellik.egider);
   const [liste, setListe] = useState<EbelgeSeriKaydi[]>([]);
   const [yeni, setYeni] = useState<Record<string, string>>({ EFatura: "", EArsiv: "", EGider: "" });
   const [yukleniyor, setYukleniyor] = useState(true);

@@ -1,6 +1,8 @@
 import { DashboardMenu } from "routes/DashboardRoute";
 import { MenuItemType } from "types/menuTypes";
-import { ModulKaydi, UST_KISAYOLLAR, menuOgesiKodu } from "./modulKatalogu";
+import { ModulKaydi, SANAL_SAYFALAR, UST_KISAYOLLAR, menuOgesiKodu } from "./modulKatalogu";
+
+const SANAL_KODLARI = new Set(SANAL_SAYFALAR.map((s) => s.kod));
 
 /**
  * Lisans ürün paketleri (docs/LISANS_URUN_PAKETLERI.md). Paketlerin ASIL içeriği merkezde (ADM_PAKET_MODUL) durur ve
@@ -144,6 +146,8 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
 
   // H- e-Belge
   [["ebelge"], [D, G, K, T, C]],
+  // e-Gider Pusulası (docs/E_GIDER_YOL_HARITASI.md K15, K18): ayrı seçenek; şimdilik Kuyum (ERP hepsini alır)
+  [["ebelge:e-belge/gider"], [K]],
 
   // I- Etiket, J- Perakende
   [["etiket", "perakende"], [K]],
@@ -209,7 +213,9 @@ export const ilkPaketIcerigi = (katalog: ModulKaydi[]): Record<IlkPaket, string[
     ust.set(m.modulKodu, m.ustKodu);
     cocuklar.set(m.ustKodu, [...(cocuklar.get(m.ustKodu) || []), m.modulKodu]);
   }
-  const altSoyu = (kod: string): string[] => (cocuklar.get(kod) || []).flatMap((k) => [k, ...altSoyu(k)]);
+  // Sanal seçenekler (e-Gider …) ana menüsü seçilince kendiliğinden gelmez; yalnız açıkça seçildiği pakete girer
+  const altSoyu = (kod: string): string[] =>
+    (cocuklar.get(kod) || []).filter((k) => !SANAL_KODLARI.has(k)).flatMap((k) => [k, ...altSoyu(k)]);
 
   const sonuc: Record<IlkPaket, Set<string>> = {
     cekirdek: new Set(),

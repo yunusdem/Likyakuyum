@@ -1762,9 +1762,23 @@ export class EbelgeService {
    */
   public static async giderPusulasiOnizle(girdi: GiderPusulasiGirdi, dbContext?: DbContext) {
     if ((girdi.paraBirimi || "TRY") !== "TRY") throw ApiError.badRequest("Yalnızca TRY destekleniyor.");
-    const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
+    const gonderici = await this.giderGondericisi(girdi.gonderici, dbContext);
     const { ozet } = buildGiderPusulasiXml({ ...girdi, gonderici });
-    return { ozet, iceDogrulamasiYapildi: false };
+    // Engel değil uyarı (docs/E_GIDER_YOL_HARITASI.md K10): eksik zorunlu içerik
+    const uyarilar: string[] = [];
+    if (!gonderici.vergiDairesi?.trim()) {
+      uyarilar.push("Firmanın vergi dairesi tanımlı değil (Ayarlar › Firma Tanımları); gider pusulasında zorunlu bilgidir.");
+    }
+    return { ozet, uyarilar, iceDogrulamasiYapildi: false };
+  }
+
+  /** Gider pusulası düzenleyeni: vergi dairesi verilmemişse firma tanımından (VUK 234 zorunlu içerik; PDF'te boş çıkıyordu) */
+  private static async giderGondericisi(verilen: Partial<UblTaraf> | undefined, dbContext?: DbContext): Promise<UblTaraf> {
+    const gonderici = await this.goncericiTamamla(verilen, dbContext);
+    if (!gonderici.vergiDairesi?.trim()) {
+      gonderici.vergiDairesi = (await EbelgeSqlRepository.getFirmaVergiDairesi(dbContext)) || undefined;
+    }
+    return gonderici;
   }
 
   public static async giderPusulasiGonder(
@@ -1799,7 +1813,7 @@ export class EbelgeService {
       );
     }
 
-    const gonderici = await this.goncericiTamamla(girdi.gonderici, dbContext);
+    const gonderici = await this.giderGondericisi(girdi.gonderici, dbContext);
     const { xml, uuid, ozet } = buildGiderPusulasiXml({ ...girdi, belgeNo, gonderici });
 
     const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
@@ -2512,7 +2526,9 @@ export class EbelgeService {
 
     const sonuc: { seri: string; sonSira: number; onerilenNo: string; varsayilan: boolean }[] = [];
     for (const { seri, varsayilan } of tanimli) {
-      const sonSira = await this.seriSonSira(config, seri, yil, dbContext);
+      const sonSira = belgeTuru === "EGider"
+        ? await this.giderSonSira(config, seri, yil, dbContext)
+        : await this.seriSonSira(config, seri, yil, dbContext);
       sonuc.push({ seri, sonSira, onerilenNo: faturaNoUret(seri, yil, sonSira + 1), varsayilan });
     }
     return sonuc;
@@ -2522,17 +2538,41 @@ export class EbelgeService {
    * Gönderim anında numara verilen kaynak fişler için (Sarraf): fişin kendi numarası hangi biçimde olursa olsun
    * kullanılmaz. Seri, e-Belge Ayarları'nda bu tür için varsayılan seri (yoksa ilk tanımlı, o da yoksa EAR / GIB / GDR);
    * sıra, ICE + giden kutusu + henüz gönderilmemiş Perakende fiş numaralarının en büyüğünden bir fazla
-   * (Perakende fişinin önceden aldığı numarayla çakışmasın). Gider pusulası ICE'nin fatura sayaçlarında olmadığı için
-   * yalnız yerel kayıtlardan sayılır.
+   * (Perakende fişinin önceden aldığı numarayla çakışmasın). Gider pusulası ICE'nin fatura sayaçlarında değil, kendi
+   * EGiderPusulasi sayacında: yerel kayıt + ICE EGider son sırası (bkz. giderSonSira).
    */
   public static async siradakiBelgeNo(belgeTuru: SeriBelgeTuru, yil: number, dbContext?: DbContext): Promise<string> {
     const tanimli = await EbelgeSeriRepository.listele(belgeTuru, dbContext);
     const secili = String((tanimli.find((s) => s.varsayilan) || tanimli[0])?.seri || "").trim().toUpperCase();
     const seri = /^[A-Z0-9]{3}$/.test(secili) ? secili : VARSAYILAN_ON_EK[belgeTuru];
     const sonSira = belgeTuru === "EGider"
-      ? await EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext, true)
+      ? await this.giderSonSira(null, seri, yil, dbContext)
       : await this.seriSonSira(await EbelgeSqlRepository.getConnectionConfig(dbContext), seri, yil, dbContext, true);
     return faturaNoUret(seri, yil, sonSira + 1);
+  }
+
+  /**
+   * Gider pusulası serisinin son sırası (docs/E_GIDER_YOL_HARITASI.md K11): yerel kayıtlar (giden kutusu + Perakende
+   * fiş numaraları) ile ICE'nin EGiderPusulasi son sırasının büyüğü. Gönderim ICE son sırasından büyük numara ister;
+   * yalnız yerel sayılınca ICE ilerideyse aynı (kullanılmış) numara önerilip gönderim duruyordu. ICE'ye ulaşılamazsa
+   * yerel sırayla devam edilir (gönderimdeki ICE denetimi yine yapılır).
+   */
+  private static async giderSonSira(
+    config: Awaited<ReturnType<typeof EbelgeSqlRepository.getConnectionConfig>> | null,
+    seri: string,
+    yil: number,
+    dbContext?: DbContext
+  ): Promise<number> {
+    const yerel = await EbelgeSqlRepository.seriYerelSonSira(seri, yil, dbContext, true);
+    try {
+      const son = await getSonBelgeId(config || (await EbelgeSqlRepository.getConnectionConfig(dbContext)), seri, "EGiderPusulasi", yil);
+      const sira = Number(son?.Son_Belge_ID);
+      if (son?.Son_Belge_ID == null || String(son.Son_Belge_ID).trim() === "" || !Number.isInteger(sira) || sira < 0) return yerel;
+      return Math.max(yerel, sira);
+    } catch (err) {
+      logger.warn(`Gider seri sırası: ICE ${seri} EGiderPusulasi son numarası alınamadı, yerel sırayla devam:`, err);
+      return yerel;
+    }
   }
 
   /**

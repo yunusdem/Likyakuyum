@@ -102,7 +102,13 @@ export default function EBelgeKaynakPage() {
     const gidecekler = kayitlar.filter(r => r.secilebilir && secili.includes(key(r))).sort((a, b) => a.belgeNo.localeCompare(b.belgeNo));
     for (const k of gidecekler) {
       setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Gönderiliyor', mesaj: '' } }));
-      try { const hazir = await ebelgeService.kaynakHazirla(k); const cevap = await ebelgeService.kaynakGonder(hazir);
+      try { const hazir = await ebelgeService.kaynakHazirla(k);
+        // KDV'li sarraf alışı: kullanıcı onaylarsa KDV 0 olarak gönderilir (docs/E_GIDER_YOL_HARITASI.md K9)
+        if (hazir.uyari && !window.confirm(`${hazir.belgeNo || k.belgeNo}: ${hazir.uyari}\n\nYine de gönderilsin mi?`)) {
+          setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Atlandı', mesaj: 'Gönderilmedi (KDV uyarısı onaylanmadı).' } }));
+          continue;
+        }
+        const cevap = await ebelgeService.kaynakGonder(hazir.uyari ? { ...hazir, kdvSifir: true } : hazir);
         setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Gönderildi', mesaj: cevap.mesaj } }));
       } catch (e: any) { setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Hatalı', mesaj: e.message || 'Gönderim sonucu alınamadı; giden kutusunu kontrol edin.' } })); }
     }

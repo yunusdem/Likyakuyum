@@ -460,3 +460,193 @@ test("kontör okuyucu: tanımadığı yapıda uydurmaz", async () => {
   // Sayıya çevrilemeyen değer aday sayılmaz
   assert.equal(EbelgeService.kontorOku([{ kalanKontor: "sınırsız" }]).okunabildi, false);
 });
+
+/* ================================================================ Kuyum e-Gider (docs/E_GIDER_YOL_HARITASI.md) */
+
+/* ---------------------------------------------------------------- şema (K14, K20) */
+
+test("şema: boş vergi türü kodu kabul edilir (üreteç 0015 kullanır)", async () => {
+  const { ebelgeGiderPusulasiSchema } = await import("../src/schemas/ebelge.schema.js");
+  const g = { ...temelGirdi(), vergiTuruKodu: "" };
+  const p = ebelgeGiderPusulasiSchema.safeParse(g);
+  assert.ok(p.success, "boş vergi kodu reddedildi");
+  assert.equal((p as any).data.vergiTuruKodu, undefined);
+  assert.ok(ebelgeGiderPusulasiSchema.safeParse({ ...g, vergiTuruKodu: "   " }).success);
+  assert.ok(ebelgeGiderPusulasiSchema.safeParse({ ...g, vergiTuruKodu: "0003" }).success);
+  assert.ok(!ebelgeGiderPusulasiSchema.safeParse({ ...g, vergiTuruKodu: "12" }).success, "2 haneli kod kabul edilmemeli");
+});
+
+test("şema hatası hatalı alanları adıyla söyler", async () => {
+  const { ebelgeGiderPusulasiSchema, giderHataMetni } = await import("../src/schemas/ebelge.schema.js");
+  const p = ebelgeGiderPusulasiSchema.safeParse({
+    ...temelGirdi(),
+    belgeNo: "",
+    alici: { ...temelGirdi().alici, vknTckn: "12" },
+    satirlar: [{ ad: "", miktar: 0, birimFiyat: 10, vergiOrani: 0 }],
+  });
+  assert.ok(!p.success);
+  const metin = giderHataMetni((p as any).error.issues);
+  assert.match(metin, /^Gider pusulası bilgileri geçersiz — /);
+  assert.match(metin, /Belge no: Belge numarası zorunludur/);
+  assert.match(metin, /Satıcı › TC \/ VKN: VKN 10, TCKN 11 haneli rakam olmalıdır/);
+  assert.match(metin, /1\. satır › Ad: Mal\/hizmet adı zorunludur/);
+  assert.match(metin, /1\. satır › Miktar: Miktar sıfırdan büyük olmalıdır/);
+  assert.doesNotMatch(metin, /Expected|Required|String must/);
+});
+
+/* ---------------------------------------------------------------- vergi modeli (K5, K6) */
+
+test("0003 stopaj ödenecekten düşülür; vergiler dahil = mal toplamı; vergi adı yazılır", () => {
+  const { xml, ozet } = buildGiderPusulasiXml({
+    ...temelGirdi(),
+    vergiTuruKodu: "0003",
+    satirlar: [{ ad: "Hurda", miktar: 10, birimKodu: "GRM", birimFiyat: 100, vergiOrani: 2 }],
+  });
+  assert.equal(ozet.malHizmetToplam, 1000);
+  assert.equal(ozet.vergiToplam, 20);
+  assert.equal(ozet.kesinti, true);
+  assert.equal(ozet.vergiDahilToplam, 1000);
+  assert.equal(ozet.odenecekTutar, 980);
+  const o = parser.parse(xml).Invoice;
+  assert.equal(o.LegalMonetaryTotal.TaxInclusiveAmount["#text"], "1000.00");
+  assert.equal(o.LegalMonetaryTotal.PayableAmount["#text"], "980.00");
+  assert.equal(o.TaxTotal.TaxSubtotal.TaxCategory.TaxScheme.Name, "GV STOPAJI");
+  assert.equal(o.TaxTotal.TaxSubtotal.TaxCategory.TaxScheme.TaxTypeCode, "0003");
+  assert.equal(o.InvoiceLine.TaxTotal.TaxSubtotal.TaxCategory.TaxScheme.Name, "GV STOPAJI");
+});
+
+test("0003 %0 (vatandaşın kendi eşyası): ödenecek = mal toplamı", () => {
+  const { ozet } = buildGiderPusulasiXml({ ...temelGirdi(), vergiTuruKodu: "0003", satirlar: [{ ad: "Bilezik", miktar: 12.5, birimKodu: "GRM", birimFiyat: 2400, vergiOrani: 0 }] });
+  assert.deepEqual([ozet.malHizmetToplam, ozet.vergiToplam, ozet.odenecekTutar], [30000, 0, 30000]);
+});
+
+test("0015 KDV (iade) eklenir, vergi adı KDV; varsayılan davranış değişmedi", () => {
+  const { xml, ozet } = buildGiderPusulasiXml(temelGirdi()); // vergi kodu verilmedi → 0015, %10
+  assert.equal(ozet.kesinti, false);
+  assert.equal(ozet.odenecekTutar, 1925);
+  assert.equal(ozet.vergiDahilToplam, 1925);
+  const o = parser.parse(xml).Invoice;
+  assert.equal(o.TaxTotal.TaxSubtotal.TaxCategory.TaxScheme.Name, "KDV");
+  assert.equal(o.LegalMonetaryTotal.TaxInclusiveAmount["#text"], "1925.00");
+});
+
+/* ---------------------------------------------------------------- Sarraf alışı → kuyum gider (K19, K22, K23) */
+
+const sarrafAlis = (ek: Record<string, unknown> = {}, satirlar?: any[]) => ({
+  baslik: {
+    SARRAF_FISI_ID: 7, TIP: 0, BELGE_TURU: 0, TARIH: "2026-10-27T10:00:00Z", UNVAN: "Ayşe Yılmaz", VERGI_KIMLIK_NO: "12345678901",
+    ADRES: "Cumhuriyet Mah. 1", IL_ADI: "Muğla", ILCE_ADI: "Fethiye", KDV_ORANI: 0, KDV: 0, SARRAF_FIS_NO: "SRF000123", ...ek,
+  } as any,
+  satirlar: satirlar ?? [
+    { SATIR_NO: 1, URUN_ADI: "22 AYAR BİLEZİK", URUN_BIRIM: 1, MIKTAR: 12.5, ADET: 0, ISCILIK_HAS_GRAM: 0, TUTAR: 30000, MILYEM: 0.916, HAS_GRAM: 11.45 },
+    { SATIR_NO: 2, URUN_ADI: "ÇEYREK ALTIN", URUN_BIRIM: 2, MIKTAR: 3.5, ADET: 2, ISCILIK_HAS_GRAM: 0, TUTAR: 16000, MILYEM: 0, PARA_HAS_ORANI: 0.916, HAS_GRAM: 3.206 },
+  ],
+});
+
+test("sarraf alışı: 0003 %0, satır adı kuyum biçiminde, fiş no not, toplam fişle aynı", async () => {
+  const { sarrafGiderGirdisi } = await import("../src/services/ebelgeSarraf.js");
+  const g = sarrafGiderGirdisi(sarrafAlis(), "GDR2026000000005");
+  assert.equal(g.vergiTuruKodu, "0003");
+  assert.deepEqual(g.notlar, ["Sarraf fiş no: SRF000123"]);
+  assert.equal(g.belgeTipi, "SATIS");
+  assert.equal(g.satirlar[0].ad, "22 AYAR BİLEZİK (Milyem 916, Has 11,450 gr)");
+  assert.equal(g.satirlar[0].birimKodu, "GRM");
+  assert.equal(g.satirlar[0].miktar, 12.5);
+  assert.equal(g.satirlar[1].ad, "ÇEYREK ALTIN (3,5 gr; Milyem 916, Has 3,206 gr)");
+  assert.equal(g.satirlar[1].birimKodu, "C62");
+  assert.ok(g.satirlar.every((s) => s.vergiOrani === 0));
+  const { ozet } = buildGiderPusulasiXml({ ...g, gonderici: temelGirdi().gonderici });
+  assert.equal(ozet.odenecekTutar, 46000);
+});
+
+test("sarraf alışı KDV'li: onaysız durur, onayla KDV 0 ve satıcıya ödenen tutarla (KDV dahil) gider", async () => {
+  const { sarrafGiderGirdisi, KDV_SIFIR_UYARISI, sarrafKdvVar } = await import("../src/services/ebelgeSarraf.js");
+  const kaynak = sarrafAlis({ KDV_ORANI: 20, KDV: 400 });
+  assert.equal(sarrafKdvVar(kaynak.baslik), true);
+  assert.throws(() => sarrafGiderGirdisi(kaynak, "GDR2026000000006"), /KDV 0 olarak/);
+  assert.match(KDV_SIFIR_UYARISI, /KDV 0 olarak/);
+  const g = sarrafGiderGirdisi(kaynak, "GDR2026000000006", { kdvSifir: true });
+  const { ozet } = buildGiderPusulasiXml({ ...g, gonderici: temelGirdi().gonderici });
+  assert.equal(ozet.vergiToplam, 0);
+  assert.equal(ozet.odenecekTutar, 46000, "bedel fişte ödenen tutar (KDV dahil) olmalı");
+  assert.equal(g.satirlar[0].birimFiyat * g.satirlar[0].miktar, 30000);
+});
+
+test("sarraf alışı: VKN'li satıcı ve satış fişi reddedilir; milyem binde / kesir", async () => {
+  const { sarrafGiderGirdisi, sarrafMilyemBin } = await import("../src/services/ebelgeSarraf.js");
+  assert.throws(() => sarrafGiderGirdisi(sarrafAlis({ VERGI_KIMLIK_NO: "1234567890" }), "GDR2026000000007"), /karşı taraf keser/);
+  assert.throws(() => sarrafGiderGirdisi(sarrafAlis({ TIP: 1 }), "GDR2026000000007"), /satış fişi/);
+  assert.equal(sarrafMilyemBin({ MILYEM: 0.916 }), 916);
+  assert.equal(sarrafMilyemBin({ MILYEM: 916 }), 916);
+  assert.equal(sarrafMilyemBin({ MILYEM: 0, PARA_HAS_ORANI: 0.585 }), 585);
+  assert.equal(sarrafMilyemBin({ MILYEM: 0, PARA_HAS_ORANI: 0 }), null);
+  // Milyemi / has gramı olmayan satırda ad değişmez
+  const g = sarrafGiderGirdisi(sarrafAlis({}, [{ SATIR_NO: 1, URUN_ADI: "GÜMÜŞ KOLYE", URUN_BIRIM: 1, MIKTAR: 10, ADET: 0, TUTAR: 500 }]), "GDR2026000000007");
+  assert.equal(g.satirlar[0].ad, "GÜMÜŞ KOLYE");
+  // Nihai tüketici (11111111111) ile gönderim kalır (K10)
+  const n = sarrafGiderGirdisi(sarrafAlis({ VERGI_KIMLIK_NO: "", UNVAN: "" }), "GDR2026000000008");
+  assert.equal(n.alici.vknTckn, "11111111111");
+});
+
+/* ---------------------------------------------------------------- Kuyum formu (ön yüz hesapları, K5–K12) */
+
+const kuyumFormu = (ek: Record<string, unknown> = {}) => ({
+  giderTuru: "kuyum" as const, seri: "GDR", belgeNo: "GDR2026000000010", tarih: "2026-10-27", belgeTipi: "SATIS" as const,
+  alici: { vknTckn: "12345678901", ad: "Ayşe", soyad: "Yılmaz", unvan: "", il: "Muğla", ilce: "Fethiye", adres: "Cumhuriyet Mah. 1" },
+  stopaj: "0", ozelOran: 0, iadeKdv: 20, not: "",
+  satirlar: [
+    { urun: "Bilezik", ayar: "22", birim: "GRM" as const, miktar: 12.5, birimFiyat: 2400, tutar: 30000 },
+    { urun: "Çeyrek Altın", ayar: "22", birim: "C62" as const, miktar: 3, birimFiyat: 0, tutar: 1000 },
+  ],
+  ...ek,
+});
+
+test("kuyum formu: satır adı, has gram, toplam (stopaj düşülür, iade KDV eklenir)", async () => {
+  const k = await import("../../src/pages/ebelge/giderKuyum.js");
+  const f = kuyumFormu();
+  assert.equal(k.kuyumSatirAdi(f.satirlar[0]), "BİLEZİK 22 AYAR (Milyem 916, Has 11,450 gr)");
+  assert.equal(k.kuyumSatirAdi(f.satirlar[1]), "ÇEYREK ALTIN 22 AYAR (Milyem 916)");
+  assert.equal(k.kuyumSatirAdi({ ...f.satirlar[0], ayar: "DIGER" }), "BİLEZİK");
+  assert.equal(k.hasGram(f.satirlar[0]), 11.45);
+  assert.equal(k.hasGram(f.satirlar[1]), null);
+  assert.deepEqual(k.kuyumToplam(f), { oran: 0, kesinti: true, mal: 31000, vergi: 0, odenecek: 31000 });
+  assert.deepEqual(k.kuyumToplam({ ...f, stopaj: "2" }), { oran: 2, kesinti: true, mal: 31000, vergi: 620, odenecek: 30380 });
+  assert.equal(k.kuyumToplam({ ...f, stopaj: "OZEL", ozelOran: 1.5 }).vergi, 465);
+  assert.deepEqual(k.kuyumToplam({ ...f, belgeTipi: "IADE" }), { oran: 20, kesinti: false, mal: 31000, vergi: 6200, odenecek: 37200 });
+  assert.equal(k.birimFiyatHesapla({ ...f.satirlar[1] }).birimFiyat, 333.333333);
+  assert.equal(k.tutarHesapla({ ...f.satirlar[0], miktar: 10 }).tutar, 24000);
+});
+
+test("kuyum formu: zorunlu alanlar (adres, ad soyad, belge no, satır)", async () => {
+  const k = await import("../../src/pages/ebelge/giderKuyum.js");
+  assert.deepEqual(k.kuyumFormHatalari(kuyumFormu() as any), []);
+  const h = k.kuyumFormHatalari(kuyumFormu({
+    belgeNo: "GDR2025000000010",
+    alici: { vknTckn: "12345678901", ad: "", soyad: "", unvan: "", il: "", ilce: "", adres: "" },
+    satirlar: [{ urun: "", ayar: "22", birim: "GRM", miktar: 0, birimFiyat: 0, tutar: 0 }],
+  }) as any);
+  for (const beklenen of [/yıl tarihle/, /adı ve soyadı/, /il ve ilçesi/, /adresi girilmeli/, /1\. satır: ürün/, /1\. satır: gram/, /1\. satır: tutar/]) {
+    assert.ok(h.some((m: string) => beklenen.test(m)), `beklenen hata yok: ${beklenen}`);
+  }
+  const iade = k.kuyumFormHatalari(kuyumFormu({ belgeTipi: "IADE", iadeDayanak: { belgeTipi: "EARSIV_FATURA", belgeTarihi: "2026-10-01" } }) as any);
+  assert.ok(iade.some((m: string) => /dayanağının belge numarası/.test(m)));
+});
+
+test("kuyum formu → sunucu: şemadan geçer, ekrandaki toplam belgeyle birebir aynı", async () => {
+  const k = await import("../../src/pages/ebelge/giderKuyum.js");
+  const { ebelgeGiderPusulasiSchema } = await import("../src/schemas/ebelge.schema.js");
+  for (const ek of [{}, { stopaj: "2" }, { stopaj: "OZEL", ozelOran: 1.5 }, { belgeTipi: "IADE", iadeDayanak: { belgeTipi: "BELGESIZ", belgeTarihi: "2026-10-01" } }]) {
+    const f = kuyumFormu(ek) as any;
+    const istek = k.kuyumGiderIstegi(f);
+    const p = ebelgeGiderPusulasiSchema.safeParse(istek);
+    assert.ok(p.success, `şema reddetti: ${JSON.stringify(ek)}`);
+    assert.equal(istek.vergiTuruKodu, f.belgeTipi === "IADE" ? "0015" : "0003");
+    assert.equal(istek.alici.unvan, "", "TCKN'li satıcıda ünvan gönderilmez");
+    const { xml, ozet } = buildGiderPusulasiXml({ ...(p as any).data, gonderici: temelGirdi().gonderici });
+    const ekran = k.kuyumToplam(f);
+    assert.deepEqual([ozet.malHizmetToplam, ozet.vergiToplam, ozet.odenecekTutar], [ekran.mal, ekran.vergi, ekran.odenecek], JSON.stringify(ek));
+    const o = parser.parse(xml).Invoice;
+    assert.equal(o.AccountingCustomerParty.Party.PostalAddress.StreetName, "Cumhuriyet Mah. 1", "satıcı adresi belgede");
+    assert.equal(o.AccountingCustomerParty.Party.PartyName, undefined);
+  }
+});
