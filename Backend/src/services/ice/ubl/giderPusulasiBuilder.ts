@@ -1,4 +1,7 @@
 import { randomUUID } from "crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { escapeXml } from "../ice.client.js";
 import { ApiError } from "../../../utils/ApiError.js";
 import { UblTaraf, kimlikSemasi } from "./invoiceBuilder.js";
@@ -139,6 +142,51 @@ const etiket = (ad: string, deger: unknown): string => {
   if (deger === undefined || deger === null || String(deger).trim() === "") return "";
   return `<${ad}>${escapeXml(deger)}</${ad}>`;
 };
+
+/* ==========================================================================
+   Görünüm şablonu (XSLT)
+
+   GİB kılavuzu §3.1.13: AdditionalDocumentReference içinde Base64 XSLT eki ZORUNLU (1…n).
+   Ek yokken ICE belgeyi açamıyor: "Invoice Serializer Error … geçerli bir Base-64 dizesi değil"
+   (ilk gerçek gönderim, 27.10.2026). Dosya GİB paketindeki giderPusulasi.xslt'nin değişmemiş
+   kopyasıdır: Backend/belge/xslt/ (src ve dist aynı derinlikte, yol ikisinde de tutar;
+   belge klasörü exe paketine de kopyalanır).
+   ========================================================================== */
+
+const XSLT_YOLU = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../../belge/xslt/giderPusulasi.xslt"
+);
+let xsltBase64: string | null = null;
+
+export const giderPusulasiXsltBase64 = (): string => {
+  if (xsltBase64) return xsltBase64;
+  let icerik: Buffer;
+  try {
+    icerik = fs.readFileSync(XSLT_YOLU);
+  } catch {
+    icerik = Buffer.alloc(0);
+  }
+  if (!icerik.length) {
+    throw ApiError.internal(
+      "Gider pusulası görünüm şablonu (Backend/belge/xslt/giderPusulasi.xslt) sunucuda bulunamadı; belge gönderilmedi."
+    );
+  }
+  xsltBase64 = icerik.toString("base64");
+  return xsltBase64;
+};
+
+/** GİB örneğindeki biçim: ID = ETTN, dosya adı = belge no */
+const xsltEkiXml = (uuid: string, tarih: string, belgeNo: string): string =>
+  `<cac:AdditionalDocumentReference>` +
+  `<cbc:ID>${escapeXml(uuid)}</cbc:ID>` +
+  `<cbc:IssueDate>${escapeXml(tarih)}</cbc:IssueDate>` +
+  `<cac:Attachment>` +
+  `<cbc:EmbeddedDocumentBinaryObject characterSetCode="UTF-8" encodingCode="Base64" filename="${escapeXml(belgeNo)}.xslt" mimeCode="application/xml">` +
+  giderPusulasiXsltBase64() +
+  `</cbc:EmbeddedDocumentBinaryObject>` +
+  `</cac:Attachment>` +
+  `</cac:AdditionalDocumentReference>`;
 
 /* ==========================================================================
    Doğrulama
@@ -446,6 +494,8 @@ export const buildGiderPusulasiXml = (girdi: GiderPusulasiGirdi): GiderPusulasiU
     (girdi.belgeTipi === "IADE" && girdi.iadeDayanak
       ? billingReferenceXml(girdi.iadeDayanak)
       : "") +
+    // GİB örneklerindeki sıra: BillingReference → AdditionalDocumentReference → (Signature, ICE) → AccountingSupplierParty
+    xsltEkiXml(uuid, tarih, belgeNo) +
     `<cac:AccountingSupplierParty>${partyXml(girdi.gonderici)}</cac:AccountingSupplierParty>` +
     `<cac:AccountingCustomerParty>${aliciPartyXml(girdi.alici, girdi.iadeKanali)}</cac:AccountingCustomerParty>` +
     (girdi.belgeTipi === "IADE" && girdi.kargo ? deliveryXml(girdi.kargo) : "") +

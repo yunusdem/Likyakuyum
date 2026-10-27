@@ -251,13 +251,89 @@ test("GİB örnek belgesindeki tüm zorunlu öğeler üretimde var", { skip: !or
   const { xml } = buildGiderPusulasiXml(temelGirdi());
   const bizim = parser.parse(xml).CreditNote;
 
-  // İmza ve XSLT ekini biz üretmiyoruz (mühür ICE'de) — onlar hariç tüm üst düzey öğeler
-  const uretmediklerimiz = new Set(["Signature", "AdditionalDocumentReference"]);
+  // İmzayı biz üretmiyoruz (mühür ICE'de) — onun dışında tüm üst düzey öğeler.
+  // XSLT eki (AdditionalDocumentReference) GİB'de zorunlu; yokken ICE belgeyi açamadı (27.10.2026).
+  const uretmediklerimiz = new Set(["Signature"]);
   const eksikler = Object.keys(ornekObj).filter(
     (k) => !uretmediklerimiz.has(k) && !(k in bizim)
   );
 
   assert.deepEqual(eksikler, [], `GİB örneğinde olup üretimde olmayan öğeler: ${eksikler.join(", ")}`);
+});
+
+/* ---------------------------------------------------------------- XSLT eki (GİB §3.1.13, zorunlu) */
+
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+
+test("XSLT eki GİB örneğindeki biçimde yazılır", () => {
+  const girdi = temelGirdi();
+  const { xml, uuid } = buildGiderPusulasiXml(girdi);
+  const ek = parser.parse(xml).CreditNote.AdditionalDocumentReference;
+
+  assert.ok(ek, "AdditionalDocumentReference yok");
+  assert.equal(ek.ID, uuid);
+  assert.equal(ek.IssueDate, girdi.tarih);
+  const nesne = ek.Attachment.EmbeddedDocumentBinaryObject;
+  assert.equal(nesne["@_characterSetCode"], "UTF-8");
+  assert.equal(nesne["@_encodingCode"], "Base64");
+  assert.equal(nesne["@_filename"], `${girdi.belgeNo}.xslt`);
+  assert.equal(nesne["@_mimeCode"], "application/xml");
+});
+
+test("XSLT eki geçerli Base64 ve GİB'in giderPusulasi.xslt dosyasının birebir aynısı", () => {
+  const { xml } = buildGiderPusulasiXml(temelGirdi());
+  const icerik = String(parser.parse(xml).CreditNote.AdditionalDocumentReference.Attachment.EmbeddedDocumentBinaryObject["#text"]);
+
+  assert.ok(icerik.length > 1000, "ek boş ya da çok kısa");
+  assert.equal(icerik.length % 4, 0, "Base64 uzunluğu 4'ün katı değil");
+  assert.ok(BASE64.test(icerik), "Base64 dışı karakter var");
+
+  const cozulen = Buffer.from(icerik, "base64");
+  assert.equal(cozulen.toString("base64"), icerik, "gidiş-dönüş tutmuyor");
+  assert.ok(cozulen.toString("utf8").includes("<xsl:stylesheet"), "çözülen içerik XSLT değil");
+
+  const backendKopya = fs.readFileSync(path.resolve(__dirname, "../belge/xslt/giderPusulasi.xslt"));
+  assert.ok(cozulen.equals(backendKopya), "ek, Backend/belge/xslt dosyasıyla aynı değil");
+  if (ornekVar) {
+    assert.ok(cozulen.equals(fs.readFileSync(path.join(ORNEK_DIZIN, "giderPusulasi.xslt"))), "ek, GİB paketindeki XSLT ile aynı değil");
+  }
+});
+
+test("XSLT eki SATIS ve IADE'de GİB örneklerindeki sırada", { skip: !ornekVar }, () => {
+  const sirali = new XMLParser({ preserveOrder: true, ignoreAttributes: true, removeNSPrefix: true });
+  const ustOgeler = (x: string): string[] =>
+    (sirali.parse(x).find((d: any) => d.CreditNote)?.CreditNote || []).map((d: any) => Object.keys(d)[0]).filter((k: string) => k !== "#text");
+
+  const karsilastir = (ornekDosya: string, girdi: GiderPusulasiGirdi) => {
+    const ornek = ustOgeler(fs.readFileSync(path.join(ORNEK_DIZIN, ornekDosya), "utf8"));
+    const bizim = ustOgeler(buildGiderPusulasiXml(girdi).xml);
+    // İkisinde de olan öğeler aynı sırada olmalı (UBL CreditNote dizisi)
+    const ortak = (liste: string[]) => [...new Set(liste.filter((k) => ornek.includes(k) && bizim.includes(k)))];
+    assert.deepEqual(ortak(bizim), ortak(ornek), `${ornekDosya}: üst düzey öğe sırası GİB örneğinden farklı`);
+    const i = (k: string) => bizim.indexOf(k);
+    assert.ok(i("AdditionalDocumentReference") > i("DocumentCurrencyCode"));
+    assert.ok(i("AdditionalDocumentReference") < i("AccountingSupplierParty"));
+    if (bizim.includes("BillingReference")) assert.ok(i("BillingReference") < i("AdditionalDocumentReference"));
+  };
+
+  karsilastir("GiderPusulasıSATIS.xml", temelGirdi());
+  karsilastir("GiderPusulasıIADE_Belgesiz.xml", {
+    ...temelGirdi(),
+    belgeTipi: "IADE",
+    iadeDayanak: { belgeTipi: "BELGESIZ", belgeTarihi: "2026-02-01" },
+  });
+});
+
+test("ICE'ye giden paket: belge Base64'e çevrilip geri açıldığında aynı XML çıkar", async () => {
+  const { toBase64 } = await import("../src/services/ice/ubl/invoiceBuilder.js");
+  const { xml } = buildGiderPusulasiXml(temelGirdi());
+  const paket = toBase64(xml);
+
+  assert.ok(BASE64.test(paket) && paket.length % 4 === 0, "gönderim paketi geçerli Base64 değil");
+  assert.equal(Buffer.from(paket, "base64").toString("utf8"), xml);
+  // Zarftaki kaçışlama Base64'ü bozmaz (escapeXml yalnız & < > " ' değiştirir; Base64'te yok)
+  const { escapeXml } = await import("../src/services/ice/ice.client.js");
+  assert.equal(escapeXml(paket), paket);
 });
 
 test("GİB iade örneğindeki dayanak tipleri enum ile örtüşüyor", { skip: !ornekVar }, () => {
