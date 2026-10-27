@@ -10,6 +10,7 @@ import {
   IconFileText,
   IconCamera,
   IconCheck,
+  IconCrop,
 } from "@tabler/icons-react";
 import QRCode from "qrcode";
 import { CariService } from "../../services/cariService";
@@ -18,6 +19,8 @@ import { tutarYaziylaTr } from "../../utils/tutarYaziyla";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { useAuth } from "../../context/AuthContext";
 import { triggerSilentPrint } from "../../services/silentPrintService";
+import { ImageCropperModal } from "../../components/common/ImageCropperModal";
+import { autoCropIdCard } from "../../utils/imageCropUtils";
 
 const formatNumberTr = (val: number, decimals: number = 2) => {
   if (val === undefined || val === null || isNaN(val)) return "0,00";
@@ -177,6 +180,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   const [isSavingToCari, setIsSavingToCari] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
+
+  // Fotoğraf Kırpma (Cropper) Durumu
+  const [cropperTarget, setCropperTarget] = useState<"front" | "back" | null>(null);
 
   // Müşteri Tanı Formu alanlarının sıfırlanması için key ve düzenleme yardımcıları
   const [taniFormResetKey, setTaniFormResetKey] = useState<number>(0);
@@ -360,7 +366,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     }
   };
 
-  const captureCameraPhoto = () => {
+  const captureCameraPhoto = async () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
     const canvas = document.createElement("canvas");
@@ -369,7 +375,13 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const base64 = canvas.toDataURL("image/jpeg", 0.92);
+    let base64 = canvas.toDataURL("image/jpeg", 0.92);
+
+    try {
+      base64 = await autoCropIdCard(base64);
+    } catch (err) {
+      console.warn("Otomatik kırpma atlandı:", err);
+    }
 
     if (cameraTarget === "front") {
       setFrontPhoto(base64);
@@ -441,16 +453,33 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const b64 = event.target?.result as string;
-      if (isFront) {
-        setFrontPhoto(b64);
-      } else {
-        setBackPhoto(b64);
+    reader.onload = async (event) => {
+      let b64 = event.target?.result as string;
+      if (b64) {
+        try {
+          b64 = await autoCropIdCard(b64);
+        } catch (err) {
+          console.warn("Otomatik kırpma atlandı:", err);
+        }
+        if (isFront) {
+          setFrontPhoto(b64);
+        } else {
+          setBackPhoto(b64);
+        }
       }
     };
     reader.readAsDataURL(file);
     e.target.value = "";
+  };
+
+  // Kırpma Tamamlandığında
+  const handleCropDone = (croppedBase64: string) => {
+    if (cropperTarget === "front") {
+      setFrontPhoto(croppedBase64);
+    } else if (cropperTarget === "back") {
+      setBackPhoto(croppedBase64);
+    }
+    setCropperTarget(null);
   };
 
   // Yüklenen Fotoğrafları Müşteri Kartına Kaydet (Cari Kart Id varsa)
@@ -802,11 +831,24 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                 >
                   <div className="d-flex align-items-center gap-2">
                     {frontPhoto ? (
-                      <img
-                        src={frontPhoto}
-                        alt="Ön Yüz"
-                        style={{ width: "70px", height: "45px", objectFit: "cover", borderRadius: "4px", border: "1px solid #86efac" }}
-                      />
+                      <div
+                        className="position-relative"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setCropperTarget("front")}
+                        title="Fotoğrafı kırpmak için tıklayın"
+                      >
+                        <img
+                          src={frontPhoto}
+                          alt="Ön Yüz"
+                          style={{ width: "70px", height: "45px", objectFit: "cover", borderRadius: "4px", border: "1px solid #86efac" }}
+                        />
+                        <div
+                          className="position-absolute bottom-0 end-0 bg-dark bg-opacity-70 text-white rounded-circle p-0.5 d-flex align-items-center justify-content-center m-0.5"
+                          style={{ width: "16px", height: "16px" }}
+                        >
+                          <IconCrop size={10} />
+                        </div>
+                      </div>
                     ) : (
                       <div
                         className="d-flex align-items-center justify-content-center bg-light text-muted border rounded"
@@ -825,6 +867,18 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                     </div>
                   </div>
                   <div className="d-flex align-items-center gap-1">
+                    {frontPhoto && (
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        className="py-1 px-2 d-inline-flex align-items-center gap-1"
+                        style={{ fontSize: "11px" }}
+                        onClick={() => setCropperTarget("front")}
+                        title="Fotoğrafı kırp ve ayarla"
+                      >
+                        <IconCrop size={13} /> Kırp
+                      </Button>
+                    )}
                     <Button
                       variant={frontPhoto ? "outline-primary" : "primary"}
                       size="sm"
@@ -868,11 +922,24 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                 >
                   <div className="d-flex align-items-center gap-2">
                     {backPhoto ? (
-                      <img
-                        src={backPhoto}
-                        alt="Arka Yüz"
-                        style={{ width: "70px", height: "45px", objectFit: "cover", borderRadius: "4px", border: "1px solid #86efac" }}
-                      />
+                      <div
+                        className="position-relative"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setCropperTarget("back")}
+                        title="Fotoğrafı kırpmak için tıklayın"
+                      >
+                        <img
+                          src={backPhoto}
+                          alt="Arka Yüz"
+                          style={{ width: "70px", height: "45px", objectFit: "cover", borderRadius: "4px", border: "1px solid #86efac" }}
+                        />
+                        <div
+                          className="position-absolute bottom-0 end-0 bg-dark bg-opacity-70 text-white rounded-circle p-0.5 d-flex align-items-center justify-content-center m-0.5"
+                          style={{ width: "16px", height: "16px" }}
+                        >
+                          <IconCrop size={10} />
+                        </div>
+                      </div>
                     ) : (
                       <div
                         className="d-flex align-items-center justify-content-center bg-light text-muted border rounded"
@@ -891,6 +958,18 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                     </div>
                   </div>
                   <div className="d-flex align-items-center gap-1">
+                    {backPhoto && (
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        className="py-1 px-2 d-inline-flex align-items-center gap-1"
+                        style={{ fontSize: "11px" }}
+                        onClick={() => setCropperTarget("back")}
+                        title="Fotoğrafı kırp ve ayarla"
+                      >
+                        <IconCrop size={13} /> Kırp
+                      </Button>
+                    )}
                     <Button
                       variant={backPhoto ? "outline-primary" : "primary"}
                       size="sm"
@@ -1765,6 +1844,17 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           </Button>
         </Modal.Footer>
       </Modal>
+
+      {/* Manuel Fotoğraf Kırpma (Cropper) Modalı */}
+      {cropperTarget && (
+        <ImageCropperModal
+          show={!!cropperTarget}
+          onHide={() => setCropperTarget(null)}
+          imageSrc={cropperTarget === "front" ? frontPhoto || "" : backPhoto || ""}
+          title={cropperTarget === "front" ? "Kimlik Ön Yüzünü Kırp" : "Kimlik Arka Yüzünü Kırp"}
+          onCropDone={handleCropDone}
+        />
+      )}
     </>
   );
 };
