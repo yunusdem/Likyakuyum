@@ -28,6 +28,7 @@ import {
   isValidNameOrSurname,
   turkishizeFromRawText,
 } from "../../utils/kimlikOcrParser";
+import { autoCropIdCard } from "../../utils/imageCropUtils";
 import { CariFotografItem } from "../../services/cariService";
 
 export interface CariKimlikFotografSectionProps {
@@ -403,7 +404,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
   };
 
   // Kameradan Çekim Yap
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current || document.createElement("canvas");
@@ -413,8 +414,11 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const base64 = canvas.toDataURL("image/jpeg", 0.92);
+    const rawBase64 = canvas.toDataURL("image/jpeg", 0.92);
     stopCamera();
+
+    // Üstte/altta/kenarlarda boşluklar varsa otomatik kırp
+    const base64 = await autoCropIdCard(rawBase64);
 
     const updated = [...localPhotos, base64];
     setLocalPhotos(updated);
@@ -430,46 +434,51 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
   };
 
   // Dosya(lar)dan Seçme
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
-    const base64List: string[] = [];
-    let loaded = 0;
-
-    fileArray.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const b64 = event.target?.result as string;
-        if (b64 && b64.startsWith("data:")) {
-          base64List.push(b64);
-        }
-        loaded++;
-
-        if (loaded === fileArray.length) {
-          if (base64List.length > 0) {
-            const updated = [...localPhotos, ...base64List];
-            setLocalPhotos(updated);
-            setActiveIndex(updated.length - 1);
-
-            if (onPhotosSelected) {
-              onPhotosSelected(updated);
-            } else {
-              onPhotoSelected(base64List[0]);
-            }
-
-            triggerAutoOcr(updated);
-          }
-        }
-      };
-      reader.onerror = () => {
-        loaded++;
-      };
-      reader.readAsDataURL(file);
-    });
-
     e.target.value = "";
+
+    try {
+      const readPromises = fileArray.map((file) => {
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const b64 = event.target?.result as string;
+            resolve(b64 || "");
+          };
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(file);
+        });
+      });
+
+      const rawBase64List = (await Promise.all(readPromises)).filter(
+        (b) => b && b.startsWith("data:")
+      );
+
+      if (rawBase64List.length === 0) return;
+
+      // Üstte/altta boşluklar varsa otomatik kırp
+      const croppedList = await Promise.all(
+        rawBase64List.map((b64) => autoCropIdCard(b64))
+      );
+
+      const updated = [...localPhotos, ...croppedList];
+      setLocalPhotos(updated);
+      setActiveIndex(updated.length - 1);
+
+      if (onPhotosSelected) {
+        onPhotosSelected(updated);
+      } else {
+        onPhotoSelected(croppedList[0]);
+      }
+
+      triggerAutoOcr(updated);
+    } catch (err) {
+      console.error("Kimlik görseli işlenirken hata:", err);
+    }
   };
 
   // 2. Fotoğraf (Arka Yüz) Yükleme Tetikleyici
