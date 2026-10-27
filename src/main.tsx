@@ -20,6 +20,17 @@ import { initGlobalSelectSpaceInterceptor } from "./utils/selectSpaceInterceptor
 initGlobalNumericInputInterceptor();
 initGlobalSelectSpaceInterceptor();
 
+// Masaüstü uygulaması (tarayıcıdan "uygulama olarak yükle") kök adresle açılırsa tanıtım sayfası yerine giriş ekranı gelsin.
+// Manifest'teki start_url yeni kurulumları zaten /login'e açar; bu satır manifest'ten önce kurulmuş uygulamalar içindir.
+// Oturum açıksa giriş ekranı kendisi ana ekrana geçer.
+const uygulamaPenceresi =
+  ["standalone", "window-controls-overlay", "minimal-ui"].some(
+    (m) => window.matchMedia?.(`(display-mode: ${m})`).matches
+  ) || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+if (uygulamaPenceresi && window.location.pathname === "/") {
+  window.history.replaceState(null, "", "/login" + window.location.search + window.location.hash);
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <Provider store={store}>
     <BrowserRouter>

@@ -65,6 +65,7 @@ export function ornekVeri(tur: FisTuru, firma: FirmaKimlik = ORNEK_FIRMA, satim 
     aliciVknTckn: "11111111111", aliciUnvan: "AHMET YILMAZ", adres: "Cumhuriyet Mah. No: 1", ilce: "Fethiye", il: "Muğla", vergiDairesi: "Fethiye", telefon: "0532 000 00 00", eposta: "ahmet@ornek.com",
     paraKodu: "TL", araToplam: 15000, toplamKdv: 3000, iskontoOrani: 5, iskontoTutari: 900, genelToplam: 17100,
     satirlar: [{ satirNo: 1, barkod: "8690000000011", urunAdi: "14 Ayar Kolye", ayar: "14K", miktar: 1, birim: "ADET", gram: 7.25, hasGram: 4.235, birimFiyat: 15000, kdvOrani: 20, kdvTutari: 3000, toplamTutar: 18000 }],
+    odemeler: [{ odemeAraciTuru: 0, paraKodu: "TL", miktar: 10000, tutar: 10000 }, { odemeAraciTuru: 2, paraKodu: "TL", miktar: 7100, tutar: 7100 }],
   }, firma);
 }
 

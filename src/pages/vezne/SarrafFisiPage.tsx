@@ -46,7 +46,7 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { sarrafFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { gibService } from "../../services/gibService";
-import { GIB_BEKLEME_MS, adYazilabilir, gibAdi, uzakSorguYapilir } from "./sarrafGibAd";
+import { GIB_BEKLEME_MS, adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
@@ -951,7 +951,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const lastFocusedCariKodRef = useRef<string>("");
   const lastFocusedUnvanRef = useRef<string>("");
   const lastFocusedVknRef = useRef<string>("");
-  // TC / VKN'den uzak sorgu (e-Fatura listesi + GİB, sarrafGibAd.ts): numara değişince eski sorgunun yanıtı yok sayılır
+  // TC / VKN'den uzak sorgu (e-Fatura listesi + GİB, musteriGibAd.ts): numara değişince eski sorgunun yanıtı yok sayılır
   const uzakSorguSiraRef = useRef(0);
   const gibHataRef = useRef("");
   const unvanRef = useRef(unvan);
@@ -2569,7 +2569,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   };
 
   /**
-   * e-Fatura listesinde ad yoksa GİB'den (e-Belge'deki sorgu, sarrafGibAd.ts). Ad yalnız boşken ya da
+   * e-Fatura listesinde ad yoksa GİB'den (e-Belge'deki sorgu, musteriGibAd.ts). Ad yalnız boşken ya da
    * önceki seçimden / sorgudan kalmışken yazılır; kasiyerin elle yazdığı ada dokunulmaz.
    */
   const gibdenAdDoldur = async (no: string, sira: number) => {

@@ -71,7 +71,7 @@
       "y": 45,
       "g": 209.77,
       "metin": "{{baslik}}",
-      "boyut": 8.25,
+      "boyut": 9,
       "kalin": true,
       "hiza": "center"
     },
@@ -112,16 +112,29 @@
       "kalinlik": 0.6
     },
     {
+      "id": "urun-baslik",
+      "tip": "metin",
+      "x": 0,
+      "y": 112,
+      "g": 209.77,
+      "metin": "ÜRÜN DETAYLARI",
+      "boyut": 9,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
       "id": "urun-satirlari",
       "ad": "Ürün satırları",
       "zorunlu": true,
       "tip": "liste",
       "kaynak": "satirlar",
       "x": 0,
-      "y": 111,
+      "y": 126,
       "g": 209.77,
       "satirH": 10,
       "boyut": 7.1,
+      "aralik": 4,
+      "satirAyraci": "noktali",
       "baslikSatiri": true,
       "daralt": true,
       "sutunlar": [
@@ -163,9 +176,9 @@
       "id": "urun-alt-cizgi",
       "tip": "cizgi",
       "x1": 0,
-      "y1": 134,
+      "y1": 149,
       "x2": 209.77,
-      "y2": 134,
+      "y2": 149,
       "kalinlik": 0.6
     },
     {
@@ -174,7 +187,7 @@
       "zorunlu": true,
       "tip": "tablo",
       "x": 0,
-      "y": 137,
+      "y": 152,
       "g": 209.77,
       "etiketG": 120,
       "satirH": 10,
@@ -206,9 +219,9 @@
       "id": "genel-cizgi",
       "tip": "cizgi",
       "x1": 90,
-      "y1": 178,
+      "y1": 193,
       "x2": 209.77,
-      "y2": 178,
+      "y2": 193,
       "kalinlik": 0.6
     },
     {
@@ -217,7 +230,7 @@
       "zorunlu": true,
       "tip": "tablo",
       "x": 0,
-      "y": 179,
+      "y": 194,
       "g": 209.77,
       "etiketG": 100,
       "satirH": 12,
@@ -233,11 +246,73 @@
       ]
     },
     {
+      "id": "odeme-ust-cizgi",
+      "tip": "cizgi",
+      "kosul": "{{odemeVar}}",
+      "daralt": true,
+      "x1": 0,
+      "y1": 209,
+      "x2": 209.77,
+      "y2": 209,
+      "kalinlik": 0.6
+    },
+    {
+      "id": "odeme-baslik",
+      "tip": "metin",
+      "kosul": "{{odemeVar}}",
+      "daralt": true,
+      "x": 0,
+      "y": 210,
+      "g": 209.77,
+      "metin": "ÖDEME / TAHSİLAT DETAYI",
+      "boyut": 9,
+      "kalin": true,
+      "hiza": "center"
+    },
+    {
+      "id": "odeme-satirlari",
+      "ad": "Ödeme satırları",
+      "tip": "liste",
+      "kaynak": "odemeler",
+      "kosul": "{{odemeVar}}",
+      "daralt": true,
+      "x": 0,
+      "y": 220.35,
+      "g": 209.77,
+      "satirH": 11,
+      "boyut": 7.1,
+      "aralik": 3,
+      "satirAyraci": "noktali",
+      "sutunlar": [
+        {
+          "deger": "{{s.ad}}",
+          "g": 130
+        },
+        {
+          "deger": "{{s.tutar|sayi}} TL",
+          "g": 79.77,
+          "hiza": "right",
+          "kalin": true
+        }
+      ]
+    },
+    {
+      "id": "odeme-alt-cizgi",
+      "tip": "cizgi",
+      "kosul": "{{odemeVar}}",
+      "daralt": true,
+      "x1": 0,
+      "y1": 231.35,
+      "x2": 209.77,
+      "y2": 231.35,
+      "kalinlik": 0.6
+    },
+    {
       "id": "karekod",
       "ad": "Karekod",
       "tip": "qr",
       "x": 80.4,
-      "y": 196,
+      "y": 235.35,
       "boyut": 49,
       "icerik": "{{qr}}"
     },
@@ -248,7 +323,7 @@
       "kosul": "{{ettn}}",
       "daralt": true,
       "x": 0,
-      "y": 248,
+      "y": 287.35,
       "g": 209.77,
       "metin": "ETTN: {{ettn}}",
       "boyut": 6,

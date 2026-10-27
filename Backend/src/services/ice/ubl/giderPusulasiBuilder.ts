@@ -1,10 +1,24 @@
 import { randomUUID } from "crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { escapeXml } from "../ice.client.js";
 import { ApiError } from "../../../utils/ApiError.js";
 import { UblTaraf, kimlikSemasi } from "./invoiceBuilder.js";
 
 /**
- * e-Gider Pusulası (UBL-TR `CreditNote`) üreteci — Faz 8d.
+ * e-Gider Pusulası üreteci — Faz 8d.
+ *
+ * ## ICE'ye giden biçim: `Invoice` (GİB'in `CreditNote`'u DEĞİL)
+ *
+ * GİB gider pusulasını `CreditNote` olarak tanımlar (aşağıdaki tablo), ama ICE `send_egider_pusulasi`
+ * belgeyi fatura okuyucusuyla ("Invoice Serializer") açıp UBL-TR **Invoice** şemasıyla denetliyor;
+ * GİB biçimine dönüşümü kendisi yapıyor. ICE test sunucusunda doğrulandı (27.10.2026):
+ * `CreditNote` kökü → "XML belgesinde bir hata var (1, 40)" (kök adı); aynı belge `Invoice` köküyle →
+ * "Invoice Serializer : Valid", ardından şema yalnız eksik `LineCountNumeric`'i istedi.
+ * Bu yüzden kök `Invoice`, tip `InvoiceTypeCode`, satır `InvoiceLine` / `InvoicedQuantity` yazılır ve
+ * fatura şemasında zorunlu `LineCountNumeric` eklenir. İçerik (ProfileID GIDERPUSULASI, taraflar,
+ * iade dayanağı, XSLT eki, tutarlar) GİB'in gider pusulası kurallarıyla aynı kalır.
  *
  * ## Kaynak: tahmin değil, doğrulanmış örnek
  *
@@ -139,6 +153,72 @@ const etiket = (ad: string, deger: unknown): string => {
   if (deger === undefined || deger === null || String(deger).trim() === "") return "";
   return `<${ad}>${escapeXml(deger)}</${ad}>`;
 };
+
+/* ==========================================================================
+   Görünüm şablonu (XSLT)
+
+   GİB kılavuzu §3.1.13: AdditionalDocumentReference içinde Base64 XSLT eki ZORUNLU (1…n).
+   Ek yokken ICE belgeyi açamıyor: "Invoice Serializer Error … geçerli bir Base-64 dizesi değil"
+   (ilk gerçek gönderim, 27.10.2026). Dosya GİB paketindeki giderPusulasi.xslt'nin değişmemiş
+   kopyasıdır: Backend/belge/xslt/ (src ve dist aynı derinlikte, yol ikisinde de tutar;
+   belge klasörü exe paketine de kopyalanır).
+   ========================================================================== */
+
+const XSLT_YOLU = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../../belge/xslt/giderPusulasi.xslt"
+);
+let xsltBase64: string | null = null;
+
+/**
+ * GİB şablonu belgeyi `CreditNote` adlarıyla arar (`//n1:CreditNote`, `cac:CreditNoteLine` …). ICE'ye
+ * `Invoice` gönderdiğimiz için (bkz. dosya başı) şablon hiçbir değeri bulamıyor, ICE'nin PDF'i boş
+ * çıkıyordu (27.10.2026). Belgeye uygulanan ad değişikliklerinin aynısı şablona da uygulanır; GİB dosyası
+ * diskte değişmeden kalır. Şablonda başka bir `Credit…` kalırsa (yeni GİB sürümü) gönderim durur.
+ */
+export const xsltFaturaKokuneUyarla = (xslt: string): string => {
+  const uyarlanmis = xslt
+    .replace(/urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2/g, "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2")
+    .replace(/n1:CreditNote(?![A-Za-z])/g, "n1:Invoice")
+    .replace(/cac:CreditNoteLine/g, "cac:InvoiceLine")
+    .replace(/cbc:CreditNoteTypeCode/g, "cbc:InvoiceTypeCode")
+    .replace(/cbc:CreditedQuantity/g, "cbc:InvoicedQuantity");
+  if (/Credit(Note|ed)/.test(uyarlanmis)) {
+    throw ApiError.internal(
+      "Gider pusulası görünüm şablonunda fatura biçimine uyarlanamayan bir alan kaldı; belge gönderilmedi."
+    );
+  }
+  return uyarlanmis;
+};
+
+export const giderPusulasiXsltBase64 = (): string => {
+  if (xsltBase64) return xsltBase64;
+  let icerik: Buffer;
+  try {
+    icerik = fs.readFileSync(XSLT_YOLU);
+  } catch {
+    icerik = Buffer.alloc(0);
+  }
+  if (!icerik.length) {
+    throw ApiError.internal(
+      "Gider pusulası görünüm şablonu (Backend/belge/xslt/giderPusulasi.xslt) sunucuda bulunamadı; belge gönderilmedi."
+    );
+  }
+  xsltBase64 = Buffer.from(xsltFaturaKokuneUyarla(icerik.toString("utf8")), "utf8").toString("base64");
+  return xsltBase64;
+};
+
+/** GİB örneğindeki biçim: ID = ETTN, dosya adı = belge no */
+const xsltEkiXml = (uuid: string, tarih: string, belgeNo: string): string =>
+  `<cac:AdditionalDocumentReference>` +
+  `<cbc:ID>${escapeXml(uuid)}</cbc:ID>` +
+  `<cbc:IssueDate>${escapeXml(tarih)}</cbc:IssueDate>` +
+  `<cac:Attachment>` +
+  `<cbc:EmbeddedDocumentBinaryObject characterSetCode="UTF-8" encodingCode="Base64" filename="${escapeXml(belgeNo)}.xslt" mimeCode="application/xml">` +
+  giderPusulasiXsltBase64() +
+  `</cbc:EmbeddedDocumentBinaryObject>` +
+  `</cac:Attachment>` +
+  `</cac:AdditionalDocumentReference>`;
 
 /* ==========================================================================
    Doğrulama
@@ -280,17 +360,21 @@ export const hesaplaGiderPusulasi = (satirlar: GiderPusulasiSatiri[]): GiderPusu
    XML parçaları
    ========================================================================== */
 
-const partyXml = (taraf: UblTaraf): string => {
+const partyXml = (taraf: UblTaraf, secenek: { gercekKisiAdiYalnizPerson?: boolean } = {}): string => {
   const kimlik = taraf.vknTckn.trim();
   const sema = kimlikSemasi(kimlik);
   const kisiAdi = [taraf.ad?.trim(), taraf.soyad?.trim()].filter(Boolean).join(" ");
   const unvan = taraf.unvan?.trim() || kisiAdi;
+  const kisiVar = sema === "TCKN" && !!taraf.ad?.trim() && !!taraf.soyad?.trim();
+  // GİB örneği: TCKN'li gerçek kişide ad yalnız cac:Person'da, PartyName yok. İkisi birden yazılınca
+  // şablon adı PDF'te iki kez basıyordu (27.10.2026). Yalnız alıcıda; düzenleyenin unvanı ticari ad.
+  const partyNameYaz = !!unvan && !(secenek.gercekKisiAdiYalnizPerson && kisiVar);
 
   return (
     `<cac:Party>` +
     etiket("cbc:WebsiteURI", taraf.webAdresi) +
     `<cac:PartyIdentification><cbc:ID schemeID="${sema}">${escapeXml(kimlik)}</cbc:ID></cac:PartyIdentification>` +
-    (unvan ? `<cac:PartyName><cbc:Name>${escapeXml(unvan)}</cbc:Name></cac:PartyName>` : "") +
+    (partyNameYaz ? `<cac:PartyName><cbc:Name>${escapeXml(unvan)}</cbc:Name></cac:PartyName>` : "") +
     `<cac:PostalAddress>` +
     etiket("cbc:StreetName", taraf.adres) +
     etiket("cbc:CitySubdivisionName", taraf.ilce) +
@@ -316,7 +400,7 @@ const partyXml = (taraf: UblTaraf): string => {
 
 /** Alıcı tarafına iade kanalı bilgisini ekler (SMS kodu / iade kodu) */
 const aliciPartyXml = (taraf: UblTaraf, kanal?: IadeKanali): string => {
-  const temel = partyXml(taraf);
+  const temel = partyXml(taraf, { gercekKisiAdiYalnizPerson: true });
   if (!kanal) return temel;
 
   // GİB örneğinde SMS kanalında cac:Contact içinde ID + Name + Telephone bulunuyor
@@ -377,15 +461,16 @@ const taxSubtotalXml = (
   `</cac:TaxScheme></cac:TaxCategory>` +
   `</cac:TaxSubtotal>`;
 
-const creditNoteLineXml = (
+/** Satır — ICE fatura şemasıyla denetlediği için `InvoiceLine` (GİB'deki karşılığı `CreditNoteLine`) */
+const satirXml = (
   satir: GiderPusulasiSatiri,
   hesap: { siraNo: number; matrah: number; vergiTutari: number; vergiOrani: number },
   paraBirimi: string,
   vergiKodu: string
 ): string =>
-  `<cac:CreditNoteLine>` +
+  `<cac:InvoiceLine>` +
   `<cbc:ID>${hesap.siraNo}</cbc:ID>` +
-  `<cbc:CreditedQuantity unitCode="${escapeXml(satir.birimKodu || "C62")}">${miktarStr(satir.miktar)}</cbc:CreditedQuantity>` +
+  `<cbc:InvoicedQuantity unitCode="${escapeXml(satir.birimKodu || "C62")}">${miktarStr(satir.miktar)}</cbc:InvoicedQuantity>` +
   `<cbc:LineExtensionAmount currencyID="${paraBirimi}">${tutar(hesap.matrah)}</cbc:LineExtensionAmount>` +
   `<cac:TaxTotal>` +
   `<cbc:TaxAmount currencyID="${paraBirimi}">${tutar(hesap.vergiTutari)}</cbc:TaxAmount>` +
@@ -396,7 +481,7 @@ const creditNoteLineXml = (
   `<cbc:Name>${escapeXml(satir.ad)}</cbc:Name>` +
   `</cac:Item>` +
   `<cac:Price><cbc:PriceAmount currencyID="${paraBirimi}">${tutar(satir.birimFiyat)}</cbc:PriceAmount></cac:Price>` +
-  `</cac:CreditNoteLine>`;
+  `</cac:InvoiceLine>`;
 
 /* ==========================================================================
    Ana üreteç
@@ -426,7 +511,8 @@ export const buildGiderPusulasiXml = (girdi: GiderPusulasiGirdi): GiderPusulasiU
 
   const xml =
     `<?xml version="1.0" encoding="UTF-8"?>` +
-    `<CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"` +
+    // Kök Invoice: ICE gider pusulasını fatura okuyucusuyla açıyor (bkz. dosya başı)
+    `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"` +
     ` xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"` +
     ` xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">` +
     // ICE serileştiricisi imza icin ext:UBLExtensions ekliyor; onek burada bildirilmezse
@@ -440,12 +526,16 @@ export const buildGiderPusulasiXml = (girdi: GiderPusulasiGirdi): GiderPusulasiU
     `<cbc:UUID>${escapeXml(uuid)}</cbc:UUID>` +
     `<cbc:IssueDate>${escapeXml(tarih)}</cbc:IssueDate>` +
     `<cbc:IssueTime>${escapeXml(saat)}</cbc:IssueTime>` +
-    `<cbc:CreditNoteTypeCode>${escapeXml(girdi.belgeTipi)}</cbc:CreditNoteTypeCode>` +
+    `<cbc:InvoiceTypeCode>${escapeXml(girdi.belgeTipi)}</cbc:InvoiceTypeCode>` +
     notlarXml +
     `<cbc:DocumentCurrencyCode>${escapeXml(paraBirimi)}</cbc:DocumentCurrencyCode>` +
+    // UBL-TR fatura şemasında zorunlu; ICE yokluğunu şema hatası olarak döndü
+    `<cbc:LineCountNumeric>${girdi.satirlar.length}</cbc:LineCountNumeric>` +
     (girdi.belgeTipi === "IADE" && girdi.iadeDayanak
       ? billingReferenceXml(girdi.iadeDayanak)
       : "") +
+    // GİB örneklerindeki sıra: BillingReference → AdditionalDocumentReference → (Signature, ICE) → AccountingSupplierParty
+    xsltEkiXml(uuid, tarih, belgeNo) +
     `<cac:AccountingSupplierParty>${partyXml(girdi.gonderici)}</cac:AccountingSupplierParty>` +
     `<cac:AccountingCustomerParty>${aliciPartyXml(girdi.alici, girdi.iadeKanali)}</cac:AccountingCustomerParty>` +
     (girdi.belgeTipi === "IADE" && girdi.kargo ? deliveryXml(girdi.kargo) : "") +
@@ -462,9 +552,9 @@ export const buildGiderPusulasiXml = (girdi: GiderPusulasiGirdi): GiderPusulasiU
     `<cbc:PayableAmount currencyID="${paraBirimi}">${tutar(ozet.odenecekTutar)}</cbc:PayableAmount>` +
     `</cac:LegalMonetaryTotal>` +
     girdi.satirlar
-      .map((satir, i) => creditNoteLineXml(satir, ozet.satirlar[i], paraBirimi, vergiKodu))
+      .map((satir, i) => satirXml(satir, ozet.satirlar[i], paraBirimi, vergiKodu))
       .join("") +
-    `</CreditNote>`;
+    `</Invoice>`;
 
   return { xml, uuid, ozet };
 };

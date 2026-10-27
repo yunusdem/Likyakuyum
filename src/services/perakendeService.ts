@@ -38,6 +38,9 @@ export interface PerakendeFaturaOdemeItem {
   faturaOdemeId?: number;
   faturaId?: number;
   satirNo: number;
+  /** 0 vezne, 1 cari, 2 POS, 3 hesap (sunucu kayıtlı fişte döndürür) */
+  odemeAraciTuru?: number;
+  cariUnvan?: string | null;
   paraId?: number | null;
   paraKodu: string;
   paraAdi?: string | null;
