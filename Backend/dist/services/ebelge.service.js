@@ -1334,9 +1334,10 @@ export class EbelgeService {
             throw ApiError.badRequest(`Yalnızca gönderimi kesinleşmiş belgelerin çıktısı alınabilir. Durum: ${kayit.gonderimDurumu}`);
         }
         const config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
+        // ICE gider pusulasını fatura olarak saklıyor; PDF GetInvoice_PDF'ten gelir (bkz. getGiderPusulasiCikti)
         const { pdf } = await getGiderPusulasiCikti(config, uuid, { pdf: true });
         await EbelgeSqlRepository.writeLog({
-            metod: "Get_EGiderPusulasi_HTML_PDF",
+            metod: "GetInvoice_PDF",
             yon: "GIDEN",
             basarili: Boolean(pdf?.length),
             kullanici,
@@ -1728,8 +1729,11 @@ export class EbelgeService {
             if (kayit.gonderimDurumu !== "GONDERILDI" && kayit.gonderimDurumu !== "IPTAL") {
                 throw ApiError.badRequest("Gider pusulası görüntüsü birkaç dakika içinde hazır olur; tekrar deneyiniz.");
             }
-            const c = await getGiderPusulasiCikti(config, uuid, { pdf: true, html: true });
-            goruntu = c.pdf ? { tur: "pdf", veri: c.pdf } : b64Goruntu(undefined, c.html ?? undefined);
+            // Önce PDF; gelmezse HTML (iki çağrıyı boşuna yapmamak için sırayla)
+            const c = await getGiderPusulasiCikti(config, uuid, { pdf: true });
+            goruntu = c.pdf
+                ? { tur: "pdf", veri: c.pdf }
+                : b64Goruntu(undefined, (await getGiderPusulasiCikti(config, uuid, { html: true })).html ?? undefined);
         }
         await EbelgeSqlRepository.writeLog({
             metod: "GIDEN_ONIZLEME",

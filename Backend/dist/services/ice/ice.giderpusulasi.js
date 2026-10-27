@@ -1,5 +1,6 @@
 import { escapeXml } from "./ice.client.js";
 import { callWithSession } from "./ice.session.js";
+import { getInvoiceHtml, getInvoicePdf } from "./ice.efatura.js";
 import { ApiError } from "../../utils/ApiError.js";
 /**
  * e-Gider Pusulası ICE operasyonları (Faz 8d).
@@ -10,8 +11,9 @@ import { ApiError } from "../../utils/ApiError.js";
  *
  * 1. `send_egider_pusulasi`, e-Arşiv ile **aynı zarfı** (`send_earsiv_request`) kullanır:
  *    `<earsiv_invoices><base64Binary><earsiv_invoice>…`. Zarf aynı olsa da **içerideki
- *    belge farklıdır** — gider pusulası `CreditNote`'tur, fatura değil
- *    (bkz. `ubl/giderPusulasiBuilder.ts`).
+ *    belge farklıdır** — GİB'de gider pusulası `CreditNote`'tur, ama ICE bu metotta belgeyi
+ *    `Invoice` kökü ve fatura şemasıyla bekliyor (bkz. `ubl/giderPusulasiBuilder.ts` başı).
+ *    Zarf aynı olsa da ICE içeriği **iki kat Base64** bekliyor (bkz. `giderPusulasiBelgeleriXml`).
  *
  * 2. **Ön doğrulama ucu YOKTUR.** Canlı WSDL'de yalnızca `invoice_check_validate`,
  *    `despatchadvice_check_validate` ve `producerreceipt_check_validate` bulunur;
@@ -20,15 +22,25 @@ import { ApiError } from "../../utils/ApiError.js";
  *    Bu yüzden yerel doğrulama daha sıkı tutulur ve ekran kullanıcıyı uyarır.
  */
 /**
+ * `earsiv_invoices` içeriği. ICE bu metotta `earsiv_invoice` içeriğini Base64 çözdükten sonra
+ * çıkan metni BİR KEZ DAHA Base64 çözüyor (e-Arşiv'de `send_earsiv` bunu yapmıyor). Bu yüzden
+ * belge (zaten Base64) ikinci kez Base64'e çevrilir. Kanıt (ICE test sunucusu, 27.10.2026):
+ * tek kat `<deneme/>` → "Base-64 olmayan bir karakter…"; iki kat → Base64 geçti, "XML belgesinde
+ * bir hata var (1, 2)". Gerçek belge tek katla iki kez aynı Base64 hatasını almıştı.
+ */
+export const giderPusulasiBelgeleriXml = (belgelerBase64) => belgelerBase64
+    .map((b64) => Buffer.from(b64, "utf8").toString("base64"))
+    .map((ikiKat) => `<base64Binary><earsiv_invoice>${escapeXml(ikiKat)}</earsiv_invoice></base64Binary>`)
+    .join("");
+/**
  * `send_egider_pusulasi` — gider pusulasını entegratöre gönderir.
+ * `belgelerBase64`: diğer belge türlerindeki gibi tek kat Base64 (ikinci katı burası ekler).
  *
  * ⚠️ Mali sonuç doğurur, ön doğrulama yapılamaz. Yazma çağrısıdır:
  * otomatik yeniden deneme KAPALI.
  */
 export const sendGiderPusulasi = async (config, belgelerBase64) => {
-    const belgelerXml = belgelerBase64
-        .map((b64) => `<base64Binary><earsiv_invoice>${escapeXml(b64)}</earsiv_invoice></base64Binary>`)
-        .join("");
+    const belgelerXml = giderPusulasiBelgeleriXml(belgelerBase64);
     const { data } = await callWithSession(config, {
         method: "send_egider_pusulasi",
         buildInnerXml: (loginHeaderXml) => `<sendEArsivRequest>` +
@@ -41,9 +53,35 @@ export const sendGiderPusulasi = async (config, belgelerBase64) => {
     return data || {};
 };
 /**
- * `Get_EGiderPusulasi_HTML_PDF` — gönderilmiş gider pusulasının çıktısı.
+ * Gönderilmiş gider pusulasının çıktısı (PDF / HTML).
+ *
+ * ICE gider pusulasını fatura olarak saklıyor (bkz. `ubl/giderPusulasiBuilder.ts` başı). ICE test
+ * sunucusunda (27.10.2026) `Get_EGiderPusulasi_HTML_PDF` hem gönderilen hem deneme belgesinde, ETTN
+ * küçük ya da büyük harf, BOŞ döndü; `GetInvoice_PDF` geçerli PDF, `GetInvoice_HTML` HTML verdi.
+ * Bu yüzden önce fatura çağrıları; istenen çıktıların hiçbiri gelmezse gider çağrısı yedek olarak denenir.
  */
 export const getGiderPusulasiCikti = async (config, ettn, secenekler = {}) => {
+    let pdf = null;
+    let html = null;
+    if (secenekler.pdf) {
+        const b = await getInvoicePdf(config, ettn);
+        if (b.length) {
+            if (b.subarray(0, 5).toString("ascii") !== "%PDF-")
+                throw ApiError.unprocessable("ICE cevabı PDF biçiminde değil.");
+            pdf = b;
+        }
+    }
+    if (secenekler.html) {
+        const h = await getInvoiceHtml(config, ettn);
+        if (h.trim())
+            html = h;
+    }
+    if (pdf || html || !(secenekler.pdf || secenekler.html))
+        return { html, pdf, mesaj: "" };
+    return giderCiktisiGiderCagrisiyla(config, ettn, secenekler);
+};
+/** `Get_EGiderPusulasi_HTML_PDF` — ICE'nin gider pusulasına özel çıktı çağrısı (şu an boş dönüyor; yedek) */
+const giderCiktisiGiderCagrisiyla = async (config, ettn, secenekler = {}) => {
     const { data } = await callWithSession(config, {
         method: "Get_EGiderPusulasi_HTML_PDF",
         buildInnerXml: (loginHeaderXml) => `<eGiderPusulasi_HTML_PDF>` +

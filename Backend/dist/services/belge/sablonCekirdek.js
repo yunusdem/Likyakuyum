@@ -299,8 +299,15 @@ function sutunluListe(o, dizi, veri, varsayilanBoyut, yt, c) {
     const altH = (a) => altBoyut(a) * SATIR_ORANI + 0.5;
     dizi.forEach((kayit, k) => {
         const bag = { ...veri, s: kayit, sira: k + 1 };
-        if (k > 0)
-            y += o.aralik ?? 0;
+        if (k > 0) {
+            const aralik = o.aralik ?? 0;
+            // Kayıtlar arası ayraç: aralığın ortasına, liste genişliğinde
+            if (o.satirAyraci && !hucre) {
+                const ay = y + aralik / 2;
+                c.push({ tip: "cizgi", x1: o.x, y1: ay, x2: o.x + toplamG, y2: ay, kalinlik: 0.5, kesikli: o.satirAyraci === "kesikli", ...(o.satirAyraci === "noktali" ? { noktali: true } : {}) });
+            }
+            y += aralik;
+        }
         // Ana satır: çok satırlı sütun varsa satır uzar
         const hucreler = sutunlar.map((s, i) => {
             const metin = doldur(s.deger, bag);
@@ -423,7 +430,7 @@ function ogeyiHazirla(o, veri, varsayilanBoyut, icG, yt, rulo) {
             c.push({ tip: "kutu", x: o.x, y: o.y, g: o.g, h: o.h, kalinlik: o.kalinlik ?? 0.6, ...(renkGecerli(o.zemin) ? { zemin: o.zemin } : {}) });
             break;
         case "cizgi":
-            c.push({ tip: "cizgi", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, kalinlik: o.kalinlik ?? 0.8, kesikli: !!o.kesikli });
+            c.push({ tip: "cizgi", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, kalinlik: o.kalinlik ?? 0.8, kesikli: !!o.kesikli, ...(o.noktali ? { noktali: true } : {}) });
             break;
         case "resim":
             c.push({ tip: "resim", dosya: o.dosya, x: o.x, y: o.y, g: o.g ?? 60, h: o.h ?? 60 });

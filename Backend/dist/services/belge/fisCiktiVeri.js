@@ -215,6 +215,11 @@ export function firmaKimlikOku(r) {
         kmvSekli: kmvSekliOku(r.KMV_UYGULAMA_SEKLI),
     };
 }
+/** POS ile alınan ödemenin fişteki adı: "POS TL" (TL dışı para birimiyse "POS USD" gibi). */
+export const posOdemeAdi = (paraKodu) => {
+    const kod = yazi(paraKodu).toLocaleUpperCase("tr-TR");
+    return `POS ${!kod || kod === "TRY" || kod === "TRL" ? "TL" : kod}`;
+};
 const tr = (n, hane = 2) => Number(n || 0).toLocaleString("tr-TR", { minimumFractionDigits: hane, maximumFractionDigits: hane });
 /** "2026-10-12" / ISO → "12.10.2026"; tanınmazsa olduğu gibi. */
 function tarihNokta(v) {
@@ -249,7 +254,8 @@ export function sarrafFisVerisi(g, firma) {
         .filter(o => sayiOku(o.miktar) > 0 || sayiOku(o.tutar) > 0 || sayiOku(o.adet) > 0 || yazi(o.paraKodu) !== "")
         .map((o, i) => {
         const miktar = sayiOku(o.miktar) || sayiOku(o.adet);
-        return { sira: i + 1, ad: yazi(o.paraKodu) || yazi(o.paraAdi) || "Nakit TL", miktar, miktarYazi: miktar > 0 ? tr(miktar) : "", tutar: sayiOku(o.tutar) };
+        const ad = Number(o.odemeAraciTuru) === 2 ? posOdemeAdi(o.paraKodu) : yazi(o.paraKodu) || yazi(o.paraAdi) || "Nakit TL";
+        return { sira: i + 1, ad, miktar, miktarYazi: miktar > 0 ? tr(miktar) : "", tutar: sayiOku(o.tutar) };
     });
     const tutar = sayiOku(g.toplamTutar), has = sayiOku(g.toplamHas), odenen = sayiOku(g.odenenTutar), kalan = sayiOku(g.kalanTutar);
     const tarih = tarihNokta(g.tarih);
@@ -278,6 +284,12 @@ export function perakendeFisVerisi(g, firma) {
             barkodAyar: [yazi(s.barkod), yazi(s.ayar)].join(" | "), gramYazi: `${tr(gram)}g`,
         };
     });
+    // Ödeme / tahsilat satırları sarraf fişindeki gibi: POS "POS TL", diğerleri para birimiyle (altın / dövizle ödemede miktar)
+    const odemeler = (Array.isArray(g.odemeler) ? g.odemeler : []).filter((o) => sayiOku(o.tutar) > 0).map((o, i) => {
+        const miktar = sayiOku(o.miktar) || sayiOku(o.adet);
+        const ad = Number(o.odemeAraciTuru) === 2 ? posOdemeAdi(o.paraKodu) : yazi(o.paraKodu) || yazi(o.paraAdi) || "Nakit TL";
+        return { sira: i + 1, ad, miktar, miktarYazi: miktar > 0 ? tr(miktar) : "", tutar: sayiOku(o.tutar) };
+    });
     const iskonto = sayiOku(g.iskontoTutari), iskontoOrani = sayiOku(g.iskontoOrani), genel = sayiOku(g.genelToplam);
     const faturaNo = yazi(g.faturaNo), ettn = yazi(g.ettn), kimlik = yazi(g.aliciVknTckn) || "11111111111";
     const iade = Number(g.faturaTipi) === 2;
@@ -289,7 +301,7 @@ export function perakendeFisVerisi(g, firma) {
             unvan: yazi(g.aliciUnvan) || "NİHAİ TÜKETİCİ", kimlikNo: kimlik, vergiDairesi: yazi(g.vergiDairesi), adres: yazi(g.adres) || "-",
             ilce: yazi(g.ilce) || "-", il: yazi(g.il) || "-", telefon: yazi(g.telefon), eposta: yazi(g.eposta),
         },
-        satirlar,
+        satirlar, odemeler, odemeVar: odemeler.length > 0,
         toplam: {
             gram: satirlar.reduce((t, s) => t + s.gram, 0), has: satirlar.reduce((t, s) => t + s.has, 0),
             ara: sayiOku(g.araToplam), kdv: sayiOku(g.toplamKdv), iskonto, iskontoVar: iskonto > 0, iskontoOrani,
@@ -325,7 +337,8 @@ export function ticariFisVerisi(g, firma) {
     const odemeler = (Array.isArray(g.odemeler) ? g.odemeler : []).filter((o) => sayiOku(o.tutar) > 0).map((o, i) => {
         const tur = Number(o.odemeAraciTuru) || 0;
         const kod = yazi(o.paraKodu) || "TL";
-        return { sira: i + 1, tur: ODEME_TURU_ADI[tur] || "Nakit", ad: tur === 1 ? yazi(o.cariUnvan) || "Cari" : tur === 0 && !["TL", "TRY"].includes(kod) ? `${kod} ${tr(sayiOku(o.miktar))}` : ODEME_TURU_ADI[tur] || "Nakit", tutar: sayiOku(o.tutar) };
+        const ad = tur === 1 ? yazi(o.cariUnvan) || "Cari" : tur === 2 ? posOdemeAdi(kod) : tur === 0 && !["TL", "TRY"].includes(kod) ? `${kod} ${tr(sayiOku(o.miktar))}` : ODEME_TURU_ADI[tur] || "Nakit";
+        return { sira: i + 1, tur: ODEME_TURU_ADI[tur] || "Nakit", ad, tutar: sayiOku(o.tutar) };
     });
     const odenen = yuvarla2(odemeler.reduce((t, o) => t + o.tutar, 0));
     const satirIskonto = yuvarla2(hesap.satirlar.reduce((t, s) => t + s.satirIskontoDahil, 0));

@@ -178,7 +178,9 @@ export async function belgeCiz(sablon, veri, baslik, gorsel = belgeKlasoruGorsel
                     break;
                 case "cizgi":
                     doc.save();
-                    if (c.kesikli)
+                    if (c.noktali)
+                        doc.dash(0.8, { space: 1.4 });
+                    else if (c.kesikli)
                         doc.dash(2.5, { space: 2 });
                     doc.moveTo(X(c.x1), Y(c.y1)).lineTo(X(c.x2), Y(c.y2)).lineWidth(c.kalinlik).strokeColor("#000").stroke();
                     doc.restore();

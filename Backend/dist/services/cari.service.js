@@ -108,7 +108,7 @@ export class CariService {
         }
         // İlişkili fotoğrafı temizle
         try {
-            await CariFotografSqlRepository.deleteFotograf(id, dbContext);
+            await CariFotografSqlRepository.deleteFotograf(id, undefined, dbContext);
         }
         catch { }
         return CariSqlRepository.delete(id, dbContext);
@@ -116,6 +116,9 @@ export class CariService {
     // ─── Fotoğraf Özel Metodları (TODVZ_FOTOGRAF & SODVZ_FOTOGRAF_KAYDET) ───────
     static async getCariFotograf(cariKartId, dbContext) {
         return CariFotografSqlRepository.getByCariKartId(cariKartId, dbContext);
+    }
+    static async getAllCariFotograflar(cariKartId, dbContext) {
+        return CariFotografSqlRepository.getAllByCariKartId(cariKartId, dbContext);
     }
     static async saveCariFotograf(cariKartId, data, kullaniciId, dbContext) {
         return CariFotografSqlRepository.saveFotograf({
@@ -126,7 +129,7 @@ export class CariService {
             mimeTipi: data.mimeTipi,
         }, kullaniciId, dbContext);
     }
-    static async deleteCariFotograf(cariKartId, dbContext) {
-        return CariFotografSqlRepository.deleteFotograf(cariKartId, dbContext);
+    static async deleteCariFotograf(cariKartId, fotografId, dbContext) {
+        return CariFotografSqlRepository.deleteFotograf(cariKartId, fotografId, dbContext);
     }
 }

@@ -1354,7 +1354,8 @@ export const DovizFisiPage: React.FC = () => {
       const matchedCari = (fis as any).cariKod || (cariList.find((c) => c.id === fis.cariKartId)?.kod) || "";
       setCariKod(matchedCari);
       setVergiKimlikNo(fis.vergiKimlikNo || "");
-      setGelisNedeni(fis.gelisNedeni || "");
+      const rawGelisNedeni = (fis.gelisNedeni || "").trim();
+      setGelisNedeni(rawGelisNedeni.toLowerCase() === "arbitraj" ? "" : rawGelisNedeni);
       const isArbitrajFis = Boolean(
         fis.isArbitraj ||
         (fis as any).IS_ARBITRAJ ||
@@ -4476,7 +4477,8 @@ export const DovizFisiPage: React.FC = () => {
     (result: ArbitrajApplyResult) => {
       setIsArbitrajState(true);
       if (result.gelisNedeni !== undefined) {
-        setGelisNedeni(result.gelisNedeni);
+        const cleanGn = (result.gelisNedeni || "").trim();
+        setGelisNedeni(cleanGn.toLowerCase() === "arbitraj" ? "" : cleanGn);
       }
       setTip(result.islemYonu === "alis" ? 0 : 1);
       setSavedArbitrajInfo({
@@ -4611,6 +4613,11 @@ export const DovizFisiPage: React.FC = () => {
         if (foundY) mainYetkiliId = Number(foundY.id);
       }
 
+      const targetGelisNedeni = (result.gelisNedeni !== undefined && result.gelisNedeni !== null)
+        ? String(result.gelisNedeni).trim()
+        : gelisNedeni.trim();
+      const cleanGelisNedeni = targetGelisNedeni.toLowerCase() === "arbitraj" ? undefined : (targetGelisNedeni || undefined);
+
       const payload: SaveDovizFisPayload = {
         fisId: fisId || undefined,
         vezneId,
@@ -4619,7 +4626,7 @@ export const DovizFisiPage: React.FC = () => {
         zaman: finalZaman,
         seriNo: seriNo.trim() || undefined,
         belgeNo: belgeNo.trim() || undefined,
-        gelisNedeni: gelisNedeni.trim() || undefined,
+        gelisNedeni: cleanGelisNedeni,
         isArbitraj: true,
         kurTuru: 0,
         istatistikId: istatistikId || undefined,
@@ -4699,7 +4706,7 @@ export const DovizFisiPage: React.FC = () => {
           seriNo: baseSeriNo,
           belgeNo: baseBelgeNo,
           isArbitraj: true,
-          gelisNedeni: gelisNedeni.trim() || undefined,
+          gelisNedeni: cleanGelisNedeni,
           unvan: payload.unvan,
           vergiKimlikNo: payload.vergiKimlikNo,
           detayIl: payload.il,

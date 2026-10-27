@@ -2415,8 +2415,7 @@ export class DovizFisSqlRepository {
           BEGIN
             UPDATE [dbo].[TODVZ_FIS]
             SET ARBITRAJ_ID = @P_FIS_ID,
-                IS_ARBITRAJ = 1,
-                GELIS_NEDENI = CASE WHEN GELIS_NEDENI IS NULL OR LTRIM(RTRIM(GELIS_NEDENI)) = '' THEN 'Arbitraj' ELSE GELIS_NEDENI END
+                IS_ARBITRAJ = 1
             WHERE FIS_ID = @EFF_ARBITRAJ_ID;
           END
 
@@ -2604,8 +2603,7 @@ export class DovizFisSqlRepository {
                 // Fişi IS_ARBITRAJ = 1 olarak güncelle
                 await pool.request().input("ARB_FIS_ID", sql.Int, savedFisId).query(`
                   UPDATE [dbo].[TODVZ_FIS]
-                  SET IS_ARBITRAJ = 1,
-                      GELIS_NEDENI = CASE WHEN GELIS_NEDENI IS NULL OR LTRIM(RTRIM(GELIS_NEDENI)) = '' THEN 'Arbitraj' ELSE GELIS_NEDENI END
+                  SET IS_ARBITRAJ = 1
                   WHERE FIS_ID = @ARB_FIS_ID
                 `);
               }

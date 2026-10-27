@@ -186,7 +186,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   });
   const [seriNo, setSeriNo] = useState<string>("");
   const [belgeNo, setBelgeNo] = useState<string>("");
-  const [gelisNedeni, setGelisNedeni] = useState<string>(initialGelisNedeni || "");
+  const [gelisNedeni, setGelisNedeni] = useState<string>(
+    initialGelisNedeni && initialGelisNedeni.trim().toLowerCase() !== "arbitraj" ? initialGelisNedeni.trim() : ""
+  );
   const [cariId, setCariId] = useState<number | null>(selectedCariId);
   const [cariKodu, setCariKodu] = useState<string>(selectedCariKod || "");
   const [unvan, setUnvan] = useState<string>(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
@@ -710,11 +712,13 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         setLines(sourceLines.length > 0 ? sourceLines : [createBlankLine(1)]);
         if (savedArbitraj.islemYonu) {
           setIslemYonu(savedArbitraj.islemYonu);
-          setGelisNedeni((savedArbitraj as any).gelisNedeni || initialGelisNedeni || "");
+          const rawGn = String((savedArbitraj as any).gelisNedeni || initialGelisNedeni || "").trim();
+          setGelisNedeni(rawGn.toLowerCase() === "arbitraj" ? "" : rawGn);
         } else {
           const dir = fisTip === 0 ? "satis" : "alis";
           setIslemYonu(dir);
-          setGelisNedeni(initialGelisNedeni || "");
+          const rawGn = String(initialGelisNedeni || "").trim();
+          setGelisNedeni(rawGn.toLowerCase() === "arbitraj" ? "" : rawGn);
         }
         if (savedArbitraj.seriNo) setSeriNo(savedArbitraj.seriNo);
         else setSeriNo("");
@@ -744,7 +748,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         // Fişin tersi açılır: Arka Alışsa Satış, Satışsa Alış
         const dir: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
         setIslemYonu(dir);
-        setGelisNedeni(initialGelisNedeni || "");
+        const rawGn = String(initialGelisNedeni || "").trim();
+        setGelisNedeni(rawGn.toLowerCase() === "arbitraj" ? "" : rawGn);
         setCariId(selectedCariId);
         setCariKodu(selectedCariKod || "");
         setUnvan(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
@@ -1260,7 +1265,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       istatistikKodu: istatistikKod,
       seriNo: seriNo.trim() || undefined,
       belgeNo: belgeNo.trim() || undefined,
-      gelisNedeni: gelisNedeni.trim() || undefined,
+      gelisNedeni: (gelisNedeni.trim().toLowerCase() === "arbitraj" ? undefined : (gelisNedeni.trim() || undefined)),
       allLines: validLines,
       lines: validLines,
       detay: {
@@ -1365,7 +1370,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       istatistikKodu: istatistikKod,
       seriNo: seriNo.trim() || undefined,
       belgeNo: belgeNo.trim() || undefined,
-      gelisNedeni: gelisNedeni.trim() || undefined,
+      gelisNedeni: (gelisNedeni.trim().toLowerCase() === "arbitraj" ? undefined : (gelisNedeni.trim() || undefined)),
       allLines: validLines,
       lines: validLines,
       detay: {

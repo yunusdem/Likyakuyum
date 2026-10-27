@@ -30,19 +30,18 @@ export const urunTipiToBelgeTuru = (urunTipi) => {
 };
 export class CariFotografSqlRepository {
     /**
-     * Cari karta ait fotoğrafı veritabanından çeker
+     * Cari karta ait tüm fotoğrafları çeker (Arkalı önlü vb. çoklu fotoğraflar)
      */
-    static async getByCariKartId(cariKartId, dbContext) {
+    static async getAllByCariKartId(cariKartId, dbContext) {
         const id = parseInt(String(cariKartId), 10);
         if (!id || isNaN(id))
-            return null;
+            return [];
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
             const req = pool.request();
             req.input("CARI_KART_ID", sql.Int, id);
-            // CARI_KART_ID kolonu, URUN_ID (URUN_TIPI 20..23) veya TODVZ_CARI_KART.FOTOGRAF_ID üzerinden eşleşir
             const query = `
-        SELECT TOP 1
+        SELECT
           F.[FOTOGRAF_ID],
           F.[URUN_TIPI],
           ISNULL(F.[CARI_KART_ID], F.[URUN_ID]) AS [CARI_KART_ID],
@@ -54,35 +53,43 @@ export class CariFotografSqlRepository {
         WHERE (F.[CARI_KART_ID] = @CARI_KART_ID)
            OR (F.[URUN_TIPI] IN (20, 21, 22, 23) AND F.[URUN_ID] = @CARI_KART_ID)
            OR (F.[FOTOGRAF_ID] = (SELECT [FOTOGRAF_ID] FROM [dbo].[TODVZ_CARI_KART] WHERE [CARI_KART_ID] = @CARI_KART_ID))
-        ORDER BY F.[FOTOGRAF_ID] DESC;
+        ORDER BY F.[FOTOGRAF_ID] ASC;
       `;
             const result = await req.query(query);
             if (!result.recordset || result.recordset.length === 0) {
-                return null;
+                return [];
             }
-            const row = result.recordset[0];
-            let dataUrl = "";
-            if (row.FOTOGRAF_DATA) {
-                const mime = row.MIME_TIPI || "image/jpeg";
-                const base64 = Buffer.isBuffer(row.FOTOGRAF_DATA)
-                    ? row.FOTOGRAF_DATA.toString("base64")
-                    : Buffer.from(row.FOTOGRAF_DATA).toString("base64");
-                dataUrl = `data:${mime};base64,${base64}`;
-            }
-            return {
-                fotografId: row.FOTOGRAF_ID,
-                cariKartId: id,
-                belgeTuru: urunTipiToBelgeTuru(row.URUN_TIPI),
-                dosyaAdi: row.DOSYA_ADI || "kimlik.jpg",
-                mimeTipi: row.MIME_TIPI || "image/jpeg",
-                dataUrl,
-                eklemeZamani: row.EKLEME_ZAMANI ? new Date(row.EKLEME_ZAMANI).toISOString() : null,
-            };
+            return result.recordset.map((row) => {
+                let dataUrl = "";
+                if (row.FOTOGRAF_DATA) {
+                    const mime = row.MIME_TIPI || "image/jpeg";
+                    const base64 = Buffer.isBuffer(row.FOTOGRAF_DATA)
+                        ? row.FOTOGRAF_DATA.toString("base64")
+                        : Buffer.from(row.FOTOGRAF_DATA).toString("base64");
+                    dataUrl = `data:${mime};base64,${base64}`;
+                }
+                return {
+                    fotografId: row.FOTOGRAF_ID,
+                    cariKartId: id,
+                    belgeTuru: urunTipiToBelgeTuru(row.URUN_TIPI),
+                    dosyaAdi: row.DOSYA_ADI || "kimlik.jpg",
+                    mimeTipi: row.MIME_TIPI || "image/jpeg",
+                    dataUrl,
+                    eklemeZamani: row.EKLEME_ZAMANI ? new Date(row.EKLEME_ZAMANI).toISOString() : null,
+                };
+            });
         }
         catch (error) {
-            logger.error(`[CariFotografSqlRepository.getByCariKartId] Error for cari ${id}:`, error);
-            return null;
+            logger.error(`[CariFotografSqlRepository.getAllByCariKartId] Error for cari ${id}:`, error);
+            return [];
         }
+    }
+    /**
+     * Cari karta ait fotoğrafı veritabanından çeker (En sonuncuyu veya varsayılanı)
+     */
+    static async getByCariKartId(cariKartId, dbContext) {
+        const list = await this.getAllByCariKartId(cariKartId, dbContext);
+        return list.length > 0 ? list[list.length - 1] : null;
     }
     /**
      * Cari karta ait kimlik/pasaport/vergi levhası fotoğrafını doğrudan SQL Server'a kaydeder.
@@ -189,41 +196,50 @@ export class CariFotografSqlRepository {
     /**
      * Cari karta ait fotoğrafı siler. SODVZ_FOTOGRAF_SIL prosedürünü kullanır.
      */
-    static async deleteFotograf(cariKartId, dbContext) {
+    static async deleteFotograf(cariKartId, fotografId, dbContext) {
         const id = parseInt(String(cariKartId), 10);
         if (!id || isNaN(id))
             return false;
-        const existing = await this.getByCariKartId(id, dbContext);
-        if (!existing)
+        const allPhotos = await this.getAllByCariKartId(id, dbContext);
+        if (allPhotos.length === 0)
+            return true;
+        const targets = fotografId
+            ? allPhotos.filter((p) => p.fotografId === fotografId)
+            : allPhotos;
+        if (targets.length === 0)
             return true;
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-        try {
-            // 1. SODVZ_FOTOGRAF_SIL çağrısı
-            const req = pool.request();
-            req.input("FOTOGRAF_ID", sql.Int, existing.fotografId);
-            req.input("URUN_TIPI", sql.TinyInt, belgeTuruToUrunTipi(existing.belgeTuru));
-            req.input("URUN_ID", sql.Int, id);
-            await req.execute("dbo.SODVZ_FOTOGRAF_SIL");
+        for (const item of targets) {
+            try {
+                const req = pool.request();
+                req.input("FOTOGRAF_ID", sql.Int, item.fotografId);
+                req.input("URUN_TIPI", sql.TinyInt, belgeTuruToUrunTipi(item.belgeTuru));
+                req.input("URUN_ID", sql.Int, id);
+                await req.execute("dbo.SODVZ_FOTOGRAF_SIL");
+            }
+            catch (spErr) {
+                logger.warn(`[CariFotografSqlRepository.deleteFotograf] SP error, fallback to DELETE: ${spErr.message}`);
+                const delReq = pool.request();
+                delReq.input("FOTOGRAF_ID", sql.Int, item.fotografId);
+                await delReq.query("DELETE FROM [dbo].[TODVZ_FOTOGRAF] WHERE [FOTOGRAF_ID] = @FOTOGRAF_ID");
+            }
         }
-        catch (spErr) {
-            logger.warn(`[CariFotografSqlRepository.deleteFotograf] SP error, fallback to DELETE: ${spErr.message}`);
-            const delReq = pool.request();
-            delReq.input("FOTOGRAF_ID", sql.Int, existing.fotografId);
-            await delReq.query("DELETE FROM [dbo].[TODVZ_FOTOGRAF] WHERE [FOTOGRAF_ID] = @FOTOGRAF_ID");
-        }
-        // 2. TODVZ_CARI_KART.FOTOGRAF_ID sıfırlama
+        // Kalan fotoğraf varsa TODVZ_CARI_KART.FOTOGRAF_ID'yi son fotoğrafa ayarla, yoksa NULL yap
         try {
-            const clearReq = pool.request();
-            clearReq.input("CARI_KART_ID", sql.Int, id);
-            await clearReq.query(`
+            const remaining = await this.getAllByCariKartId(id, dbContext);
+            const nextFotoId = remaining.length > 0 ? remaining[remaining.length - 1].fotografId : null;
+            const syncReq = pool.request();
+            syncReq.input("CARI_KART_ID", sql.Int, id);
+            syncReq.input("FOTOGRAF_ID", sql.Int, nextFotoId);
+            await syncReq.query(`
         IF COL_LENGTH('dbo.TODVZ_CARI_KART', 'FOTOGRAF_ID') IS NOT NULL
         BEGIN
-          UPDATE [dbo].[TODVZ_CARI_KART] SET [FOTOGRAF_ID] = NULL WHERE [CARI_KART_ID] = @CARI_KART_ID;
+          UPDATE [dbo].[TODVZ_CARI_KART] SET [FOTOGRAF_ID] = @FOTOGRAF_ID WHERE [CARI_KART_ID] = @CARI_KART_ID;
         END
       `);
         }
         catch (clearErr) {
-            logger.warn(`[CariFotografSqlRepository.deleteFotograf] Clear ref warning: ${clearErr.message}`);
+            logger.warn(`[CariFotografSqlRepository.deleteFotograf] Sync ref warning: ${clearErr.message}`);
         }
         return true;
     }
