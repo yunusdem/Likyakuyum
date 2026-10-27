@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { BelgeService } from "../services/belge/belge.service.js";
 import { FisCiktiService } from "../services/belge/fisCikti.service.js";
+import { belgeCiz, belgeKlasoruGorseli } from "../services/belge/belgeMotor.js";
+import { BelgeGorselService } from "../services/belge/belgeGorsel.service.js";
 import { BELGE_DURUMLARI } from "../models/belgeSql.repository.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -126,6 +128,37 @@ export class BelgeController {
         res.setHeader("X-Belge-Onizleme", s.onizleme ? "1" : "0");
         res.setHeader("X-Belge-Bicim", istek.bicim);
         return res.status(200).end(s.pdf);
+    });
+    /**
+     * POST /api/v1/belge/pdf/onizleme
+     * Ekrandaki fiş verisinden (kaydedilmemiş taslak / teklif dahi olsa) doğrudan PDF çıktısı döner.
+     */
+    static pdfOnizleme = asyncHandler(async (req, res) => {
+        const { tur, bicim = "80", ...girdi } = req.body || {};
+        let c;
+        if (tur === "doviz") {
+            c = await FisCiktiService.doviz(girdi, BelgeController.getDbContext(req));
+        }
+        else if (tur === "sarraf") {
+            c = await FisCiktiService.sarraf(girdi, bicim, BelgeController.getDbContext(req));
+        }
+        else if (tur === "perakende") {
+            c = await FisCiktiService.perakende((girdi.fatura || girdi), bicim, BelgeController.getDbContext(req));
+        }
+        else if (tur === "ticari") {
+            c = await FisCiktiService.ticari(girdi, bicim, BelgeController.getDbContext(req));
+        }
+        else {
+            throw ApiError.badRequest("Geçersiz fiş türü.");
+        }
+        const gorsel = await BelgeGorselService.cozucu(c.sablon, belgeKlasoruGorseli, BelgeController.getDbContext(req));
+        const baslik = c.veri?.belgeNo ? `${c.veri.belgeNo} - ${c.sablon.ad}` : (c.sablon.ad || "Fiş");
+        const pdf = await belgeCiz(c.sablon, c.veri, baslik, gorsel);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="${c.veri?.belgeNo || "fis"}.pdf"`);
+        res.setHeader("Content-Length", String(pdf.length));
+        res.setHeader("Cache-Control", "no-store");
+        return res.status(200).end(pdf);
     });
     /**
      * POST /api/v1/belge/cikti/doviz  { ...döviz fişi ekran görüntüsü }

@@ -32,15 +32,19 @@ export const SablonluFisOnizleme: React.FC<{ fis: FisHtml | FisHtml[] | null; ha
 
   if (fisler.length === 1) {
     return (
-      // fit-content + otomatik kenar: pencereden geniş A4 sayfa da sola kaymadan kaydırılabilir kalır
-      <div style={{ boxShadow: "0 4px 15px rgba(0, 0, 0, 0.35)", borderRadius: 2, background: "#fff", width: "fit-content", margin: "0 auto" }}
-        dangerouslySetInnerHTML={{ __html: fisler[0].html }} />
+      <div id="sablonlu-fis-alani" className="sablonlu-fis-alani d-flex justify-content-center w-100">
+        <div
+          id="sablonlu-fis-icerik"
+          style={{ boxShadow: "0 4px 15px rgba(0, 0, 0, 0.35)", borderRadius: 2, background: "#fff", width: "fit-content", margin: "0 auto" }}
+          dangerouslySetInnerHTML={{ __html: fisler[0].html }}
+        />
+      </div>
     );
   }
 
   // Birden fazla fiş: sayfa sayfa kaydırılabilir görünüm
   return (
-    <div className="d-flex flex-column align-items-center gap-4 py-2 w-100">
+    <div id="sablonlu-fis-alani" className="sablonlu-fis-alani d-flex flex-column align-items-center gap-4 py-2 w-100">
       <div className="alert alert-info py-1 px-3 mb-1 small d-flex align-items-center gap-2 shadow-xs border-0 text-center" style={{ backgroundColor: "#e0f2fe", color: "#0369a1" }}>
         <span>ℹ️ Bu işlemde <strong>{fisler.length} adet fiş</strong> bulunmaktadır. Aşağı kaydırarak tüm sayfaları inceleyebilirsiniz.</span>
       </div>

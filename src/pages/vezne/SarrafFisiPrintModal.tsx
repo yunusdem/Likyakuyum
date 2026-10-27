@@ -1,12 +1,14 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Modal, Button, Form, Spinner } from "react-bootstrap";
-import { IconPrinter, IconX, IconReceipt, IconFileText } from "@tabler/icons-react";
+import { IconPrinter, IconX, IconReceipt, IconFileText, IconBrandWhatsapp } from "@tabler/icons-react";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
 import { sarrafFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
+import { BelgeService } from "../../services/belgeService";
+import { shareReceiptVisualOrPdfToWhatsApp } from "../../utils/whatsAppMessageBuilder";
 
 export interface SarrafPrintLineItem {
   satirNo?: number;
@@ -91,6 +93,55 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
     : (isTeklif ? "SARRAF ALIŞ FİŞİ (TEKLİF)" : "SARRAF ALIŞ FİŞİ");
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  const [isSharingPdf, setIsSharingPdf] = useState(false);
+  const pdfBlobRef = useRef<Blob | null>(null);
+
+  useEffect(() => {
+    if (!show) { pdfBlobRef.current = null; return; }
+    const { show: _s, onHide: _o, autoPrint: _a, ...girdi } = propsRef.current;
+    BelgeService.onizlemePdfBlob("sarraf", girdi, printType === "A4" ? "A4" : "80")
+      .then((b) => { pdfBlobRef.current = b; })
+      .catch(() => {});
+  }, [show, printType]);
+
+  const handleWhatsAppPdfShare = useCallback(async () => {
+    setIsSharingPdf(true);
+    const docNo = props.belgeNo || props.seriNo || (props.fisId ? `FIS-${props.fisId}` : "sarraf_fisi");
+    
+    // Önceden hazır olan PDF varsa hemen kullan, yoksa arka planda üret
+    const cached = pdfBlobRef.current;
+    const { show: _s, onHide: _o, autoPrint: _a, ...girdi } = propsRef.current;
+    const pdfPromise = cached
+      ? Promise.resolve(cached)
+      : BelgeService.onizlemePdfBlob("sarraf", girdi, printType === "A4" ? "A4" : "80")
+          .catch(async () => {
+            if (props.fisId || props.belgeNo) {
+              const res = await BelgeService.pdfBlobUrl({
+                fisId: props.fisId,
+                belgeNo: props.belgeNo || props.seriNo,
+                bicim: printType === "A4" ? "a4" : "80",
+              });
+              if (res?.url) {
+                const r = await fetch(res.url);
+                return await r.blob();
+              }
+            }
+            return null;
+          });
+
+    try {
+      await shareReceiptVisualOrPdfToWhatsApp({
+        elementId: "sablonlu-fis-icerik",
+        pdfBlob: cached,
+        pdfPromise,
+        fileName: docNo,
+        phone: props.detayTelefonNo,
+      });
+    } finally {
+      setIsSharingPdf(false);
+    }
+  }, [props.fisId, props.belgeNo, props.seriNo, props.detayTelefonNo, printType]);
 
   useEffect(() => {
     if (!show) { setYaziciHazir(false); return; }
@@ -387,10 +438,34 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
 
       <Modal.Footer className="bg-light py-2 px-3 border-top d-print-none">
         <div className="d-flex justify-content-between w-100 align-items-center">
-          <small className="text-muted">
-            Kısayol: <kbd>F10</kbd> veya <kbd>F8</kbd> Yazdır | <kbd>ESC</kbd> Kapat
-          </small>
-          <div className="d-flex gap-2">
+          <div className="d-flex align-items-center gap-2">
+            <Button
+              variant="success"
+              size="sm"
+              onClick={handleWhatsAppPdfShare}
+              disabled={!fis || isPrinting || isSharingPdf}
+              className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
+              style={{
+                backgroundColor: "#25D366",
+                borderColor: "#25D366",
+                width: "32px",
+                height: "32px",
+                minWidth: "32px",
+              }}
+              title="PDF Olarak WhatsApp ile Gönder"
+              aria-label="PDF Olarak WhatsApp ile Gönder"
+            >
+              {isSharingPdf ? (
+                <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+              ) : (
+                <IconBrandWhatsapp size={19} className="text-white" />
+              )}
+            </Button>
+            <small className="text-muted">
+              Kısayol: <kbd>F10</kbd> veya <kbd>F8</kbd> Yazdır | <kbd>ESC</kbd> Kapat
+            </small>
+          </div>
+          <div className="d-flex gap-2 align-items-center">
             <Button variant="outline-secondary" size="sm" onClick={onHide} disabled={isPrinting}>
               <IconX size={15} className="me-1" />
               Kapat (ESC)

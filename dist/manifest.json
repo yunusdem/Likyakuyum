@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Likya",
+  "short_name": "Likya",
+  "description": "Likya kuyum, döviz ve ticari yönetim yazılımı",
+  "lang": "tr",
+  "start_url": "/login",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b1f3a",
+  "icons": [
+    {
+      "src": "/images/uygulama/ikon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/uygulama/ikon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

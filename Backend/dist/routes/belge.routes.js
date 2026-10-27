@@ -13,6 +13,7 @@ router.use(authenticate);
 router.get("/sablonlar", BelgeController.sablonlar);
 router.get("/fisler", BelgeController.fisler);
 router.get("/pdf", BelgeController.pdf);
+router.post("/pdf/onizleme", BelgeController.pdfOnizleme);
 router.post("/arsivle", BelgeController.arsivle);
 router.post("/cikti/doviz", BelgeController.dovizCiktisi);
 router.post("/cikti/sarraf", BelgeController.sarrafCiktisi);

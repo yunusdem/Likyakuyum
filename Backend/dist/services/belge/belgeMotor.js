@@ -43,22 +43,43 @@ const ilkVar = (adaylar) => adaylar.find((f) => !!f && existsSync(f));
 const fontKlasoru = path.join(process.env.WINDIR || "C:/Windows", "Fonts");
 /** Türkçe destekli TTF yazı tipi; e-Döviz PDF'i ile aynı arama sırası (EBELGE_PDF_FONT). */
 export function yaziTipleri() {
-    const normal = ilkVar([process.env.EBELGE_PDF_FONT, path.join(fontKlasoru, "arial.ttf"),
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"]);
+    const normal = ilkVar([
+        process.env.EBELGE_PDF_FONT,
+        path.join(fontKlasoru, "arial.ttf"),
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    ]);
     if (!normal)
         throw ApiError.badRequest("PDF yazı tipi bulunamadı. Sunucuda EBELGE_PDF_FONT ile Türkçe destekli bir TTF yazı tipi tanımlayın.");
-    const kalin = ilkVar([process.env.EBELGE_PDF_FONT_BOLD, path.join(fontKlasoru, "arialbd.ttf"),
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"]);
+    const kalin = ilkVar([
+        process.env.EBELGE_PDF_FONT_BOLD,
+        path.join(fontKlasoru, "arialbd.ttf"),
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+    ]);
     return { normal, kalin: kalin || normal };
 }
 /** Termal fiş görünümü için eş aralıklı yazı tipi; yoksa normal yazı tipine düşer. */
 export function monoYaziTipleri() {
-    const normal = ilkVar([path.join(fontKlasoru, "cour.ttf"), "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-        "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf"]);
+    const normal = ilkVar([
+        path.join(fontKlasoru, "cour.ttf"),
+        "/System/Library/Fonts/Supplemental/Courier New.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf",
+    ]);
     if (!normal)
         return yaziTipleri();
-    const kalin = ilkVar([path.join(fontKlasoru, "courbd.ttf"), "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation2/LiberationMono-Bold.ttf"]);
+    const kalin = ilkVar([
+        path.join(fontKlasoru, "courbd.ttf"),
+        "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationMono-Bold.ttf",
+    ]);
     return { normal, kalin: kalin || normal };
 }
 /** Seçilebilen yazı tiplerinin Windows dosyaları: [normal, kalın, italik, kalın italik] (bölüm 11, K14). */

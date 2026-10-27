@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Modal, Button, Form, Spinner } from "react-bootstrap";
-import { IconPrinter, IconX, IconReceipt, IconFileText } from "@tabler/icons-react";
+import { IconPrinter, IconX, IconReceipt, IconFileText, IconBrandWhatsapp } from "@tabler/icons-react";
 import { PerakendeFaturaModel } from "../../services/perakendeService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { VezneItem } from "../../services/cashDeskService";
@@ -9,6 +9,8 @@ import { useAuth } from "../../context/AuthContext";
 import { perakendeFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
+import { BelgeService } from "../../services/belgeService";
+import { shareReceiptVisualOrPdfToWhatsApp } from "../../utils/whatsAppMessageBuilder";
 
 export interface PerakendeFisiPrintModalProps {
   show: boolean;
@@ -33,6 +35,52 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   const [isPrinting, setIsPrinting] = useState(false);
   const faturaRef = useRef(fatura);
   faturaRef.current = fatura;
+
+  const [isSharingPdf, setIsSharingPdf] = useState(false);
+  const pdfBlobRef = useRef<Blob | null>(null);
+
+  useEffect(() => {
+    if (!show || !fatura) { pdfBlobRef.current = null; return; }
+    BelgeService.onizlemePdfBlob("perakende", { fatura: faturaRef.current }, printType === "A4" ? "A4" : "80")
+      .then((b) => { pdfBlobRef.current = b; })
+      .catch(() => {});
+  }, [show, printType, fatura?.faturaId]);
+
+  const handleWhatsAppPdfShare = useCallback(async () => {
+    setIsSharingPdf(true);
+    const docNo = fatura?.faturaNo || (fatura?.faturaId ? `PRF-${fatura.faturaId}` : "perakende_fisi");
+    const cached = pdfBlobRef.current;
+
+    const pdfPromise = cached
+      ? Promise.resolve(cached)
+      : BelgeService.onizlemePdfBlob("perakende", { fatura: faturaRef.current }, printType === "A4" ? "A4" : "80")
+          .catch(async () => {
+            if (fatura?.faturaId || fatura?.faturaNo) {
+              const res = await BelgeService.pdfBlobUrl({
+                fisId: fatura.faturaId,
+                belgeNo: fatura.faturaNo,
+                bicim: printType === "A4" ? "a4" : "80",
+              });
+              if (res?.url) {
+                const r = await fetch(res.url);
+                return await r.blob();
+              }
+            }
+            return null;
+          });
+
+    try {
+      await shareReceiptVisualOrPdfToWhatsApp({
+        elementId: "sablonlu-fis-icerik",
+        pdfBlob: cached,
+        pdfPromise,
+        fileName: docNo,
+        phone: fatura?.telefon,
+      });
+    } finally {
+      setIsSharingPdf(false);
+    }
+  }, [fatura?.faturaId, fatura?.faturaNo, fatura?.telefon, printType]);
 
   const tip = fatura?.faturaTipi === 0 ? 0 : 1;
 
@@ -309,34 +357,60 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
         <SablonluFisOnizleme fis={fis} hata={hata} />
       </Modal.Body>
 
-      <Modal.Footer className="bg-light py-2 px-3 border-top d-print-none">
-        <Button variant="outline-secondary" size="sm" onClick={onHide} disabled={isPrinting}>
-          <IconX size={16} className="me-1" />
-          Kapat
-        </Button>
-        <Button
-          variant="outline-primary"
-          size="sm"
-          onClick={handleBrowserPrint}
-          disabled={!fis || isPrinting}
-          title="Google Chrome / Tarayıcı Yazdırma Penceresi"
-        >
-          <IconPrinter size={14} className="me-1" />
-          Tarayıcıdan Yazdır
-        </Button>
-        <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting}>
-          {isPrinting ? (
-            <>
-              <Spinner as="span" animation="border" size="sm" className="me-1" />
-              Yazdırılıyor...
-            </>
-          ) : (
-            <>
-              <IconPrinter size={16} className="me-1" />
-              Yazdır (F10{Array.isArray(fis) && fis.length > 1 ? ` - ${fis.length} Fiş` : ""})
-            </>
-          )}
-        </Button>
+      <Modal.Footer className="bg-light py-2 px-3 border-top d-print-none d-flex justify-content-between align-items-center">
+        <div>
+          <Button
+            variant="success"
+            size="sm"
+            onClick={handleWhatsAppPdfShare}
+            disabled={!fis || isPrinting || isSharingPdf}
+            className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
+            style={{
+              backgroundColor: "#25D366",
+              borderColor: "#25D366",
+              width: "32px",
+              height: "32px",
+              minWidth: "32px",
+            }}
+            title="PDF Olarak WhatsApp ile Gönder"
+            aria-label="PDF Olarak WhatsApp ile Gönder"
+          >
+            {isSharingPdf ? (
+              <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+            ) : (
+              <IconBrandWhatsapp size={19} className="text-white" />
+            )}
+          </Button>
+        </div>
+        <div className="d-flex gap-2 align-items-center">
+          <Button variant="outline-secondary" size="sm" onClick={onHide} disabled={isPrinting}>
+            <IconX size={16} className="me-1" />
+            Kapat
+          </Button>
+          <Button
+            variant="outline-primary"
+            size="sm"
+            onClick={handleBrowserPrint}
+            disabled={!fis || isPrinting}
+            title="Google Chrome / Tarayıcı Yazdırma Penceresi"
+          >
+            <IconPrinter size={14} className="me-1" />
+            Tarayıcıdan Yazdır
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting}>
+            {isPrinting ? (
+              <>
+                <Spinner as="span" animation="border" size="sm" className="me-1" />
+                Yazdırılıyor...
+              </>
+            ) : (
+              <>
+                <IconPrinter size={16} className="me-1" />
+                Yazdır (F10{Array.isArray(fis) && fis.length > 1 ? ` - ${fis.length} Fiş` : ""})
+              </>
+            )}
+          </Button>
+        </div>
       </Modal.Footer>
     </Modal>
   );

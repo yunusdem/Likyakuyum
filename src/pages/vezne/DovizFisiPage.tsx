@@ -8475,6 +8475,7 @@ export const DovizFisiPage: React.FC = () => {
         detayPasaportNo={printSnapshot?.detayPasaportNo ?? detayPasaportNo}
         detayMeslek={printSnapshot?.detayMeslek ?? detayMeslek}
         detayCariTipi={printSnapshot?.detayCariTipi ?? detayCariTipi}
+        detayTelefonNo={printSnapshot?.detayTelefonNo ?? detayTelefon}
         vezneKod={printSnapshot?.vezneKod ?? vezneKod}
         vezne={vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null)}
         istatistikKodu={printSnapshot?.istatistikKodu ?? istatistikKodu}
