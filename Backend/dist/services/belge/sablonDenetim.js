@@ -168,7 +168,9 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
                 hata(`"${h}" left, center ya da right olmalı.`, ad, h);
         if (o.cerceve !== undefined && !["hucre", "yok"].includes(o.cerceve))
             hata("\"cerceve\" hucre ya da yok olmalı.", ad, "cerceve");
-        for (const b of ["kalin", "altCizgi", "kesikli", "daralt", "zorunlu", "kalinDeger", "baslikSatiri"])
+        if (o.satirAyraci !== undefined && !["noktali", "kesikli", "duz"].includes(o.satirAyraci))
+            hata("\"satirAyraci\" noktali, kesikli ya da duz olmalı.", ad, "satirAyraci");
+        for (const b of ["kalin", "altCizgi", "kesikli", "noktali", "daralt", "zorunlu", "kalinDeger", "baslikSatiri"])
             if (o[b] !== undefined && typeof o[b] !== "boolean")
                 hata(`"${b}" true ya da false olmalı.`, ad, b);
         // Metin alanları ve türe özel yapı

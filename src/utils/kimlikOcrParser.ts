@@ -238,66 +238,370 @@ export function isKimlikFrontFace(data: OcrExtractedData): boolean {
 }
 
 /**
- * Görselden metin okur (Tesseract.js OCR - PSM 11 Sparse Text modu)
+ * Derin analiz için görseli farklı filtrelerle hazırlar:
+ * - upscaled_contrast: 1.6x büyütme + %50 kontrast + keskinlik (küçük fontlu metinler & tarihler için)
+ * - binarized: Adaptif eşikleme / siyah-beyaz binarize (parlama, hologram ve arka plan desenlerini yok eder)
+ * - mrz_region: Alt %35 MRZ alanına odaklanma (arka yüz ve pasaport makine okuma bandı)
+ * - tckn_region: Üst sol %58 genişlik, %8-%46 yükseklik alanına odaklanma (11 haneli TCKN alanı)
+ */
+export async function preprocessForDeepOcr(
+  imageSrc: string,
+  mode: "upscaled_contrast" | "binarized" | "mrz_region" | "tckn_region"
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const origW = img.width;
+        const origH = img.height;
+
+        let srcX = 0;
+        let srcY = 0;
+        let srcW = origW;
+        let srcH = origH;
+        let scale = 1.6;
+
+        if (mode === "mrz_region") {
+          srcX = 0;
+          srcY = Math.round(origH * 0.65);
+          srcW = origW;
+          srcH = Math.round(origH * 0.35);
+          scale = 2.0;
+        } else if (mode === "tckn_region") {
+          srcX = 0;
+          srcY = Math.round(origH * 0.08);
+          srcW = Math.round(origW * 0.58);
+          srcH = Math.round(origH * 0.38);
+          scale = 2.2;
+        }
+
+        let outW = Math.round(srcW * scale);
+        let outH = Math.round(srcH * scale);
+
+        const maxDim = 2560;
+        if (outW > maxDim || outH > maxDim) {
+          const ratio = Math.min(maxDim / outW, maxDim / outH);
+          outW = Math.round(outW * ratio);
+          outH = Math.round(outH * ratio);
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(10, outW);
+        canvas.height = Math.max(10, outH);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(imageSrc);
+          return;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+
+        ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
+        const imgData = ctx.getImageData(0, 0, outW, outH);
+        const d = imgData.data;
+
+        if (mode === "upscaled_contrast") {
+          const contrast = 50;
+          const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+          for (let i = 0; i < d.length; i += 4) {
+            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            const c = factor * (gray - 128) + 128;
+            const val = Math.min(255, Math.max(0, c));
+            d[i] = val;
+            d[i + 1] = val;
+            d[i + 2] = val;
+          }
+        } else {
+          // binarized, mrz_region, tckn_region
+          let totalGray = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            totalGray += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          }
+          const avgThreshold = totalGray / (d.length / 4);
+          const threshold = Math.max(70, Math.min(180, avgThreshold * 0.95));
+
+          for (let i = 0; i < d.length; i += 4) {
+            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            const bin = gray < threshold ? 0 : 255;
+            d[i] = bin;
+            d[i + 1] = bin;
+            d[i + 2] = bin;
+          }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        resolve(canvas.toDataURL("image/jpeg", 0.92));
+      } catch {
+        resolve(imageSrc);
+      }
+    };
+    img.onerror = () => resolve(imageSrc);
+    img.src = imageSrc;
+  });
+}
+
+/**
+ * Çoklu aşama veya çoklu fotoğraf okumalarını en yüksek kalite skoruyla harmanlar
+ */
+export function mergeExtractedData(
+  primary: OcrExtractedData,
+  secondary: OcrExtractedData
+): OcrExtractedData {
+  const merged: OcrExtractedData = { ...primary };
+
+  // 1. TCKN: Geçerli (checksum tutan) olan daima öncelikli
+  if (secondary.tcKimlikNo) {
+    if (!merged.tcKimlikNo) {
+      merged.tcKimlikNo = secondary.tcKimlikNo;
+    } else if (!isValidTcKimlikNo(merged.tcKimlikNo) && isValidTcKimlikNo(secondary.tcKimlikNo)) {
+      merged.tcKimlikNo = secondary.tcKimlikNo;
+    }
+  }
+
+  // 2. VKN
+  if (!merged.vergiKimlikNo && secondary.vergiKimlikNo) {
+    merged.vergiKimlikNo = secondary.vergiKimlikNo;
+  }
+
+  // 3. Soyadı: Kalite skoru daha yüksek olan veya Türkçe karakter içeren kazanır
+  if (secondary.soyad && isValidNameOrSurname(secondary.soyad)) {
+    if (
+      !merged.soyad ||
+      !isValidNameOrSurname(merged.soyad) ||
+      scoreNameOrSurname(secondary.soyad) > scoreNameOrSurname(merged.soyad)
+    ) {
+      merged.soyad = secondary.soyad;
+    }
+  }
+
+  // 4. Adı: Kalite skoru daha yüksek olan kazanır
+  if (secondary.ad && isValidNameOrSurname(secondary.ad)) {
+    if (
+      !merged.ad ||
+      !isValidNameOrSurname(merged.ad) ||
+      scoreNameOrSurname(secondary.ad) > scoreNameOrSurname(merged.ad)
+    ) {
+      merged.ad = secondary.ad;
+    }
+  }
+
+  // 5. Unvan
+  if (merged.ad && merged.soyad) {
+    merged.unvan = `${merged.ad} ${merged.soyad}`.trim();
+  } else if (!merged.unvan && secondary.unvan) {
+    merged.unvan = secondary.unvan;
+  }
+
+  // 6. Seri No: 9 karakterli geçerli seri no (cleanSeri) öncelikli
+  if (secondary.kimlikSeriNo) {
+    const cleanCur = cleanSeri(merged.kimlikSeriNo);
+    const cleanNew = cleanSeri(secondary.kimlikSeriNo);
+    if (!cleanCur && cleanNew) {
+      merged.kimlikSeriNo = cleanNew;
+    } else if (cleanCur && cleanNew && cleanCur.length !== 9 && cleanNew.length === 9) {
+      merged.kimlikSeriNo = cleanNew;
+    }
+  }
+
+  // 7. Tarihler & Cinsiyet
+  if (!merged.dogumTarihi && secondary.dogumTarihi) merged.dogumTarihi = secondary.dogumTarihi;
+  if (!merged.kimlikGecerlilikTarihi && secondary.kimlikGecerlilikTarihi)
+    merged.kimlikGecerlilikTarihi = secondary.kimlikGecerlilikTarihi;
+  if (!merged.cinsiyet && secondary.cinsiyet) merged.cinsiyet = secondary.cinsiyet;
+
+  // 8. Anne & Baba Adı
+  if (secondary.anneAdi && isValidNameOrSurname(secondary.anneAdi)) {
+    if (
+      !merged.anneAdi ||
+      !isValidNameOrSurname(merged.anneAdi) ||
+      scoreNameOrSurname(secondary.anneAdi) > scoreNameOrSurname(merged.anneAdi)
+    ) {
+      merged.anneAdi = secondary.anneAdi;
+    }
+  }
+  if (secondary.babaAdi && isValidNameOrSurname(secondary.babaAdi)) {
+    if (
+      !merged.babaAdi ||
+      !isValidNameOrSurname(merged.babaAdi) ||
+      scoreNameOrSurname(secondary.babaAdi) > scoreNameOrSurname(merged.babaAdi)
+    ) {
+      merged.babaAdi = secondary.babaAdi;
+    }
+  }
+
+  // 9. Diğer alanlar
+  if (!merged.dogumYeri && secondary.dogumYeri) merged.dogumYeri = secondary.dogumYeri;
+  if (!merged.il && secondary.il) merged.il = secondary.il;
+  if (!merged.ilce && secondary.ilce) merged.ilce = secondary.ilce;
+  if (!merged.vergiDairesiAdi && secondary.vergiDairesiAdi) merged.vergiDairesiAdi = secondary.vergiDairesiAdi;
+  if (!merged.pasaportNo && secondary.pasaportNo) merged.pasaportNo = secondary.pasaportNo;
+  if (!merged.uyruk && secondary.uyruk) merged.uyruk = secondary.uyruk;
+  if (!merged.ulke && secondary.ulke) merged.ulke = secondary.ulke;
+  if (!merged.adres && secondary.adres) merged.adres = secondary.adres;
+  if (!merged.faaliyetKonusu && secondary.faaliyetKonusu) merged.faaliyetKonusu = secondary.faaliyetKonusu;
+
+  merged.rawText += "\n---\n" + (secondary.rawText || "");
+  return merged;
+}
+
+/**
+ * Görselden metin okur (Tesseract.js OCR - Standart veya Çok Aşamalı Derin Analiz)
  */
 export async function performOcrAndExtractData(
   imageBase64: string,
   targetBelgeTuru: number = 0,
-  onProgress?: (progress: number, statusText: string) => void
+  onProgress?: (progress: number, statusText: string) => void,
+  isDeepAnalysis: boolean = false
 ): Promise<OcrExtractedData> {
-  onProgress?.(15, "OCR motoru hazırlanıyor...");
+  onProgress?.(10, isDeepAnalysis ? "Detaylı OCR motoru hazırlanıyor..." : "OCR motoru hazırlanıyor...");
   const worker = await createWorker("tur+eng");
 
-  // PSM 11 + Sabit 300 DPI + Kelime Boşluklarını Koruma (Farklı PC/çözünürlüklerde 'Estimating resolution' hatasını ve kaymaları önler)
+  // PSM 11 + Sabit 300 DPI + Kelime Boşluklarını Koruma
   await worker.setParameters({
     tessedit_pageseg_mode: "11" as any,
     user_defined_dpi: "300",
     preserve_interword_spaces: "1",
   });
 
-  onProgress?.(40, "Metinler ve kimlik bilgileri okunuyor...");
-  // 1. Orijinal renkli görsel ile tanı
-  const ret = await worker.recognize(imageBase64);
-  let rawText = ret.data.text || "";
+  if (!isDeepAnalysis) {
+    // ─── 1. STANDART HIZLI ANALİZ (Yeni fotoğraf yükleme / kırpma anında) ───
+    onProgress?.(40, "Metinler ve kimlik bilgileri okunuyor...");
+    const ret = await worker.recognize(imageBase64);
+    let rawText = ret.data.text || "";
 
-  // 2. Eğer metin azsa veya anahtar kelimeler eksikse alternatif netleştirme dene
-  const normUpper = rawText.toLocaleUpperCase("tr-TR");
-  const hasValidContent =
-    normUpper.length >= 70 &&
-    (normUpper.includes("TÜRKİYE") ||
-      normUpper.includes("TURKIYE") ||
-      normUpper.includes("TURKEY") ||
-      normUpper.includes("KİMLİK") ||
-      normUpper.includes("KIMLIK") ||
-      normUpper.includes("VERGİ") ||
-      normUpper.includes("VERGI") ||
-      normUpper.includes("PASAPORT") ||
-      normUpper.includes("PASSPORT") ||
-      normUpper.includes("I<TUR") ||
-      normUpper.includes("ANNE") ||
-      normUpper.includes("BABA") ||
-      normUpper.includes("T.C") ||
-      normUpper.includes("TCKN") ||
-      normUpper.includes("SOYAD"));
+    const normUpper = rawText.toLocaleUpperCase("tr-TR");
+    const hasValidContent =
+      normUpper.length >= 70 &&
+      (normUpper.includes("TÜRKİYE") ||
+        normUpper.includes("TURKIYE") ||
+        normUpper.includes("TURKEY") ||
+        normUpper.includes("KİMLİK") ||
+        normUpper.includes("KIMLIK") ||
+        normUpper.includes("VERGİ") ||
+        normUpper.includes("VERGI") ||
+        normUpper.includes("PASAPORT") ||
+        normUpper.includes("PASSPORT") ||
+        normUpper.includes("I<TUR") ||
+        normUpper.includes("ANNE") ||
+        normUpper.includes("BABA") ||
+        normUpper.includes("T.C") ||
+        normUpper.includes("TCKN") ||
+        normUpper.includes("SOYAD"));
 
-  if (!hasValidContent) {
-    try {
-      const processedImg = await preprocessImage(imageBase64);
-      const ret2 = await worker.recognize(processedImg);
-      const text2 = ret2.data.text || "";
-      if (text2.length > rawText.length) {
-        rawText = rawText ? rawText + "\n" + text2 : text2;
-      }
-    } catch {}
+    if (!hasValidContent) {
+      try {
+        const processedImg = await preprocessImage(imageBase64);
+        const ret2 = await worker.recognize(processedImg);
+        const text2 = ret2.data.text || "";
+        if (text2.length > rawText.length) {
+          rawText = rawText ? rawText + "\n" + text2 : text2;
+        }
+      } catch {}
+    }
+
+    onProgress?.(85, "Okunan veriler ayrıştırılıyor...");
+    await worker.terminate();
+
+    const extracted = parseOcrText(rawText, targetBelgeTuru);
+    onProgress?.(100, "Tamamlandı.");
+    return extracted;
   }
 
-  onProgress?.(85, "Okunan veriler ayrıştırılıyor...");
+  // ══════════════════════════════════════════════════════════════════════════════
+  // ─── 2. ÇOK AŞAMALI DETAYLI ANALİZ (YENİDEN OKU TIKLANDIĞINDA) ───────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  onProgress?.(20, "1/4: Orijinal görsel taranıyor...");
+  const ret1 = await worker.recognize(imageBase64);
+  const text1 = ret1.data.text || "";
+  let accumulatedData = parseOcrText(text1, targetBelgeTuru);
+
+  // Aşama 2: 1.6x Büyütülmüş Keskinlik & Adaptif Kontrast Filtresi (PSM 6: Uniform metin bloğu)
+  onProgress?.(45, "2/4: Yüksek çözünürlük ve kontrast analizi yapılıyor...");
+  try {
+    const sharpImg = await preprocessForDeepOcr(imageBase64, "upscaled_contrast");
+    await worker.setParameters({ tessedit_pageseg_mode: "6" as any });
+    const ret2 = await worker.recognize(sharpImg);
+    const text2 = ret2.data.text || "";
+    if (text2) {
+      const data2 = parseOcrText(text2, targetBelgeTuru);
+      accumulatedData = mergeExtractedData(accumulatedData, data2);
+    }
+  } catch (err) {
+    console.warn("Derin analiz Aşama 2 hatası:", err);
+  }
+
+  // Aşama 3: Binarize & Adaptif Eşikleme (Hologram, yansıma ve zemin desenlerini temizler)
+  onProgress?.(65, "3/4: Binarize eşikleme ve gürültü filtresi taranıyor...");
+  try {
+    const binarizedImg = await preprocessForDeepOcr(imageBase64, "binarized");
+    await worker.setParameters({ tessedit_pageseg_mode: "11" as any });
+    const ret3 = await worker.recognize(binarizedImg);
+    const text3 = ret3.data.text || "";
+    if (text3) {
+      const data3 = parseOcrText(text3, targetBelgeTuru);
+      accumulatedData = mergeExtractedData(accumulatedData, data3);
+    }
+  } catch (err) {
+    console.warn("Derin analiz Aşama 3 hatası:", err);
+  }
+
+  // Aşama 4: Bölgesel Odaklı Tarama (MRZ bandı ve TCKN alanı odaklaması)
+  onProgress?.(80, "4/4: Bölgesel MRZ bandı ve TCKN odaklı analiz yapılıyor...");
+  try {
+    // 4.A: MRZ Bölgesi (Arka yüz veya pasaport için alt %35)
+    const mrzImg = await preprocessForDeepOcr(imageBase64, "mrz_region");
+    if (mrzImg) {
+      await worker.setParameters({
+        tessedit_pageseg_mode: "6" as any,
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<",
+      });
+      const retMrz = await worker.recognize(mrzImg);
+      const mrzText = retMrz.data.text || "";
+      if (mrzText) {
+        const mrzData = parseOcrText(mrzText, targetBelgeTuru);
+        accumulatedData = mergeExtractedData(accumulatedData, mrzData);
+      }
+    }
+
+    // 4.B: TCKN Bölgesi (Eğer hala geçerli bir TCKN bulunamadıysa)
+    if (!accumulatedData.tcKimlikNo || !isValidTcKimlikNo(accumulatedData.tcKimlikNo)) {
+      const tcknImg = await preprocessForDeepOcr(imageBase64, "tckn_region");
+      if (tcknImg) {
+        await worker.setParameters({
+          tessedit_pageseg_mode: "6" as any,
+          tessedit_char_whitelist: "0123456789",
+        });
+        const retTckn = await worker.recognize(tcknImg);
+        const tcknText = retTckn.data.text || "";
+        const m11 = tcknText.match(/[1-9]\d{10}/);
+        if (m11 && isValidTcKimlikNo(m11[0])) {
+          accumulatedData.tcKimlikNo = m11[0];
+          accumulatedData.vergiKimlikNo = m11[0];
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Derin analiz Aşama 4 hatası:", err);
+  }
+
+  onProgress?.(95, "Tüm sonuçlar birleştiriliyor ve doğrulanıyor...");
   await worker.terminate();
 
-  const extracted = parseOcrText(rawText, targetBelgeTuru);
-  onProgress?.(100, "Tamamlandı.");
+  // Son kontroller ve Türkçe karakter düzeltmeleri
+  if (accumulatedData.soyad) {
+    accumulatedData.soyad = turkishizeFromRawText(accumulatedData.soyad, accumulatedData.rawText);
+  }
+  if (accumulatedData.ad) {
+    accumulatedData.ad = turkishizeFromRawText(accumulatedData.ad, accumulatedData.rawText);
+  }
+  if (accumulatedData.ad && accumulatedData.soyad) {
+    accumulatedData.unvan = `${accumulatedData.ad} ${accumulatedData.soyad}`.trim();
+  }
 
-  return extracted;
+  onProgress?.(100, "Detaylı analiz başarıyla tamamlandı.");
+  return accumulatedData;
 }
 
 const NOISE_WORDS = [

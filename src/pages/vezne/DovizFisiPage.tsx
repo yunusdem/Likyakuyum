@@ -591,7 +591,6 @@ export const DovizFisiPage: React.FC = () => {
   const [isArbitrajState, setIsArbitrajState] = useState<boolean>(false);
   const isArbitrajActive = Boolean(
     isArbitrajState ||
-    (gelisNedeni && gelisNedeni.trim().toLowerCase().includes("arbitraj")) ||
     savedArbitrajInfo !== null
   );
   const [kurTuru, setKurTuru] = useState<number>(0); // 0: Efektif, 1: Döviz
@@ -1355,20 +1354,17 @@ export const DovizFisiPage: React.FC = () => {
       const matchedCari = (fis as any).cariKod || (cariList.find((c) => c.id === fis.cariKartId)?.kod) || "";
       setCariKod(matchedCari);
       setVergiKimlikNo(fis.vergiKimlikNo || "");
-      setGelisNedeni(fis.gelisNedeni || "");
+      const rawGelisNedeni = (fis.gelisNedeni || "").trim();
+      setGelisNedeni(rawGelisNedeni.toLowerCase() === "arbitraj" ? "" : rawGelisNedeni);
       const isArbitrajFis = Boolean(
         fis.isArbitraj ||
         (fis as any).IS_ARBITRAJ ||
-        (fis.gelisNedeni && fis.gelisNedeni.toLowerCase().includes("arbitraj")) ||
         (fis.arbitrajSatirlar && fis.arbitrajSatirlar.length > 0) ||
         (fis.arbitrajId && Number(fis.arbitrajId) > 0)
       );
 
       if (isArbitrajFis) {
         setIsArbitrajState(true);
-        if (!fis.gelisNedeni || !fis.gelisNedeni.toLowerCase().includes("arbitraj")) {
-          setGelisNedeni("Arbitraj");
-        }
 
         // 1. Müstakil TODVZ_FIS_ARBITRAJ tablosundan gelen satırlar (Normal ürünlerle asla karışmaz)
         if (fis.arbitrajSatirlar && fis.arbitrajSatirlar.length > 0) {
@@ -4122,7 +4118,7 @@ export const DovizFisiPage: React.FC = () => {
           zaman: finalZaman,
           seriNo: seriNo.trim() || undefined,
           belgeNo: belgeNo.trim() || undefined,
-          gelisNedeni: (isArbitrajActive || validArbToSave.length > 0) ? (gelisNedeni.trim() || "Arbitraj") : (gelisNedeni.trim() || undefined),
+          gelisNedeni: gelisNedeni.trim() || undefined,
           isArbitraj: isArbitrajActive || validArbToSave.length > 0,
           arbitrajId: savedArbitrajInfo?.fisId || undefined,
           kurTuru,
@@ -4480,7 +4476,10 @@ export const DovizFisiPage: React.FC = () => {
   const handleApplyArbitrajToDovizFis = useCallback(
     (result: ArbitrajApplyResult) => {
       setIsArbitrajState(true);
-      setGelisNedeni("Arbitraj");
+      if (result.gelisNedeni !== undefined) {
+        const cleanGn = (result.gelisNedeni || "").trim();
+        setGelisNedeni(cleanGn.toLowerCase() === "arbitraj" ? "" : cleanGn);
+      }
       setTip(result.islemYonu === "alis" ? 0 : 1);
       setSavedArbitrajInfo({
         fisId: null,
@@ -4614,6 +4613,11 @@ export const DovizFisiPage: React.FC = () => {
         if (foundY) mainYetkiliId = Number(foundY.id);
       }
 
+      const targetGelisNedeni = (result.gelisNedeni !== undefined && result.gelisNedeni !== null)
+        ? String(result.gelisNedeni).trim()
+        : gelisNedeni.trim();
+      const cleanGelisNedeni = targetGelisNedeni.toLowerCase() === "arbitraj" ? undefined : (targetGelisNedeni || undefined);
+
       const payload: SaveDovizFisPayload = {
         fisId: fisId || undefined,
         vezneId,
@@ -4622,7 +4626,7 @@ export const DovizFisiPage: React.FC = () => {
         zaman: finalZaman,
         seriNo: seriNo.trim() || undefined,
         belgeNo: belgeNo.trim() || undefined,
-        gelisNedeni: "Arbitraj",
+        gelisNedeni: cleanGelisNedeni,
         isArbitraj: true,
         kurTuru: 0,
         istatistikId: istatistikId || undefined,
@@ -4702,7 +4706,7 @@ export const DovizFisiPage: React.FC = () => {
           seriNo: baseSeriNo,
           belgeNo: baseBelgeNo,
           isArbitraj: true,
-          gelisNedeni: "Arbitraj",
+          gelisNedeni: cleanGelisNedeni,
           unvan: payload.unvan,
           vergiKimlikNo: payload.vergiKimlikNo,
           detayIl: payload.il,
@@ -5021,7 +5025,7 @@ export const DovizFisiPage: React.FC = () => {
       seriNo: baseSeriNo,
       belgeNo: baseBelgeNo,
       isArbitraj: isArbitrajActive,
-      gelisNedeni: isArbitrajActive ? "Arbitraj" : gelisNedeni,
+      gelisNedeni,
       unvan,
       vergiKimlikNo,
       detayIl,
@@ -5164,7 +5168,7 @@ export const DovizFisiPage: React.FC = () => {
         seriNo: baseSeriNo,
         belgeNo: baseBelgeNo,
         isArbitraj: true,
-        gelisNedeni: "Arbitraj",
+        gelisNedeni: gelisNedeni || undefined,
         unvan: result.cariUnvan || unvan || "İSİM BEYAN EDİLMEMİŞTİR",
         vergiKimlikNo: result.vknTckn || vergiKimlikNo || "",
         detayIl: result.detay?.il || detayIl,
@@ -5889,7 +5893,7 @@ export const DovizFisiPage: React.FC = () => {
                     >
                       {tip === 1 ? "Satış dayanağı" : "Geliş nedeni"}
                     </label>
-                    <div className="flex-grow-1 d-flex align-items-center gap-1" style={{ minWidth: 0 }}>
+                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       <Form.Control
                         id="header-input-gelis-nedeni"
                         type="text"
@@ -5899,14 +5903,9 @@ export const DovizFisiPage: React.FC = () => {
                         value={gelisNedeni}
                         maxLength={100}
                         onChange={(e) => setGelisNedeni(e.target.value.slice(0, 100))}
-                        className={`px-2.5 py-1 ${isArbitrajActive ? "fw-bold border-primary text-primary" : ""}`}
-                        style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: isArbitrajActive ? "#2563eb" : "#cbd5e1" }}
+                        className="px-2.5 py-1"
+                        style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       />
-                      {isArbitrajActive && (
-                        <Badge bg="primary" className="fw-bold px-2 py-1 text-nowrap" style={{ fontSize: "10.5px" }}>
-                          Arbitraj
-                        </Badge>
-                      )}
                     </div>
                   </div>
 
@@ -6246,28 +6245,9 @@ export const DovizFisiPage: React.FC = () => {
                         id="doviz-fis-tip-select"
                         ref={tipSelectRef}
                         size="sm"
-                        value={isArbitrajActive ? (tip === 0 ? "arb_0" : "arb_1") : String(tip)}
+                        value={String(tip)}
                         onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === "arb_0") {
-                            setIsArbitrajState(true);
-                            if (!gelisNedeni || !gelisNedeni.toLowerCase().includes("arbitraj")) {
-                              setGelisNedeni("Arbitraj");
-                            }
-                            handleTipChange(0);
-                          } else if (val === "arb_1") {
-                            setIsArbitrajState(true);
-                            if (!gelisNedeni || !gelisNedeni.toLowerCase().includes("arbitraj")) {
-                              setGelisNedeni("Arbitraj");
-                            }
-                            handleTipChange(1);
-                          } else {
-                            setIsArbitrajState(false);
-                            if (gelisNedeni.trim().toLowerCase() === "arbitraj") {
-                              setGelisNedeni("");
-                            }
-                            handleTipChange(Number(val));
-                          }
+                          handleTipChange(Number(e.target.value));
                         }}
                         onKeyDown={(e) => {
                           if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
@@ -6277,28 +6257,22 @@ export const DovizFisiPage: React.FC = () => {
                           } else if (e.key === "Enter") {
                             e.preventDefault();
                             e.stopPropagation();
-                            focusCell(0, "kod", "select");
+                            if (isArbitrajActive) {
+                              lastFocusedIstatistikKodRef.current = (istatistikKodu || "").trim();
+                              hasUserTypedIstatistikRef.current = false;
+                              istatistikRef.current?.focus();
+                              istatistikRef.current?.select();
+                            } else {
+                              focusCell(0, "kod", "select");
+                            }
                           }
                         }}
-                        className={`fw-bold text-uppercase px-2 py-1 ${isArbitrajActive ? "border-primary text-primary" : ""}`}
-                        style={{ minWidth: 0, maxWidth: isArbitrajActive ? "165px" : "120px", width: "100%", height: "30px", fontSize: "12px", borderColor: isArbitrajActive ? "#2563eb" : "#cbd5e1" }}
+                        className="fw-bold text-uppercase px-2 py-1"
+                        style={{ minWidth: 0, maxWidth: "120px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
                       >
                         <option value="0">ALIŞ</option>
                         <option value="1">SATIŞ</option>
-                        <option value="arb_0">ARBİTRAJ (ALIŞ)</option>
-                        <option value="arb_1">ARBİTRAJ (SATIŞ)</option>
                       </Form.Select>
-                      {isArbitrajActive && (
-                        <Badge
-                          bg="primary"
-                          className="fw-bold px-1.5 py-1 text-nowrap cursor-pointer"
-                          style={{ fontSize: "10px" }}
-                          onClick={() => setShowArbitrajModal(true)}
-                          title="Arbitraj penceresini aç"
-                        >
-                          ARBİTRAJ
-                        </Badge>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -6556,11 +6530,24 @@ export const DovizFisiPage: React.FC = () => {
                               const prevVal = (lastFocusedIstatistikKodRef.current || "").trim();
 
                               // SADECE BU SENARYODA modal açılmayacak:
-                              // İstatistik kodu bölümü öncesinde dolu ise ve değiştirilmeden enter tuşlanırsa:
+                              // İstatistik kodu bölümü öncesinde dolu ise ve değiştirilmeden enter tuşlanırsa (veya tam eşleşen geçerli kod yazıldıysa):
                               const wasFilledBefore = prevVal !== "";
                               const isUnchanged = wasFilledBefore && val.toLowerCase() === prevVal.toLowerCase() && !hasUserTypedIstatistikRef.current;
 
-                              if (isUnchanged) {
+                              const valLower = val.toLowerCase();
+                              const exactMatch = statisticList.find((s) => {
+                                const fType = Number(s.fisTipi);
+                                const isTypeAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                                if (!isTypeAllowed) return false;
+                                const kod = (s.kod || "").trim().toLowerCase();
+                                const idStr = String(s.id);
+                                return kod === valLower || idStr === valLower;
+                              });
+
+                              if (isUnchanged || (val && exactMatch)) {
+                                if (exactMatch && !isUnchanged) {
+                                  handleSelectIstatistik(exactMatch);
+                                }
                                 isOpeningIstatistikModalRef.current = false;
                                 focusCell(0, "kod", "select");
                                 return;
@@ -8336,6 +8323,7 @@ export const DovizFisiPage: React.FC = () => {
         pageType="doviz"
         fisTip={tip}
         savedArbitraj={savedArbitrajInfo ? (savedArbitrajInfo.result || null) : null}
+        initialGelisNedeni={gelisNedeni}
         onSaveDirect={handleSaveArbitrajDirectAndPrint}
         onApplyToFis={handleApplyArbitrajToDovizFis}
         onOpenPrintModal={handleOpenArbitrajPrintModal}
@@ -8491,7 +8479,7 @@ export const DovizFisiPage: React.FC = () => {
         vezne={vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null)}
         istatistikKodu={printSnapshot?.istatistikKodu ?? istatistikKodu}
         isArbitraj={printSnapshot?.isArbitraj ?? isArbitrajActive}
-        gelisNedeni={printSnapshot?.gelisNedeni ?? (isArbitrajActive ? "Arbitraj" : gelisNedeni)}
+        gelisNedeni={printSnapshot?.gelisNedeni ?? gelisNedeni}
         lines={printSnapshot?.lines ?? lines.map((l: any, idx: number) => ({
           paraKodu: l.paraKodu,
           paraAdi: l.paraAdi,

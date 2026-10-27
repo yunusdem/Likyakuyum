@@ -61,10 +61,10 @@
         { "etiket": "Ödenen / Alınan:", "deger": "{{toplam.odenen|sayi}} TL", "kosul": "{{toplam.odenenVar}}" },
         { "etiket": "Kalan Bakiye:", "deger": "{{toplam.kalan|sayi}} TL", "kosul": "{{toplam.kalanVar}}" }
       ] },
-    { "id": "imza-cizgi", "tip": "cizgi", "x1": 335, "y1": 266, "x2": 539.28, "y2": 266, "kalinlik": 0.5 },
-    { "id": "teslim-eden", "tip": "metin", "x": 335, "y": 272, "g": 100, "metin": "Teslim Eden", "boyut": 8.25, "hiza": "center" },
-    { "id": "teslim-alan", "tip": "metin", "x": 439.28, "y": 272, "g": 100, "metin": "Teslim Alan", "boyut": 8.25, "hiza": "center" },
-    { "id": "imza-sol", "tip": "metin", "x": 335, "y": 300, "g": 100, "metin": "İmza", "boyut": 8.25, "hiza": "center" },
-    { "id": "imza-sag", "tip": "metin", "x": 439.28, "y": 300, "g": 100, "metin": "İmza", "boyut": 8.25, "hiza": "center" }
+    { "id": "imza-cizgi", "tip": "cizgi", "kosul": "!{{teklif}}", "daralt": true, "x1": 335, "y1": 266, "x2": 539.28, "y2": 266, "kalinlik": 0.5 },
+    { "id": "teslim-eden", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 335, "y": 272, "g": 100, "metin": "Teslim Eden", "boyut": 8.25, "hiza": "center" },
+    { "id": "teslim-alan", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 439.28, "y": 272, "g": 100, "metin": "Teslim Alan", "boyut": 8.25, "hiza": "center" },
+    { "id": "imza-sol", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 335, "y": 300, "g": 100, "metin": "İmza", "boyut": 8.25, "hiza": "center" },
+    { "id": "imza-sag", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 439.28, "y": 300, "g": 100, "metin": "İmza", "boyut": 8.25, "hiza": "center" }
   ]
 }

@@ -79,6 +79,7 @@ export interface ArbitrajApplyResult {
   parite?: number;
   pariteYonu?: "carp" | "bol";
   aciklama?: string;
+  gelisNedeni?: string;
   cariId: number | null;
   cariUnvan: string;
   cariKodu?: string;
@@ -139,6 +140,7 @@ interface ArbitrajModalProps {
   dovizKurusSayisi?: number;
   tlKurusSayisi?: number;
   savedArbitraj?: ArbitrajApplyResult | null;
+  initialGelisNedeni?: string;
 }
 
 export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
@@ -170,6 +172,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   kurKurusSayisi = 4,
   dovizKurusSayisi = 2,
   tlKurusSayisi = 2,
+  initialGelisNedeni = "",
 }) => {
   // Fişin tersi açılır: Arka alış (fisTip === 0) ise Satış ("satis"), arka satış (fisTip === 1) ise Alış ("alis") gelir
   const targetIslemYonu: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
@@ -183,7 +186,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   });
   const [seriNo, setSeriNo] = useState<string>("");
   const [belgeNo, setBelgeNo] = useState<string>("");
-  const [gelisNedeni, setGelisNedeni] = useState<string>("");
+  const [gelisNedeni, setGelisNedeni] = useState<string>(
+    initialGelisNedeni && initialGelisNedeni.trim().toLowerCase() !== "arbitraj" ? initialGelisNedeni.trim() : ""
+  );
   const [cariId, setCariId] = useState<number | null>(selectedCariId);
   const [cariKodu, setCariKodu] = useState<string>(selectedCariKod || "");
   const [unvan, setUnvan] = useState<string>(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
@@ -240,8 +245,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "danger"; text: string } | null>(null);
 
-  // Fiş Tipi Ref (Otomatik Odaklanma İçin)
+  // Fiş Tipi Ref ve İstatistik Kodu Ref (Odaklanma Sırası İçin)
   const tipSelectRef = useRef<HTMLSelectElement | null>(null);
+  const istatistikInputRef = useRef<HTMLInputElement | null>(null);
   const initialFocusDoneRef = useRef<boolean>(false);
 
   // Active statistic object
@@ -707,11 +713,13 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         setLines(sourceLines.length > 0 ? sourceLines : [createBlankLine(1)]);
         if (savedArbitraj.islemYonu) {
           setIslemYonu(savedArbitraj.islemYonu);
-          setGelisNedeni(savedArbitraj.islemYonu === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+          const rawGn = String((savedArbitraj as any).gelisNedeni || initialGelisNedeni || "").trim();
+          setGelisNedeni(rawGn.toLowerCase() === "arbitraj" ? "" : rawGn);
         } else {
           const dir = fisTip === 0 ? "satis" : "alis";
           setIslemYonu(dir);
-          setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+          const rawGn = String(initialGelisNedeni || "").trim();
+          setGelisNedeni(rawGn.toLowerCase() === "arbitraj" ? "" : rawGn);
         }
         if (savedArbitraj.seriNo) setSeriNo(savedArbitraj.seriNo);
         else setSeriNo("");
@@ -741,7 +749,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         // Fişin tersi açılır: Arka Alışsa Satış, Satışsa Alış
         const dir: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
         setIslemYonu(dir);
-        setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+        const rawGn = String(initialGelisNedeni || "").trim();
+        setGelisNedeni(rawGn.toLowerCase() === "arbitraj" ? "" : rawGn);
         setCariId(selectedCariId);
         setCariKodu(selectedCariKod || "");
         setUnvan(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
@@ -839,7 +848,6 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const handleToggleIslemYonu = (targetDir?: "alis" | "satis") => {
     const newDir: "alis" | "satis" = targetDir || (islemYonu === "satis" ? "alis" : "satis");
     setIslemYonu(newDir);
-    setGelisNedeni(newDir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
 
     // Alışta alış, satışta satış istatistiği belirle:
     const newStat = getDefaultIstatistik(newDir);
@@ -1250,7 +1258,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       cikisKur: islemYonu === "satis" ? kurNum : 1.0,
       parite: kurNum,
       pariteYonu: "carp",
-      aciklama: `${gelisNedeni || "Arbitraj"} - ${firstLine.kod}`,
+      aciklama: gelisNedeni.trim() ? `${gelisNedeni.trim()} - ${firstLine.kod}` : `Arbitraj - ${firstLine.kod}`,
       cariId: cariId,
       cariUnvan: unvan,
       cariKodu: cariKodu,
@@ -1258,6 +1266,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       istatistikKodu: istatistikKod,
       seriNo: seriNo.trim() || undefined,
       belgeNo: belgeNo.trim() || undefined,
+      gelisNedeni: (gelisNedeni.trim().toLowerCase() === "arbitraj" ? undefined : (gelisNedeni.trim() || undefined)),
       allLines: validLines,
       lines: validLines,
       detay: {
@@ -1354,7 +1363,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       cikisKur: islemYonu === "satis" ? kurNum : 1.0,
       parite: kurNum,
       pariteYonu: "carp",
-      aciklama: `${gelisNedeni || "Arbitraj"} - ${firstLine.kod}`,
+      aciklama: gelisNedeni.trim() ? `${gelisNedeni.trim()} - ${firstLine.kod}` : `Arbitraj - ${firstLine.kod}`,
       cariId: cariId,
       cariUnvan: unvan,
       cariKodu: cariKodu,
@@ -1362,6 +1371,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       istatistikKodu: istatistikKod,
       seriNo: seriNo.trim() || undefined,
       belgeNo: belgeNo.trim() || undefined,
+      gelisNedeni: (gelisNedeni.trim().toLowerCase() === "arbitraj" ? undefined : (gelisNedeni.trim() || undefined)),
       allLines: validLines,
       lines: validLines,
       detay: {
@@ -1864,11 +1874,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                           handleToggleIslemYonu();
                         } else if (e.key === "Enter") {
                           e.preventDefault();
-                          const firstInput = document.querySelector(".arbitraj-table-code-input") as HTMLInputElement | null;
-                          if (firstInput) {
-                            firstInput.focus();
-                            firstInput.select();
-                          }
+                          e.stopPropagation();
+                          istatistikInputRef.current?.focus();
+                          istatistikInputRef.current?.select();
                         }
                       }}
                       className="fw-bold text-uppercase px-2.5 py-1"
@@ -1946,6 +1954,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                   <div className="flex-grow-1" style={{ minWidth: 0 }}>
                     <InputGroup size="sm">
                       <Form.Control
+                        ref={istatistikInputRef}
+                        id="arbitraj-istatistik-kod-input"
                         type="text"
                         value={istatistikKod}
                         isInvalid={!istatistikValidation.isValid}
@@ -1973,8 +1983,23 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
-                            setLookupSearchTerm(e.currentTarget.value);
-                            setLookupType("istatistik");
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const val = e.currentTarget.value.trim();
+                            const found = filteredStatList.find(
+                              (s) => (s.kod || "").toLowerCase() === val.toLowerCase()
+                            );
+                            if (found) {
+                              setLines((prev) => applyStatisticRatesToLines(found, islemYonu, prev));
+                              const firstInput = document.querySelector(".arbitraj-table-code-input") as HTMLInputElement | null;
+                              if (firstInput) {
+                                firstInput.focus();
+                                firstInput.select();
+                              }
+                            } else {
+                              setLookupSearchTerm(val);
+                              setLookupType("istatistik");
+                            }
                           }
                         }}
                         placeholder="İstatistik Kodu..."
@@ -3026,6 +3051,13 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           setIstatistikKod(s.kod);
           setLookupType(null);
           setLines((prev) => applyStatisticRatesToLines(s, islemYonu, prev));
+          setTimeout(() => {
+            const firstInput = document.querySelector(".arbitraj-table-code-input") as HTMLInputElement | null;
+            if (firstInput) {
+              firstInput.focus();
+              firstInput.select();
+            }
+          }, 50);
         }}
       />
     </>

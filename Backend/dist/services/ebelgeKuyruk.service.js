@@ -147,10 +147,13 @@ export const ADAPTORLER = {
         },
         async varMi(config, kayit) {
             try {
+                // ICE gider pusulasını fatura olarak saklıyor; HTML GetInvoice_HTML'den gelir. Belge numarasını
+                // içeren HTML = belge ICE'de. Boş cevap "yok" demek değil (eski gider çağrısı hep boş dönüyordu):
+                // emin olunamayınca yeniden gönderilmez, mali belge çift oluşmasın.
                 const c = await getGiderPusulasiCikti(config, kayit.uuid, { html: true });
-                if (c.html)
+                if (c.html && dolu(kayit.belgeNo) && c.html.includes(String(kayit.belgeNo)))
                     return "VAR";
-                return bulunamadiMi(c.mesaj) || !dolu(c.mesaj) ? "YOK" : "BILINMIYOR";
+                return bulunamadiMi(c.mesaj) ? "YOK" : "BILINMIYOR";
             }
             catch (e) {
                 return hataVarligi(e);

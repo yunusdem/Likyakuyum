@@ -15,7 +15,7 @@ export class DovizFisService {
         return item;
     }
     static async saveFis(dto, dbContext) {
-        if (!dto.satirlar || dto.satirlar.length === 0) {
+        if ((!dto.satirlar || dto.satirlar.length === 0) && (!dto.arbitrajSatirlar || dto.arbitrajSatirlar.length === 0)) {
             throw ApiError.badRequest("Fiş kaydı için en az bir döviz kalemi girilmelidir.");
         }
         return DovizFisSqlRepository.saveViaProcedure(dto, dbContext);

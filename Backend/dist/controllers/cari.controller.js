@@ -70,8 +70,14 @@ export class CariController {
      */
     static getCariFotograf = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
-        const foto = await CariService.getCariFotograf(req.params.id, dbContext);
-        return ApiResponse.ok(res, "Cari fotoğrafı getirildi.", foto);
+        const fotos = await CariService.getAllCariFotograflar(req.params.id, dbContext);
+        const primary = fotos.length > 0 ? fotos[0] : null;
+        return ApiResponse.ok(res, "Cari fotoğrafları getirildi.", {
+            fotograf: primary,
+            fotograflar: fotos,
+            // Doğrudan primary özelliklerini de döndürerek geriye dönük tam uyumluluk sağla
+            ...(primary || {}),
+        });
     });
     /**
      * POST /api/v1/cari/:id/fotograf
@@ -87,7 +93,8 @@ export class CariController {
      */
     static deleteCariFotograf = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
-        await CariService.deleteCariFotograf(req.params.id, dbContext);
+        const fotografId = req.query.fotografId ? Number(req.query.fotografId) : undefined;
+        await CariService.deleteCariFotograf(req.params.id, fotografId, dbContext);
         return ApiResponse.ok(res, "Cari fotoğrafı başarıyla silindi.");
     });
 }

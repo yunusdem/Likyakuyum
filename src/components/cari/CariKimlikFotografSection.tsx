@@ -15,6 +15,7 @@ import {
   IconTrash,
   IconArrowsExchange,
   IconEdit,
+  IconCrop,
 } from "@tabler/icons-react";
 import {
   performOcrAndExtractData,
@@ -28,7 +29,9 @@ import {
   isValidNameOrSurname,
   turkishizeFromRawText,
 } from "../../utils/kimlikOcrParser";
+import { autoCropIdCard } from "../../utils/imageCropUtils";
 import { CariFotografItem } from "../../services/cariService";
+import { ImageCropperModal } from "../common/ImageCropperModal";
 
 export interface CariKimlikFotografSectionProps {
   currentPhoto?: CariFotografItem | null;
@@ -79,6 +82,9 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   // Büyütme (Zoom) Modalı
   const [showZoomModal, setShowZoomModal] = useState(false);
+
+  // Manuel Kırpma (Crop) Modalı
+  const [showCropModal, setShowCropModal] = useState(false);
 
   // OCR Verilerini Doğrudan Düzenleme Modu
   const [isEditingOcr, setIsEditingOcr] = useState<boolean>(false);
@@ -196,12 +202,12 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   // Otomatik OCR Taraması Çalıştır (Çoklu fotoğrafları zekice birleştirir)
   const triggerAutoOcr = useCallback(
-    async (photosToScan: string[]) => {
+    async (photosToScan: string[], isDeepAnalysis: boolean = false) => {
       if (!photosToScan || photosToScan.length === 0) return null;
 
       setIsScanning(true);
       setScanProgress(0);
-      setScanStatus("Kimlik okunuyor...");
+      setScanStatus(isDeepAnalysis ? "Detaylı OCR analizi başlatılıyor..." : "Kimlik okunuyor...");
       setOcrError(null);
       setIsApplied(false);
 
@@ -211,8 +217,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
         for (let i = 0; i < currentPhotos.length; i++) {
           const photoSrc = currentPhotos[i];
-          const label = i === 0 ? "1. Fotoğraf" : "2. Fotoğraf";
-          setScanStatus(`${currentPhotos.length > 1 ? `[${label}] ` : ""}Okunuyor...`);
+          const label = i === 0 ? "1. Ön Yüz" : "2. Arka Yüz";
+          setScanStatus(`${currentPhotos.length > 1 ? `[${label}] ` : ""}${isDeepAnalysis ? "Detaylı analiz yapılıyor..." : "Okunuyor..."}`);
 
           const res = await performOcrAndExtractData(
             photoSrc,
@@ -222,7 +228,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               const currentTotal = Math.round(i * stepRatio + (progress * stepRatio) / 100);
               setScanProgress(currentTotal);
               setScanStatus(`${currentPhotos.length > 1 ? `[${label}] ` : ""}${status}`);
-            }
+            },
+            isDeepAnalysis
           );
           scanResults.push(res);
         }
@@ -378,6 +385,34 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
     }
   };
 
+  // Manuel Kırpma Tamamlandığında
+  const handleCropDone = (croppedBase64: string) => {
+    if (!croppedBase64) return;
+    const targetIdx = safeActiveIndex;
+
+    let baseList = localPhotos.length > 0 ? [...localPhotos] : photoList.map((p) => p.base64);
+
+    if (baseList.length === 0) {
+      baseList = [croppedBase64];
+    } else if (targetIdx < baseList.length) {
+      baseList[targetIdx] = croppedBase64;
+    } else {
+      baseList.push(croppedBase64);
+    }
+
+    setLocalPhotos(baseList);
+    setShowCropModal(false);
+
+    if (onPhotosSelected) {
+      onPhotosSelected(baseList);
+    } else if (onPhotoSelected) {
+      onPhotoSelected(baseList[0]);
+    }
+
+    // Kırpılan görsel üzerinden OCR'ı tekrar çalıştır
+    triggerAutoOcr(baseList);
+  };
+
   // Kamera Başlat
   const startCamera = async () => {
     try {
@@ -403,7 +438,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
   };
 
   // Kameradan Çekim Yap
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current || document.createElement("canvas");
@@ -413,8 +448,11 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const base64 = canvas.toDataURL("image/jpeg", 0.92);
+    const rawBase64 = canvas.toDataURL("image/jpeg", 0.92);
     stopCamera();
+
+    // Üstte/altta/kenarlarda boşluklar varsa otomatik kırp
+    const base64 = await autoCropIdCard(rawBase64);
 
     const updated = [...localPhotos, base64];
     setLocalPhotos(updated);
@@ -430,46 +468,51 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
   };
 
   // Dosya(lar)dan Seçme
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
-    const base64List: string[] = [];
-    let loaded = 0;
-
-    fileArray.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const b64 = event.target?.result as string;
-        if (b64 && b64.startsWith("data:")) {
-          base64List.push(b64);
-        }
-        loaded++;
-
-        if (loaded === fileArray.length) {
-          if (base64List.length > 0) {
-            const updated = [...localPhotos, ...base64List];
-            setLocalPhotos(updated);
-            setActiveIndex(updated.length - 1);
-
-            if (onPhotosSelected) {
-              onPhotosSelected(updated);
-            } else {
-              onPhotoSelected(base64List[0]);
-            }
-
-            triggerAutoOcr(updated);
-          }
-        }
-      };
-      reader.onerror = () => {
-        loaded++;
-      };
-      reader.readAsDataURL(file);
-    });
-
     e.target.value = "";
+
+    try {
+      const readPromises = fileArray.map((file) => {
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const b64 = event.target?.result as string;
+            resolve(b64 || "");
+          };
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(file);
+        });
+      });
+
+      const rawBase64List = (await Promise.all(readPromises)).filter(
+        (b) => b && b.startsWith("data:")
+      );
+
+      if (rawBase64List.length === 0) return;
+
+      // Üstte/altta boşluklar varsa otomatik kırp
+      const croppedList = await Promise.all(
+        rawBase64List.map((b64) => autoCropIdCard(b64))
+      );
+
+      const updated = [...localPhotos, ...croppedList];
+      setLocalPhotos(updated);
+      setActiveIndex(updated.length - 1);
+
+      if (onPhotosSelected) {
+        onPhotosSelected(updated);
+      } else {
+        onPhotoSelected(croppedList[0]);
+      }
+
+      triggerAutoOcr(updated);
+    } catch (err) {
+      console.error("Kimlik görseli işlenirken hata:", err);
+    }
   };
 
   // 2. Fotoğraf (Arka Yüz) Yükleme Tetikleyici
@@ -535,9 +578,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
       >
         <button
           type="button"
-          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
-            selectedBelgeTuru === 0 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
-          }`}
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${selectedBelgeTuru === 0 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+            }`}
           onClick={() => onBelgeTuruChange(0)}
           disabled={disabled}
           style={{ fontSize: "10px", lineHeight: "1.8" }}
@@ -546,9 +588,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         </button>
         <button
           type="button"
-          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
-            selectedBelgeTuru === 1 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
-          }`}
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${selectedBelgeTuru === 1 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+            }`}
           onClick={() => onBelgeTuruChange(1)}
           disabled={disabled}
           style={{ fontSize: "10px", lineHeight: "1.8" }}
@@ -557,9 +598,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         </button>
         <button
           type="button"
-          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
-            selectedBelgeTuru === 2 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
-          }`}
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${selectedBelgeTuru === 2 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+            }`}
           onClick={() => onBelgeTuruChange(2)}
           disabled={disabled}
           style={{ fontSize: "10px", lineHeight: "1.8" }}
@@ -576,11 +616,10 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               <button
                 key={idx}
                 type="button"
-                className={`btn btn-sm px-1.5 py-0 border ${
-                  idx === safeActiveIndex
+                className={`btn btn-sm px-1.5 py-0 border ${idx === safeActiveIndex
                     ? "btn-primary text-white fw-bold shadow-2xs"
                     : "btn-light text-secondary"
-                }`}
+                  }`}
                 style={{ fontSize: "9.5px", borderRadius: "6px", lineHeight: "1.6" }}
                 onClick={() => setActiveIndex(idx)}
                 title={`${p.label} - Görüntüle`}
@@ -660,6 +699,18 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
             </div>
 
             <div
+              className="position-absolute top-0 end-0 m-1 bg-dark bg-opacity-70 text-white rounded-circle p-1 d-flex align-items-center justify-content-center shadow-sm"
+              style={{ width: "22px", height: "22px", cursor: "pointer", zIndex: 2 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowCropModal(true);
+              }}
+              title="Kimlik Fotoğrafını Kırp"
+            >
+              <IconCrop size={12} stroke={2} />
+            </div>
+
+            <div
               className="position-absolute bottom-0 end-0 m-1 bg-dark bg-opacity-60 text-white rounded-circle p-1 d-flex align-items-center justify-content-center"
               style={{ width: "20px", height: "20px" }}
               title="Büyüt"
@@ -706,6 +757,23 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           </button>
         )}
 
+        {displayImage && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary w-100 d-flex align-items-center justify-content-center gap-1 py-1 px-1 fw-bold shadow-2xs"
+            onClick={() => setShowCropModal(true)}
+            style={{
+              borderRadius: "8px",
+              fontSize: "11px",
+              lineHeight: "1.4",
+            }}
+            title="Kimlik fotoğrafını manuel olarak kırp ve düzenle"
+          >
+            <IconCrop size={13} stroke={2.2} />
+            <span>Fotoğrafı Kırp</span>
+          </button>
+        )}
+
         {/* YÜKLE / DEĞİŞTİR Açılır Butonu */}
         <Dropdown className="w-100">
           <Dropdown.Toggle
@@ -747,12 +815,19 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               <>
                 <Dropdown.Divider />
                 <Dropdown.Item
-                  onClick={() => triggerAutoOcr(photoList.map((p) => p.base64))}
+                  onClick={() => setShowCropModal(true)}
+                  className="d-flex align-items-center gap-2 py-1.5"
+                >
+                  <IconCrop size={14} className="text-primary" />
+                  <span>Fotoğrafı Kırp</span>
+                </Dropdown.Item>
+                <Dropdown.Item
+                  onClick={() => triggerAutoOcr(photoList.map((p) => p.base64), true)}
                   className="d-flex align-items-center gap-2 py-1.5"
                   disabled={isScanning}
                 >
                   <IconSparkles size={14} className="text-warning" />
-                  <span>Yeniden Oku (OCR)</span>
+                  <span>Yeniden Oku (Detaylı Analiz)</span>
                 </Dropdown.Item>
                 <Dropdown.Item
                   onClick={() => setShowZoomModal(true)}
@@ -793,13 +868,12 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           <div className="w-100 mt-1">
             <button
               type="button"
-              className={`btn w-100 d-flex align-items-center justify-content-center gap-1 py-1.5 px-1 fw-bold shadow-sm ${
-                isScanning
+              className={`btn w-100 d-flex align-items-center justify-content-center gap-1 py-1.5 px-1 fw-bold shadow-sm ${isScanning
                   ? "btn-secondary"
                   : isApplied
-                  ? "btn-outline-success"
-                  : "btn-success text-white"
-              }`}
+                    ? "btn-outline-success"
+                    : "btn-success text-white"
+                }`}
               style={{
                 borderRadius: "8px",
                 fontSize: "11px",
@@ -825,6 +899,23 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                   <span>Alanları Doldur</span>
                 </>
               )}
+            </button>
+          </div>
+        )}
+
+        {/* Yanlış Okuma Durumunda Hızlı Detaylı Yeniden Oku Bağlantısı */}
+        {photoList.length > 0 && (
+          <div className="d-flex align-items-center justify-content-center w-100 mt-1">
+            <button
+              type="button"
+              className="btn btn-link btn-sm p-0 text-decoration-none text-muted d-flex align-items-center gap-1"
+              style={{ fontSize: "9.5px" }}
+              disabled={isScanning}
+              onClick={() => triggerAutoOcr(photoList.map((p) => p.base64), true)}
+              title="Görselleri en baştan çok daha detaylı analiz et (Yüksek çözünürlük, adaptif kontrast, binarize eşikleme ve MRZ odaklı)"
+            >
+              <IconSparkles size={11} className="text-warning" />
+              <span>Yanlış okunduysa: <strong className="text-primary text-decoration-underline">Detaylı Yeniden Oku</strong></span>
             </button>
           </div>
         )}
@@ -872,6 +963,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 <IconCheck size={12} /> Okunan Bilgiler
               </span>
               <div className="d-flex align-items-center gap-1">
+
                 <button
                   type="button"
                   className={`btn btn-xs ${isEditingOcr ? "btn-success text-white" : "btn-outline-primary"} py-0 px-1.5`}
@@ -1350,9 +1442,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                       <button
                         key={idx}
                         type="button"
-                        className={`btn btn-sm ${
-                          idx === safeActiveIndex ? "btn-primary text-white" : "btn-outline-secondary"
-                        }`}
+                        className={`btn btn-sm ${idx === safeActiveIndex ? "btn-primary text-white" : "btn-outline-secondary"
+                          }`}
                         onClick={() => setActiveIndex(idx)}
                       >
                         {p.label}
@@ -1379,21 +1470,46 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
             Kapat
           </Button>
           {displayImage && (
-            <Button
-              variant="primary"
-              size="sm"
-              className="d-flex align-items-center gap-1.5"
-              onClick={() => {
-                setShowZoomModal(false);
-                triggerAutoOcr(photoList.map((p) => p.base64));
-              }}
-            >
-              <IconSparkles size={16} />
-              <span>Belgeyi Yeniden Oku</span>
-            </Button>
+            <div className="d-flex align-items-center gap-2">
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="d-flex align-items-center gap-1.5"
+                onClick={() => {
+                  setShowZoomModal(false);
+                  setShowCropModal(true);
+                }}
+              >
+                <IconCrop size={16} />
+                <span>Fotoğrafı Kırp</span>
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="d-flex align-items-center gap-1.5"
+                onClick={() => {
+                  setShowZoomModal(false);
+                  triggerAutoOcr(photoList.map((p) => p.base64), true);
+                }}
+              >
+                <IconSparkles size={16} />
+                <span>Detaylı Yeniden Oku</span>
+              </Button>
+            </div>
           )}
         </Modal.Footer>
       </Modal>
+
+      {/* Manuel Kırpma (Crop) Modalı */}
+      {displayImage && (
+        <ImageCropperModal
+          show={showCropModal}
+          onHide={() => setShowCropModal(false)}
+          imageSrc={displayImage}
+          onCropDone={handleCropDone}
+          title={`${activePhoto?.label || "Kimlik"} Fotoğrafını Kırp`}
+        />
+      )}
     </div>
   );
 };
