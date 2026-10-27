@@ -60,6 +60,7 @@ const formatDateTr = (dateStr?: string | null): string => {
 };
 
 export interface DovizTeklifTaniModalProps {
+  pageType?: "doviz" | "sarraf";
   show: boolean;
   onHide: () => void;
   tip: number; // 0: Alış, 1: Satış
@@ -117,6 +118,7 @@ export interface DovizTeklifTaniModalProps {
 }
 
 export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
+  pageType = "doviz",
   show,
   onHide,
   tip,
@@ -659,7 +661,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           <div className="d-flex align-items-center justify-content-between w-100 me-2 flex-wrap gap-2">
             <div className="d-flex align-items-center gap-2">
               <IconFileText size={20} className="text-primary" />
-              <span className="fw-bold fs-6">Müşteri Tanı Formu & Döviz İşlem Evrakı (A4)</span>
+              <span className="fw-bold fs-6">
+                Müşteri Tanı Formu & {pageType === "sarraf" ? "Sarraf" : "Döviz"} İşlem Evrakı (A4)
+              </span>
               <Badge bg="info" className="text-white fw-bold shadow-xs" style={{ fontSize: "11px" }}>
                 Shift+F10 (Kayıt Etmeden)
               </Badge>
@@ -1130,7 +1134,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                   {/* Beyan ve İmza Alanı */}
                   <div style={{ marginTop: "11px", fontSize: "9px", lineHeight: "1.35", color: "#000" }}>
                     <div>
-                      Döviz alım satım işlemlerinde başkası hesabına hareket etmediğimi beyan ve kabul ederim.
+                      {pageType === "sarraf"
+                        ? "Kıymetli maden, ziynet ve sarrafiye alım satım işlemlerinde başkası hesabına hareket etmediğimi beyan ve kabul ederim."
+                        : "Döviz alım satım işlemlerinde başkası hesabına hareket etmediğimi beyan ve kabul ederim."}
                     </div>
                     <div style={{ marginTop: "24px", fontWeight: "bold" }}>
                       Müşterinin adı, soyadı ve imzası
@@ -1246,7 +1252,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         </tr>
                         <tr>
                           <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Sen. / Tip</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>EDOVIZBELGE / {isAlis ? "ALIM" : "SATIM"}</td>
+                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>
+                            {pageType === "sarraf" ? "ESARRAFBELGE" : "EDOVIZBELGE"} / {isAlis ? "ALIM" : "SATIM"}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -1254,7 +1262,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                     {/* Müşteri Bilgileri */}
                     <div style={{ marginTop: "4px", fontSize: "7.5px", lineHeight: "1.2" }}>
                       <div style={{ fontWeight: "bold", fontSize: "8px", textTransform: "uppercase" }}>
-                        DÖVİZ {isAlis ? "SATAN" : "ALAN"} KİŞİ / KURULUŞ BİLGİLERİ
+                        {pageType === "sarraf" ? "SARRAF / KIYMETLİ MADEN" : "DÖVİZ"} {isAlis ? "SATAN" : "ALAN"} KİŞİ / KURULUŞ BİLGİLERİ
                       </div>
                       <div style={{ fontWeight: "bold", fontSize: "8.5px", textTransform: "uppercase" }}>
                         {cleanValue(unvan) || "İSİM BEYAN EDİLMEMİŞTİR"}
@@ -1276,7 +1284,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       ) : null}
                     </div>
 
-                    {/* Satın Alınan Döviz Tablosu */}
+                    {/* Satın Alınan Döviz / Sarrafiye Tablosu */}
                     <table
                       style={{
                         width: "100%",
@@ -1289,7 +1297,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       <thead>
                         <tr>
                           <th
-                            colSpan={2}
+                            colSpan={validLines.length > 1 ? 4 : 2}
                             style={{
                               textAlign: "center",
                               border: "1px solid #000",
@@ -1298,59 +1306,114 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                               fontWeight: "bold",
                             }}
                           >
-                            {isAlis ? "SATIN ALINAN" : "SATILAN"} DÖVİZE/EFEKTİFE AİT BİLGİLER
+                            {isAlis ? "SATIN ALINAN" : "SATILAN"} {pageType === "sarraf" ? "ÜRÜNE / SARRAFİYEYE" : "DÖVİZE / EFEKTİFE"} AİT BİLGİLER
                           </th>
                         </tr>
+                        {validLines.length > 1 && (
+                          <tr style={{ backgroundColor: "#f5f5f5", fontWeight: "bold" }}>
+                            <th style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "left" }}>Ürün / Cins</th>
+                            <th style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>Miktar</th>
+                            <th style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>Kur / Fiyat</th>
+                            <th style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>Tutar (TL)</th>
+                          </tr>
+                        )}
                       </thead>
                       <tbody>
-                        <tr>
-                          <td style={{ width: "55%", padding: "1px 3px", border: "1px solid #000" }}>
-                            Döviz / Efektifin Mik. / Brm
-                          </td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                            {primaryLine ? `${formatNumberTr(Number(primaryLine.miktar), dovizKurusSayisi)} ${primaryLine.paraKodu}` : ""}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Uygulanan Kur</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                            {primaryLine ? formatNumberTr(Number(primaryLine.kur), kurKurusSayisi) : ""}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>TL Karşılığı</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                            {primaryLine ? `${formatNumberTr(Number(primaryLine.tutar), tlKurusSayisi)} TL` : ""}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>ABD Doları Karşılığı</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                            {primaryLine ? `${formatNumberTr(Number(primaryLine.usdKarsiligi || primaryLine.miktar), 2)} USD` : ""}
-                          </td>
-                        </tr>
-                        {Number(bsmvTutari || 0) > 0 ? (
-                          <tr>
-                            <td style={{ padding: "1px 3px", border: "1px solid #000" }}>BSMV</td>
-                            <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                              {formatNumberTr(Number(bsmvTutari || 0), tlKurusSayisi)} TL
-                            </td>
-                          </tr>
-                        ) : null}
-                        {Number(totalKmv || 0) > 0 ? (
-                          <tr>
-                            <td style={{ padding: "1px 3px", border: "1px solid #000" }}>KMV</td>
-                            <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                              {formatNumberTr(Number(totalKmv || 0), tlKurusSayisi)} TL
-                            </td>
-                          </tr>
-                        ) : null}
-                        <tr>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold" }}>Toplam Tutar</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                            {formatNumberTr(Number(sonToplam || 0), tlKurusSayisi)} TL
-                          </td>
-                        </tr>
+                        {validLines.length > 1 ? (
+                          <>
+                            {validLines.map((vl, idx) => (
+                              <tr key={idx}>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold" }}>
+                                  {vl.paraAdi || vl.paraKodu}
+                                </td>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                                  {formatNumberTr(Number(vl.miktar), dovizKurusSayisi)}
+                                </td>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                                  {formatNumberTr(Number(vl.kur), kurKurusSayisi)}
+                                </td>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                                  {formatNumberTr(Number(vl.tutar), tlKurusSayisi)}
+                                </td>
+                              </tr>
+                            ))}
+                            {Number(bsmvTutari || 0) > 0 ? (
+                              <tr>
+                                <td colSpan={3} style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>BSMV</td>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                                  {formatNumberTr(Number(bsmvTutari || 0), tlKurusSayisi)} TL
+                                </td>
+                              </tr>
+                            ) : null}
+                            {Number(totalKmv || 0) > 0 ? (
+                              <tr>
+                                <td colSpan={3} style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>KMV</td>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                                  {formatNumberTr(Number(totalKmv || 0), tlKurusSayisi)} TL
+                                </td>
+                              </tr>
+                            ) : null}
+                            <tr>
+                              <td colSpan={3} style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold", textAlign: "right" }}>Toplam Tutar</td>
+                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                                {formatNumberTr(Number(sonToplam || 0), tlKurusSayisi)} TL
+                              </td>
+                            </tr>
+                          </>
+                        ) : (
+                          <>
+                            <tr>
+                              <td style={{ width: "55%", padding: "1px 3px", border: "1px solid #000" }}>
+                                {pageType === "sarraf" ? "Ürün / Maden Mik. / Brm" : "Döviz / Efektifin Mik. / Brm"}
+                              </td>
+                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                                {primaryLine ? `${formatNumberTr(Number(primaryLine.miktar), dovizKurusSayisi)} ${primaryLine.paraKodu || ""}` : ""}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Uygulanan Kur</td>
+                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                                {primaryLine ? formatNumberTr(Number(primaryLine.kur), kurKurusSayisi) : ""}
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: "1px 3px", border: "1px solid #000" }}>TL Karşılığı</td>
+                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                                {primaryLine ? `${formatNumberTr(Number(primaryLine.tutar), tlKurusSayisi)} TL` : ""}
+                              </td>
+                            </tr>
+                            {pageType !== "sarraf" && (
+                              <tr>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000" }}>ABD Doları Karşılığı</td>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                                  {primaryLine ? `${formatNumberTr(Number(primaryLine.usdKarsiligi || primaryLine.miktar), 2)} USD` : ""}
+                                </td>
+                              </tr>
+                            )}
+                            {Number(bsmvTutari || 0) > 0 ? (
+                              <tr>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000" }}>BSMV</td>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                                  {formatNumberTr(Number(bsmvTutari || 0), tlKurusSayisi)} TL
+                                </td>
+                              </tr>
+                            ) : null}
+                            {Number(totalKmv || 0) > 0 ? (
+                              <tr>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000" }}>KMV</td>
+                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
+                                  {formatNumberTr(Number(totalKmv || 0), tlKurusSayisi)} TL
+                                </td>
+                              </tr>
+                            ) : null}
+                            <tr>
+                              <td style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold" }}>Toplam Tutar</td>
+                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
+                                {formatNumberTr(Number(sonToplam || 0), tlKurusSayisi)} TL
+                              </td>
+                            </tr>
+                          </>
+                        )}
                       </tbody>
                     </table>
 

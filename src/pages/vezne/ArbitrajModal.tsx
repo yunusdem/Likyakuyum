@@ -79,6 +79,7 @@ export interface ArbitrajApplyResult {
   parite?: number;
   pariteYonu?: "carp" | "bol";
   aciklama?: string;
+  gelisNedeni?: string;
   cariId: number | null;
   cariUnvan: string;
   cariKodu?: string;
@@ -139,6 +140,7 @@ interface ArbitrajModalProps {
   dovizKurusSayisi?: number;
   tlKurusSayisi?: number;
   savedArbitraj?: ArbitrajApplyResult | null;
+  initialGelisNedeni?: string;
 }
 
 export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
@@ -170,6 +172,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   kurKurusSayisi = 4,
   dovizKurusSayisi = 2,
   tlKurusSayisi = 2,
+  initialGelisNedeni = "",
 }) => {
   // Fişin tersi açılır: Arka alış (fisTip === 0) ise Satış ("satis"), arka satış (fisTip === 1) ise Alış ("alis") gelir
   const targetIslemYonu: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
@@ -183,7 +186,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   });
   const [seriNo, setSeriNo] = useState<string>("");
   const [belgeNo, setBelgeNo] = useState<string>("");
-  const [gelisNedeni, setGelisNedeni] = useState<string>("");
+  const [gelisNedeni, setGelisNedeni] = useState<string>(initialGelisNedeni || "");
   const [cariId, setCariId] = useState<number | null>(selectedCariId);
   const [cariKodu, setCariKodu] = useState<string>(selectedCariKod || "");
   const [unvan, setUnvan] = useState<string>(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
@@ -707,11 +710,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         setLines(sourceLines.length > 0 ? sourceLines : [createBlankLine(1)]);
         if (savedArbitraj.islemYonu) {
           setIslemYonu(savedArbitraj.islemYonu);
-          setGelisNedeni(savedArbitraj.islemYonu === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+          setGelisNedeni((savedArbitraj as any).gelisNedeni || initialGelisNedeni || "");
         } else {
           const dir = fisTip === 0 ? "satis" : "alis";
           setIslemYonu(dir);
-          setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+          setGelisNedeni(initialGelisNedeni || "");
         }
         if (savedArbitraj.seriNo) setSeriNo(savedArbitraj.seriNo);
         else setSeriNo("");
@@ -741,7 +744,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         // Fişin tersi açılır: Arka Alışsa Satış, Satışsa Alış
         const dir: "alis" | "satis" = fisTip === 0 ? "satis" : "alis";
         setIslemYonu(dir);
-        setGelisNedeni(dir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
+        setGelisNedeni(initialGelisNedeni || "");
         setCariId(selectedCariId);
         setCariKodu(selectedCariKod || "");
         setUnvan(selectedUnvan || "İSİM BEYAN EDİLMEMİŞTİR");
@@ -839,7 +842,6 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const handleToggleIslemYonu = (targetDir?: "alis" | "satis") => {
     const newDir: "alis" | "satis" = targetDir || (islemYonu === "satis" ? "alis" : "satis");
     setIslemYonu(newDir);
-    setGelisNedeni(newDir === "satis" ? "Arbitraj Satış" : "Arbitraj Alış");
 
     // Alışta alış, satışta satış istatistiği belirle:
     const newStat = getDefaultIstatistik(newDir);
@@ -1250,7 +1252,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       cikisKur: islemYonu === "satis" ? kurNum : 1.0,
       parite: kurNum,
       pariteYonu: "carp",
-      aciklama: `${gelisNedeni || "Arbitraj"} - ${firstLine.kod}`,
+      aciklama: gelisNedeni.trim() ? `${gelisNedeni.trim()} - ${firstLine.kod}` : `Arbitraj - ${firstLine.kod}`,
       cariId: cariId,
       cariUnvan: unvan,
       cariKodu: cariKodu,
@@ -1258,6 +1260,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       istatistikKodu: istatistikKod,
       seriNo: seriNo.trim() || undefined,
       belgeNo: belgeNo.trim() || undefined,
+      gelisNedeni: gelisNedeni.trim() || undefined,
       allLines: validLines,
       lines: validLines,
       detay: {
@@ -1354,7 +1357,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       cikisKur: islemYonu === "satis" ? kurNum : 1.0,
       parite: kurNum,
       pariteYonu: "carp",
-      aciklama: `${gelisNedeni || "Arbitraj"} - ${firstLine.kod}`,
+      aciklama: gelisNedeni.trim() ? `${gelisNedeni.trim()} - ${firstLine.kod}` : `Arbitraj - ${firstLine.kod}`,
       cariId: cariId,
       cariUnvan: unvan,
       cariKodu: cariKodu,
@@ -1362,6 +1365,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       istatistikKodu: istatistikKod,
       seriNo: seriNo.trim() || undefined,
       belgeNo: belgeNo.trim() || undefined,
+      gelisNedeni: gelisNedeni.trim() || undefined,
       allLines: validLines,
       lines: validLines,
       detay: {

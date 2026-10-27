@@ -8,7 +8,7 @@ import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner } from "react-bootstrap";
 import {
   IconCheck, IconBinoculars, IconAlertTriangle, IconPlus, IconShieldExclamation, IconShieldCheck, IconPrinter, IconClock, IconCoins, IconUsers, IconBuildingBank, IconBuildingStore,
-  IconRefresh,
+  IconRefresh, IconFileText,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -41,6 +41,7 @@ import { KurService, KurRowItem } from "../../services/kurService";
 import { NumeratorService, NumeratorItem } from "../../services/numeratorService";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import SarrafFisiPrintModal from "./SarrafFisiPrintModal";
+import { DovizTeklifTaniModal } from "./DovizTeklifTaniModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { sarrafFisHtml } from "../../utils/belgeSablon/fisCikti";
@@ -987,6 +988,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDetayModal, setShowDetayModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showTeklifTaniModal, setShowTeklifTaniModal] = useState(false);
   const [printSnapshot, setPrintSnapshot] = useState<any>(null);
   const [isPendingDirectPrint, setIsPendingDirectPrint] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -1153,6 +1155,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     showNewBankaModal ||
     showDetayModal ||
     showPrintModal ||
+    showTeklifTaniModal ||
     showIstatistikModal ||
     showFarkConfirmModal.show ||
     masakModalOpen ||
@@ -4870,6 +4873,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowDeleteConfirm(false);
     setShowDetayModal(false);
     setShowPrintModal(false);
+    setShowTeklifTaniModal(false);
     setShowIstatistikModal(false);
     setShowFarkConfirmModal({ show: false, andPrint: false });
   }, []);
@@ -5009,8 +5013,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         return;
       }
 
-      // Eğer ekranda açık bir modal varsa diğer kısayolları çalıştırma
+      // Eğer ekranda açık bir modal varsa kısayolları çalıştırma (Shift+F10 hariç)
       if (document.querySelector(".modal.show")) {
+        if (e.key === "F10" && e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeAllModals();
+          setShowTeklifTaniModal(true);
+          return;
+        }
         return;
       }
 
@@ -5042,12 +5053,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        handleTriggerF10();
+        if (e.shiftKey) {
+          setShowTeklifTaniModal(true);
+        } else {
+          handleTriggerF10();
+        }
       }
     };
     window.addEventListener("keydown", h, true);
     return () => window.removeEventListener("keydown", h, true);
-  }, [handleSave, handleNew, openDetayModal, openPrintPreview, closeAllModals, handleTriggerF10]);
+  }, [handleSave, handleNew, openDetayModal, openPrintPreview, closeAllModals, handleTriggerF10, setShowTeklifTaniModal]);
 
   // LookupModal columns
   const fisColumns: LookupColumn<SarrafFisListItem>[] = [
@@ -7074,6 +7089,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 <Badge bg="success" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F10</Badge>
                 <span className="fw-bold text-dark">Kaydet / Yazdır</span>
               </span>
+              <Button
+                size="sm"
+                variant="primary"
+                className="px-2.5 py-0.5 border text-white fw-bold shadow-xs d-inline-flex align-items-center gap-1"
+                style={{ fontSize: "11.5px", backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
+                onClick={openPrintPreview}
+                title="Fişi kaydetmeden standart sarraf fişi olarak yazdır / önizle (Teklif)"
+              >
+                <IconPrinter size={14} /> Teklif Yazdır
+              </Button>
+              <Button
+                size="sm"
+                variant="info"
+                className="px-2.5 py-0.5 border text-white fw-bold shadow-xs d-inline-flex align-items-center gap-1"
+                style={{ fontSize: "11.5px", backgroundColor: "#0284c7", borderColor: "#0369a1" }}
+                onClick={() => setShowTeklifTaniModal(true)}
+                title="Gerçek Kişiler İçin Müşteri Tanı Formu ve Sarraf Fişi (A4 - Shift+F10)"
+              >
+                <IconFileText size={14} /> Shift+F10) Müşteri Tanı Formu
+              </Button>
               <span
                 className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
                 style={{ fontSize: "11.5px", cursor: "pointer" }}
@@ -8050,12 +8085,42 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             </Col>
           </Row>
         </Modal.Body>
-        <Modal.Footer className="py-1">
-          <Button size="sm" variant="secondary" onClick={() => setShowDetayModal(false)}>İptal</Button>
-          <Button size="sm" variant="success" onClick={handleSaveDetay}>
-            <IconCheck size={14} className="me-1" />
-            Uygula / Kaydet
-          </Button>
+        <Modal.Footer className="py-1 d-flex justify-content-between">
+          <div className="d-flex align-items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              className="d-flex align-items-center gap-1 shadow-xs"
+              style={{ backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
+              onClick={() => {
+                setShowDetayModal(false);
+                openPrintPreview();
+              }}
+              title="Fişi kaydetmeden standart sarraf fişi olarak yazdır / önizle (Teklif)"
+            >
+              <IconPrinter size={16} /> Teklif Yazdır
+            </Button>
+            <Button
+              variant="info"
+              size="sm"
+              className="d-flex align-items-center gap-1 fw-bold text-white shadow-xs"
+              style={{ backgroundColor: "#0284c7", borderColor: "#0369a1" }}
+              onClick={() => {
+                setShowDetayModal(false);
+                setShowTeklifTaniModal(true);
+              }}
+              title="Gerçek Kişiler İçin Müşteri Tanı Formu (A4 - Shift+F10)"
+            >
+              <IconFileText size={16} /> Shift+F10) Müşteri Tanı Formu
+            </Button>
+          </div>
+          <div className="d-flex align-items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setShowDetayModal(false)}>İptal</Button>
+            <Button size="sm" variant="success" onClick={handleSaveDetay}>
+              <IconCheck size={14} className="me-1" />
+              Uygula / Kaydet
+            </Button>
+          </div>
         </Modal.Footer>
       </Modal>
 
@@ -8133,6 +8198,56 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         toplamHas={printSnapshot?.toplamHas ?? alisHas}
         odenenTutar={printSnapshot?.odenenTutar ?? totalOdemeTutar}
         kalanTutar={printSnapshot?.kalanTutar ?? farkTL}
+      />
+
+      {/* A4 Teklif & Müşteri Tanı Formu Modalı (Kayıt etmeden çıkartır) */}
+      <DovizTeklifTaniModal
+        pageType="sarraf"
+        show={showTeklifTaniModal}
+        onHide={() => setShowTeklifTaniModal(false)}
+        tip={tip}
+        tarih={tarih}
+        saat={saat}
+        seriNo={seriNo}
+        belgeNo={fisNo || "TEKLİF"}
+        unvan={unvan || detayUnvan}
+        vergiKimlikNo={detayVergiKimlikNo}
+        cariKartId={cariKartId}
+        detayUyruk={""}
+        detayDogumTarihi={detayDogumTarihi}
+        detayDogumYeri={detayDogumYeri}
+        detayBabaAdi={detayBabaAdi}
+        detayAnneAdi={detayAnneAdi}
+        detayMeslek={""}
+        detayTelefon={detayTelefonNo}
+        detayIlce={""}
+        detayIl={""}
+        detayAdres={detayAdres}
+        detayPasaportNo={detayPasaportNo}
+        detayCariTipi={detayKisilikTipi === 1 ? "Firma" : "Şahıs"}
+        detayVergiDairesi={""}
+        lines={lines
+          .filter((l) => (l.urunId > 0 || (l.urunKodu && l.urunKodu.trim() !== "")) && (parseDecimal(l.miktar) > 0 || parseDecimal(l.adet) > 0 || parseDecimal(l.tutar) > 0))
+          .map((l: any) => ({
+            paraKodu: l.urunKodu || l.urunAdi || "SARRAF",
+            paraAdi: l.urunAdi || l.urunKodu,
+            miktar: parseDecimal(l.miktar) > 0 ? parseDecimal(l.miktar) : parseDecimal(l.adet),
+            kur: parseDecimal(l.kur),
+            tutar: parseDecimal(l.tutar),
+          }))}
+        toplamTutar={totalTutar}
+        totalMasraf={0}
+        sonToplam={totalTutar}
+        bsmvTutari={0}
+        totalKmv={0}
+        komisyonTutari={0}
+        giseUsdKuru={1}
+        istatistikKodu={""}
+        gelisNedeni={""}
+        geldigiUlke={""}
+        vezneKod={vezneKod}
+        vezneAd={vezneList.find((v) => v.id === vezneId)?.ad || ""}
+        companyDefinitions={companyDefinitions}
       />
 
       {/* Eksi Bakiye / Fark Onay Modalı */}
