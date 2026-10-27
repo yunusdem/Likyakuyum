@@ -33,31 +33,22 @@ export function cleanPhoneNumber(rawPhone?: string | null): string {
 export function openWhatsAppDirect(message?: string, rawPhone?: string | null) {
   const phone = cleanPhoneNumber(rawPhone);
   const isMobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
-  const textParam = message ? `text=${encodeURIComponent(message)}` : "";
 
-  if (phone) {
-    if (isMobile) {
+  if (isMobile) {
+    // Telefonda doğrudan sohbet seçimine / mesaj gönderimine yönlendir
+    const textParam = message ? `text=${encodeURIComponent(message)}` : "";
+    if (phone) {
       window.location.href = `https://api.whatsapp.com/send?phone=${phone}${textParam ? `&${textParam}` : ""}`;
     } else {
-      // Masaüstünde YENİ SEKME AÇMADAN doğrudan WhatsApp uygulamasını tetikle
-      const a = document.createElement("a");
-      a.href = `whatsapp://send?phone=${phone}${textParam ? `&${textParam}` : ""}`;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => a.remove(), 1000);
+      window.location.href = textParam ? `whatsapp://send?${textParam}` : "whatsapp://send";
     }
   } else {
-    if (isMobile) {
-      // Mobilde doğrudan WhatsApp kişi seçimi ekranı
-      window.location.href = textParam ? `whatsapp://send?${textParam}` : "whatsapp://send";
-    } else {
-      // Bilgisayarda YENİ SEKME AÇMADAN doğrudan WhatsApp uygulamasını tetikle
-      const a = document.createElement("a");
-      a.href = textParam ? `whatsapp://send?${textParam}` : "whatsapp://send";
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => a.remove(), 1000);
-    }
+    // Bilgisayarda: Sohbet seçimi açmasın, yazı yazmasın, doğrudan WhatsApp uygulamasını açsın
+    const a = document.createElement("a");
+    a.href = "whatsapp://";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 1000);
   }
 }
 
@@ -204,15 +195,14 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
     downloadBlob(blob, safeFileName);
   }
 
-  // 3. Doğrudan WhatsApp uygulamasını ve WhatsApp Web'i aç (mesaj hazır doldurulmuş olarak)
+  // 3. Bilgisayarda doğrudan WhatsApp uygulamasını aç (yazı ve sohbet seçimi olmadan)
   openWhatsAppDirect(message, phone);
 
   // 4. Kullanıcıya yönlendirici bildirim göster
   showWhatsAppToast(
-    `<b>${safeFileName}</b> indirildi ve WhatsApp açılıyor.<br/>Mesaj metni hazır aktarıldı. Dilerseniz indirilen PDF'i sohbete sürükleyerek de gönderebilirsiniz.`,
-    "📄 WhatsApp Açılıyor",
-    phone,
-    message
+    `<b>${safeFileName}</b> indirildi ve WhatsApp açıldı.<br/>Sohbete sürükleyip bırakarak PDF'i gönderebilirsiniz.`,
+    "📄 PDF İndirildi",
+    phone
   );
 }
 
@@ -320,23 +310,21 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
     downloadBlob(imgBlob, `${safeName}.png`);
   }
 
-  // 4. Doğrudan WhatsApp uygulamasını ve WhatsApp Web'i aç (mesaj hazır doldurulmuş olarak)
+  // 4. Bilgisayarda doğrudan WhatsApp uygulamasını aç (yazı ve sohbet seçimi olmadan)
   openWhatsAppDirect(message, phone);
 
   // 5. Kullanıcıya yönlendirici bildirim göster
   if (copiedToClipboard) {
     showWhatsAppToast(
-      `WhatsApp uygulaması açılıyor. Sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak fişi görsel olarak anında gönderebilirsiniz. (PDF ayrıca indirildi).`,
+      `WhatsApp açıldı. İlgili sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak fişi anında gönderebilirsiniz. (PDF ayrıca indirildi).`,
       "📋 Fiş Panoya Kopyalandı",
-      phone,
-      message
+      phone
     );
   } else {
     showWhatsAppToast(
-      `WhatsApp açılıyor. Mesaj metni aktarıldı, PDF dosyasını sohbete sürükleyerek gönderebilirsiniz.`,
-      "📄 WhatsApp Açılıyor",
-      phone,
-      message
+      `WhatsApp açıldı. PDF dosyası indirildi, sohbete sürükleyerek gönderebilirsiniz.`,
+      "📄 Dosya İndirildi",
+      phone
     );
   }
 }
