@@ -303,7 +303,8 @@ function saatYaz(v: unknown): string {
 
 export function sarrafFisVerisi(g: SarrafFisGirdisi, firma: FirmaKimlik) {
   const satim = Number(g.tip) === 1;
-  const fisNo = (yazi(g.seriNo) ? `${yazi(g.seriNo)}-` : "") + (yazi(g.belgeNo) || (g.fisId ? String(g.fisId) : ""));
+  const isTeklif = !g.fisId || (g.belgeNo && String(g.belgeNo).toUpperCase().includes("TEKLİF")) || ((g as any).fisNo && String((g as any).fisNo).toUpperCase().includes("TEKLİF"));
+  const fisNo = (yazi(g.seriNo) ? `${yazi(g.seriNo)}-` : "") + (yazi(g.belgeNo) || (g.fisId ? String(g.fisId) : (isTeklif ? "TEKLİF" : "")));
   const satirlar = (Array.isArray(g.satirlar) ? g.satirlar : [])
     .filter(l => sayiOku(l.miktar) > 0 || sayiOku(l.tutar) > 0 || sayiOku(l.adet) > 0 || yazi(l.urunAdi) !== "")
     .map((l, i) => {
@@ -329,8 +330,10 @@ export function sarrafFisVerisi(g: SarrafFisGirdisi, firma: FirmaKimlik) {
   const saat = yazi(g.saat).slice(0, 5);
   return {
     belgeTuru: "SARRAF_FIS" as const, fisId: Number(g.fisId) || 0, satim, tipAdi: satim ? "SATIŞ" : "ALIŞ",
-    baslik: satim ? "SARRAF SATIŞ FİŞİ" : "SARRAF ALIŞ FİŞİ",
+    baslik: satim ? (isTeklif ? "SARRAF SATIŞ FİŞİ (TEKLİF)" : "SARRAF SATIŞ FİŞİ") : (isTeklif ? "SARRAF ALIŞ FİŞİ (TEKLİF)" : "SARRAF ALIŞ FİŞİ"),
     fisNo, tarih, saat, vezne: yazi(g.vezneKod), kasiyer: yazi(g.kullaniciAdi),
+    teklif: isTeklif,
+    imzaVar: !isTeklif,
     firma,
     musteri: {
       unvan: yazi(g.unvan) || "PERAKENDE MÜŞTERİ", kimlikNo: yazi(g.vergiKimlikNo), telefon: yazi(g.detayTelefonNo), adres: yazi(g.detayAdres),

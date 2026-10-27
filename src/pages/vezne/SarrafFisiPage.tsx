@@ -4786,11 +4786,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // Yazdır / Önizleme Modalı Açma (Önizlemeli)
   const openPrintPreview = useCallback(() => {
     const validLines = lines.filter((l) => Number(l.miktar) > 0 || Number(l.adet) > 0 || (l.urunKodu && l.urunKodu.trim() !== ""));
+    const baseBelgeNo = fisNo || (fisId ? String(fisId) : (seriNo ? `${seriNo}-TEKLİF` : "TEKLİF"));
+    const baseSeriNo = seriNo || "";
     setPrintSnapshot({
       fisId: fisId || undefined,
-      fisNo: fisNo || "",
-      seriNo: seriNo,
-      belgeNo: fisNo,
+      fisNo: baseBelgeNo,
+      seriNo: baseSeriNo,
+      belgeNo: baseBelgeNo,
       tip: tip,
       tarih: tarih,
       saat: saat,

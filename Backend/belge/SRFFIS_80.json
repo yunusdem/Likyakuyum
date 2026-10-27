@@ -66,10 +66,10 @@
 
     { "id": "karekod", "ad": "Karekod", "tip": "qr", "x": 84.4, "y": 279, "boyut": 41, "icerik": "{{qr}}" },
 
-    { "id": "imza-cizgi", "tip": "cizgi", "x1": 0, "y1": 326, "x2": 209.77, "y2": 326, "kalinlik": 0.5, "kesikli": true },
-    { "id": "teslim-eden", "tip": "metin", "x": 0, "y": 330, "g": 104, "metin": "Teslim Eden", "boyut": 7.1, "hiza": "center" },
-    { "id": "teslim-alan", "tip": "metin", "x": 105.77, "y": 330, "g": 104, "metin": "Teslim Alan", "boyut": 7.1, "hiza": "center" },
-    { "id": "imza-sol", "tip": "metin", "x": 0, "y": 351, "g": 104, "metin": "İmza", "boyut": 7.1, "hiza": "center" },
-    { "id": "imza-sag", "tip": "metin", "x": 105.77, "y": 351, "g": 104, "metin": "İmza", "boyut": 7.1, "hiza": "center" }
+    { "id": "imza-cizgi", "tip": "cizgi", "kosul": "!{{teklif}}", "daralt": true, "x1": 0, "y1": 326, "x2": 209.77, "y2": 326, "kalinlik": 0.5, "kesikli": true },
+    { "id": "teslim-eden", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 0, "y": 330, "g": 104, "metin": "Teslim Eden", "boyut": 7.1, "hiza": "center" },
+    { "id": "teslim-alan", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 105.77, "y": 330, "g": 104, "metin": "Teslim Alan", "boyut": 7.1, "hiza": "center" },
+    { "id": "imza-sol", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 0, "y": 351, "g": 104, "metin": "İmza", "boyut": 7.1, "hiza": "center" },
+    { "id": "imza-sag", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 105.77, "y": 351, "g": 104, "metin": "İmza", "boyut": 7.1, "hiza": "center" }
   ]
 }

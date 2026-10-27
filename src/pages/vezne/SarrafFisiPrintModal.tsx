@@ -85,7 +85,10 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
   const [yaziciHazir, setYaziciHazir] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const isSatis = Number(tip) === 1;
-  const fisTuruBaslik = isSatis ? "SARRAF SATIŞ FİŞİ" : "SARRAF ALIŞ FİŞİ";
+  const isTeklif = !props.fisId;
+  const fisTuruBaslik = isSatis
+    ? (isTeklif ? "SARRAF SATIŞ FİŞİ (TEKLİF)" : "SARRAF SATIŞ FİŞİ")
+    : (isTeklif ? "SARRAF ALIŞ FİŞİ (TEKLİF)" : "SARRAF ALIŞ FİŞİ");
   const propsRef = useRef(props);
   propsRef.current = props;
 
@@ -285,11 +288,16 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
         <div className="d-flex align-items-center justify-content-between w-100 me-3 flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2">
             <IconReceipt size={20} className="text-primary" />
-            <h6 className="mb-0 fw-bold">
+            <h6 className="mb-0 fw-bold d-flex align-items-center">
               {fisTuruBaslik}
               {toplamFisSayisi > 1 && (
                 <span className="badge bg-primary ms-2 fs-xs px-2 py-0.5">
                   {toplamFisSayisi} Fiş
+                </span>
+              )}
+              {isTeklif && (
+                <span className="badge bg-warning text-dark border border-warning-subtle fw-bold ms-2" style={{ fontSize: "11px" }}>
+                  Teklif (Kayıtsız)
                 </span>
               )}
             </h6>
