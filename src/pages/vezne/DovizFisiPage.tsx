@@ -6257,7 +6257,14 @@ export const DovizFisiPage: React.FC = () => {
                           } else if (e.key === "Enter") {
                             e.preventDefault();
                             e.stopPropagation();
-                            focusCell(0, "kod", "select");
+                            if (isArbitrajActive) {
+                              lastFocusedIstatistikKodRef.current = (istatistikKodu || "").trim();
+                              hasUserTypedIstatistikRef.current = false;
+                              istatistikRef.current?.focus();
+                              istatistikRef.current?.select();
+                            } else {
+                              focusCell(0, "kod", "select");
+                            }
                           }
                         }}
                         className="fw-bold text-uppercase px-2 py-1"
@@ -6523,11 +6530,24 @@ export const DovizFisiPage: React.FC = () => {
                               const prevVal = (lastFocusedIstatistikKodRef.current || "").trim();
 
                               // SADECE BU SENARYODA modal açılmayacak:
-                              // İstatistik kodu bölümü öncesinde dolu ise ve değiştirilmeden enter tuşlanırsa:
+                              // İstatistik kodu bölümü öncesinde dolu ise ve değiştirilmeden enter tuşlanırsa (veya tam eşleşen geçerli kod yazıldıysa):
                               const wasFilledBefore = prevVal !== "";
                               const isUnchanged = wasFilledBefore && val.toLowerCase() === prevVal.toLowerCase() && !hasUserTypedIstatistikRef.current;
 
-                              if (isUnchanged) {
+                              const valLower = val.toLowerCase();
+                              const exactMatch = statisticList.find((s) => {
+                                const fType = Number(s.fisTipi);
+                                const isTypeAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                                if (!isTypeAllowed) return false;
+                                const kod = (s.kod || "").trim().toLowerCase();
+                                const idStr = String(s.id);
+                                return kod === valLower || idStr === valLower;
+                              });
+
+                              if (isUnchanged || (val && exactMatch)) {
+                                if (exactMatch && !isUnchanged) {
+                                  handleSelectIstatistik(exactMatch);
+                                }
                                 isOpeningIstatistikModalRef.current = false;
                                 focusCell(0, "kod", "select");
                                 return;
