@@ -324,16 +324,22 @@ test("XSLT eki SATIS ve IADE'de GİB örneklerindeki sırada", { skip: !ornekVar
   });
 });
 
-test("ICE'ye giden paket: belge Base64'e çevrilip geri açıldığında aynı XML çıkar", async () => {
+test("ICE'ye giden zarf: belge iki kat Base64 (ICE içeriği iki kez çözüyor)", async () => {
   const { toBase64 } = await import("../src/services/ice/ubl/invoiceBuilder.js");
+  const { giderPusulasiBelgeleriXml } = await import("../src/services/ice/ice.giderpusulasi.js");
   const { xml } = buildGiderPusulasiXml(temelGirdi());
-  const paket = toBase64(xml);
+  const zarf = giderPusulasiBelgeleriXml([toBase64(xml), toBase64(xml)]);
 
-  assert.ok(BASE64.test(paket) && paket.length % 4 === 0, "gönderim paketi geçerli Base64 değil");
-  assert.equal(Buffer.from(paket, "base64").toString("utf8"), xml);
-  // Zarftaki kaçışlama Base64'ü bozmaz (escapeXml yalnız & < > " ' değiştirir; Base64'te yok)
-  const { escapeXml } = await import("../src/services/ice/ice.client.js");
-  assert.equal(escapeXml(paket), paket);
+  const icerikler = [...zarf.matchAll(/<base64Binary><earsiv_invoice>([^<]*)<\/earsiv_invoice><\/base64Binary>/g)].map((m) => m[1]);
+  assert.equal(icerikler.length, 2, "her belge ayrı base64Binary içinde olmalı");
+  for (const icerik of icerikler) {
+    assert.ok(BASE64.test(icerik) && icerik.length % 4 === 0, "zarftaki içerik geçerli Base64 değil");
+    // ASMX'in kendi çözdüğü katman: çıkan metin yine Base64 olmalı (ICE bunu ikinci kez çözüyor)
+    const birKat = Buffer.from(icerik, "base64").toString("utf8");
+    assert.ok(BASE64.test(birKat) && !birKat.includes("<"), "bir kez çözülünce XML değil Base64 metni çıkmalı");
+    assert.equal(birKat, toBase64(xml));
+    assert.equal(Buffer.from(birKat, "base64").toString("utf8"), xml, "iki kez çözülünce özgün XML çıkmalı");
+  }
 });
 
 test("GİB iade örneğindeki dayanak tipleri enum ile örtüşüyor", { skip: !ornekVar }, () => {
