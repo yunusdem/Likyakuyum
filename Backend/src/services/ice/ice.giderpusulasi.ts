@@ -1,7 +1,7 @@
 import { escapeXml } from "./ice.client.js";
 import { callWithSession } from "./ice.session.js";
 import { IceConnectionConfig } from "./ice.types.js";
-import { IceGonderimSonucu } from "./ice.efatura.js";
+import { IceGonderimSonucu, getInvoiceHtml, getInvoicePdf } from "./ice.efatura.js";
 import { ApiError } from "../../utils/ApiError.js";
 
 /**
@@ -72,9 +72,37 @@ export interface IceGiderPusulasiCikti {
 }
 
 /**
- * `Get_EGiderPusulasi_HTML_PDF` — gönderilmiş gider pusulasının çıktısı.
+ * Gönderilmiş gider pusulasının çıktısı (PDF / HTML).
+ *
+ * ICE gider pusulasını fatura olarak saklıyor (bkz. `ubl/giderPusulasiBuilder.ts` başı). ICE test
+ * sunucusunda (27.10.2026) `Get_EGiderPusulasi_HTML_PDF` hem gönderilen hem deneme belgesinde, ETTN
+ * küçük ya da büyük harf, BOŞ döndü; `GetInvoice_PDF` geçerli PDF, `GetInvoice_HTML` HTML verdi.
+ * Bu yüzden önce fatura çağrıları; istenen çıktıların hiçbiri gelmezse gider çağrısı yedek olarak denenir.
  */
 export const getGiderPusulasiCikti = async (
+  config: IceConnectionConfig,
+  ettn: string,
+  secenekler: { html?: boolean; pdf?: boolean } = {}
+): Promise<{ html: string | null; pdf: Buffer | null; mesaj: string }> => {
+  let pdf: Buffer | null = null;
+  let html: string | null = null;
+  if (secenekler.pdf) {
+    const b = await getInvoicePdf(config, ettn);
+    if (b.length) {
+      if (b.subarray(0, 5).toString("ascii") !== "%PDF-") throw ApiError.unprocessable("ICE cevabı PDF biçiminde değil.");
+      pdf = b;
+    }
+  }
+  if (secenekler.html) {
+    const h = await getInvoiceHtml(config, ettn);
+    if (h.trim()) html = h;
+  }
+  if (pdf || html || !(secenekler.pdf || secenekler.html)) return { html, pdf, mesaj: "" };
+  return giderCiktisiGiderCagrisiyla(config, ettn, secenekler);
+};
+
+/** `Get_EGiderPusulasi_HTML_PDF` — ICE'nin gider pusulasına özel çıktı çağrısı (şu an boş dönüyor; yedek) */
+const giderCiktisiGiderCagrisiyla = async (
   config: IceConnectionConfig,
   ettn: string,
   secenekler: { html?: boolean; pdf?: boolean; xml?: boolean } = {}
