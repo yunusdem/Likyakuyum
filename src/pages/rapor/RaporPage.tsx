@@ -134,6 +134,7 @@ export const RaporPage: React.FC = () => {
         tanim,
       }) : "";
       await sharePdfToWhatsApp({
+        elementId: "rapor-tablo-karti",
         pdfBlob: blob,
         fileName: `${menu?.ad || "rapor"}.pdf`,
         message: msg,
@@ -244,6 +245,7 @@ export const RaporPage: React.FC = () => {
         tanim,
       }) : "";
       await sharePdfToWhatsApp({
+        elementId: "rapor-tablo-karti",
         pdfBlob: blob,
         fileName: `${menu?.ad || "rapor"}.pdf`,
         message: msg,
@@ -502,9 +504,20 @@ export const RaporPage: React.FC = () => {
 
       <Row className="g-3">
         <Col xs={12}>
-          <Card className="border shadow-sm w-100 bg-white">
+          <Card className="border shadow-sm w-100 bg-white" id="rapor-tablo-karti">
+            <Card.Header className="bg-light py-2 px-3 d-flex justify-content-between align-items-center border-bottom">
+              <span className="fw-bold d-flex align-items-center gap-1 text-dark" style={{ fontSize: "0.92rem" }}>
+                <IconReportAnalytics size={18} className="text-primary" />
+                {menu?.ad || tanim?.ad || "Rapor"}
+              </span>
+              {veri && (
+                <span className="small text-muted">
+                  {veri.toplamKayit.toLocaleString("tr-TR")} Kayıt
+                </span>
+              )}
+            </Card.Header>
             <Card.Body className="p-0">
-              {veri?.filtreOzeti && <div className="px-3 py-2 small text-muted border-bottom text-center">{veri.filtreOzeti}</div>}
+              {veri?.filtreOzeti && <div className="px-3 py-2 small text-muted border-bottom text-center bg-light bg-opacity-50">{veri.filtreOzeti}</div>}
               <div className="table-responsive" style={{ maxHeight: "68vh" }}>
                 <Table hover size="sm" className="mb-0 align-middle" style={{ fontSize: "0.82rem" }}>
                   <thead className="table-light sticky-top"><tr>

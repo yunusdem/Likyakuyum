@@ -142,6 +142,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 }
 
 export interface SharePdfOptions {
+  elementId?: string;
   pdfBlob?: Blob | null;
   pdfUrl?: string | null;
   fileName: string;
@@ -150,13 +151,116 @@ export interface SharePdfOptions {
 }
 
 /**
- * PDF dosyasını doğrudan WhatsApp sohbetine aktarır:
+ * DOM elementini (özellikle scroll/maxHeight içeren tabloları veya fişleri) eksiksiz,
+ * taşma olmadan tam boyutta yüksek çözünürlüklü (2x scale) PNG Blob'a dönüştürür.
+ */
+export async function captureElementToPngBlob(elementOrId: HTMLElement | string): Promise<Blob | null> {
+  const el = typeof elementOrId === "string" ? document.getElementById(elementOrId) : elementOrId;
+  if (!el) return null;
+
+  // Orijinal stilleri sakla
+  const modifiedElements: Array<{
+    target: HTMLElement;
+    maxHeight: string;
+    height: string;
+    overflow: string;
+    overflowX: string;
+    overflowY: string;
+    position: string;
+  }> = [];
+
+  // Tablo veya alt konteynerlerdeki kaydırma (scroll) sınırlamalarını geçici olarak kaldır
+  const scrollContainers = [
+    el,
+    ...Array.from(el.querySelectorAll<HTMLElement>(".table-responsive, [style*='maxHeight'], [style*='max-height'], [style*='overflow']")),
+  ];
+
+  scrollContainers.forEach((target) => {
+    modifiedElements.push({
+      target,
+      maxHeight: target.style.maxHeight,
+      height: target.style.height,
+      overflow: target.style.overflow,
+      overflowX: target.style.overflowX,
+      overflowY: target.style.overflowY,
+      position: target.style.position,
+    });
+    target.style.maxHeight = "none";
+    target.style.height = "auto";
+    target.style.overflow = "visible";
+    target.style.overflowX = "visible";
+    target.style.overflowY = "visible";
+  });
+
+  // Sticky başlıkların html2canvas'ta kaymasını önlemek için geçici olarak static yap
+  const stickyEls = Array.from(el.querySelectorAll<HTMLElement>(".sticky-top"));
+  stickyEls.forEach((s) => {
+    modifiedElements.push({
+      target: s,
+      maxHeight: s.style.maxHeight,
+      height: s.style.height,
+      overflow: s.style.overflow,
+      overflowX: s.style.overflowX,
+      overflowY: s.style.overflowY,
+      position: s.style.position,
+    });
+    s.style.position = "static";
+  });
+
+  // Genişlik ayarı: Tablonun sütunları sığmıyorsa kesilmemesi için
+  const prevWidth = el.style.width;
+  const prevMinWidth = el.style.minWidth;
+  if (el.scrollWidth > el.clientWidth) {
+    el.style.minWidth = `${el.scrollWidth}px`;
+  }
+
+  try {
+    // DOM'un yeni boyutları hesaplaması için kısa bekleme
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    const fullWidth = Math.max(el.scrollWidth, el.offsetWidth, 800);
+    const fullHeight = Math.max(el.scrollHeight, el.offsetHeight, 400);
+
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      width: fullWidth,
+      height: fullHeight,
+      windowWidth: fullWidth + 100,
+      windowHeight: fullHeight + 100,
+    });
+
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  } catch (err) {
+    console.warn("html2canvas yakalama hatası:", err);
+    return null;
+  } finally {
+    // Tüm orijinal stilleri geri yükle
+    el.style.width = prevWidth;
+    el.style.minWidth = prevMinWidth;
+    modifiedElements.forEach(({ target, maxHeight, height, overflow, overflowX, overflowY, position }) => {
+      target.style.maxHeight = maxHeight;
+      target.style.height = height;
+      target.style.overflow = overflow;
+      target.style.overflowX = overflowX;
+      target.style.overflowY = overflowY;
+      target.style.position = position;
+    });
+  }
+}
+
+/**
+ * PDF dosyasını ve/veya rapor tablosunun tam görüntüsünü doğrudan WhatsApp sohbetine aktarır:
  * - Mobilde (Android / iOS): Web Share API ile PDF dosyasını doğrudan WhatsApp'a belgeli/seçili olarak gönderir.
- * - Masaüstünde (Mac / Windows): WhatsApp URL protokolü güvenlik nedeniyle yerel dosya yolunu kabul etmediğinden,
- *   PDF'i indirir, tam biçimli rapor/fiş metnini WhatsApp mesajına otomatik doldurur ve WhatsApp'ı açar.
+ * - Masaüstünde (Mac / Windows):
+ *   1. Rapor tablosunun tam fotoğrafını panoya kopyalar (WhatsApp'ta Cmd+V / Ctrl+V ile anında yapışır).
+ *   2. PDF dosyasını indirir.
+ *   3. WhatsApp uygulamasını açar.
  */
 export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void> {
-  const { fileName, phone, message } = options;
+  const { fileName, phone, message, elementId } = options;
   const safeFileName = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
   const isMobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
 
@@ -189,30 +293,47 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
     }
   }
 
-  // 2. Masaüstünde PDF dosyasını otomatik olarak indir
-  if (blob) {
-    downloadBlob(blob, safeFileName);
+  // 2. Masaüstünde tablonun tam görüntüsünü panoya kopyala
+  const targetId = elementId || "rapor-tablo-karti";
+  const targetEl = document.getElementById(targetId) || document.getElementById("rapor-tablo-alani") || document.querySelector(".rapor-tablo-karti");
+  let imgBlob: Blob | null = null;
+  if (targetEl) {
+    imgBlob = await captureElementToPngBlob(targetEl as HTMLElement);
   }
 
-  // 3. Masaüstünde PDF dosyasını panoya kopyala
-  if (blob && typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
+  let copiedToClipboard = false;
+  if (imgBlob && typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
     try {
-      const item = new ClipboardItem({ "application/pdf": blob });
+      const item = new ClipboardItem({ "image/png": imgBlob });
       await navigator.clipboard.write([item]);
+      copiedToClipboard = true;
     } catch (e) {
-      console.warn("PDF panoya kopyalama:", e);
+      console.warn("Panoya tablo görseli kopyalama hatası:", e);
     }
+  }
+
+  // 3. Masaüstünde PDF dosyasını otomatik olarak indir
+  if (blob) {
+    downloadBlob(blob, safeFileName);
   }
 
   // 4. Bilgisayarda doğrudan WhatsApp uygulamasını aç (yazı ve sohbet seçimi olmadan)
   openWhatsAppDirect(message, phone);
 
   // 5. Kullanıcıya yönlendirici bildirim göster
-  showWhatsAppToast(
-    `<b>${safeFileName}</b> indirildi ve panoya kopyalandı.<br/>WhatsApp açıldı. İlgili sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yapabilir veya dosyayı sohbete sürükleyebilirsiniz.`,
-    "📄 PDF Panoya Kopyalandı",
-    phone
-  );
+  if (copiedToClipboard) {
+    showWhatsAppToast(
+      `WhatsApp açıldı. İlgili sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak rapor tablosunun tam görüntüsünü anında gönderebilirsiniz. (PDF ayrıca indirildi).`,
+      "📋 Rapor Tablosu Panoya Kopyalandı",
+      phone
+    );
+  } else {
+    showWhatsAppToast(
+      `<b>${safeFileName}</b> indirildi.<br/>WhatsApp açıldı. İlgili sohbete dosyayı sürükleyebilirsiniz.`,
+      "📄 PDF İndirildi",
+      phone
+    );
+  }
 }
 
 export interface ShareReceiptOptions {
@@ -270,17 +391,7 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
   const el = document.getElementById(elementId) || document.getElementById("sablonlu-fis-alani") || document.querySelector(".sablonlu-fis-alani");
   let imgBlob: Blob | null = null;
   if (el) {
-    try {
-      const canvas = await html2canvas(el as HTMLElement, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-      imgBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    } catch (err) {
-      console.warn("html2canvas dönüştürme hatası:", err);
-    }
+    imgBlob = await captureElementToPngBlob(el as HTMLElement);
   }
 
   let copiedToClipboard = false;
