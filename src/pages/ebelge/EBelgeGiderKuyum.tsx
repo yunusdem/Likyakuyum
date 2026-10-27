@@ -6,22 +6,30 @@ import { EbelgeFaturaNoOnerisi, EbelgeGiderIstegi, EbelgeGiderOzet, ebelgeServic
 import { useYerelTaslak } from "./useYerelTaslak";
 import GibSorguButonu, { gibSorgula, useGibOtomatikSorgu } from "../../components/common/GibSorguButonu";
 import { GibDegerleri, GibDoldurmaSonucu } from "../../utils/gibSorgu";
+import { SarrafFisService } from "../../services/sarrafFisService";
+import { KurService } from "../../services/kurService";
 import {
   IADE_KDV_ORANLARI,
   KUYUM_AYARLARI,
   KUYUM_BIRIMLERI,
   KUYUM_URUN_ONERILERI,
+  KuyumFiyatKaynagi,
   KuyumForm,
+  KuyumKur,
   KuyumSatir,
   STOPAJ_SECENEKLERI,
   birimFiyatHesapla,
   bosKuyumSatir,
+  fiyatYenile,
   hasGram,
   kuyumFormHatalari,
   kuyumGiderIstegi,
   kuyumSatirAdi,
   kuyumToplam,
+  kuyumUrunleri,
   tutarHesapla,
+  urunBul,
+  urunUygula,
 } from "./giderKuyum";
 import "./ebelgeForm.css";
 
@@ -67,6 +75,36 @@ export default function EBelgeGiderKuyum({ turSecici }: { turSecici?: React.Reac
   const setOtoNo = (v: boolean) => { otoNoRef.current = v; };
   const [gibMesaji, setGibMesaji] = useState<GibDoldurmaSonucu | null>(null);
   useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf); }, [pdf]);
+
+  // Ürün listesi + fiyat tablosu (Sarraf fişiyle aynı kaynak): ürün seçilince birim fiyat buradan gelir.
+  // Anlık fiyat listesi öncelikli, değeri olmayan alanlar günlük listeden. Alınamazsa fiyat elle girilir.
+  const [kaynak, setKaynak] = useState<KuyumFiyatKaynagi | null>(null);
+  useEffect(() => {
+    let iptal = false;
+    Promise.all([
+      SarrafFisService.getUrunler().catch(() => []),
+      KurService.getKurTablosu({ tur: 1 }).catch(() => null),
+      KurService.getKurTablosu({ tur: 0 }).catch(() => null),
+    ]).then(([urunler, gunluk, anlik]) => {
+      if (iptal) return;
+      const kurlar = new Map<string, KuyumKur>();
+      const anahtar = (k: KuyumKur) => (k.kod ? k.kod.toLocaleUpperCase("tr-TR").trim() : k.paraId ? `ID_${k.paraId}` : (k.ad || "").toLocaleUpperCase("tr-TR").trim());
+      for (const k of gunluk?.satirlar || []) if (anahtar(k)) kurlar.set(anahtar(k), k);
+      for (const k of anlik?.satirlar || []) {
+        const a = anahtar(k);
+        if (!a) continue;
+        const e = kurlar.get(a);
+        kurlar.set(a, {
+          ...e, ...k,
+          efektifAlis: Number(k.efektifAlis) > 0 ? k.efektifAlis : e?.efektifAlis ?? null,
+          dovizAlis: Number(k.dovizAlis) > 0 ? k.dovizAlis : e?.dovizAlis ?? null,
+        });
+      }
+      setKaynak({ urunler, kurlar: [...kurlar.values()] });
+    });
+    return () => { iptal = true; };
+  }, []);
+  const urunOnerileri = [...new Set([...(kaynak ? kuyumUrunleri(kaynak.urunler).map((u) => u.ad) : []), ...KUYUM_URUN_ONERILERI])];
 
   const degistir = (patch: Partial<KuyumForm>) => {
     setForm((o) => ({ ...o, ...patch }));
@@ -311,7 +349,7 @@ export default function EBelgeGiderKuyum({ turSecici }: { turSecici?: React.Reac
         </Card.Body></Card>
 
         <Card><Card.Body>
-          <datalist id="kuyum-urunler">{KUYUM_URUN_ONERILERI.map((u) => <option key={u} value={u} />)}</datalist>
+          <datalist id="kuyum-urunler">{urunOnerileri.map((u) => <option key={u} value={u} />)}</datalist>
           <Table responsive size="sm" className="align-middle">
             <thead>
               <tr><th>Ürün</th><th>Ayar</th><th>Birim</th><th>Miktar</th><th>Birim fiyat (TRY)</th><th>Tutar (TRY)</th><th /></tr>
@@ -323,17 +361,27 @@ export default function EBelgeGiderKuyum({ turSecici }: { turSecici?: React.Reac
                   <tr key={i}>
                     <td style={{ minWidth: 180 }}>
                       <Form.Control size="sm" list="kuyum-urunler" value={s.urun} aria-label={`${i + 1}. satır ürün`}
-                        onChange={(e) => satirDegistir(i, { ...s, urun: e.target.value })} />
+                        onChange={(e) => {
+                          // Listeden ürün seçildiyse ad / birim / ayar / milyem / fiyat üründen; değilse ayara göre has kurundan
+                          const u = kaynak ? urunBul(e.target.value, kaynak) : undefined;
+                          satirDegistir(i, u && kaynak
+                            ? urunUygula({ ...s, urun: e.target.value }, u, kaynak)
+                            : fiyatYenile({ ...s, urun: e.target.value, paraId: undefined, milyem: undefined }, kaynak));
+                        }} />
                       {s.urun.trim() && <div className="small text-secondary mt-1">{kuyumSatirAdi(s)}</div>}
                     </td>
                     <td style={{ minWidth: 110 }}>
-                      <Form.Select size="sm" value={s.ayar} aria-label={`${i + 1}. satır ayar`} onChange={(e) => satirDegistir(i, { ...s, ayar: e.target.value })}>
+                      <Form.Select size="sm" value={s.ayar} aria-label={`${i + 1}. satır ayar`}
+                        onChange={(e) => satirDegistir(i, fiyatYenile({ ...s, ayar: e.target.value, milyem: undefined }, kaynak))}>
                         {KUYUM_AYARLARI.map((a) => <option key={a.kod} value={a.kod}>{a.ad}{a.milyem ? ` (${a.milyem})` : ""}</option>)}
                       </Form.Select>
+                      {s.milyem && s.milyem !== KUYUM_AYARLARI.find((a) => a.kod === s.ayar)?.milyem && (
+                        <div className="small text-secondary mt-1">Alış milyemi {s.milyem}</div>
+                      )}
                     </td>
                     <td style={{ minWidth: 90 }}>
                       <Form.Select size="sm" value={s.birim} aria-label={`${i + 1}. satır birim`}
-                        onChange={(e) => satirDegistir(i, { ...s, birim: e.target.value as KuyumSatir["birim"] })}>
+                        onChange={(e) => satirDegistir(i, fiyatYenile({ ...s, birim: e.target.value as KuyumSatir["birim"] }, kaynak))}>
                         {KUYUM_BIRIMLERI.map((b) => <option key={b.kod} value={b.kod}>{b.ad}</option>)}
                       </Form.Select>
                     </td>
@@ -342,13 +390,20 @@ export default function EBelgeGiderKuyum({ turSecici }: { turSecici?: React.Reac
                         onChange={(e) => satirDegistir(i, tutarHesapla({ ...s, miktar: sayi(e.target.value) }))} />
                       {has !== null && <div className="small text-secondary mt-1">Has {gramYaz(has)} gr</div>}
                     </td>
-                    <td style={{ minWidth: 120 }}>
-                      <Form.Control size="sm" type="number" step="any" min={0} value={s.birimFiyat || ""} aria-label={`${i + 1}. satır birim fiyat`}
-                        onChange={(e) => satirDegistir(i, tutarHesapla({ ...s, birimFiyat: sayi(e.target.value) }))} />
+                    <td style={{ minWidth: 140 }}>
+                      <div className="d-flex gap-1">
+                        <Form.Control size="sm" type="number" step="any" min={0} value={s.birimFiyat || ""} aria-label={`${i + 1}. satır birim fiyat`}
+                          onChange={(e) => satirDegistir(i, tutarHesapla({ ...s, birimFiyat: sayi(e.target.value), fiyatElle: true }))} />
+                        <Button size="sm" variant="outline-secondary" title="Güncel alış fiyatını yeniden al" disabled={!kaynak}
+                          onClick={() => satirDegistir(i, fiyatYenile(s, kaynak, true))}>↻</Button>
+                      </div>
+                      {s.birimFiyat > 0 && (
+                        <div className="small text-secondary mt-1">{s.fiyatElle ? "Elle girildi" : "Güncel alış fiyatı"}</div>
+                      )}
                     </td>
                     <td style={{ minWidth: 120 }}>
                       <Form.Control size="sm" type="number" step="any" min={0} value={s.tutar || ""} aria-label={`${i + 1}. satır tutar`}
-                        onChange={(e) => satirDegistir(i, birimFiyatHesapla({ ...s, tutar: sayi(e.target.value) }))} />
+                        onChange={(e) => satirDegistir(i, birimFiyatHesapla({ ...s, tutar: sayi(e.target.value), fiyatElle: true }))} />
                     </td>
                     <td>
                       <Button size="sm" variant="outline-danger" disabled={form.satirlar.length === 1}

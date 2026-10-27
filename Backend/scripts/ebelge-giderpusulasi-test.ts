@@ -632,6 +632,65 @@ test("kuyum formu: zorunlu alanlar (adres, ad soyad, belge no, satır)", async (
   assert.ok(iade.some((m: string) => /dayanağının belge numarası/.test(m)));
 });
 
+/* ---------------------------------------------------------------- Kuyum formu: üründen fiyat (Sarraf fişi kuralı) */
+
+const fiyatKaynagi = {
+  urunler: [
+    { paraId: 10, kod: "B22", ad: "22 AYAR BİLEZİK", urunTipi: 1, birim: 1, alisMilyem: 0.912 },
+    { paraId: 11, kod: "CEY", ad: "ÇEYREK ALTIN", urunTipi: 3, birim: 2, gramaj: 1.75 },
+    { paraId: 12, kod: "GUM", ad: "GÜMÜŞ KOLYE", urunTipi: 2, birim: 1, alisMilyem: 0.925 },
+    { paraId: 13, kod: "USD", ad: "AMERİKAN DOLARI", urunTipi: 0 },
+    { paraId: 14, kod: "GRA", ad: "GRAM ALTIN", urunTipi: 1, birim: 1, gramaj: 1, alisMilyem: 0.995 },
+  ],
+  kurlar: [
+    { kod: "HAS", ad: "HAS ALTIN", efektifAlis: 4000, dovizAlis: 3990 },
+    { kod: "GUMUS", ad: "HAS GÜMÜŞ", efektifAlis: null, dovizAlis: 50 },
+    { paraId: 11, kod: "CEY", ad: "ÇEYREK ALTIN", efektifAlis: 6500, dovizAlis: 6400 },
+    { paraId: 13, kod: "USD", ad: "AMERİKAN DOLARI", efektifAlis: 41.5 },
+  ],
+};
+
+test("kuyum formu: ürün seçilince birim, ayar, milyem ve alış fiyatı gelir", async () => {
+  const k = await import("../../src/pages/ebelge/giderKuyum.js");
+  const bos = k.bosKuyumSatir();
+  // Altın (gram): has alış 4000 × alış milyemi 0,912 = 3648; ayar en yakın 22; ürün adında ayar var, tekrar yazılmaz
+  const bil = k.urunUygula({ ...bos, miktar: 10 }, fiyatKaynagi.urunler[0], fiyatKaynagi);
+  assert.deepEqual([bil.urun, bil.birim, bil.ayar, bil.milyem, bil.birimFiyat, bil.tutar, bil.fiyatElle], ["22 AYAR BİLEZİK", "GRM", "22", 912, 3648, 36480, false]);
+  assert.equal(k.kuyumSatirAdi(bil), "22 AYAR BİLEZİK (Milyem 912, Has 9,120 gr)");
+  // Ziynet (adet): ürünün kendi efektif alışı, miktar boşsa 1
+  const cey = k.urunUygula(bos, fiyatKaynagi.urunler[1], fiyatKaynagi);
+  assert.deepEqual([cey.birim, cey.miktar, cey.birimFiyat, cey.tutar, cey.milyem], ["C62", 1, 6500, 6500, undefined]);
+  // Gümüş: efektif alış yok → döviz alış 50 × 0,925
+  const gum = k.urunUygula({ ...bos, miktar: 20 }, fiyatKaynagi.urunler[2], fiyatKaynagi);
+  assert.deepEqual([gum.ayar, gum.birimFiyat, gum.tutar], ["GUMUS", 46.25, 925]);
+  // Gramajlı ürün: miktar boşsa gramaj (1 gr), fiyat 4000 × 0,995
+  const gra = k.urunUygula(bos, fiyatKaynagi.urunler[4], fiyatKaynagi);
+  assert.deepEqual([gra.miktar, gra.birimFiyat, gra.ayar], [1, 3980, "24"]);
+  // Para (döviz) kuyum ürün listesinde yok
+  assert.ok(!k.kuyumUrunleri(fiyatKaynagi.urunler as any).some((u: any) => u.kod === "USD"));
+  assert.equal(k.urunBul("amerikan dolari", fiyatKaynagi as any), undefined);
+  assert.equal(k.urunBul("22 ayar bilezik", fiyatKaynagi as any)?.paraId, 10, "büyük/küçük harf ve Türkçe karakter duyarsız");
+});
+
+test("kuyum formu: listede olmayan ürün ayara göre has kurundan; elle yazılan fiyat korunur, ↻ yeniden alır", async () => {
+  const k = await import("../../src/pages/ebelge/giderKuyum.js");
+  const serbest = k.fiyatYenile({ ...k.bosKuyumSatir(), urun: "Bilezik", ayar: "14", miktar: 10 }, fiyatKaynagi as any);
+  assert.deepEqual([serbest.birimFiyat, serbest.tutar], [2340, 23400]); // 4000 × 0,585
+  // Kullanıcı fiyatı elle değiştirdi: ayar değişse de üzerine yazılmaz
+  const elle = { ...serbest, birimFiyat: 2500, tutar: 25000, fiyatElle: true };
+  assert.equal(k.fiyatYenile({ ...elle, ayar: "22" }, fiyatKaynagi as any).birimFiyat, 2500);
+  // ↻ (zorla): güncel fiyat yeniden alınır
+  const yeni = k.fiyatYenile({ ...elle, ayar: "22" }, fiyatKaynagi as any, true);
+  assert.deepEqual([yeni.birimFiyat, yeni.tutar, yeni.fiyatElle], [3664, 36640, false]);
+  // Kaynak yoksa (fiyat alınamadı) satır değişmez; "Diğer" ayarda fiyat hesaplanmaz
+  assert.equal(k.fiyatYenile(serbest, null).birimFiyat, 2340);
+  assert.equal(k.otomatikBirimFiyat({ ...serbest, ayar: "DIGER", milyem: undefined }, fiyatKaynagi as any), null);
+  // Milyem biçimleri ve en yakın ayar
+  assert.deepEqual([k.milyemBin(0.916), k.milyemBin(91.6), k.milyemBin(916), k.milyemBin(0)], [916, 916, 916, null]);
+  assert.deepEqual([k.ayarMilyemden(912), k.ayarMilyemden(750), k.ayarMilyemden(600), k.ayarMilyemden(null)], ["22", "18", "14", "DIGER"]);
+  assert.equal(k.ayarMilyemden(500), "DIGER");
+});
+
 test("kuyum formu → sunucu: şemadan geçer, ekrandaki toplam belgeyle birebir aynı", async () => {
   const k = await import("../../src/pages/ebelge/giderKuyum.js");
   const { ebelgeGiderPusulasiSchema } = await import("../src/schemas/ebelge.schema.js");

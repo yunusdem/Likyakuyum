@@ -60,6 +60,12 @@ export interface KuyumSatir {
   birimFiyat: number;
   /** Satır tutarı — belgenin esası */
   tutar: number;
+  /** Ürün listesinden seçildiyse ürünün kimliği (fiyatı ondan gelir) */
+  paraId?: number;
+  /** Ürünün alış milyemi (binde); ayarın milyemi yerine kullanılır, ayar elle değişince silinir */
+  milyem?: number;
+  /** Birim fiyat ya da tutar elle yazıldı: otomatik fiyat üzerine yazmaz (↻ ile yeniden alınır) */
+  fiyatElle?: boolean;
 }
 
 export interface KuyumSatici {
@@ -99,22 +105,152 @@ export const bosKuyumSatir = (): KuyumSatir => ({ urun: "", ayar: "22", birim: "
 
 export const ayarBul = (kod: string): KuyumAyar | undefined => KUYUM_AYARLARI.find((a) => a.kod === kod);
 
+/** Satırın milyemi (binde): üründen gelen alış milyemi, yoksa ayarınki */
+export const satirMilyemi = (s: Pick<KuyumSatir, "ayar" | "milyem">): number | null =>
+  s.milyem && s.milyem > 0 ? s.milyem : ayarBul(s.ayar)?.milyem ?? null;
+
 /** Has gram: yalnız gramla girilen ve milyemi bilinen satırda */
 export const hasGram = (s: KuyumSatir): number | null => {
-  const a = ayarBul(s.ayar);
-  if (!a?.milyem || s.birim !== "GRM" || !(s.miktar > 0)) return null;
-  return yuvarla((s.miktar * a.milyem) / 1000, 3);
+  const m = satirMilyemi(s);
+  if (!m || s.birim !== "GRM" || !(s.miktar > 0)) return null;
+  return yuvarla((s.miktar * m) / 1000, 3);
 };
 
-/** Belgede görünen satır adı: "BİLEZİK 22 AYAR (Milyem 916, Has 11,450 gr)" */
+/** Belgede görünen satır adı: "BİLEZİK 22 AYAR (Milyem 916, Has 11,450 gr)"; ürün adında ayar geçiyorsa tekrar yazılmaz */
 export const kuyumSatirAdi = (s: KuyumSatir): string => {
   const a = ayarBul(s.ayar);
+  const urun = trBuyuk(s.urun);
   const ayarAdi = a && a.kod !== "DIGER" ? trBuyuk(a.ad) : "";
   const ek: string[] = [];
-  if (a?.milyem) ek.push(`Milyem ${a.milyem}`);
+  const m = satirMilyemi(s);
+  if (m) ek.push(`Milyem ${m}`);
   const has = hasGram(s);
   if (has !== null) ek.push(`Has ${sayiYaz(has, 3)} gr`);
-  return [trBuyuk(s.urun), ayarAdi].filter(Boolean).join(" ") + (ek.length ? ` (${ek.join(", ")})` : "");
+  const ayarYaz = ayarAdi && !urun.includes(ayarAdi) ? ayarAdi : "";
+  return [urun, ayarYaz].filter(Boolean).join(" ") + (ek.length ? ` (${ek.join(", ")})` : "");
+};
+
+/* ==========================================================================
+   Ürün ve fiyat (Sarraf fişindeki kuralın aynısı): ürün listesi (/para) + fiyat tablosu (anlık, yoksa günlük)
+   - Ziynet / para (adetle): ürünün kendi alış fiyatı (efektif alış, yoksa döviz alış)
+   - Altın (gramla): has altın alış kuru × alış milyemi;  Gümüş: has gümüş alış kuru × milyem
+   ========================================================================== */
+
+export interface KuyumUrun {
+  paraId: number;
+  kod: string;
+  ad: string;
+  /** 0 para, 1 altın, 2 gümüş, 3 ziynet */
+  urunTipi?: number;
+  /** 1 gram */
+  birim?: number;
+  gramaj?: number;
+  /** Alış milyemi / has katsayısı (kesir ya da binde) */
+  alisMilyem?: number;
+}
+
+export interface KuyumKur {
+  paraId?: number | null;
+  kod?: string | null;
+  ad?: string | null;
+  efektifAlis?: number | null;
+  dovizAlis?: number | null;
+}
+
+export interface KuyumFiyatKaynagi {
+  urunler: KuyumUrun[];
+  kurlar: KuyumKur[];
+}
+
+const esitTr = (a?: string | null, b?: string | null) => !!a && !!b && trBuyuk(a) === trBuyuk(b);
+const pozitif = (v: unknown) => (Number(v) > 0 ? Number(v) : 0);
+const alisKuru = (k?: KuyumKur) => (k ? pozitif(k.efektifAlis) || pozitif(k.dovizAlis) : 0);
+
+/** Binde milyem: 0,916 → 916; 91,6 (yüzde) → 916; 916 → 916 */
+export const milyemBin = (v: unknown): number | null => {
+  const n = Number(v);
+  if (!(n > 0)) return null;
+  return Math.round(n <= 1 ? n * 1000 : n <= 100 ? n * 10 : n);
+};
+
+/** Milyeme en yakın ayar (±15 binde); bulunamazsa "DIGER" */
+export const ayarMilyemden = (milyem: number | null, gumus = false): string => {
+  if (gumus) return "GUMUS";
+  if (!milyem) return "DIGER";
+  let en: KuyumAyar | null = null;
+  for (const a of KUYUM_AYARLARI) {
+    if (!a.milyem || a.kod === "GUMUS") continue;
+    if (!en || Math.abs(a.milyem - milyem) < Math.abs((en.milyem || 0) - milyem)) en = a;
+  }
+  return en && Math.abs((en.milyem || 0) - milyem) <= 15 ? en.kod : "DIGER";
+};
+
+const ZIYNET_ONEKLERI = ["ÇEYREK", "CEYREK", "YARIM", "TAM ALTIN", "ATA", "CUMHURİYET", "CUMHURIYET", "REŞAT", "RESAT", "GREMSE", "ZİYNET", "ZIYNET", "BEŞLİ", "BESLI"];
+/** Ürün tanımındaki tip esastır (3 ziynet); tip yoksa addan (Sarraf fişindeki isZiynetProduct ile aynı) */
+export const ziynetMi = (u: Pick<KuyumUrun, "urunTipi" | "ad" | "kod">): boolean => {
+  if (u.urunTipi !== undefined && u.urunTipi !== null && Number.isFinite(Number(u.urunTipi))) return Number(u.urunTipi) === 3;
+  const ad = trBuyuk(u.ad);
+  return ZIYNET_ONEKLERI.some((o) => ad.startsWith(o));
+};
+
+/** Kuyum gider formunda seçilebilecek ürünler: para (döviz / TL) hariç */
+export const kuyumUrunleri = (urunler: KuyumUrun[]): KuyumUrun[] =>
+  urunler.filter((u) => Number(u.urunTipi) !== 0 && !["TL", "TRY", "TRL"].includes(trBuyuk(u.kod)) && trBuyuk(u.ad));
+
+export const urunBul = (yazi: string, kaynak: KuyumFiyatKaynagi): KuyumUrun | undefined =>
+  yazi.trim() ? kuyumUrunleri(kaynak.urunler).find((u) => esitTr(u.ad, yazi) || esitTr(u.kod, yazi)) : undefined;
+
+const kurBul = (kurlar: KuyumKur[], u: { paraId?: number; kod?: string; ad?: string }) =>
+  kurlar.find((k) => (u.paraId && k.paraId === u.paraId) || esitTr(k.kod, u.kod) || esitTr(k.ad, u.ad));
+
+export const hasAltinAlisKuru = (kurlar: KuyumKur[]): number =>
+  alisKuru(kurlar.find((k) => ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes(trBuyuk(k.kod)) || ["HAS ALTIN", "HAS"].includes(trBuyuk(k.ad))));
+
+export const hasGumusAlisKuru = (kurlar: KuyumKur[]): number =>
+  alisKuru(kurlar.find((k) => ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS"].includes(trBuyuk(k.kod)) || ["HAS GÜMÜŞ", "GÜMÜŞ", "GUMUS"].includes(trBuyuk(k.ad))));
+
+/** Satırın otomatik birim fiyatı; hesaplanamazsa null (fiyat elle girilir) */
+export const otomatikBirimFiyat = (s: KuyumSatir, kaynak: KuyumFiyatKaynagi): number | null => {
+  const urun = s.paraId ? kaynak.urunler.find((u) => u.paraId === s.paraId) : urunBul(s.urun, kaynak);
+  // Ziynet / adetli ürün: ürünün kendi alış fiyatı
+  if (urun && (ziynetMi(urun) || s.birim === "C62")) {
+    const f = alisKuru(kurBul(kaynak.kurlar, urun));
+    if (f > 0) return yuvarla(f, 4);
+    if (ziynetMi(urun)) return null;
+  }
+  if (s.birim !== "GRM") return null;
+  const m = satirMilyemi(s);
+  if (!m) return null;
+  const has = s.ayar === "GUMUS" || Number(urun?.urunTipi) === 2 ? hasGumusAlisKuru(kaynak.kurlar) : hasAltinAlisKuru(kaynak.kurlar);
+  return has > 0 ? yuvarla((has * m) / 1000, 4) : null;
+};
+
+/** Fiyatı (elle yazılmadıysa) otomatik olandan doldurur, tutarı yeniden hesaplar */
+export const fiyatYenile = (s: KuyumSatir, kaynak: KuyumFiyatKaynagi | null, zorla = false): KuyumSatir => {
+  if (!kaynak || (s.fiyatElle && !zorla)) return s;
+  const f = otomatikBirimFiyat(s, kaynak);
+  if (f === null) return zorla ? { ...s, fiyatElle: false } : s;
+  return { ...s, birimFiyat: f, tutar: yuvarla(s.miktar * f), fiyatElle: false };
+};
+
+/** Ürün listesinden seçilince: ad, birim, ayar, alış milyemi, (gramajlı üründe) miktar ve fiyat */
+export const urunUygula = (s: KuyumSatir, urun: KuyumUrun, kaynak: KuyumFiyatKaynagi): KuyumSatir => {
+  const ziynet = ziynetMi(urun);
+  const gumus = Number(urun.urunTipi) === 2;
+  const milyem = ziynet ? null : milyemBin(urun.alisMilyem);
+  const birim: KuyumBirim = ziynet ? "C62" : "GRM";
+  const miktar = s.miktar > 0 ? s.miktar : birim === "C62" ? 1 : pozitif(urun.gramaj);
+  const yeni: KuyumSatir = {
+    ...s,
+    urun: urun.ad,
+    paraId: urun.paraId,
+    birim,
+    ayar: ziynet ? (s.ayar || "22") : ayarMilyemden(milyem, gumus),
+    milyem: milyem ?? undefined,
+    miktar,
+    fiyatElle: false,
+  };
+  return fiyatYenile(yeni, kaynak, true);
 };
 
 /** Miktar ya da birim fiyat değişince tutar; tutar değişince birim fiyat (tutar esastır) */
