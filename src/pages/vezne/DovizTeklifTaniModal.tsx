@@ -178,6 +178,42 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
 
+  // Müşteri Tanı Formu alanlarının sıfırlanması için key ve düzenleme yardımcıları
+  const [taniFormResetKey, setTaniFormResetKey] = useState<number>(0);
+
+  useEffect(() => {
+    if (show) {
+      setTaniFormResetKey((prev) => prev + 1);
+    }
+  }, [show]);
+
+  const handleTaniCellKeyDown = (e: React.KeyboardEvent<HTMLTableCellElement>, allowMultiline = false) => {
+    if (e.key === "Enter" && !allowMultiline) {
+      e.preventDefault();
+      const cells = Array.from(document.querySelectorAll<HTMLTableCellElement>(".tani-editable-cell"));
+      const idx = cells.indexOf(e.currentTarget);
+      if (idx >= 0 && idx < cells.length - 1) {
+        cells[idx + 1].focus();
+      }
+    }
+  };
+
+  const handleTaniCellPaste = (e: React.ClipboardEvent<HTMLTableCellElement>) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    if (document.queryCommandSupported("insertText")) {
+      document.execCommand("insertText", false, text);
+    } else {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(document.createTextNode(text));
+        range.collapse(false);
+      }
+    }
+  };
+
   // Firma tanımları prop gelmediyse veya geciktiyse kendisi servis üzerinden çeker
   const [internalCompDef, setInternalCompDef] = useState<TodvzTanimDto | null>(null);
 
@@ -503,6 +539,11 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           }
           table, th, td {
             border: 1px solid #000000 !important;
+          }
+          .tani-editable-cell {
+            outline: none !important;
+            box-shadow: none !important;
+            background-color: transparent !important;
           }
         </style>
       </head>
@@ -945,82 +986,229 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                   marginBottom: "9px",
                 }}
               >
-                <tbody>
+                <tbody key={taniFormResetKey}>
                   <tr>
                     <td style={{ width: "210px", fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Adı ve soyadı
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px", fontWeight: "500", textTransform: "uppercase" }}>
-                      {cleanValue(unvan)}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        fontWeight: "500",
+                        textTransform: "uppercase",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Doğum tarihi
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px" }}>
-                      {formatDateTr(detayDogumTarihi)}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Doğum yeri
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px", textTransform: "uppercase" }}>
-                      {cleanValue(detayDogumYeri)}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        textTransform: "uppercase",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       T.C. kimlik numarası
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px" }}>
-                      {cleanValue(vergiKimlikNo)}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Kimlik türü / belge no
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px" }}>
-                      {kimlikTuruBelgeNo}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Uyruğu
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px", textTransform: "uppercase" }}>
-                      {cleanValue(detayUyruk) || (cleanValue(vergiKimlikNo) ? "TÜRKİYE" : "")}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        textTransform: "uppercase",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Adresi
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px", textTransform: "uppercase" }}>
-                      {cleanValue(musteriAdres)}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, true)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        textTransform: "uppercase",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr style={{ height: "13px" }}>
                     <td style={{ border: "1px solid #000", padding: "1px 6px" }}></td>
-                    <td style={{ border: "1px solid #000", padding: "1px 6px" }}></td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "1px 6px",
+                        height: "13px",
+                        minHeight: "13px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Mesleği
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px", textTransform: "uppercase" }}>
-                      {cleanValue(detayMeslek)}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        textTransform: "uppercase",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Telefonu
                     </td>
-                    <td style={{ border: "1px solid #000", padding: "2px 6px" }}>
-                      {cleanValue(detayTelefon)}
-                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    ></td>
                   </tr>
                 </tbody>
               </table>
@@ -1147,10 +1335,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                   </div>
                 </div>
 
-                {/* SAĞ SÜTUN: DÖVİZ İŞLEM FİŞİ */}
+                {/* SAĞ SÜTUN: DÖVİZ / SARRAF İŞLEM FİŞİ */}
                 <div style={{ width: "53%", display: "flex", flexDirection: "column" }}>
                   <div style={{ fontWeight: "bold", fontSize: "10.5px", textTransform: "uppercase", marginBottom: "5px" }}>
-                    DÖVİZ İŞLEM FİŞİ
+                    {pageType === "sarraf" ? "SARRAF İŞLEM FİŞİ" : "DÖVİZ İŞLEM FİŞİ"}
                   </div>
 
                   <div
@@ -1435,9 +1623,26 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           </div>
         </Modal.Body>
 
-        {/* Yazdırma Medyası Stilleri */}
+        {/* Yazdırma ve Düzenleme Stilleri */}
         <style>{`
+          .tani-editable-cell {
+            outline: none;
+            cursor: text;
+            transition: background-color 0.15s ease;
+          }
+          .tani-editable-cell:hover {
+            background-color: #f1f5f9;
+          }
+          .tani-editable-cell:focus {
+            background-color: #ffffff;
+            box-shadow: inset 0 0 0 1.5px #2563eb !important;
+          }
           @media print {
+            .tani-editable-cell {
+              outline: none !important;
+              box-shadow: none !important;
+              background-color: transparent !important;
+            }
             body * {
               visibility: hidden !important;
             }
