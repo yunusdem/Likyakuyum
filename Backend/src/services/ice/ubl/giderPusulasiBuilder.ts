@@ -170,6 +170,27 @@ const XSLT_YOLU = path.resolve(
 );
 let xsltBase64: string | null = null;
 
+/**
+ * GİB şablonu belgeyi `CreditNote` adlarıyla arar (`//n1:CreditNote`, `cac:CreditNoteLine` …). ICE'ye
+ * `Invoice` gönderdiğimiz için (bkz. dosya başı) şablon hiçbir değeri bulamıyor, ICE'nin PDF'i boş
+ * çıkıyordu (27.10.2026). Belgeye uygulanan ad değişikliklerinin aynısı şablona da uygulanır; GİB dosyası
+ * diskte değişmeden kalır. Şablonda başka bir `Credit…` kalırsa (yeni GİB sürümü) gönderim durur.
+ */
+export const xsltFaturaKokuneUyarla = (xslt: string): string => {
+  const uyarlanmis = xslt
+    .replace(/urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2/g, "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2")
+    .replace(/n1:CreditNote(?![A-Za-z])/g, "n1:Invoice")
+    .replace(/cac:CreditNoteLine/g, "cac:InvoiceLine")
+    .replace(/cbc:CreditNoteTypeCode/g, "cbc:InvoiceTypeCode")
+    .replace(/cbc:CreditedQuantity/g, "cbc:InvoicedQuantity");
+  if (/Credit(Note|ed)/.test(uyarlanmis)) {
+    throw ApiError.internal(
+      "Gider pusulası görünüm şablonunda fatura biçimine uyarlanamayan bir alan kaldı; belge gönderilmedi."
+    );
+  }
+  return uyarlanmis;
+};
+
 export const giderPusulasiXsltBase64 = (): string => {
   if (xsltBase64) return xsltBase64;
   let icerik: Buffer;
@@ -183,7 +204,7 @@ export const giderPusulasiXsltBase64 = (): string => {
       "Gider pusulası görünüm şablonu (Backend/belge/xslt/giderPusulasi.xslt) sunucuda bulunamadı; belge gönderilmedi."
     );
   }
-  xsltBase64 = icerik.toString("base64");
+  xsltBase64 = Buffer.from(xsltFaturaKokuneUyarla(icerik.toString("utf8")), "utf8").toString("base64");
   return xsltBase64;
 };
 

@@ -17,6 +17,7 @@ import {
   buildGiderPusulasiXml,
   hesaplaGiderPusulasi,
   IADE_BELGE_TIPLERI,
+  xsltFaturaKokuneUyarla,
   type GiderPusulasiGirdi,
 } from "../src/services/ice/ubl/giderPusulasiBuilder.js";
 
@@ -299,7 +300,7 @@ test("XSLT eki GİB örneğindeki biçimde yazılır", () => {
   assert.equal(nesne["@_mimeCode"], "application/xml");
 });
 
-test("XSLT eki geçerli Base64 ve GİB'in giderPusulasi.xslt dosyasının birebir aynısı", () => {
+test("XSLT eki geçerli Base64 ve GİB şablonunun fatura köküne uyarlanmış hali", () => {
   const { xml } = buildGiderPusulasiXml(temelGirdi());
   const icerik = String(parser.parse(xml).Invoice.AdditionalDocumentReference.Attachment.EmbeddedDocumentBinaryObject["#text"]);
 
@@ -311,11 +312,36 @@ test("XSLT eki geçerli Base64 ve GİB'in giderPusulasi.xslt dosyasının birebi
   assert.equal(cozulen.toString("base64"), icerik, "gidiş-dönüş tutmuyor");
   assert.ok(cozulen.toString("utf8").includes("<xsl:stylesheet"), "çözülen içerik XSLT değil");
 
+  // Ek = Backend kopyasının uyarlanmış hali; Backend kopyası da GİB paketindekinin birebir aynısı
   const backendKopya = fs.readFileSync(path.resolve(__dirname, "../belge/xslt/giderPusulasi.xslt"));
-  assert.ok(cozulen.equals(backendKopya), "ek, Backend/belge/xslt dosyasıyla aynı değil");
+  assert.equal(cozulen.toString("utf8"), xsltFaturaKokuneUyarla(backendKopya.toString("utf8")), "ek, uyarlanmış şablon değil");
   if (ornekVar) {
-    assert.ok(cozulen.equals(fs.readFileSync(path.join(ORNEK_DIZIN, "giderPusulasi.xslt"))), "ek, GİB paketindeki XSLT ile aynı değil");
+    assert.ok(backendKopya.equals(fs.readFileSync(path.join(ORNEK_DIZIN, "giderPusulasi.xslt"))), "Backend kopyası GİB paketindeki XSLT ile aynı değil");
   }
+});
+
+// ICE PDF'i bu şablonla çiziyor; şablon CreditNote ararken belge Invoice olunca PDF boş çıkıyordu (27.10.2026).
+// .NET XslCompiledTransform ile yerelde: asıl şablon → hiçbir değer yok, uyarlanmış → belge no, ETTN, taraflar, tutarlar dolu.
+test("XSLT uyarlaması: şablon belgeyi fatura adlarıyla arar, CreditNote kalmaz", () => {
+  const gib = fs.readFileSync(path.resolve(__dirname, "../belge/xslt/giderPusulasi.xslt"), "utf8");
+  assert.ok(gib.includes('match="//n1:CreditNote"'), "GİB şablonu beklenen CreditNote kalıbını içermiyor (sürüm değişmiş olabilir)");
+
+  const u = xsltFaturaKokuneUyarla(gib);
+  assert.ok(!/Credit(Note|ed)/.test(u), "uyarlanmış şablonda CreditNote kaldı");
+  assert.ok(u.includes('xmlns:n1="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"'));
+  assert.ok(u.includes('match="//n1:Invoice"'));
+  assert.ok(u.includes('match="//n1:Invoice/cac:InvoiceLine"'));
+  assert.ok(u.includes("cbc:InvoiceTypeCode") && u.includes("cbc:InvoicedQuantity"));
+  // Uyarlama yalnız ad değiştirir: her n1:CreditNote bir n1:Invoice olur (şablondaki eski n1:Invoice'lar da kalır), satır sayısı aynı
+  const say = (s: string, r: RegExp) => (s.match(r) || []).length;
+  assert.equal(say(u, /n1:Invoice(?![A-Za-z])/g), say(gib, /n1:CreditNote(?![A-Za-z])/g) + say(gib, /n1:Invoice(?![A-Za-z])/g));
+  assert.equal(say(u, /cac:InvoiceLine/g), say(gib, /cac:CreditNoteLine/g));
+  assert.equal(u.split("\n").length, gib.split("\n").length);
+});
+
+test("XSLT uyarlaması: tanınmayan bir Credit… alanı kalırsa gönderim durur", () => {
+  assert.throws(() => xsltFaturaKokuneUyarla('<x select="//n1:CreditNote/cac:CreditNoteDocumentReference"/>'), /uyarlanamayan/);
+  assert.doesNotThrow(() => xsltFaturaKokuneUyarla('<x select="//n1:CreditNote/cac:CreditNoteLine/cbc:CreditedQuantity"/>'));
 });
 
 test("XSLT eki SATIS ve IADE'de GİB örneklerindeki sırada", { skip: !ornekVar }, () => {
