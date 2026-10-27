@@ -245,8 +245,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "danger"; text: string } | null>(null);
 
-  // Fiş Tipi Ref (Otomatik Odaklanma İçin)
+  // Fiş Tipi Ref ve İstatistik Kodu Ref (Odaklanma Sırası İçin)
   const tipSelectRef = useRef<HTMLSelectElement | null>(null);
+  const istatistikInputRef = useRef<HTMLInputElement | null>(null);
   const initialFocusDoneRef = useRef<boolean>(false);
 
   // Active statistic object
@@ -1873,11 +1874,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                           handleToggleIslemYonu();
                         } else if (e.key === "Enter") {
                           e.preventDefault();
-                          const firstInput = document.querySelector(".arbitraj-table-code-input") as HTMLInputElement | null;
-                          if (firstInput) {
-                            firstInput.focus();
-                            firstInput.select();
-                          }
+                          e.stopPropagation();
+                          istatistikInputRef.current?.focus();
+                          istatistikInputRef.current?.select();
                         }
                       }}
                       className="fw-bold text-uppercase px-2.5 py-1"
@@ -1955,6 +1954,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                   <div className="flex-grow-1" style={{ minWidth: 0 }}>
                     <InputGroup size="sm">
                       <Form.Control
+                        ref={istatistikInputRef}
+                        id="arbitraj-istatistik-kod-input"
                         type="text"
                         value={istatistikKod}
                         isInvalid={!istatistikValidation.isValid}
@@ -1982,8 +1983,23 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
-                            setLookupSearchTerm(e.currentTarget.value);
-                            setLookupType("istatistik");
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const val = e.currentTarget.value.trim();
+                            const found = filteredStatList.find(
+                              (s) => (s.kod || "").toLowerCase() === val.toLowerCase()
+                            );
+                            if (found) {
+                              setLines((prev) => applyStatisticRatesToLines(found, islemYonu, prev));
+                              const firstInput = document.querySelector(".arbitraj-table-code-input") as HTMLInputElement | null;
+                              if (firstInput) {
+                                firstInput.focus();
+                                firstInput.select();
+                              }
+                            } else {
+                              setLookupSearchTerm(val);
+                              setLookupType("istatistik");
+                            }
                           }
                         }}
                         placeholder="İstatistik Kodu..."
@@ -3035,6 +3051,13 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           setIstatistikKod(s.kod);
           setLookupType(null);
           setLines((prev) => applyStatisticRatesToLines(s, islemYonu, prev));
+          setTimeout(() => {
+            const firstInput = document.querySelector(".arbitraj-table-code-input") as HTMLInputElement | null;
+            if (firstInput) {
+              firstInput.focus();
+              firstInput.select();
+            }
+          }, 50);
         }}
       />
     </>
