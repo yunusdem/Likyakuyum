@@ -13,9 +13,9 @@ import { ApiError } from "../../utils/ApiError.js";
  *
  * 1. `send_egider_pusulasi`, e-Arşiv ile **aynı zarfı** (`send_earsiv_request`) kullanır:
  *    `<earsiv_invoices><base64Binary><earsiv_invoice>…`. Zarf aynı olsa da **içerideki
- *    belge farklıdır** — gider pusulası `CreditNote`'tur, fatura değil
- *    (bkz. `ubl/giderPusulasiBuilder.ts`). Zarf aynı olsa da ICE içeriği **iki kat Base64**
- *    bekliyor (bkz. `giderPusulasiBelgeleriXml`).
+ *    belge farklıdır** — GİB'de gider pusulası `CreditNote`'tur, ama ICE bu metotta belgeyi
+ *    `Invoice` kökü ve fatura şemasıyla bekliyor (bkz. `ubl/giderPusulasiBuilder.ts` başı).
+ *    Zarf aynı olsa da ICE içeriği **iki kat Base64** bekliyor (bkz. `giderPusulasiBelgeleriXml`).
  *
  * 2. **Ön doğrulama ucu YOKTUR.** Canlı WSDL'de yalnızca `invoice_check_validate`,
  *    `despatchadvice_check_validate` ve `producerreceipt_check_validate` bulunur;

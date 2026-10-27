@@ -78,31 +78,47 @@ test("tutarlar satırlardan hesaplanır", () => {
 
 /* ---------------------------------------------------------------- yapı */
 
-test("kök öğe ve sabitler GİB örneğiyle aynı", () => {
-  const { xml } = buildGiderPusulasiXml(temelGirdi());
-  const o = parser.parse(xml).CreditNote;
+// ICE gider pusulasını fatura okuyucusu ve UBL-TR Invoice şemasıyla açıyor (27.10.2026, ICE test):
+// kök Invoice, satır InvoiceLine, fatura şemasında zorunlu LineCountNumeric. İçerik GİB gider pusulası.
+test("kök öğe ve sabitler: ICE'nin beklediği Invoice biçimi, GİB gider içeriği", () => {
+  const girdi = temelGirdi();
+  const { xml } = buildGiderPusulasiXml(girdi);
+  const o = parser.parse(xml).Invoice;
 
-  assert.ok(o, "kök öğe CreditNote olmalı");
+  assert.ok(o, "kök öğe Invoice olmalı");
   assert.equal(o.UBLVersionID, "2.1");
   assert.equal(o.CustomizationID, "TR1.2.1");
   assert.equal(o.ProfileID, "GIDERPUSULASI");
-  assert.equal(o.CreditNoteTypeCode, "SATIS");
+  assert.equal(o.InvoiceTypeCode, "SATIS");
   assert.equal(o.CopyIndicator, "false");
-  assert.ok(xml.includes("urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"));
-  // Fatura öğeleri sızmamalı
-  assert.ok(!xml.includes("InvoiceTypeCode"));
-  assert.ok(!xml.includes("<cac:InvoiceLine>"));
-  assert.ok(!xml.includes("InvoicedQuantity"));
+  assert.equal(o.LineCountNumeric, String(girdi.satirlar.length));
+  assert.ok(xml.includes("urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"));
+  // CreditNote öğeleri kalmamalı (ICE kök adında reddediyordu)
+  assert.ok(!xml.includes("CreditNote"));
+  assert.ok(!xml.includes("CreditedQuantity"));
 });
 
-test("satır öğeleri CreditNote biçiminde", () => {
+test("LineCountNumeric satır sayısıyla aynı ve DocumentCurrencyCode'dan hemen sonra", () => {
+  const { xml } = buildGiderPusulasiXml({
+    ...temelGirdi(),
+    satirlar: [
+      { ad: "A", miktar: 1, birimFiyat: 10, vergiOrani: 0 },
+      { ad: "B", miktar: 2, birimFiyat: 20, vergiOrani: 0 },
+      { ad: "C", miktar: 3, birimFiyat: 30, vergiOrani: 0 },
+    ],
+  });
+  assert.ok(xml.includes("</cbc:DocumentCurrencyCode><cbc:LineCountNumeric>3</cbc:LineCountNumeric>"));
+  assert.equal((xml.match(/<cac:InvoiceLine>/g) || []).length, 3);
+});
+
+test("satır öğeleri InvoiceLine biçiminde", () => {
   const { xml } = buildGiderPusulasiXml(temelGirdi());
-  const o = parser.parse(xml).CreditNote;
-  const satir = o.CreditNoteLine;
+  const o = parser.parse(xml).Invoice;
+  const satir = o.InvoiceLine;
 
   assert.equal(satir.ID, "1");
-  assert.equal(satir.CreditedQuantity["#text"], "10");
-  assert.equal(satir.CreditedQuantity["@_unitCode"], "GRM");
+  assert.equal(satir.InvoicedQuantity["#text"], "10");
+  assert.equal(satir.InvoicedQuantity["@_unitCode"], "GRM");
   assert.equal(satir.LineExtensionAmount["#text"], "1750.00");
   assert.equal(satir.Price.PriceAmount["#text"], "175.00");
   assert.equal(satir.Item.Name, "22 Ayar Hurda Altın");
@@ -110,7 +126,7 @@ test("satır öğeleri CreditNote biçiminde", () => {
 
 test("toplamlar ve vergi bloğu doğru", () => {
   const { xml, ozet } = buildGiderPusulasiXml(temelGirdi());
-  const o = parser.parse(xml).CreditNote;
+  const o = parser.parse(xml).Invoice;
 
   assert.equal(ozet.odenecekTutar, 1925);
   assert.equal(o.LegalMonetaryTotal.LineExtensionAmount["#text"], "1750.00");
@@ -129,7 +145,7 @@ test("vergi türü kodu dışarıdan verilebilir (stopaj varsayımı yapılmaz)"
 
 test("taraflar doğru schemeID ile yazılır", () => {
   const { xml } = buildGiderPusulasiXml(temelGirdi());
-  const o = parser.parse(xml).CreditNote;
+  const o = parser.parse(xml).Invoice;
 
   assert.equal(o.AccountingSupplierParty.Party.PartyIdentification.ID["@_schemeID"], "VKN");
   assert.equal(o.AccountingCustomerParty.Party.PartyIdentification.ID["@_schemeID"], "TCKN");
@@ -145,10 +161,10 @@ test("iade: BillingReference GİB örneğindeki biçimde", () => {
     belgeTipi: "IADE",
     iadeDayanak: { belgeTipi: "EARSIV_FATURA", belgeNo: "GIB2026000000002", belgeTarihi: "2026-02-01" },
   });
-  const o = parser.parse(xml).CreditNote;
+  const o = parser.parse(xml).Invoice;
   const ref = o.BillingReference.InvoiceDocumentReference;
 
-  assert.equal(o.CreditNoteTypeCode, "IADE");
+  assert.equal(o.InvoiceTypeCode, "IADE");
   assert.equal(ref.ID["@_schemeID"], "EARSIV_FATURA");
   assert.equal(ref.ID["#text"], "GIB2026000000002");
   assert.equal(ref.IssueDate, "2026-02-01");
@@ -170,7 +186,7 @@ test("iade: kargo bilgisi Delivery altında yazılır", () => {
     iadeDayanak: { belgeTipi: "SATIS_FISI", belgeNo: "001", belgeTarihi: "2026-02-01" },
     kargo: { vkn: "0123456789", unvan: "Kargo A.Ş.", yetkiBelgeNo: "YB-1", il: "Antalya", ilce: "Kepez" },
   });
-  const o = parser.parse(xml).CreditNote;
+  const o = parser.parse(xml).Invoice;
   const kargo = o.Delivery.DeliveryParty;
 
   assert.equal(kargo.PartyIdentification.ID["#text"], "0123456789");
@@ -185,7 +201,7 @@ test("iade: SMS kanalı Contact altında bildirilir", () => {
     iadeDayanak: { belgeTipi: "SATIS_FISI", belgeNo: "001", belgeTarihi: "2026-02-01" },
     iadeKanali: { tip: "SMS", saglayiciAdi: "Operatör", saglayiciVkn: "1112223334", kod: "123456", telefon: "5555555555" },
   });
-  const o = parser.parse(xml).CreditNote;
+  const o = parser.parse(xml).Invoice;
   const contact = o.AccountingCustomerParty.Party.Contact;
 
   assert.equal(contact.Name, "SMS");
@@ -245,17 +261,20 @@ test("XML kaçışlama uygulanır", () => {
 
 /* ---------------------------------------------------------------- GİB örneğiyle karşılaştırma */
 
+// GİB örnekleri CreditNote; ICE Invoice istediği için üretim fatura adlarını kullanır. Karşılaştırmada eşlenir.
+const faturaAdi = (k: string): string => ({ CreditNoteTypeCode: "InvoiceTypeCode", CreditNoteLine: "InvoiceLine" } as Record<string, string>)[k] || k;
+
 test("GİB örnek belgesindeki tüm zorunlu öğeler üretimde var", { skip: !ornekVar }, () => {
   const ornek = fs.readFileSync(path.join(ORNEK_DIZIN, "GiderPusulasıSATIS.xml"), "utf8");
   const ornekObj = parser.parse(ornek).CreditNote;
   const { xml } = buildGiderPusulasiXml(temelGirdi());
-  const bizim = parser.parse(xml).CreditNote;
+  const bizim = parser.parse(xml).Invoice;
 
   // İmzayı biz üretmiyoruz (mühür ICE'de) — onun dışında tüm üst düzey öğeler.
   // XSLT eki (AdditionalDocumentReference) GİB'de zorunlu; yokken ICE belgeyi açamadı (27.10.2026).
   const uretmediklerimiz = new Set(["Signature"]);
   const eksikler = Object.keys(ornekObj).filter(
-    (k) => !uretmediklerimiz.has(k) && !(k in bizim)
+    (k) => !uretmediklerimiz.has(k) && !(faturaAdi(k) in bizim)
   );
 
   assert.deepEqual(eksikler, [], `GİB örneğinde olup üretimde olmayan öğeler: ${eksikler.join(", ")}`);
@@ -268,7 +287,7 @@ const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 test("XSLT eki GİB örneğindeki biçimde yazılır", () => {
   const girdi = temelGirdi();
   const { xml, uuid } = buildGiderPusulasiXml(girdi);
-  const ek = parser.parse(xml).CreditNote.AdditionalDocumentReference;
+  const ek = parser.parse(xml).Invoice.AdditionalDocumentReference;
 
   assert.ok(ek, "AdditionalDocumentReference yok");
   assert.equal(ek.ID, uuid);
@@ -282,7 +301,7 @@ test("XSLT eki GİB örneğindeki biçimde yazılır", () => {
 
 test("XSLT eki geçerli Base64 ve GİB'in giderPusulasi.xslt dosyasının birebir aynısı", () => {
   const { xml } = buildGiderPusulasiXml(temelGirdi());
-  const icerik = String(parser.parse(xml).CreditNote.AdditionalDocumentReference.Attachment.EmbeddedDocumentBinaryObject["#text"]);
+  const icerik = String(parser.parse(xml).Invoice.AdditionalDocumentReference.Attachment.EmbeddedDocumentBinaryObject["#text"]);
 
   assert.ok(icerik.length > 1000, "ek boş ya da çok kısa");
   assert.equal(icerik.length % 4, 0, "Base64 uzunluğu 4'ün katı değil");
@@ -302,12 +321,13 @@ test("XSLT eki geçerli Base64 ve GİB'in giderPusulasi.xslt dosyasının birebi
 test("XSLT eki SATIS ve IADE'de GİB örneklerindeki sırada", { skip: !ornekVar }, () => {
   const sirali = new XMLParser({ preserveOrder: true, ignoreAttributes: true, removeNSPrefix: true });
   const ustOgeler = (x: string): string[] =>
-    (sirali.parse(x).find((d: any) => d.CreditNote)?.CreditNote || []).map((d: any) => Object.keys(d)[0]).filter((k: string) => k !== "#text");
+    ((sirali.parse(x).find((d: any) => d.CreditNote || d.Invoice) || {}) as any)[x.includes("<Invoice ") ? "Invoice" : "CreditNote"]
+      .map((d: any) => faturaAdi(Object.keys(d)[0])).filter((k: string) => k !== "#text");
 
   const karsilastir = (ornekDosya: string, girdi: GiderPusulasiGirdi) => {
     const ornek = ustOgeler(fs.readFileSync(path.join(ORNEK_DIZIN, ornekDosya), "utf8"));
     const bizim = ustOgeler(buildGiderPusulasiXml(girdi).xml);
-    // İkisinde de olan öğeler aynı sırada olmalı (UBL CreditNote dizisi)
+    // İkisinde de olan öğeler aynı sırada olmalı (GİB adları fatura adlarına eşlenmiş)
     const ortak = (liste: string[]) => [...new Set(liste.filter((k) => ornek.includes(k) && bizim.includes(k)))];
     assert.deepEqual(ortak(bizim), ortak(ornek), `${ornekDosya}: üst düzey öğe sırası GİB örneğinden farklı`);
     const i = (k: string) => bizim.indexOf(k);
