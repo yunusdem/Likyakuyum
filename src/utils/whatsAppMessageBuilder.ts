@@ -170,7 +170,7 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
     }
   }
 
-  // 1. Mobilde doğrudan yerel dosya paylaşımı (Kişi seçilince PDF ekli olarak açılır)
+  // 1. Mobilde doğrudan yerel dosya paylaşımı (Kişi seçilince PDF ekli olarak açılır, metinsiz)
   if (isMobile && blob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
     try {
       const file = new File([blob], safeFileName, { type: "application/pdf" });
@@ -178,7 +178,6 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
         await navigator.share({
           files: [file],
           title: safeFileName,
-          text: message || "",
         });
         return;
       }
@@ -186,7 +185,7 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
       if (err?.name === "AbortError") {
         return; // Kullanıcı paylaşımı iptal etti
       }
-      console.warn("Mobil dosya paylaşımı başarısız, doğrudan WhatsApp açılıyor:", err);
+      console.warn("Mobil dosya paylaşımı:", err);
     }
   }
 
@@ -195,13 +194,23 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
     downloadBlob(blob, safeFileName);
   }
 
-  // 3. Bilgisayarda doğrudan WhatsApp uygulamasını aç (yazı ve sohbet seçimi olmadan)
+  // 3. Masaüstünde PDF dosyasını panoya kopyala
+  if (blob && typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
+    try {
+      const item = new ClipboardItem({ "application/pdf": blob });
+      await navigator.clipboard.write([item]);
+    } catch (e) {
+      console.warn("PDF panoya kopyalama:", e);
+    }
+  }
+
+  // 4. Bilgisayarda doğrudan WhatsApp uygulamasını aç (yazı ve sohbet seçimi olmadan)
   openWhatsAppDirect(message, phone);
 
-  // 4. Kullanıcıya yönlendirici bildirim göster
+  // 5. Kullanıcıya yönlendirici bildirim göster
   showWhatsAppToast(
-    `<b>${safeFileName}</b> indirildi ve WhatsApp açıldı.<br/>Sohbete sürükleyip bırakarak PDF'i gönderebilirsiniz.`,
-    "📄 PDF İndirildi",
+    `<b>${safeFileName}</b> indirildi ve panoya kopyalandı.<br/>WhatsApp açıldı. İlgili sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yapabilir veya dosyayı sohbete sürükleyebilirsiniz.`,
+    "📄 PDF Panoya Kopyalandı",
     phone
   );
 }
@@ -238,7 +247,7 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
     }
   }
 
-  // 1. Mobilde doğrudan yerel dosya paylaşımı (Kişi seçilince PDF ekli olarak açılır)
+  // 1. Mobilde doğrudan yerel PDF dosya paylaşımı (Kişi seçilince PDF ekli olarak açılır, metinsiz)
   if (isMobile && pdfBlob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
     try {
       const file = new File([pdfBlob], `${safeName}.pdf`, { type: "application/pdf" });
@@ -246,7 +255,6 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
         await navigator.share({
           files: [file],
           title: safeName,
-          text: message || "",
         });
         return;
       }
@@ -258,7 +266,7 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
     }
   }
 
-  // 2. Fiş görselini HTML elementinden üret ve panoya kopyala
+  // 2. Fiş görselini HTML elementinden üret
   const el = document.getElementById(elementId) || document.getElementById("sablonlu-fis-alani") || document.querySelector(".sablonlu-fis-alani");
   let imgBlob: Blob | null = null;
   if (el) {
@@ -275,55 +283,50 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
     }
   }
 
-  // Mobilde PDF yoksa ama görsel varsa görseli mobilde paylaş
-  if (isMobile && imgBlob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
-    try {
-      const imgFile = new File([imgBlob], `${safeName}.png`, { type: "image/png" });
-      if (navigator.canShare && navigator.canShare({ files: [imgFile] })) {
-        await navigator.share({
-          files: [imgFile],
-          title: safeName,
-          text: message || "",
-        });
-        return;
-      }
-    } catch (err: any) {
-      if (err?.name === "AbortError") return;
-    }
-  }
-
+  // 3. Panoya kopyalama: Önce PDF dosyasını, ardından görseli kopyalamayı dene
   let copiedToClipboard = false;
-  if (imgBlob && typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
-    try {
-      const item = new ClipboardItem({ "image/png": imgBlob });
-      await navigator.clipboard.write([item]);
-      copiedToClipboard = true;
-    } catch (e) {
-      console.warn("Panoya kopyalama:", e);
+  if (typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
+    // A) Öncelikle doğrudan PDF dosyasını panoya kopyalamayı dene
+    if (pdfBlob) {
+      try {
+        const item = new ClipboardItem({ "application/pdf": pdfBlob });
+        await navigator.clipboard.write([item]);
+        copiedToClipboard = true;
+      } catch (err) {
+        console.warn("PDF doğrudan panoya yazılamadı, görsel deneniyor:", err);
+      }
+    }
+    // B) Eğer PDF desteklenmediyse veya WhatsApp desteği için görseli kopyala
+    if (!copiedToClipboard && imgBlob) {
+      try {
+        const item = new ClipboardItem({ "image/png": imgBlob });
+        await navigator.clipboard.write([item]);
+        copiedToClipboard = true;
+      } catch (e) {
+        console.warn("Görsel panoya kopyalama hatası:", e);
+      }
     }
   }
 
-  // 3. PDF dosyasını bilgisayara indir
+  // 4. Doğrudan PDF olarak indir (asla PNG olarak indirmez)
   if (pdfBlob) {
     downloadBlob(pdfBlob, `${safeName}.pdf`);
-  } else if (imgBlob) {
-    downloadBlob(imgBlob, `${safeName}.png`);
   }
 
-  // 4. Bilgisayarda doğrudan WhatsApp uygulamasını aç (yazı ve sohbet seçimi olmadan)
+  // 5. Bilgisayarda doğrudan WhatsApp uygulamasını aç (yazı ve sohbet seçimi olmadan)
   openWhatsAppDirect(message, phone);
 
-  // 5. Kullanıcıya yönlendirici bildirim göster
+  // 6. Kullanıcıya yönlendirici bildirim göster
   if (copiedToClipboard) {
     showWhatsAppToast(
-      `WhatsApp açıldı. İlgili sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak fişi anında gönderebilirsiniz. (PDF ayrıca indirildi).`,
-      "📋 Fiş Panoya Kopyalandı",
+      `<b>${safeName}.pdf</b> indirildi ve panoya kopyalandı.<br/>WhatsApp açıldı. İlgili sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak fişi anında gönderebilirsiniz.`,
+      "📄 PDF İndirildi & Kopyalandı",
       phone
     );
   } else {
     showWhatsAppToast(
-      `WhatsApp açıldı. PDF dosyası indirildi, sohbete sürükleyerek gönderebilirsiniz.`,
-      "📄 Dosya İndirildi",
+      `<b>${safeName}.pdf</b> indirildi ve WhatsApp açıldı.<br/>Sohbete sürükleyip bırakarak PDF'i gönderebilirsiniz.`,
+      "📄 PDF İndirildi",
       phone
     );
   }
