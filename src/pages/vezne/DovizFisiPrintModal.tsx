@@ -8,7 +8,7 @@ import { dovizFisHtml, dovizFisleriHtml, type FisHtml } from "../../utils/belgeS
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 import { BelgeService } from "../../services/belgeService";
-import { shareReceiptVisualOrPdfToWhatsApp } from "../../utils/whatsAppMessageBuilder";
+import { shareReceiptVisualOrPdfToWhatsApp, buildDovizWhatsAppMessage } from "../../utils/whatsAppMessageBuilder";
 
 export interface PrintLineItem {
   paraKodu: string;
@@ -123,6 +123,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
         pdfPromise,
         fileName: docNo,
         phone: props.detayTelefonNo,
+        message: buildDovizWhatsAppMessage(props),
       });
     } finally {
       setIsSharingPdf(false);

@@ -127,9 +127,16 @@ export const RaporPage: React.FC = () => {
     try {
       const res = await fetch(pdfUrl);
       const blob = await res.blob();
+      const msg = veri ? buildRaporWhatsAppMessage({
+        raporAdi: menu?.ad || tanim?.ad || "Rapor",
+        filtreOzeti: veri.filtreOzeti,
+        veri,
+        tanim,
+      }) : "";
       await sharePdfToWhatsApp({
         pdfBlob: blob,
-        fileName: `${menu.ad || "rapor"}.pdf`,
+        fileName: `${menu?.ad || "rapor"}.pdf`,
+        message: msg,
       });
     } catch (e) {
       console.warn("Rapor PDF WhatsApp paylaşım hatası:", e);
@@ -230,9 +237,16 @@ export const RaporPage: React.FC = () => {
       const url = await RaporService.pdfBlobUrl(kod, degerler);
       const res = await fetch(url);
       const blob = await res.blob();
+      const msg = veri ? buildRaporWhatsAppMessage({
+        raporAdi: menu?.ad || tanim?.ad || "Rapor",
+        filtreOzeti: veri.filtreOzeti,
+        veri,
+        tanim,
+      }) : "";
       await sharePdfToWhatsApp({
         pdfBlob: blob,
         fileName: `${menu?.ad || "rapor"}.pdf`,
+        message: msg,
       });
       setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (e: any) {

@@ -154,18 +154,19 @@ export interface SharePdfOptions {
   pdfUrl?: string | null;
   fileName: string;
   phone?: string | null;
+  message?: string;
 }
 
 /**
  * PDF dosyasını doğrudan WhatsApp sohbetine aktarır:
- * - Sistem paylaşım menüsü (AirDrop, Mail vb.) OLMADAN doğrudan WhatsApp'ı açar.
- * - PDF dosyasını otomatik olarak bilgisayara/cihaza indirir.
- * - WhatsApp Desktop uygulamasını (whatsapp://send) ve WhatsApp Web'i doğrudan açar.
- * - Kullanıcı WhatsApp'ta dilediği kişiyi seçip PDF'i sürükleyip bırakarak veya ekleyerek anında gönderir.
+ * - Mobilde (Android / iOS): Web Share API ile PDF dosyasını doğrudan WhatsApp'a belgeli/seçili olarak gönderir.
+ * - Masaüstünde (Mac / Windows): WhatsApp URL protokolü güvenlik nedeniyle yerel dosya yolunu kabul etmediğinden,
+ *   PDF'i indirir, tam biçimli rapor/fiş metnini WhatsApp mesajına otomatik doldurur ve WhatsApp'ı açar.
  */
 export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void> {
-  const { fileName, phone } = options;
+  const { fileName, phone, message } = options;
   const safeFileName = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
+  const isMobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
 
   let blob = options.pdfBlob || null;
   if (!blob && options.pdfUrl) {
@@ -177,18 +178,38 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
     }
   }
 
-  // 1. PDF dosyasını otomatik olarak bilgisayara indir
+  // 1. Mobilde doğrudan yerel dosya paylaşımı (Kişi seçilince PDF ekli olarak açılır)
+  if (isMobile && blob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      const file = new File([blob], safeFileName, { type: "application/pdf" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: safeFileName,
+          text: message || "",
+        });
+        return;
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        return; // Kullanıcı paylaşımı iptal etti
+      }
+      console.warn("Mobil dosya paylaşımı başarısız, doğrudan WhatsApp açılıyor:", err);
+    }
+  }
+
+  // 2. Masaüstünde PDF dosyasını otomatik olarak indir
   if (blob) {
     downloadBlob(blob, safeFileName);
   }
 
-  // 2. Doğrudan WhatsApp uygulamasını ve WhatsApp Web'i aç
-  openWhatsAppDirect("", phone);
+  // 3. Doğrudan WhatsApp uygulamasını ve WhatsApp Web'i aç (mesaj hazır doldurulmuş olarak)
+  openWhatsAppDirect(message, phone);
 
-  // 3. Kullanıcıya yönlendirici bildirim göster
+  // 4. Kullanıcıya yönlendirici bildirim göster
   showWhatsAppToast(
-    `<b>${safeFileName}</b> dosyası indirildi ve doğrudan WhatsApp açıldı.<br/>WhatsApp'ta göndermek istediğiniz <b>kişiyi seçip indirilen PDF dosyasını sohbete sürükleyip bırakarak</b> veya ataş (+) ile seçerek hemen gönderebilirsiniz.`,
-    "📄 PDF İndirildi — WhatsApp Açıldı",
+    `<b>${safeFileName}</b> indirildi ve WhatsApp açıldı.<br/>Mesaj metni hazır aktarıldı. Dilerseniz indirilen PDF dosyasını sohbete sürükleyerek de gönderebilirsiniz.`,
+    "📄 PDF Hazır — WhatsApp Açıldı",
     phone
   );
 }
@@ -199,20 +220,53 @@ export interface ShareReceiptOptions {
   pdfPromise?: Promise<Blob | null>;
   fileName: string;
   phone?: string | null;
+  message?: string;
 }
 
 /**
- * Fişi doğrudan WhatsApp'a aktarır (AirDrop / sistem menüsü olmadan doğrudan WhatsApp'a yönlendirir):
- * 1. Fişin yüksek çözünürlüklü görselini otomatik olarak panoya kopyalar (Cmd+V / Ctrl+V için).
- * 2. PDF dosyasını bilgisayara otomatik indirir.
- * 3. WhatsApp uygulamasını ve WhatsApp Web'i doğrudan açar.
- * 4. Kullanıcı WhatsApp'ta kişiyi seçip Yapıştır (Cmd+V / Ctrl+V) ile görseli veya sürükle-bırak ile PDF'i hemen gönderir.
+ * Fişi doğrudan WhatsApp'a aktarır:
+ * 1. Mobilde (iOS/Android): PDF dosyasını Web Share API ile doğrudan WhatsApp'a belgeli aktarır (sohbet seçildiğinde PDF ekli gelir).
+ * 2. Masaüstünde (Mac/Windows):
+ *    - Fiş görseli otomatik panoya kopyalanır (WhatsApp'ta Cmd+V / Ctrl+V ile 1 saniyede doğrudan görsel olarak yapışır).
+ *    - Fiş detay metni WhatsApp mesaj alanına otomatik doldurulur.
+ *    - PDF dosyası indirilir.
  */
 export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOptions): Promise<void> {
-  const { elementId = "sablonlu-fis-icerik", fileName, phone } = options;
+  const { elementId = "sablonlu-fis-icerik", fileName, phone, message } = options;
   const safeName = fileName.replace(/\.(png|pdf)$/i, "");
+  const isMobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
 
-  // 1. Fişin HTML elementinden görsel üret ve panoya kopyala
+  // PDF blob hazırla
+  let pdfBlob = options.pdfBlob || null;
+  if (!pdfBlob && options.pdfPromise) {
+    try {
+      pdfBlob = await options.pdfPromise;
+    } catch (e) {
+      console.warn("PDF beklenirken hata oluştu:", e);
+    }
+  }
+
+  // 1. Mobilde doğrudan yerel dosya paylaşımı (Kişi seçilince PDF ekli olarak açılır)
+  if (isMobile && pdfBlob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      const file = new File([pdfBlob], `${safeName}.pdf`, { type: "application/pdf" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: safeName,
+          text: message || "",
+        });
+        return;
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        return; // Kullanıcı vazgeçti
+      }
+      console.warn("Mobil PDF paylaşımı:", err);
+    }
+  }
+
+  // 2. Fiş görselini HTML elementinden üret ve panoya kopyala
   const el = document.getElementById(elementId) || document.getElementById("sablonlu-fis-alani") || document.querySelector(".sablonlu-fis-alani");
   let imgBlob: Blob | null = null;
   if (el) {
@@ -229,6 +283,23 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
     }
   }
 
+  // Mobilde PDF yoksa ama görsel varsa görseli mobilde paylaş
+  if (isMobile && imgBlob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      const imgFile = new File([imgBlob], `${safeName}.png`, { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [imgFile] })) {
+        await navigator.share({
+          files: [imgFile],
+          title: safeName,
+          text: message || "",
+        });
+        return;
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+
   let copiedToClipboard = false;
   if (imgBlob && typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
     try {
@@ -240,35 +311,26 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
     }
   }
 
-  // 2. PDF varsa (veya promise ile bekleniyorsa) PDF dosyasını indir
-  let pdfBlob = options.pdfBlob || null;
-  if (!pdfBlob && options.pdfPromise) {
-    try {
-      pdfBlob = await options.pdfPromise;
-    } catch (e) {
-      console.warn("PDF beklenirken hata oluştu:", e);
-    }
-  }
-
+  // 3. PDF dosyasını bilgisayara indir
   if (pdfBlob) {
     downloadBlob(pdfBlob, `${safeName}.pdf`);
   } else if (imgBlob) {
     downloadBlob(imgBlob, `${safeName}.png`);
   }
 
-  // 3. Doğrudan WhatsApp uygulamasını ve WhatsApp Web'i aç
-  openWhatsAppDirect("", phone);
+  // 4. Doğrudan WhatsApp uygulamasını ve WhatsApp Web'i aç (mesaj hazır doldurulmuş olarak)
+  openWhatsAppDirect(message, phone);
 
-  // 4. Kullanıcıya yönlendirici bildirim göster
+  // 5. Kullanıcıya yönlendirici bildirim göster
   if (copiedToClipboard) {
     showWhatsAppToast(
-      `<b>${safeName}.pdf</b> indirildi ve fiş görseli panoya kopyalandı.<br/>WhatsApp açıldı. Göndermek istediğiniz <b>kişiyi seçip mesaj alanına Yapıştır (Cmd+V / Ctrl+V)</b> yaparak veya PDF'i sohbete sürükleyip bırakarak hemen gönderebilirsiniz.`,
-      "📄 PDF & Fiş Panoda — WhatsApp Açıldı",
+      `<b>${safeName}.pdf</b> indirildi, metin WhatsApp'a aktarıldı ve fiş görseli panoya kopyalandı.<br/>WhatsApp açıldı. Kişiyi seçtikten sonra sohbete <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak fişi görsel olarak anında gönderebilirsiniz.`,
+      "📄 Fiş Hazır — WhatsApp Açıldı",
       phone
     );
   } else {
     showWhatsAppToast(
-      `<b>${safeName}.pdf</b> dosyası indirildi ve WhatsApp açıldı.<br/>WhatsApp'ta kişiyi seçip dosyayı sohbete sürükleyip bırakarak gönderebilirsiniz.`,
+      `<b>${safeName}.pdf</b> dosyası indirildi ve WhatsApp açıldı.<br/>WhatsApp'ta kişiyi seçip mesajı gönderebilir, PDF'i sohbete sürükleyebilirsiniz.`,
       "📄 Dosya İndirildi — WhatsApp Açıldı",
       phone
     );

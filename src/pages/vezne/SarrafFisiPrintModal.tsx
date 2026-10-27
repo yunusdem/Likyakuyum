@@ -8,7 +8,7 @@ import { sarrafFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 import { BelgeService } from "../../services/belgeService";
-import { shareReceiptVisualOrPdfToWhatsApp } from "../../utils/whatsAppMessageBuilder";
+import { shareReceiptVisualOrPdfToWhatsApp, buildSarrafWhatsAppMessage } from "../../utils/whatsAppMessageBuilder";
 
 export interface SarrafPrintLineItem {
   satirNo?: number;
@@ -137,6 +137,7 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
         pdfPromise,
         fileName: docNo,
         phone: props.detayTelefonNo,
+        message: buildSarrafWhatsAppMessage(props),
       });
     } finally {
       setIsSharingPdf(false);

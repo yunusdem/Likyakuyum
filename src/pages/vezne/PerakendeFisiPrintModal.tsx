@@ -10,7 +10,7 @@ import { perakendeFisHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
 import { BelgeService } from "../../services/belgeService";
-import { shareReceiptVisualOrPdfToWhatsApp } from "../../utils/whatsAppMessageBuilder";
+import { shareReceiptVisualOrPdfToWhatsApp, buildPerakendeWhatsAppMessage } from "../../utils/whatsAppMessageBuilder";
 
 export interface PerakendeFisiPrintModalProps {
   show: boolean;
@@ -76,6 +76,7 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
         pdfPromise,
         fileName: docNo,
         phone: fatura?.telefon,
+        message: buildPerakendeWhatsAppMessage(fatura),
       });
     } finally {
       setIsSharingPdf(false);
