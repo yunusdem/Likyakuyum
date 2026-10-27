@@ -37,41 +37,38 @@ export function openWhatsAppDirect(message?: string, rawPhone?: string | null) {
 
   if (phone) {
     if (isMobile) {
-      const url = `https://api.whatsapp.com/send?phone=${phone}${textParam ? `&${textParam}` : ""}`;
-      window.open(url, "_blank", "noopener,noreferrer");
+      window.location.href = `https://api.whatsapp.com/send?phone=${phone}${textParam ? `&${textParam}` : ""}`;
     } else {
-      // Masaüstünde telefon varsa
-      try {
-        const a = document.createElement("a");
-        a.href = `whatsapp://send?phone=${phone}${textParam ? `&${textParam}` : ""}`;
-        a.click();
-      } catch (e) {}
-      const url = `https://web.whatsapp.com/send?phone=${phone}${textParam ? `&${textParam}` : ""}`;
-      window.open(url, "_blank", "noopener,noreferrer");
+      // Masaüstünde YENİ SEKME AÇMADAN doğrudan WhatsApp uygulamasını tetikle
+      const a = document.createElement("a");
+      a.href = `whatsapp://send?phone=${phone}${textParam ? `&${textParam}` : ""}`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 1000);
     }
   } else {
     if (isMobile) {
-      // Mobilde numara yoksa doğrudan WhatsApp uygulamasını tetikle (kişi seçimi ekranı)
+      // Mobilde doğrudan WhatsApp kişi seçimi ekranı
       window.location.href = textParam ? `whatsapp://send?${textParam}` : "whatsapp://send";
     } else {
-      // Mac ve Windows: WhatsApp Desktop uygulamasını açmayı dene
-      try {
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        iframe.src = "whatsapp://send";
-        document.body.appendChild(iframe);
-        setTimeout(() => iframe.remove(), 2500);
-      } catch (e) {}
-
-      // WhatsApp Web'i de yeni sekmede aç
-      window.open("https://web.whatsapp.com/", "_blank", "noopener,noreferrer");
+      // Bilgisayarda YENİ SEKME AÇMADAN doğrudan WhatsApp uygulamasını tetikle
+      const a = document.createElement("a");
+      a.href = textParam ? `whatsapp://send?${textParam}` : "whatsapp://send";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 1000);
     }
   }
 }
 
 import html2canvas from "html2canvas";
 
-export function showWhatsAppToast(msg: string, title: string = "WhatsApp Açıldı", phone?: string | null) {
+export function showWhatsAppToast(
+  msg: string,
+  title: string = "📋 Fiş Panoya Kopyalandı",
+  phone?: string | null,
+  messageText?: string
+) {
   const existing = document.getElementById("wa-toast-alert");
   if (existing) existing.remove();
   const div = document.createElement("div");
@@ -84,32 +81,32 @@ export function showWhatsAppToast(msg: string, title: string = "WhatsApp Açıld
     z-index: 9999999;
     background: #0b141a;
     color: #ffffff;
-    padding: 16px 20px;
-    border-radius: 12px;
-    box-shadow: 0 12px 35px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.12);
+    padding: 16px 22px;
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.15);
     font-size: 13.5px;
     line-height: 1.5;
     display: flex;
     align-items: center;
     gap: 14px;
     border-left: 6px solid #25D366;
-    max-width: 540px;
+    max-width: 580px;
     width: calc(100vw - 32px);
     pointer-events: auto;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   `;
 
   div.innerHTML = `
-    <div style="background: rgba(37,211,102,0.2); width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;">
-      📄
+    <div style="background: rgba(37,211,102,0.22); width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;">
+      📋
     </div>
     <div style="flex: 1; min-width: 0;">
       <div style="font-weight: 700; color: #25D366; margin-bottom: 2px; font-size: 14px;">${title}</div>
       <div style="color: #e2e8f0; font-size: 12.5px;">${msg}</div>
     </div>
     <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-      <button id="wa-toast-action-btn" style="background: #25D366; color: #0b141a; border: none; padding: 7px 14px; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; white-space: nowrap;">
-        WhatsApp'ı Aç
+      <button id="wa-toast-web-btn" style="background: rgba(255,255,255,0.1); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.18); padding: 6px 11px; border-radius: 6px; font-size: 11.5px; cursor: pointer; white-space: nowrap;">
+        Web'de Aç
       </button>
       <button id="wa-toast-close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 18px; cursor: pointer; padding: 4px 6px;">
         ✕
@@ -119,10 +116,14 @@ export function showWhatsAppToast(msg: string, title: string = "WhatsApp Açıld
 
   document.body.appendChild(div);
 
-  const actionBtn = div.querySelector("#wa-toast-action-btn");
-  if (actionBtn) {
-    actionBtn.addEventListener("click", () => {
-      openWhatsAppDirect("", phone);
+  const webBtn = div.querySelector("#wa-toast-web-btn");
+  if (webBtn) {
+    webBtn.addEventListener("click", () => {
+      const textParam = messageText ? `text=${encodeURIComponent(messageText)}` : "";
+      const phoneParam = phone ? `phone=${cleanPhoneNumber(phone)}` : "";
+      const query = [phoneParam, textParam].filter(Boolean).join("&");
+      const url = query ? `https://web.whatsapp.com/send?${query}` : "https://web.whatsapp.com/";
+      window.open(url, "_blank", "noopener,noreferrer");
     });
   }
 
@@ -131,7 +132,7 @@ export function showWhatsAppToast(msg: string, title: string = "WhatsApp Açıld
     closeBtn.addEventListener("click", () => div.remove());
   }
 
-  setTimeout(() => div.remove(), 12000);
+  setTimeout(() => div.remove(), 10000);
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -208,9 +209,10 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
 
   // 4. Kullanıcıya yönlendirici bildirim göster
   showWhatsAppToast(
-    `<b>${safeFileName}</b> indirildi ve WhatsApp açıldı.<br/>Mesaj metni hazır aktarıldı. Dilerseniz indirilen PDF dosyasını sohbete sürükleyerek de gönderebilirsiniz.`,
-    "📄 PDF Hazır — WhatsApp Açıldı",
-    phone
+    `<b>${safeFileName}</b> indirildi ve WhatsApp açılıyor.<br/>Mesaj metni hazır aktarıldı. Dilerseniz indirilen PDF'i sohbete sürükleyerek de gönderebilirsiniz.`,
+    "📄 WhatsApp Açılıyor",
+    phone,
+    message
   );
 }
 
@@ -324,15 +326,17 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
   // 5. Kullanıcıya yönlendirici bildirim göster
   if (copiedToClipboard) {
     showWhatsAppToast(
-      `<b>${safeName}.pdf</b> indirildi, metin WhatsApp'a aktarıldı ve fiş görseli panoya kopyalandı.<br/>WhatsApp açıldı. Kişiyi seçtikten sonra sohbete <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak fişi görsel olarak anında gönderebilirsiniz.`,
-      "📄 Fiş Hazır — WhatsApp Açıldı",
-      phone
+      `WhatsApp uygulaması açılıyor. Sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak fişi görsel olarak anında gönderebilirsiniz. (PDF ayrıca indirildi).`,
+      "📋 Fiş Panoya Kopyalandı",
+      phone,
+      message
     );
   } else {
     showWhatsAppToast(
-      `<b>${safeName}.pdf</b> dosyası indirildi ve WhatsApp açıldı.<br/>WhatsApp'ta kişiyi seçip mesajı gönderebilir, PDF'i sohbete sürükleyebilirsiniz.`,
-      "📄 Dosya İndirildi — WhatsApp Açıldı",
-      phone
+      `WhatsApp açılıyor. Mesaj metni aktarıldı, PDF dosyasını sohbete sürükleyerek gönderebilirsiniz.`,
+      "📄 WhatsApp Açılıyor",
+      phone,
+      message
     );
   }
 }
