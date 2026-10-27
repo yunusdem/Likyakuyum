@@ -202,12 +202,12 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   // Otomatik OCR Taraması Çalıştır (Çoklu fotoğrafları zekice birleştirir)
   const triggerAutoOcr = useCallback(
-    async (photosToScan: string[]) => {
+    async (photosToScan: string[], isDeepAnalysis: boolean = false) => {
       if (!photosToScan || photosToScan.length === 0) return null;
 
       setIsScanning(true);
       setScanProgress(0);
-      setScanStatus("Kimlik okunuyor...");
+      setScanStatus(isDeepAnalysis ? "Detaylı OCR analizi başlatılıyor..." : "Kimlik okunuyor...");
       setOcrError(null);
       setIsApplied(false);
 
@@ -217,8 +217,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
         for (let i = 0; i < currentPhotos.length; i++) {
           const photoSrc = currentPhotos[i];
-          const label = i === 0 ? "1. Fotoğraf" : "2. Fotoğraf";
-          setScanStatus(`${currentPhotos.length > 1 ? `[${label}] ` : ""}Okunuyor...`);
+          const label = i === 0 ? "1. Ön Yüz" : "2. Arka Yüz";
+          setScanStatus(`${currentPhotos.length > 1 ? `[${label}] ` : ""}${isDeepAnalysis ? "Detaylı analiz yapılıyor..." : "Okunuyor..."}`);
 
           const res = await performOcrAndExtractData(
             photoSrc,
@@ -228,7 +228,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               const currentTotal = Math.round(i * stepRatio + (progress * stepRatio) / 100);
               setScanProgress(currentTotal);
               setScanStatus(`${currentPhotos.length > 1 ? `[${label}] ` : ""}${status}`);
-            }
+            },
+            isDeepAnalysis
           );
           scanResults.push(res);
         }
@@ -825,12 +826,12 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                   <span>Fotoğrafı Kırp</span>
                 </Dropdown.Item>
                 <Dropdown.Item
-                  onClick={() => triggerAutoOcr(photoList.map((p) => p.base64))}
+                  onClick={() => triggerAutoOcr(photoList.map((p) => p.base64), true)}
                   className="d-flex align-items-center gap-2 py-1.5"
                   disabled={isScanning}
                 >
                   <IconSparkles size={14} className="text-warning" />
-                  <span>Yeniden Oku (OCR)</span>
+                  <span>Yeniden Oku (Detaylı Analiz)</span>
                 </Dropdown.Item>
                 <Dropdown.Item
                   onClick={() => setShowZoomModal(true)}
@@ -907,6 +908,23 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           </div>
         )}
 
+        {/* Yanlış Okuma Durumunda Hızlı Detaylı Yeniden Oku Bağlantısı */}
+        {photoList.length > 0 && (
+          <div className="d-flex align-items-center justify-content-center w-100 mt-1">
+            <button
+              type="button"
+              className="btn btn-link btn-sm p-0 text-decoration-none text-muted d-flex align-items-center gap-1"
+              style={{ fontSize: "9.5px" }}
+              disabled={isScanning}
+              onClick={() => triggerAutoOcr(photoList.map((p) => p.base64), true)}
+              title="Görselleri en baştan çok daha detaylı analiz et (Yüksek çözünürlük, adaptif kontrast, binarize eşikleme ve MRZ odaklı)"
+            >
+              <IconSparkles size={11} className="text-warning" />
+              <span>Yanlış okunduysa: <strong className="text-primary text-decoration-underline">Detaylı Yeniden Oku</strong></span>
+            </button>
+          </div>
+        )}
+
         {/* Eksik Arka Yüz Bilgilendirme Kartı */}
         {selectedBelgeTuru === 0 && photoList.length === 1 && !extractedData?.babaAdi && !extractedData?.anneAdi && (
           <div
@@ -950,6 +968,17 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 <IconCheck size={12} /> Okunan Bilgiler
               </span>
               <div className="d-flex align-items-center gap-1">
+                <button
+                  type="button"
+                  className="btn btn-xs btn-outline-warning text-dark py-0 px-1.5 d-flex align-items-center gap-1 shadow-2xs"
+                  style={{ fontSize: "9px", lineHeight: "1.2" }}
+                  disabled={isScanning}
+                  onClick={() => triggerAutoOcr(photoList.map((p) => p.base64), true)}
+                  title="Tüm filtreler ve yüksek çözünürlükle baştan çok daha detaylı analiz et"
+                >
+                  <IconSparkles size={10} className="text-warning" />
+                  <span>Yeniden Oku</span>
+                </button>
                 <button
                   type="button"
                   className={`btn btn-xs ${isEditingOcr ? "btn-success text-white" : "btn-outline-primary"} py-0 px-1.5`}
@@ -1476,11 +1505,11 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 className="d-flex align-items-center gap-1.5"
                 onClick={() => {
                   setShowZoomModal(false);
-                  triggerAutoOcr(photoList.map((p) => p.base64));
+                  triggerAutoOcr(photoList.map((p) => p.base64), true);
                 }}
               >
                 <IconSparkles size={16} />
-                <span>Belgeyi Yeniden Oku</span>
+                <span>Detaylı Yeniden Oku</span>
               </Button>
             </div>
           )}
