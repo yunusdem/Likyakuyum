@@ -350,6 +350,29 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
               <IconPrinter size={14} className="me-1" />
               Tarayıcı
             </Button>
+
+            <Button
+              variant="success"
+              size="sm"
+              onClick={handleWhatsAppPdfShare}
+              disabled={!fis || isPrinting || isSharingPdf}
+              className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
+              style={{
+                backgroundColor: "#25D366",
+                borderColor: "#25D366",
+                width: "30px",
+                height: "30px",
+                minWidth: "30px",
+              }}
+              title="PDF Olarak WhatsApp ile Gönder"
+              aria-label="PDF Olarak WhatsApp ile Gönder"
+            >
+              {isSharingPdf ? (
+                <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+              ) : (
+                <IconBrandWhatsapp size={18} className="text-white" />
+              )}
+            </Button>
           </div>
         </div>
       </Modal.Header>
@@ -358,31 +381,7 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
         <SablonluFisOnizleme fis={fis} hata={hata} />
       </Modal.Body>
 
-      <Modal.Footer className="bg-light py-2 px-3 border-top d-print-none d-flex justify-content-between align-items-center">
-        <div>
-          <Button
-            variant="success"
-            size="sm"
-            onClick={handleWhatsAppPdfShare}
-            disabled={!fis || isPrinting || isSharingPdf}
-            className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
-            style={{
-              backgroundColor: "#25D366",
-              borderColor: "#25D366",
-              width: "32px",
-              height: "32px",
-              minWidth: "32px",
-            }}
-            title="PDF Olarak WhatsApp ile Gönder"
-            aria-label="PDF Olarak WhatsApp ile Gönder"
-          >
-            {isSharingPdf ? (
-              <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
-            ) : (
-              <IconBrandWhatsapp size={19} className="text-white" />
-            )}
-          </Button>
-        </div>
+      <Modal.Footer className="bg-light py-2 px-3 border-top d-print-none d-flex justify-content-end align-items-center">
         <div className="d-flex gap-2 align-items-center">
           <Button variant="outline-secondary" size="sm" onClick={onHide} disabled={isPrinting}>
             <IconX size={16} className="me-1" />

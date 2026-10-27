@@ -392,6 +392,29 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
               <IconPrinter size={14} className="me-1" />
               Tarayıcı
             </Button>
+
+            <Button
+              variant="success"
+              size="sm"
+              onClick={handleWhatsAppPdfShare}
+              disabled={!fis || isPrinting || isSharingPdf}
+              className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
+              style={{
+                backgroundColor: "#25D366",
+                borderColor: "#25D366",
+                width: "30px",
+                height: "30px",
+                minWidth: "30px",
+              }}
+              title="PDF Olarak WhatsApp ile Gönder"
+              aria-label="PDF Olarak WhatsApp ile Gönder"
+            >
+              {isSharingPdf ? (
+                <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+              ) : (
+                <IconBrandWhatsapp size={18} className="text-white" />
+              )}
+            </Button>
           </div>
         </div>
       </Modal.Header>
@@ -402,28 +425,6 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
 
       <Modal.Footer className="bg-light py-2 px-3 d-flex justify-content-between align-items-center">
         <div className="d-flex align-items-center gap-2">
-          <Button
-            variant="success"
-            size="sm"
-            onClick={handleWhatsAppPdfShare}
-            disabled={!fis || isPrinting || isSharingPdf}
-            className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
-            style={{
-              backgroundColor: "#25D366",
-              borderColor: "#25D366",
-              width: "32px",
-              height: "32px",
-              minWidth: "32px",
-            }}
-            title="PDF Olarak WhatsApp ile Gönder"
-            aria-label="PDF Olarak WhatsApp ile Gönder"
-          >
-            {isSharingPdf ? (
-              <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
-            ) : (
-              <IconBrandWhatsapp size={19} className="text-white" />
-            )}
-          </Button>
           <Button variant="secondary" size="sm" onClick={onHide} disabled={isPrinting} className="d-flex align-items-center gap-1">
             <IconX size={15} /> Kapat
           </Button>

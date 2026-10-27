@@ -564,12 +564,9 @@ export const RaporPage: React.FC = () => {
 
       {/* PDF önizleme pop-up (yönetici kararı 14.09.2026: Uygula'da otomatik açılmaz) */}
       <Modal show={!!pdfUrl} onHide={() => setPdfUrl(null)} size="xl" centered>
-        <Modal.Header closeButton className="py-2">
-          <Modal.Title className="fs-6 d-flex align-items-center gap-2"><IconFileTypePdf size={18} className="text-danger" />{menu.ad} — A4 önizleme</Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-0">{pdfUrl && <iframe title="Rapor PDF" src={pdfUrl} style={{ width: "100%", height: "80vh", border: 0 }} />}</Modal.Body>
-        <Modal.Footer className="py-2 px-3 d-flex justify-content-between align-items-center">
-          <div>
+        <Modal.Header closeButton className="py-2 d-flex align-items-center">
+          <Modal.Title className="fs-6 d-flex align-items-center gap-2 me-auto mb-0"><IconFileTypePdf size={18} className="text-danger" />{menu.ad} — A4 önizleme</Modal.Title>
+          <div className="d-flex align-items-center me-2">
             <Button
               size="sm"
               variant="success"
@@ -579,20 +576,23 @@ export const RaporPage: React.FC = () => {
               style={{
                 backgroundColor: "#25D366",
                 borderColor: "#25D366",
-                width: "32px",
-                height: "32px",
-                minWidth: "32px",
+                width: "28px",
+                height: "28px",
+                minWidth: "28px",
               }}
               title="PDF Olarak WhatsApp ile Gönder"
               aria-label="PDF Olarak WhatsApp ile Gönder"
             >
               {isSharingPdf ? (
-                <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+                <Spinner size="sm" animation="border" style={{ width: 13, height: 13 }} />
               ) : (
-                <IconBrandWhatsapp size={19} className="text-white" />
+                <IconBrandWhatsapp size={17} className="text-white" />
               )}
             </Button>
           </div>
+        </Modal.Header>
+        <Modal.Body className="p-0">{pdfUrl && <iframe title="Rapor PDF" src={pdfUrl} style={{ width: "100%", height: "80vh", border: 0 }} />}</Modal.Body>
+        <Modal.Footer className="py-2 px-3 d-flex justify-content-end align-items-center">
           <div className="d-flex gap-2 align-items-center">
             <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={dosyaIsi}><IconDownload size={15} /> İndir</Button>
             <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={dosyaIsi}><IconPrinter size={15} /> Yazdır</Button>
