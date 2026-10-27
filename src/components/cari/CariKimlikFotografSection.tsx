@@ -578,9 +578,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
       >
         <button
           type="button"
-          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
-            selectedBelgeTuru === 0 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
-          }`}
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${selectedBelgeTuru === 0 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+            }`}
           onClick={() => onBelgeTuruChange(0)}
           disabled={disabled}
           style={{ fontSize: "10px", lineHeight: "1.8" }}
@@ -589,9 +588,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         </button>
         <button
           type="button"
-          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
-            selectedBelgeTuru === 1 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
-          }`}
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${selectedBelgeTuru === 1 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+            }`}
           onClick={() => onBelgeTuruChange(1)}
           disabled={disabled}
           style={{ fontSize: "10px", lineHeight: "1.8" }}
@@ -600,9 +598,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         </button>
         <button
           type="button"
-          className={`btn btn-sm p-0 flex-fill text-center border-0 ${
-            selectedBelgeTuru === 2 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
-          }`}
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${selectedBelgeTuru === 2 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+            }`}
           onClick={() => onBelgeTuruChange(2)}
           disabled={disabled}
           style={{ fontSize: "10px", lineHeight: "1.8" }}
@@ -619,11 +616,10 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               <button
                 key={idx}
                 type="button"
-                className={`btn btn-sm px-1.5 py-0 border ${
-                  idx === safeActiveIndex
+                className={`btn btn-sm px-1.5 py-0 border ${idx === safeActiveIndex
                     ? "btn-primary text-white fw-bold shadow-2xs"
                     : "btn-light text-secondary"
-                }`}
+                  }`}
                 style={{ fontSize: "9.5px", borderRadius: "6px", lineHeight: "1.6" }}
                 onClick={() => setActiveIndex(idx)}
                 title={`${p.label} - Görüntüle`}
@@ -872,13 +868,12 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           <div className="w-100 mt-1">
             <button
               type="button"
-              className={`btn w-100 d-flex align-items-center justify-content-center gap-1 py-1.5 px-1 fw-bold shadow-sm ${
-                isScanning
+              className={`btn w-100 d-flex align-items-center justify-content-center gap-1 py-1.5 px-1 fw-bold shadow-sm ${isScanning
                   ? "btn-secondary"
                   : isApplied
-                  ? "btn-outline-success"
-                  : "btn-success text-white"
-              }`}
+                    ? "btn-outline-success"
+                    : "btn-success text-white"
+                }`}
               style={{
                 borderRadius: "8px",
                 fontSize: "11px",
@@ -968,17 +963,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 <IconCheck size={12} /> Okunan Bilgiler
               </span>
               <div className="d-flex align-items-center gap-1">
-                <button
-                  type="button"
-                  className="btn btn-xs btn-outline-warning text-dark py-0 px-1.5 d-flex align-items-center gap-1 shadow-2xs"
-                  style={{ fontSize: "9px", lineHeight: "1.2" }}
-                  disabled={isScanning}
-                  onClick={() => triggerAutoOcr(photoList.map((p) => p.base64), true)}
-                  title="Tüm filtreler ve yüksek çözünürlükle baştan çok daha detaylı analiz et"
-                >
-                  <IconSparkles size={10} className="text-warning" />
-                  <span>Yeniden Oku</span>
-                </button>
+
                 <button
                   type="button"
                   className={`btn btn-xs ${isEditingOcr ? "btn-success text-white" : "btn-outline-primary"} py-0 px-1.5`}
@@ -1457,9 +1442,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                       <button
                         key={idx}
                         type="button"
-                        className={`btn btn-sm ${
-                          idx === safeActiveIndex ? "btn-primary text-white" : "btn-outline-secondary"
-                        }`}
+                        className={`btn btn-sm ${idx === safeActiveIndex ? "btn-primary text-white" : "btn-outline-secondary"
+                          }`}
                         onClick={() => setActiveIndex(idx)}
                       >
                         {p.label}
