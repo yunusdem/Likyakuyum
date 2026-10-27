@@ -154,6 +154,25 @@ test("taraflar doğru schemeID ile yazılır", () => {
   assert.equal(o.AccountingCustomerParty.Party.Person.FamilyName, "Yılmaz");
 });
 
+// GİB örneği: TCKN'li alıcıda ad yalnız Person'da (PartyName yok). İkisi birden yazılınca PDF'te ad iki kez çıkıyordu.
+test("TCKN'li alıcıda ad yalnız Person'da; VKN'li alıcıda ve düzenleyende PartyName kalır", () => {
+  // Cari seçiminde unvan = tam ad, ad/soyad ayrıca dolu gelir: yine tek yerde yazılmalı
+  const girdi = { ...temelGirdi(), alici: { ...temelGirdi().alici, unvan: "Ayşe Yılmaz" } };
+  const o = parser.parse(buildGiderPusulasiXml(girdi).xml).Invoice;
+  const alici = o.AccountingCustomerParty.Party;
+  assert.equal(alici.PartyName, undefined, "TCKN'li alıcıda PartyName yazılmamalı");
+  assert.equal(alici.Person.FirstName, "Ayşe");
+  assert.equal(alici.Person.FamilyName, "Yılmaz");
+  assert.equal(o.AccountingSupplierParty.Party.PartyName.Name, "Likya Kuyum A.Ş.", "düzenleyenin unvanı kalmalı");
+
+  const tuzel = parser.parse(buildGiderPusulasiXml({
+    ...temelGirdi(),
+    alici: { vknTckn: "1234567890", unvan: "Tüzel Satıcı Ltd.", il: "Antalya", ilce: "Muratpaşa" },
+  }).xml).Invoice.AccountingCustomerParty.Party;
+  assert.equal(tuzel.PartyName.Name, "Tüzel Satıcı Ltd.", "VKN'li alıcıda PartyName kalmalı");
+  assert.equal(tuzel.Person, undefined);
+});
+
 /* ---------------------------------------------------------------- iade */
 
 test("iade: BillingReference GİB örneğindeki biçimde", () => {

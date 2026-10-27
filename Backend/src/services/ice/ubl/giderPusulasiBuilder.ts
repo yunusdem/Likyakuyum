@@ -360,17 +360,21 @@ export const hesaplaGiderPusulasi = (satirlar: GiderPusulasiSatiri[]): GiderPusu
    XML parçaları
    ========================================================================== */
 
-const partyXml = (taraf: UblTaraf): string => {
+const partyXml = (taraf: UblTaraf, secenek: { gercekKisiAdiYalnizPerson?: boolean } = {}): string => {
   const kimlik = taraf.vknTckn.trim();
   const sema = kimlikSemasi(kimlik);
   const kisiAdi = [taraf.ad?.trim(), taraf.soyad?.trim()].filter(Boolean).join(" ");
   const unvan = taraf.unvan?.trim() || kisiAdi;
+  const kisiVar = sema === "TCKN" && !!taraf.ad?.trim() && !!taraf.soyad?.trim();
+  // GİB örneği: TCKN'li gerçek kişide ad yalnız cac:Person'da, PartyName yok. İkisi birden yazılınca
+  // şablon adı PDF'te iki kez basıyordu (27.10.2026). Yalnız alıcıda; düzenleyenin unvanı ticari ad.
+  const partyNameYaz = !!unvan && !(secenek.gercekKisiAdiYalnizPerson && kisiVar);
 
   return (
     `<cac:Party>` +
     etiket("cbc:WebsiteURI", taraf.webAdresi) +
     `<cac:PartyIdentification><cbc:ID schemeID="${sema}">${escapeXml(kimlik)}</cbc:ID></cac:PartyIdentification>` +
-    (unvan ? `<cac:PartyName><cbc:Name>${escapeXml(unvan)}</cbc:Name></cac:PartyName>` : "") +
+    (partyNameYaz ? `<cac:PartyName><cbc:Name>${escapeXml(unvan)}</cbc:Name></cac:PartyName>` : "") +
     `<cac:PostalAddress>` +
     etiket("cbc:StreetName", taraf.adres) +
     etiket("cbc:CitySubdivisionName", taraf.ilce) +
@@ -396,7 +400,7 @@ const partyXml = (taraf: UblTaraf): string => {
 
 /** Alıcı tarafına iade kanalı bilgisini ekler (SMS kodu / iade kodu) */
 const aliciPartyXml = (taraf: UblTaraf, kanal?: IadeKanali): string => {
-  const temel = partyXml(taraf);
+  const temel = partyXml(taraf, { gercekKisiAdiYalnizPerson: true });
   if (!kanal) return temel;
 
   // GİB örneğinde SMS kanalında cac:Contact içinde ID + Name + Telephone bulunuyor
