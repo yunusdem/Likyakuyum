@@ -553,7 +553,7 @@ export const VezneIzlemePage: React.FC = () => {
       <ERPToolbar
         onRefresh={() => fetchData(false)}
         onPrint={() => window.print()}
-        pageTitle="P- Vezne İzleme"
+        pageTitle="Ö- Vezne İzleme"
         hideDelete
         hideSearch
         hideNavigation
