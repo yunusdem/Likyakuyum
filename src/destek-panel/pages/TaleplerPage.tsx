@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Form, Nav, Spinner } from "react-bootstrap";
 import { useSearchParams } from "react-router-dom";
 import { IconPhone, IconRefresh } from "@tabler/icons-react";
@@ -10,6 +10,8 @@ import TelefonTalebiModal from "../components/TelefonTalebiModal";
 import "../../components/destek/destek.scss";
 
 const SAYFA_BOYU = 50;
+/** Liste ve sayaç tazeleme aralığı (yeni talep en geç bu sürede düşer) */
+const TAZELEME_MS = 10_000;
 
 const SEKMELER: { anahtar: PanelSekme; baslik: string }[] = [
   { anahtar: "havuz", baslik: "Havuz" },
@@ -28,6 +30,15 @@ const TaleplerPage: React.FC = () => {
   const [sekme, setSekme] = useState<PanelSekme>(kaynakId || firmaParam ? "tumu" : "havuz");
   const [durum, setDurum] = useState<string>("");
   const [metinArama, setMetinArama] = useState("");
+  // Arama her harfte değil, yazmayı bırakınca (350 ms) gider
+  const [aramaGecikmeli, setAramaGecikmeli] = useState("");
+  useEffect(() => {
+    const z = setTimeout(() => setAramaGecikmeli(metinArama), 350);
+    return () => clearTimeout(z);
+  }, [metinArama]);
+  const yukleniyorRef = useRef(false);
+  const bekleyenRef = useRef(false);
+  const istekNoRef = useRef(0);
   const [personelFiltre, setPersonelFiltre] = useState<number | undefined>(undefined);
   const [sayfa, setSayfa] = useState(1);
   const [satirlar, setSatirlar] = useState<PanelKonu[]>([]);
@@ -46,42 +57,67 @@ const TaleplerPage: React.FC = () => {
 
   const yukle = useCallback(
     async (sessiz = false) => {
+      // Aynı anda tek istek; bu sırada gelen tazeleme isteği bitince bir kez yapılır
+      if (yukleniyorRef.current) {
+        bekleyenRef.current = true;
+        return;
+      }
+      yukleniyorRef.current = true;
+      const sira = ++istekNoRef.current;
       if (!sessiz) setYukleniyor(true);
       const f: PanelKonuFiltresi = { sekme, sayfa, sayfaBoyu: SAYFA_BOYU };
       if (durum) f.durum = durum;
-      if (metinArama.trim()) f.arama = metinArama.trim();
+      if (aramaGecikmeli.trim()) f.arama = aramaGecikmeli.trim();
       if (personelFiltre) f.personelId = personelFiltre;
       if (kaynakId) f.kaynakKonuId = kaynakId;
       if (firmaParam) f.firmaId = firmaParam;
       try {
         const [s, o] = await Promise.all([panelApi.konular(f), panelApi.ozet()]);
+        // Bu arada süzgeç değiştiyse eski cevap yeni listenin üstüne yazılmaz
+        if (sira !== istekNoRef.current) return;
         setSatirlar(s.satirlar);
         setToplam(s.toplam);
         setOzet(o);
         setHata(null);
       } catch (err: any) {
-        setHata(err?.message || "Liste okunamadı.");
+        if (sira !== istekNoRef.current) return;
+        // Arka plandaki tazeleme hatası listeyi silmez, ekrana basılmaz; sonraki tazelemede yeniden denenir
+        if (!sessiz) setHata(err?.message || "Liste okunamadı.");
       } finally {
-        setYukleniyor(false);
+        if (sira === istekNoRef.current) {
+          yukleniyorRef.current = false;
+          setYukleniyor(false);
+        }
+        if (bekleyenRef.current) {
+          bekleyenRef.current = false;
+          setTimeout(() => yukleRef.current(true), 0);
+        }
       }
     },
-    [sekme, durum, metinArama, personelFiltre, sayfa, kaynakId, firmaParam]
+    [sekme, durum, aramaGecikmeli, personelFiltre, sayfa, kaynakId, firmaParam]
   );
+  const yukleRef = useRef(yukle);
+  yukleRef.current = yukle;
 
   useEffect(() => {
+    // Süzgeç / sekme değişince eski istek beklenmez
+    yukleniyorRef.current = false;
     yukle();
   }, [yukle]);
 
   useEffect(() => {
-    const z = setInterval(() => document.visibilityState === "visible" && yukle(true), 20_000);
-    return () => clearInterval(z);
-  }, [yukle]);
-
-  useEffect(() => {
-    const dinle = () => yukle(true);
+    const tazele = () => document.visibilityState === "visible" && yukleRef.current(true);
+    const z = setInterval(tazele, TAZELEME_MS);
+    // Sekmeye geri dönülünce hemen tazele
+    document.addEventListener("visibilitychange", tazele);
+    const dinle = () => yukleRef.current(true);
     window.addEventListener(DESTEK_DEGISTI_OLAYI, dinle);
-    return () => window.removeEventListener(DESTEK_DEGISTI_OLAYI, dinle);
-  }, [yukle]);
+    return () => {
+      clearInterval(z);
+      document.removeEventListener("visibilitychange", tazele);
+      window.removeEventListener(DESTEK_DEGISTI_OLAYI, dinle);
+    };
+  }, []);
 
   const sec = (konuId: number | null) => {
     const yeni = new URLSearchParams(arama);
@@ -235,7 +271,7 @@ const TaleplerPage: React.FC = () => {
           </div>
           <div className="destek-sag">
             {seciliId ? (
-              <PanelKonuSohbet key={seciliId} konuId={seciliId} ekip={ekip} hizliCevaplar={hizli} onDegisti={() => yukle(true)} onKapandi={() => sec(null)} />
+              <PanelKonuSohbet key={seciliId} konuId={seciliId} ekip={ekip} hizliCevaplar={hizli} onKapandi={() => sec(null)} />
             ) : (
               <div className="d-flex align-items-center justify-content-center h-100 text-muted py-5">Soldan bir kayıt seçin.</div>
             )}

@@ -66,7 +66,10 @@ const PanelLayout: React.FC = () => {
   useEffect(() => {
     if (kilitli) return;
     let aktif = true;
-    const yukle = () =>
+    let calisiyor = false;
+    const yukle = () => {
+      if (calisiyor) return;
+      calisiyor = true;
       panelApi
         .ozet()
         .then((o) => {
@@ -77,9 +80,14 @@ const PanelLayout: React.FC = () => {
           onceki.current = o;
           setOzet(o);
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          calisiyor = false;
+        });
+    };
     yukle();
-    const z = setInterval(yukle, 20_000);
+    // Sekme arka plandayken de sayılır: yeni talepte ses ve başlıktaki sayı gelsin (D18)
+    const z = setInterval(yukle, 10_000);
     window.addEventListener(DESTEK_DEGISTI_OLAYI, yukle);
     return () => {
       aktif = false;

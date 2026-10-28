@@ -7,7 +7,7 @@ import { destekDegisti, dosyaBase64, EkipUyesi, HizliCevap, panelApi, PanelKonuD
 import { usePanelAuth } from "../context/PanelAuthContext";
 import FirmaKartiGoster from "./FirmaKarti";
 
-const TAZELEME_MS = 10_000;
+const TAZELEME_MS = 8_000;
 
 interface Props {
   konuId: number;
@@ -34,35 +34,52 @@ const PanelKonuSohbet: React.FC<Props> = ({ konuId, ekip, hizliCevaplar, onDegis
   const dosyaRef = useRef<HTMLInputElement>(null);
   const metinRef = useRef<HTMLTextAreaElement>(null);
   const sonMesajId = useRef(0);
+  // Liste / sayaçlara yalnız kayıt gerçekten değişince haber verilir (her tazelemede değil: sohbet ↔ liste döngüsü olmasın)
+  const sonImza = useRef("");
+  const yukleniyorRef = useRef(false);
+  const onDegistiRef = useRef(onDegisti);
+  const onKapandiRef = useRef(onKapandi);
+  onDegistiRef.current = onDegisti;
+  onKapandiRef.current = onKapandi;
 
   const altaKaydir = () => {
     const kutu = altRef.current?.parentElement;
     if (kutu) kutu.scrollTop = kutu.scrollHeight;
   };
 
-  const uygula = useCallback(
-    (d: PanelKonuDetay) => {
-      setDetay(d);
-      const son = d.mesajlar[d.mesajlar.length - 1]?.mesajId ?? 0;
-      if (son !== sonMesajId.current) {
-        sonMesajId.current = son;
-        setTimeout(altaKaydir, 30);
-      }
-      onDegisti?.();
-      destekDegisti();
-    },
-    [onDegisti]
-  );
+  const haberVer = () => {
+    onDegistiRef.current?.();
+    destekDegisti();
+  };
+
+  const uygula = useCallback((d: PanelKonuDetay, zorla = false) => {
+    setDetay(d);
+    const son = d.mesajlar[d.mesajlar.length - 1]?.mesajId ?? 0;
+    if (son !== sonMesajId.current) {
+      sonMesajId.current = son;
+      setTimeout(altaKaydir, 30);
+    }
+    const imza = `${son}|${d.konu.durum}|${d.konu.atananPersonelId ?? ""}|${d.konu.okunmamis}`;
+    if (zorla || imza !== sonImza.current) {
+      sonImza.current = imza;
+      haberVer();
+    }
+  }, []);
 
   const yukle = useCallback(
     async (sessiz = false) => {
+      // Önceki istek bitmeden yenisi gönderilmez
+      if (yukleniyorRef.current) return;
+      yukleniyorRef.current = true;
       if (!sessiz) setYukleniyor(true);
       try {
         uygula(await panelApi.konu(konuId));
         setHata(null);
       } catch (err: any) {
+        // Arka plandaki tazeleme hatası ekrana basılmaz; bir sonraki tazelemede yeniden denenir
         if (!sessiz) setHata(err?.message || "Kayıt okunamadı.");
       } finally {
+        yukleniyorRef.current = false;
         if (!sessiz) setYukleniyor(false);
       }
     },
@@ -71,6 +88,7 @@ const PanelKonuSohbet: React.FC<Props> = ({ konuId, ekip, hizliCevaplar, onDegis
 
   useEffect(() => {
     sonMesajId.current = 0;
+    sonImza.current = "";
     setMetin("");
     setIcNot(false);
     setGorseller([]);
@@ -86,12 +104,11 @@ const PanelKonuSohbet: React.FC<Props> = ({ konuId, ekip, hizliCevaplar, onDegis
     try {
       const s: any = await fn();
       if (s?.gorunmuyor) {
-        destekDegisti();
-        onDegisti?.();
-        onKapandi?.();
+        haberVer();
+        onKapandiRef.current?.();
         return;
       }
-      if (s?.konu) uygula(s as PanelKonuDetay);
+      if (s?.konu) uygula(s as PanelKonuDetay, true);
       if (basari) setBilgi(basari);
     } catch (err: any) {
       setHata(err?.message || "İşlem yapılamadı.");
@@ -115,7 +132,7 @@ const PanelKonuSohbet: React.FC<Props> = ({ konuId, ekip, hizliCevaplar, onDegis
     setHata(null);
     try {
       const ekler = await Promise.all(gorseller.map(async (g) => ({ dosyaAdi: g.dosya.name, mime: g.dosya.type, veri: await dosyaBase64(g.dosya) })));
-      uygula(await panelApi.mesajYaz(konuId, metin.trim(), icNot, ekler));
+      uygula(await panelApi.mesajYaz(konuId, metin.trim(), icNot, ekler), true);
       gorseller.forEach((g) => URL.revokeObjectURL(g.onizleme));
       setGorseller([]);
       setMetin("");
