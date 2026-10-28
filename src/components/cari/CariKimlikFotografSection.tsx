@@ -71,6 +71,14 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  // Maksimum 2 resim kuralı uyarısı
+  const [limitWarning, setLimitWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!limitWarning) return;
+    const timer = setTimeout(() => setLimitWarning(null), 4500);
+    return () => clearTimeout(timer);
+  }, [limitWarning]);
 
   // OCR Durumları
   const [isScanning, setIsScanning] = useState(false);
@@ -174,7 +182,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
       }
     }
 
-    return list;
+    return list.slice(0, 2);
   }, [localPhotos, pendingPhotos, pendingBase64, currentPhotos, currentPhoto]);
 
   const safeActiveIndex = activeIndex < photoList.length ? activeIndex : 0;
@@ -202,7 +210,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   // Otomatik OCR Taraması Çalıştır (Çoklu fotoğrafları zekice birleştirir)
   const triggerAutoOcr = useCallback(
-    async (photosToScan: string[], isDeepAnalysis: boolean = false) => {
+    async (photosToScan: string[], isDeepAnalysis: boolean = false, skipReorder: boolean = false) => {
       if (!photosToScan || photosToScan.length === 0) return null;
 
       setIsScanning(true);
@@ -235,8 +243,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         }
 
         // Eğer 2 kimlik fotoğrafı varsa ve ters yüklenmişse (0: Arka Yüz, 1: Ön Yüz):
-        // Otomatik olarak yerlerini değiştir, böylece "1. Ön" daima ön yüzü göstersin!
-        if (selectedBelgeTuru === 0 && currentPhotos.length === 2 && scanResults.length === 2) {
+        // Kullanıcı manuel "Değiştir" yapmamışsa (skipReorder false) otomatik düzelt
+        if (!skipReorder && selectedBelgeTuru === 0 && currentPhotos.length === 2 && scanResults.length === 2) {
           const is0Back = isKimlikBackFace(scanResults[0]);
           const is1Front = isKimlikFrontFace(scanResults[1]);
           if (is0Back && is1Front) {
@@ -377,11 +385,20 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   // Ön Yüz ile Arka Yüzün Yerini Değiştir (Kullanıcı dilediğinde tek tıkla ters çevirir)
   const handleSwapPhotos = () => {
-    if (localPhotos.length >= 2) {
-      const swapped = [localPhotos[1], localPhotos[0], ...localPhotos.slice(2)];
+    const currentList =
+      localPhotos.length >= 2
+        ? localPhotos
+        : photoList.length >= 2
+        ? photoList.map((p) => p.base64)
+        : [];
+
+    if (currentList.length >= 2) {
+      const swapped = [currentList[1], currentList[0], ...currentList.slice(2)];
       setLocalPhotos(swapped);
-      if (onPhotosSelected) onPhotosSelected(swapped);
-      triggerAutoOcr(swapped);
+      if (onPhotosSelected) {
+        onPhotosSelected(swapped);
+      }
+      triggerAutoOcr(swapped, false, true);
     }
   };
 
@@ -454,9 +471,23 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
     // Üstte/altta/kenarlarda boşluklar varsa otomatik kırp
     const base64 = await autoCropIdCard(rawBase64);
 
-    const updated = [...localPhotos, base64];
+    const currentB64s = photoList.map((p) => p.base64);
+    let updated: string[];
+    let newActiveIdx = 0;
+
+    if (currentB64s.length >= 2) {
+      updated = [...currentB64s];
+      const targetIdx = safeActiveIndex < updated.length ? safeActiveIndex : 0;
+      updated[targetIdx] = base64;
+      newActiveIdx = targetIdx;
+      setLimitWarning(`En fazla 2 resim yüklenebilir. ${targetIdx + 1}. fotoğraf yeni çekilen görselle değiştirildi.`);
+    } else {
+      updated = [...currentB64s, base64].slice(0, 2);
+      newActiveIdx = updated.length - 1;
+    }
+
     setLocalPhotos(updated);
-    setActiveIndex(updated.length - 1);
+    setActiveIndex(newActiveIdx);
 
     if (onPhotosSelected) {
       onPhotosSelected(updated);
@@ -472,8 +503,25 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const fileArray = Array.from(files);
+    let fileArray = Array.from(files);
     e.target.value = "";
+
+    const currentB64s = photoList.map((p) => p.base64);
+
+    if (currentB64s.length >= 2) {
+      if (fileArray.length > 1) {
+        setLimitWarning("En fazla 2 resim yüklenebilir. Yalnızca ilk seçilen dosya aktif fotoğrafın yerine alındı.");
+      } else {
+        setLimitWarning(`En fazla 2 resim yüklenebilir. ${safeActiveIndex + 1}. fotoğraf seçilen yeni görselle değiştirildi.`);
+      }
+      fileArray = fileArray.slice(0, 1);
+    } else {
+      const remainingSlots = 2 - currentB64s.length;
+      if (fileArray.length > remainingSlots) {
+        setLimitWarning(`En fazla 2 resim yüklenebilir. Seçilen ${fileArray.length} dosyadan ilk ${remainingSlots} tanesi yüklendi.`);
+        fileArray = fileArray.slice(0, remainingSlots);
+      }
+    }
 
     try {
       const readPromises = fileArray.map((file) => {
@@ -499,9 +547,21 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         rawBase64List.map((b64) => autoCropIdCard(b64))
       );
 
-      const updated = [...localPhotos, ...croppedList];
+      let updated: string[];
+      let newActiveIdx = 0;
+
+      if (currentB64s.length >= 2) {
+        updated = [...currentB64s];
+        const targetIdx = safeActiveIndex < updated.length ? safeActiveIndex : 0;
+        updated[targetIdx] = croppedList[0];
+        newActiveIdx = targetIdx;
+      } else {
+        updated = [...currentB64s, ...croppedList].slice(0, 2);
+        newActiveIdx = updated.length - 1;
+      }
+
       setLocalPhotos(updated);
-      setActiveIndex(updated.length - 1);
+      setActiveIndex(newActiveIdx);
 
       if (onPhotosSelected) {
         onPhotosSelected(updated);
@@ -517,6 +577,10 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   // 2. Fotoğraf (Arka Yüz) Yükleme Tetikleyici
   const handleAddSecondPhotoClick = () => {
+    if (photoList.length >= 2) {
+      setLimitWarning("En fazla 2 resim yüklenebilir (Ön ve Arka Yüz).");
+      return;
+    }
     fileInputRef.current?.click();
   };
 
@@ -660,6 +724,20 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         </div>
       )}
 
+      {/* Limit Uyarısı */}
+      {limitWarning && (
+        <Alert
+          variant="warning"
+          dismissible
+          onClose={() => setLimitWarning(null)}
+          className="d-flex align-items-center gap-1.5 py-1 px-2 mb-1.5 shadow-2xs border-warning text-dark w-100"
+          style={{ fontSize: "10.5px", lineHeight: "1.3" }}
+        >
+          <IconAlertCircle size={14} className="text-warning flex-shrink-0" />
+          <span>{limitWarning}</span>
+        </Alert>
+      )}
+
       {/* 3. Fotoğraf Önizleme Kutusu */}
       <div
         className="position-relative border rounded-3 bg-white d-flex flex-column align-items-center justify-content-center overflow-hidden mb-1.5 shadow-2xs w-100"
@@ -732,7 +810,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               Fotoğraf Yok
             </span>
             <span className="text-muted" style={{ fontSize: "9px" }}>
-              Ön / Arka Yüz Seç
+              Ön / Arka Yüz Seç (Maks 2)
             </span>
           </div>
         )}
@@ -792,7 +870,13 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
             }}
           >
             <IconCamera size={13} stroke={1.8} />
-            <span>{photoList.length === 0 ? "FOTOĞRAF YÜKLE" : "YENİ / DEĞİŞTİR"}</span>
+            <span>
+              {photoList.length === 0
+                ? "FOTOĞRAF YÜKLE (Maks 2)"
+                : photoList.length === 1
+                ? "FOTOĞRAF (1/2)"
+                : "FOTOĞRAF (2/2)"}
+            </span>
             <IconChevronDown size={12} stroke={2} />
           </Dropdown.Toggle>
 
@@ -802,14 +886,26 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               className="d-flex align-items-center gap-2 py-1.5"
             >
               <IconUpload size={14} className="text-success" />
-              <span>Dosyadan Seç {photoList.length > 0 ? "(Yeni/Arka Yüz)" : ""}</span>
+              <span>
+                {photoList.length === 0
+                  ? "Dosyadan Seç (En fazla 2)"
+                  : photoList.length === 1
+                  ? "Dosyadan Seç (2. Arka Yüz)"
+                  : `Aktif Fotoğrafı Değiştir (${safeActiveIndex + 1}. Belge)`}
+              </span>
             </Dropdown.Item>
             <Dropdown.Item
               onClick={startCamera}
               className="d-flex align-items-center gap-2 py-1.5"
             >
               <IconCamera size={14} className="text-primary" />
-              <span>Kameradan Çek {photoList.length > 0 ? "(Yeni/Arka Yüz)" : ""}</span>
+              <span>
+                {photoList.length === 0
+                  ? "Kameradan Çek (En fazla 2)"
+                  : photoList.length === 1
+                  ? "Kameradan Çek (2. Arka Yüz)"
+                  : `Aktif Fotoğrafı Değiştir (${safeActiveIndex + 1}. Belge)`}
+              </span>
             </Dropdown.Item>
             {photoList.length > 0 && (
               <>

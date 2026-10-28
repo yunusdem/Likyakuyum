@@ -8216,7 +8216,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         seriNo={seriNo}
         belgeNo={fisNo || "TEKLİF"}
         unvan={unvan || detayUnvan}
-        vergiKimlikNo={detayVergiKimlikNo}
+        vergiKimlikNo={detayVergiKimlikNo || (cariKartId ? (cariList.find((c) => c.id === cariKartId)?.vergiKimlikNo || "") : "")}
         cariKartId={cariKartId}
         detayUyruk={""}
         detayDogumTarihi={detayDogumTarihi}

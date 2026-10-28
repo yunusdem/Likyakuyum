@@ -8642,7 +8642,7 @@ export const DovizFisiPage: React.FC = () => {
         seriNo={seriNo}
         belgeNo={belgeNo || (fisId ? String(fisId) : "TEKLİF")}
         unvan={unvan}
-        vergiKimlikNo={vergiKimlikNo}
+        vergiKimlikNo={vergiKimlikNo || (cariKartId ? (cariList.find((c) => c.id === cariKartId)?.vergiKimlikNo || "") : "")}
         cariKartId={cariKartId}
         detayUyruk={detayUyruk || detayUlke}
         detayDogumTarihi={detayDogumTarihi}
