@@ -477,6 +477,7 @@ exit
 const REMOTE_VERSION_ENDPOINTS = [
   "https://likyakuyum.com/printer-version.json",
   "https://likyaerp.com/printer-version.json",
+  "https://developer.likyakuyum.com/printer-version.json",
 ];
 
 async function checkRemoteUpdates() {
