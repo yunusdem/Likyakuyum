@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Card, Col, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
+import { Alert, Button, ButtonGroup, Card, Col, Dropdown, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
 import { useParams } from "react-router-dom";
 import { IconAdjustments, IconChevronUp, IconDownload, IconFileSpreadsheet, IconFileTypePdf, IconPrinter, IconReportAnalytics, IconRefresh, IconSearch, IconX, IconBrandWhatsapp } from "@tabler/icons-react";
 import { CashDeskService, type VezneItem } from "../../services/cashDeskService";
@@ -134,9 +134,9 @@ export const RaporPage: React.FC = () => {
         tanim,
       }) : "";
       await sharePdfToWhatsApp({
-        elementId: "rapor-tablo-karti",
-        pdfBlob: blob,
+        fileBlob: blob,
         fileName: `${menu?.ad || "rapor"}.pdf`,
+        fileType: "pdf",
         message: msg,
       });
     } catch (e) {
@@ -229,15 +229,16 @@ export const RaporPage: React.FC = () => {
     try { await RaporService.pdfIndir(kod, degerler, kod); } catch (e: any) { setHata(e?.message || "PDF indirilemedi."); } finally { setDosyaIsi(false); } };
   const excelIndir = async () => { if (!kod) return; setDosyaIsi(true); setHata(null);
     try { await RaporService.excelIndir(kod, degerler, kod); } catch (e: any) { setHata(e?.message || "Excel indirilemedi."); } finally { setDosyaIsi(false); } };
-  const toolbarWhatsAppPaylas = async () => {
+  const toolbarWhatsAppPaylas = async (tur: "pdf" | "excel" = "pdf") => {
     if (!kod) return;
     if (zorunluEksik) { setHata(zorunluEksik); return; }
     setIsSharingPdf(true);
     setHata(null);
     try {
-      const url = await RaporService.pdfBlobUrl(kod, degerler);
-      const res = await fetch(url);
-      const blob = await res.blob();
+      const dosyaAdi = `${menu?.ad || tanim?.ad || kod}_${new Date().toISOString().slice(0, 10)}`;
+      const blob = tur === "excel"
+        ? await RaporService.excelBlob(kod, degerler)
+        : await RaporService.pdfBlob(kod, degerler);
       const msg = veri ? buildRaporWhatsAppMessage({
         raporAdi: menu?.ad || tanim?.ad || "Rapor",
         filtreOzeti: veri.filtreOzeti,
@@ -245,12 +246,11 @@ export const RaporPage: React.FC = () => {
         tanim,
       }) : "";
       await sharePdfToWhatsApp({
-        elementId: "rapor-tablo-karti",
-        pdfBlob: blob,
-        fileName: `${menu?.ad || "rapor"}.pdf`,
+        fileBlob: blob,
+        fileName: dosyaAdi,
+        fileType: tur,
         message: msg,
       });
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (e: any) {
       setHata(e?.message || "WhatsApp paylaşımı başlatılamadı.");
     } finally {
@@ -469,21 +469,41 @@ export const RaporPage: React.FC = () => {
                     <Button size="sm" variant="outline-danger" onClick={pdfOnizle} disabled={!veri || veri.sinirAsildi} title="A4 PDF önizlemesini pencerede aç"><IconFileTypePdf size={15} /> PDF</Button>
                     <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={!veri || veri.sinirAsildi} title="PDF indir"><IconDownload size={15} /> İndir</Button>
                     <Button size="sm" variant="outline-success" onClick={excelIndir} disabled={!veri || veri.sinirAsildi} title="Excel indir"><IconFileSpreadsheet size={15} /> Excel</Button>
-                    <Button
-                      size="sm"
-                      variant="success"
-                      onClick={toolbarWhatsAppPaylas}
-                      disabled={!veri || veri.sinirAsildi || isSharingPdf}
-                      style={{ backgroundColor: "#25D366", borderColor: "#25D366", color: "#fff" }}
-                      title="Raporu Doğrudan PDF Olarak WhatsApp ile Gönder"
-                    >
-                      {isSharingPdf ? (
-                        <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} className="me-1" />
-                      ) : (
-                        <IconBrandWhatsapp size={15} className="me-1" />
-                      )}
-                      WhatsApp
-                    </Button>
+                    <Dropdown as={ButtonGroup} size="sm">
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={() => toolbarWhatsAppPaylas("pdf")}
+                        disabled={!veri || veri.sinirAsildi || isSharingPdf}
+                        style={{ backgroundColor: "#25D366", borderColor: "#25D366", color: "#fff" }}
+                        title="Raporu Doğrudan PDF Olarak WhatsApp ile Gönder"
+                      >
+                        {isSharingPdf ? (
+                          <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} className="me-1" />
+                        ) : (
+                          <IconBrandWhatsapp size={15} className="me-1" />
+                        )}
+                        WhatsApp (PDF)
+                      </Button>
+                      <Dropdown.Toggle
+                        split
+                        variant="success"
+                        id="dropdown-whatsapp-rapor"
+                        style={{ backgroundColor: "#20bd5a", borderColor: "#20bd5a", color: "#fff" }}
+                        disabled={!veri || veri.sinirAsildi || isSharingPdf}
+                        title="WhatsApp Seçenekleri (PDF veya Excel)"
+                      />
+                      <Dropdown.Menu align="end" className="shadow border-0 py-1" style={{ fontSize: "0.85rem" }}>
+                        <Dropdown.Item onClick={() => toolbarWhatsAppPaylas("pdf")} className="d-flex align-items-center py-2">
+                          <IconFileTypePdf size={16} className="text-danger me-2" />
+                          <span>PDF Dosyası Olarak Gönder (.pdf)</span>
+                        </Dropdown.Item>
+                        <Dropdown.Item onClick={() => toolbarWhatsAppPaylas("excel")} className="d-flex align-items-center py-2">
+                          <IconFileSpreadsheet size={16} className="text-success me-2" />
+                          <span>Excel Tablosu Olarak Gönder (.xlsx)</span>
+                        </Dropdown.Item>
+                      </Dropdown.Menu>
+                    </Dropdown>
                     <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={!veri || veri.sinirAsildi} title="Yazdır"><IconPrinter size={15} /> Yazdır</Button>
                     {parametreAcik
                       ? <Button size="sm" variant="light" onClick={() => setParametreAcik(false)} title="Parametreleri gizle"><IconChevronUp size={15} /></Button>
