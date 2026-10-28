@@ -86,6 +86,35 @@ export const UrunSayfasi: React.FC = () => {
         </div>
       </section>
 
+      {/* KAMPANYA BROŞÜRÜ (yalnız Likya.Kuyum) */}
+      {kuyumMu && (
+        <section className="bolum bolum-gri" aria-labelledby="kampanya-baslik">
+          <div className="k">
+            <div className="bolum-bas">
+              <span className="ust-baslik">Sınırlı süreli kampanya</span>
+              <h2 id="kampanya-baslik">Kuyum ve Kuyum Pro paketleri</h2>
+            </div>
+            <Belir className="kampanya-brosur">
+              <a href="/images/kampanya/likya-erp-kampanya-brosur.jpg" target="_blank" rel="noopener noreferrer" title="Broşürü büyük boyutta açın">
+                <img
+                  src="/images/kampanya/likya-erp-kampanya-brosur.jpg"
+                  alt="Likya ERP kampanya broşürü: Kuyum Paketi ve Kuyum Pro Paketi fiyatları, özellikler ve paket karşılaştırması"
+                  loading="lazy"
+                />
+              </a>
+            </Belir>
+            <div className="hero-dugmeler kampanya-dugmeler">
+              <a href="#demo" className="dugme dugme-urun">
+                Teklif İste <IconArrowRight size={18} aria-hidden="true" />
+              </a>
+              <a href={SIRKET.whatsapp} target="_blank" rel="noopener noreferrer" className="dugme dugme-cizgi">
+                <IconBrandWhatsapp size={18} aria-hidden="true" /> Kampanyayı WhatsApp'tan Sorun
+              </a>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ÖNE ÇIKANLAR */}
       <section className="bolum" aria-labelledby="ozellik-baslik">
         <div className="k">
