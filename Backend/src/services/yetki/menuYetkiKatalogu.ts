@@ -13,6 +13,8 @@ export type Madde = [anaKey: string, harf: string | null];
 /** Rapor kodu → raporun menüdeki maddeleri (menüde olmayan kod kısıtlanmaz) */
 export const RAPOR_MADDELERI: Record<string, Madde[]> = {
   VEZHAR1: [["vezne", "I"]],
+  VEZHAS1: [["vezne", "I"]],
+  VEZALT1: [["vezne", "I"]],
   VEZANL1: [["vezne", "J"]],
   VEZBAK1: [["vezne", "L"]],
   KURKON2: [["vezne", "O"]],

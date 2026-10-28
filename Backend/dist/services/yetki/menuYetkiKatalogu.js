@@ -4,6 +4,8 @@ import { RAPOR_YETKI_KUTULARI, YETKI_KUTUSU_ADI, menuMaddesiAcik } from "./kulla
 /** Rapor kodu → raporun menüdeki maddeleri (menüde olmayan kod kısıtlanmaz) */
 export const RAPOR_MADDELERI = {
     VEZHAR1: [["vezne", "I"]],
+    VEZHAS1: [["vezne", "I"]],
+    VEZALT1: [["vezne", "I"]],
     VEZANL1: [["vezne", "J"]],
     VEZBAK1: [["vezne", "L"]],
     KURKON2: [["vezne", "O"]],

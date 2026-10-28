@@ -40,6 +40,8 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "G- Vezne Transferi Kayıt", link: "vezne/transfer-kayit" },
       { id: uuid(), name: "H- Vezne Transferi Düzeltme", link: "vezne/transfer-duzeltme" },
       { id: uuid(), name: "I- Vezne Hareket Listesi", link: raporLinki("VEZHAR1") },
+      { id: uuid(), name: "I- Vezne Hareket (Has)", link: raporLinki("VEZHAS1") },
+      { id: uuid(), name: "I- Vezne Hareket (Altın)", link: raporLinki("VEZALT1") },
       { id: uuid(), name: "J- Fiş Aktarma", link: "vezne/fis-aktarma" },
       { id: uuid(), name: "K- Vezne Bakiye Raporu", link: raporLinki("VEZANL1") },
       { id: uuid(), name: "L- Vezne Bakiye Raporu Tarih Bazlı", link: raporLinki("VEZBAK1") },

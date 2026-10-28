@@ -15,6 +15,8 @@ export const RAPOR_MENU: { kod: string; yol: string; ad: string; grup: RaporGrub
   { kod: "CARKRT1", yol: "cari-kart-listesi", ad: "Cari Kart Listesi", grup: "gizli" },
   { kod: "VEZBAK1", yol: "vezne-bakiye", ad: "Vezne Bakiye Raporu (Tarih Bazlı)", grup: "vezne" },
   { kod: "VEZHAR1", yol: "vezne-hareket-listesi", ad: "Vezne Hareket Listesi", grup: "vezne" },
+  { kod: "VEZHAS1", yol: "vezne-hareket-has", ad: "Vezne Hareket (Has)", grup: "vezne" },
+  { kod: "VEZALT1", yol: "vezne-hareket-altin", ad: "Vezne Hareket (Altın)", grup: "vezne" },
   { kod: "VERKOM1", yol: "vergiler-komisyon", ad: "Vergiler ve Komisyon", grup: "raporlar" },
   { kod: "KARZAR1", yol: "kar-zarar", ad: "Kâr / Zarar Faaliyet Analizi", grup: "yonetici" },
   { kod: "FIRVAR1", yol: "firma-varliklari", ad: "Firma Varlıkları Raporu", grup: "yonetici" },

@@ -13,6 +13,8 @@ export const RAPOR_SEED = [
     { kod: "CARKRT1", ad: "Cari Kart Listesi", kagit: "A4-yatay" },
     { kod: "VEZBAK1", ad: "Vezne Bakiye Raporu (Tarih Bazlı)", kagit: "A4" },
     { kod: "VEZHAR1", ad: "Vezne Hareket Listesi", kagit: "A4-yatay" },
+    { kod: "VEZHAS1", ad: "Vezne Hareket (Has)", kagit: "A4-yatay" },
+    { kod: "VEZALT1", ad: "Vezne Hareket (Altın)", kagit: "A4-yatay" },
     { kod: "VERKOM1", ad: "Vergiler ve Komisyon", kagit: "A4-yatay" },
     { kod: "KARZAR1", ad: "Kâr / Zarar Faaliyet Analizi", kagit: "A4-yatay" },
     { kod: "FIRVAR1", ad: "Firma Varlıkları Raporu", kagit: "A4" },

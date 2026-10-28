@@ -469,4 +469,244 @@ export const RAPOR_SORGULARI = {
         const ozet = [...oz.values()].map(o => ({ ...o, net: o.giris - o.cikis }));
         return sinirla(satirlar, t, `${aralikOzeti(p)} · ${(p.baslangicSaat || "00:00").slice(0, 5)}–${(p.bitisSaat || "23:59").slice(0, 5)}${ozetEk(p) || " · Tüm vezneler"}${p.fisTipi === 0 ? " · Yalnız alış fişleri" : p.fisTipi === 1 ? " · Yalnız satış fişleri" : ""} · ${kur.aciklama}`, `Seçilen aralıkta vezne hareketi yok. ${VEZNE_BAKIYE_DIPNOT}`, ozet);
     },
+    /**
+     * Vezne Hareket (Has) — belge ve banka hesabı kolonları olmadan, her satırda milyem ve has karşılığı ile vezne bazında giriş / çıkış miktarları.
+     */
+    async VEZHAS1(pool, p, t) {
+        if (!p.baslangic || !p.bitis)
+            throw ApiError.badRequest("Tarih aralığı zorunludur.");
+        const kur = await kurCoz(pool, { ...p, kurTarihi: p.kurTarihi || p.bitis });
+        const d = await belgeTablolari(pool);
+        const yalnizFis = p.fisTipi === 0 || p.fisTipi === 1;
+        const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis).input("tip", sql.Int, yalnizFis ? p.fisTipi : null);
+        const f = filtreler(req, p, { vezne: "V", para: "X.paraId" });
+        const sarrafSatirJoin = d.sarraf
+            ? `LEFT JOIN dbo.TODVZ_SARRAF_FISI_SATIRI SFS ON X.belgeTipi=5 AND X.ayak=0 AND SFS.SARRAF_FISI_ID=X.belgeId AND SFS.SATIR_NO=X.satirNo
+         LEFT JOIN dbo.TODVZ_ODEME_SATIRI SOS ON X.belgeTipi=5 AND X.ayak=1 AND SOS.SARRAF_FISI_ID=X.belgeId AND SOS.SATIR_NO=X.satirNo`
+            : ``;
+        const sarrafAlanlar = d.sarraf
+            ? `SFS.MILYEM sarrafMilyem, SFS.HAS_GRAM sarrafHasGram, SOS.MILYEM odemeMilyem, SOS.HAS_GRAM odemeHasGram,`
+            : `NULL sarrafMilyem, NULL sarrafHasGram, NULL odemeMilyem, NULL odemeHasGram,`;
+        const res = await req.query(`
+      ;WITH X (${VEZNE_HAREKET_KOLONLARI}) AS (
+       ${vezneHareketleriSql(d, yalnizFis)}
+      )
+      SELECT X.*, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, RTRIM(ISNULL(P.KOD,'')) paraKod,
+        ISNULL(P.HAS_ORANI, 0) paraHasOrani,
+        ${sarrafAlanlar}
+        CASE WHEN X.paraId=${TL_PARA_SQL} THEN 9999999 ELSE ISNULL(P.SIRA_NO,99) END paraSira
+      FROM X LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=X.vezneId
+             LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=X.paraId
+             ${sarrafSatirJoin}
+      WHERE CAST(X.tarih AS date) BETWEEN @bas AND @bit AND (ABS(ISNULL(X.giris,0))>0.0000001 OR ABS(ISNULL(X.cikis,0))>0.0000001) ${f}
+      ORDER BY V.KOD, CAST(X.tarih AS date), X.belgeTipi, X.belgeId, paraSira, X.aciklama;`);
+        const sb = (p.baslangicSaat || "00:00").slice(0, 5), se = (p.bitisSaat || "23:59").slice(0, 5), saatSuz = sb !== "00:00" || se !== "23:59";
+        const satirlar = res.recordset.map((r) => ({ ...r, saat: saatTr(r.zaman) }))
+            .filter((r) => !saatSuz || ((r.saat || "00:00") >= sb && (r.saat || "00:00") <= se))
+            .sort((a, b) => a.vezneKod.localeCompare(b.vezneKod) || new Date(a.tarih).getTime() - new Date(b.tarih).getTime() || (a.saat || "").localeCompare(b.saat || "")
+            || a.belgeTipi - b.belgeTipi || a.belgeId - b.belgeId || a.paraSira - b.paraSira)
+            .map((r) => {
+            const id = Number(r.paraId), giris = Number(r.giris) || 0, cikis = Number(r.cikis) || 0, miktar = giris || cikis;
+            const secilenKur = kur.kurlar.get(id) ?? 0, ks = kur.satisKurlari.get(id) ?? 0, belgeli = [0, 5, 6].includes(Number(r.belgeTipi));
+            const rawMilyem = r.sarrafMilyem ?? r.odemeMilyem;
+            const milyem = rawMilyem != null && Number(rawMilyem) > 0
+                ? Number(rawMilyem)
+                : (Number(r.paraHasOrani) > 0 ? Math.round(Number(r.paraHasOrani) * 1000) : null);
+            const rawHas = r.sarrafHasGram ?? r.odemeHasGram;
+            const hasKarsiligi = rawHas != null && Number(rawHas) > 0
+                ? Number(rawHas)
+                : (milyem && miktar ? miktar * (milyem / 1000) : (Number(r.paraHasOrani) > 0 ? miktar * Number(r.paraHasOrani) : null));
+            const ortak = {
+                ...r,
+                yon: giris ? "<<" : ">>",
+                tip: belgeli ? (Number(r.fisTip) === 1 ? "Satış" : "Alış") : "",
+                giris,
+                cikis,
+                belgeNo: r.belgeNo || r.aciklama,
+                vezneBaslik: `${r.vezneKod} — ${r.vezneAd}`,
+                milyem,
+                hasKarsiligi,
+            };
+            if (Number(r.ayak) === 1)
+                return { ...ortak, aciklama: `${r.aciklama} — ödeme`, miktar: null, kur: null, tutar: 0, komisyon: 0, bmv: 0, secilenKur: null, secilenTl: 0, kurSatis: null, tlSatis: 0 };
+            return {
+                ...ortak,
+                miktar,
+                kur: Number(r.kur) || 0,
+                tutar: Number(r.tutar) || 0,
+                komisyon: Number(r.komisyon) || 0,
+                bmv: Number(r.bmv) || 0,
+                secilenKur,
+                secilenTl: miktar * secilenKur,
+                kurSatis: ks,
+                tlSatis: miktar * ks,
+            };
+        });
+        const oz = new Map();
+        for (const x of satirlar) {
+            const k = `${x.vezneKod}|${x.paraKod}|${x.milyem || 0}`;
+            const o = oz.get(k) || {
+                vezne: x.vezneBaslik,
+                paraKod: x.paraKod,
+                milyem: x.milyem,
+                giris: 0,
+                cikis: 0,
+                hasKarsiligi: 0,
+            };
+            o.giris += x.giris;
+            o.cikis += x.cikis;
+            if (x.hasKarsiligi) {
+                o.hasKarsiligi += (x.giris ? x.hasKarsiligi : -x.hasKarsiligi);
+            }
+            oz.set(k, o);
+        }
+        const ozet = [...oz.values()].map(o => ({ ...o, net: o.giris - o.cikis }));
+        return sinirla(satirlar, t, `${aralikOzeti(p)} · ${(p.baslangicSaat || "00:00").slice(0, 5)}–${(p.bitisSaat || "23:59").slice(0, 5)}${ozetEk(p) || " · Tüm vezneler"}${p.fisTipi === 0 ? " · Yalnız alış fişleri" : p.fisTipi === 1 ? " · Yalnız satış fişleri" : ""} · ${kur.aciklama}`, `Seçilen aralıkta vezne hareketi yok. ${VEZNE_BAKIYE_DIPNOT}`, ozet);
+    },
+    /**
+     * Vezne Hareket (Altın) — vezne altın hareketleri: sarraf fişleri ve altın işlemleri, işçilik detayları (hesaplama şekli: adet/gram/toplam, işçilik miktarı, has gram ve TL karşılığı).
+     */
+    async VEZALT1(pool, p, t) {
+        if (!p.baslangic || !p.bitis)
+            throw ApiError.badRequest("Tarih aralığı zorunludur.");
+        const d = await belgeTablolari(pool);
+        const ISCILIK_SEKLI = { 0: "Adet", 1: "Toplam", 2: "Gram" };
+        const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis)
+            .input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null);
+        const fSarraf = filtreler(req, p, { vezne: "V", para: "S.URUN_ID" });
+        const fDoviz = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
+        const fOdeme = filtreler(req, p, { vezne: "V", para: "OS.PARA_ID" });
+        const satirlarHam = [];
+        if (d.sarraf) {
+            // 1. Sarraf Fişi Satırları (ürünler ve işçilik)
+            const sres = await req.query(`
+        SELECT
+          F.SARRAF_FISI_ID fisId, S.SATIR_NO satirNo, F.TARIH tarih, ISNULL(F.SAAT, F.EKLEME_ZAMANI) zaman,
+          'Sarraf fişi' belge, RTRIM(ISNULL(F.FIS_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan,
+          F.TIP tipKod, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd,
+          COALESCE(NULLIF(RTRIM(P.AD),''), RTRIM(P.KOD)) cins, RTRIM(P.KOD) paraKod,
+          ISNULL(S.ADET,0) adet, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.MILYEM,0) milyem, ISNULL(S.HAS_GRAM,0) hasGram,
+          ISNULL(S.ISCILIK_HESAPLAMA_SEKLI,0) sekilKod, ISNULL(S.ISCILIK_MIKTARI,0) iscilikMiktari,
+          ISNULL(S.ISCILIK_HAS_GRAM,0) iscilikHasGram, ISNULL(F.ALTIN_HAS_KURU,0) hasKuru,
+          ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar, RTRIM(ISNULL(U.AD, '')) kaydeden
+        FROM dbo.TODVZ_SARRAF_FISI F
+          JOIN dbo.TODVZ_SARRAF_FISI_SATIRI S ON S.SARRAF_FISI_ID=F.SARRAF_FISI_ID
+          LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.URUN_ID
+          LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
+          LEFT JOIN dbo.TODVZ_KULLANICI U ON U.KULLANICI_ID=F.EKLEYEN_ID
+        WHERE CAST(F.TARIH AS date) BETWEEN @bas AND @bit
+          AND (@tip IS NULL OR F.TIP=@tip)
+          ${fSarraf}
+        ORDER BY F.TARIH, F.SARRAF_FISI_ID, S.SATIR_NO;`);
+            satirlarHam.push(...sres.recordset);
+            // 2. Sarraf Fişi Altın Ödeme Satırları (hurda / has ile ödeme)
+            const ores = await req.query(`
+        SELECT
+          F.SARRAF_FISI_ID fisId, OS.SATIR_NO satirNo, F.TARIH tarih, ISNULL(F.SAAT, F.EKLEME_ZAMANI) zaman,
+          'Sarraf ödeme' belge, RTRIM(ISNULL(F.FIS_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan,
+          CASE WHEN F.TIP=1 THEN 0 ELSE 1 END tipKod, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd,
+          COALESCE(NULLIF(RTRIM(P.AD),''), RTRIM(P.KOD)) cins, RTRIM(P.KOD) paraKod,
+          0 adet, ISNULL(OS.MIKTAR,0) miktar,
+          COALESCE(OS.MILYEM, CAST(ROUND(ISNULL(P.HAS_ORANI,0)*1000, 0) AS int)) milyem,
+          COALESCE(OS.HAS_GRAM, ISNULL(OS.MIKTAR,0)*ISNULL(P.HAS_ORANI,0)) hasGram,
+          0 sekilKod, 0 iscilikMiktari, 0 iscilikHasGram, ISNULL(F.ALTIN_HAS_KURU,0) hasKuru,
+          ISNULL(OS.KUR,0) kur, ISNULL(OS.TUTAR,0) tutar, RTRIM(ISNULL(U.AD, '')) kaydeden
+        FROM dbo.TODVZ_SARRAF_FISI F
+          JOIN dbo.TODVZ_ODEME_SATIRI OS ON OS.SARRAF_FISI_ID=F.SARRAF_FISI_ID
+          JOIN dbo.TODVZ_PARA P ON P.PARA_ID=OS.PARA_ID
+          LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
+          LEFT JOIN dbo.TODVZ_KULLANICI U ON U.KULLANICI_ID=F.EKLEYEN_ID
+        WHERE OS.ISLEME_YERI=0
+          AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit
+          AND (@tip IS NULL OR F.TIP=@tip)
+          AND ISNULL(P.HAS_ORANI,0) > 0
+          ${fOdeme}
+        ORDER BY F.TARIH, F.SARRAF_FISI_ID, OS.SATIR_NO;`);
+            satirlarHam.push(...ores.recordset);
+        }
+        // 3. Döviz fişlerindeki altın satırları
+        const dres = await req.query(`
+      SELECT
+        F.FIS_ID fisId, S.SATIR_NO satirNo, F.TARIH tarih, ISNULL(F.ZAMAN, F.EKLEME_ZAMANI) zaman,
+        'Döviz fişi' belge, COALESCE(NULLIF(RTRIM(F.SERI_NO),''), RTRIM(ISNULL(F.BELGE_NO,''))) belgeNo,
+        RTRIM(ISNULL(F.UNVAN,'')) unvan, F.TIP tipKod, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd,
+        COALESCE(NULLIF(RTRIM(P.AD),''), RTRIM(P.KOD)) cins, RTRIM(P.KOD) paraKod,
+        0 adet, ISNULL(S.MIKTAR,0) miktar,
+        CAST(ROUND(ISNULL(P.HAS_ORANI,0)*1000, 0) AS int) milyem,
+        ISNULL(S.MIKTAR,0) * ISNULL(P.HAS_ORANI,0) hasGram,
+        CASE WHEN ISNULL(S.ISCILIK,0)<>0 THEN 2 ELSE 0 END sekilKod,
+        ISNULL(S.ISCILIK,0) iscilikMiktari,
+        0 iscilikHasGram, 0 hasKuru, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar,
+        RTRIM(ISNULL(U.AD, '')) kaydeden
+      FROM dbo.TODVZ_FIS F
+        JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID
+        JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID
+        LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
+        LEFT JOIN dbo.TODVZ_KULLANICI U ON U.KULLANICI_ID=F.EKLEYEN_ID
+      WHERE ISNULL(F.IPTAL,0)=0
+        AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit
+        AND (@tip IS NULL OR F.TIP=@tip)
+        AND ISNULL(P.HAS_ORANI,0) > 0
+        ${fDoviz}
+      ORDER BY F.TARIH, F.FIS_ID, S.SATIR_NO;`);
+        satirlarHam.push(...dres.recordset);
+        const sb = (p.baslangicSaat || "00:00").slice(0, 5), se = (p.bitisSaat || "23:59").slice(0, 5), saatSuz = sb !== "00:00" || se !== "23:59";
+        const satirlar = satirlarHam.map((r) => ({ ...r, saat: saatTr(r.zaman) }))
+            .filter((r) => !saatSuz || ((r.saat || "00:00") >= sb && (r.saat || "00:00") <= se))
+            .sort((a, b) => a.vezneKod.localeCompare(b.vezneKod) || new Date(a.tarih).getTime() - new Date(b.tarih).getTime() || (a.saat || "").localeCompare(b.saat || ""))
+            .map((r) => {
+            const ihg = Number(r.iscilikHasGram) || 0, hk = Number(r.hasKuru) || 0, im = Number(r.iscilikMiktari) || 0, miktar = Number(r.miktar) || 0;
+            const iscilikVar = ihg !== 0 || im !== 0;
+            let iscilikTutari = 0;
+            if (ihg !== 0 && hk !== 0) {
+                iscilikTutari = ihg * hk;
+            }
+            else if (r.belge === "Döviz fişi" && im !== 0) {
+                iscilikTutari = im * miktar;
+            }
+            else if (im !== 0) {
+                iscilikTutari = r.sekilKod === 1 ? im : (r.sekilKod === 0 ? im * (Number(r.adet) || 1) : im * miktar);
+            }
+            return {
+                ...r,
+                vezneBaslik: `${r.vezneKod} — ${r.vezneAd}`,
+                tip: Number(r.tipKod) === 1 ? "Satış" : "Alış",
+                adet: Number(r.adet) || 0,
+                miktar,
+                milyem: Number(r.milyem) || 0,
+                hasGram: Number(r.hasGram) || 0,
+                sekil: iscilikVar ? (ISCILIK_SEKLI[Number(r.sekilKod)] || "Toplam") : "-",
+                iscilikMiktari: iscilikVar ? im : null,
+                iscilikHasGram: iscilikVar ? ihg : null,
+                hasKuru: hk || null,
+                iscilikTutari,
+                kur: Number(r.kur) || 0,
+                tutar: Number(r.tutar) || 0,
+            };
+        });
+        const oz = new Map();
+        for (const x of satirlar) {
+            const k = `${x.cins}|${x.tip}`;
+            const o = oz.get(k) || { cins: x.cins, tip: x.tip, adet: 0, miktar: 0, hasGram: 0, iscilikTutari: 0, tutar: 0 };
+            o.adet += (x.adet || 0);
+            o.miktar += (x.miktar || 0);
+            o.hasGram += (x.hasGram || 0);
+            o.iscilikTutari += (x.iscilikTutari || 0);
+            o.tutar += (x.tutar || 0);
+            oz.set(k, o);
+        }
+        const ozet = [...oz.values()];
+        if (ozet.length > 1) {
+            ozet.push({
+                cins: "GENEL TOPLAM",
+                tip: "",
+                adet: ozet.reduce((s, o) => s + (o.adet || 0), 0),
+                miktar: ozet.reduce((s, o) => s + (o.miktar || 0), 0),
+                hasGram: ozet.reduce((s, o) => s + (o.hasGram || 0), 0),
+                iscilikTutari: ozet.reduce((s, o) => s + (o.iscilikTutari || 0), 0),
+                tutar: ozet.reduce((s, o) => s + (o.tutar || 0), 0),
+            });
+        }
+        return sinirla(satirlar, t, `${aralikOzeti(p)} · ${(p.baslangicSaat || "00:00").slice(0, 5)}–${(p.bitisSaat || "23:59").slice(0, 5)}${ozetEk(p) || " · Tüm vezneler"}${p.fisTipi === 0 ? " · Yalnız alış" : p.fisTipi === 1 ? " · Yalnız satış" : ""}`, "Seçilen aralıkta vezne altın hareketi bulunamadı.", ozet);
+    },
 };

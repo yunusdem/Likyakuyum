@@ -1,0 +1,212 @@
+{
+  "kod": "VEZALT1",
+  "ad": "Vezne Hareket (Altın)",
+  "aciklama": "Vezne altın hareketleri — sarraf ve altın fişleri, işçilik hesaplama şekli (adet/gram/toplam), işçilik miktarı, has gram ve tutar detayları.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "baslangicSaat",
+      "etiket": "Saat aralığı",
+      "tip": "saatAralik"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Altın / Ürün (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Fiş tipi",
+      "tip": "fisTipi"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.3,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "belge",
+      "baslik": "Belge",
+      "g": 1.1,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Fiş no",
+      "g": 1.5
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 2.8
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "cins",
+      "baslik": "Ürün / Cins",
+      "g": 1.8
+    },
+    {
+      "anahtar": "adet",
+      "baslik": "Adet",
+      "g": 0.8,
+      "bicim": "tam",
+      "toplam": true
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar (gr)",
+      "g": 1.5,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "milyem",
+      "baslik": "Milyem",
+      "g": 0.9,
+      "bicim": "tam",
+      "hiza": "center"
+    },
+    {
+      "anahtar": "hasGram",
+      "baslik": "Has gram",
+      "g": 1.6,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "sekil",
+      "baslik": "İşçilik Şekli",
+      "g": 1.4,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "iscilikMiktari",
+      "baslik": "İşçilik Miktarı",
+      "g": 1.4,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "iscilikHasGram",
+      "baslik": "İşçilik Has Gr",
+      "g": 1.5,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "hasKuru",
+      "baslik": "Has Kuru",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "iscilikTutari",
+      "baslik": "İşçilik (TL)",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Birim Kur",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "kaydeden",
+      "baslik": "Kaydeden",
+      "g": 1.4,
+      "pdf": false
+    }
+  ],
+  "grup": {
+    "anahtar": "vezneKod",
+    "baslik": "Vezne {{vezneBaslik}}",
+    "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Ürün ve işlem bazında altın ve işçilik toplamı",
+    "kolonlar": [
+      {
+        "anahtar": "cins",
+        "baslik": "Ürün / Cins",
+        "g": 3
+      },
+      {
+        "anahtar": "tip",
+        "baslik": "Tip",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "adet",
+        "baslik": "Toplam Adet",
+        "g": 1.4,
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "miktar",
+        "baslik": "Toplam Gram",
+        "g": 1.8,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "hasGram",
+        "baslik": "Toplam Has Gr",
+        "g": 1.8,
+        "bicim": "sayi4"
+      },
+      {
+        "anahtar": "iscilikTutari",
+        "baslik": "İşçilik (TL)",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "tutar",
+        "baslik": "Toplam Tutar (TL)",
+        "g": 2.2,
+        "bicim": "sayi"
+      }
+    ]
+  }
+}
