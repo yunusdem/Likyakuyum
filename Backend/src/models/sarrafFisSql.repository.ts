@@ -1155,7 +1155,7 @@ export class SarrafFisSqlRepository {
             @TOPLAM_ISCILIK_MIKTARI = ISNULL(SUM(
               CASE 
                 WHEN ISNULL(ISCILIK_MIKTARI, 0) > 0 THEN ISCILIK_MIKTARI 
-                WHEN ISNULL(ISCILIK_HAS_GRAM, 0) > 0 THEN ISNULL(NULLIF(GRAM, 0), ISNULL(MIKTAR, ISNULL(ADET, 0)))
+                WHEN ISNULL(ISCILIK_HAS_GRAM, 0) > 0 THEN ISNULL(NULLIF(MIKTAR, 0), ISNULL(ADET, 0))
                 ELSE 0 
               END
             ), 0),
