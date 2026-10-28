@@ -3,13 +3,23 @@ import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } fro
 import { Link } from "react-router-dom";
 import { IconPlus, IconRefresh } from "@tabler/icons-react";
 import { adminApi, BildirimGirdi, DestekHedefSecenekleri, DestekKonuDetay } from "../services/adminApi";
+
+/** Bildirim ekranının kullandığı uçlar: admin paneli (varsayılan) ve destek paneli (docs/DESTEK_PANELI_YOL_HARITASI.md D11) */
+export interface BildirimApi {
+  bildirimler: () => Promise<{ satirlar: KonuOzet[]; kurulu: boolean }>;
+  bildirimHedefleri: () => Promise<DestekHedefSecenekleri>;
+  destekKonu: (konuId: number) => Promise<DestekKonuDetay>;
+  bildirimOlustur: (veri: BildirimGirdi) => Promise<unknown>;
+  bildirimGuncelle: (konuId: number, veri: BildirimGirdi) => Promise<unknown>;
+  bildirimGeriCek: (konuId: number) => Promise<unknown>;
+}
 import { BILDIRIM_TURU_ADI, BildirimHedefi, BildirimTuru, DURUM_ADI, DURUM_RENGI, HEDEF_ADI, KonuOzet, zamanYaz } from "../../components/destek/destekOrtak";
 import { ADMIN_DESTEK_DEGISTI } from "../components/AdminKonuSohbet";
 
 const BOS: BildirimGirdi = { baslik: "", metin: "", bildirimTuru: "DUYURU", onemli: false, cevapAlir: true, hedef: "TUMU", firmaIds: [], kullaniciIds: [], gonder: false };
 
 /** Panel > Bildirimler (K7, K8, K10, K17): taslak / gönder / geri çek; hedef: tümü, seçili firmalar, seçili kullanıcılar. */
-const BildirimlerPage: React.FC = () => {
+const BildirimlerPage: React.FC<{ api?: BildirimApi; destekYolu?: string }> = ({ api = adminApi, destekYolu = "/destek" }) => {
   const [satirlar, setSatirlar] = useState<KonuOzet[]>([]);
   const [kurulu, setKurulu] = useState(true);
   const [yukleniyor, setYukleniyor] = useState(true);
@@ -28,7 +38,7 @@ const BildirimlerPage: React.FC = () => {
   const yukle = useCallback(async () => {
     setYukleniyor(true);
     try {
-      const s = await adminApi.bildirimler();
+      const s = await api.bildirimler();
       setSatirlar(s.satirlar);
       setKurulu(s.kurulu);
       setHata(null);
@@ -37,12 +47,12 @@ const BildirimlerPage: React.FC = () => {
     } finally {
       setYukleniyor(false);
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     yukle();
-    adminApi.bildirimHedefleri().then(setSecenekler).catch(() => undefined);
-  }, [yukle]);
+    api.bildirimHedefleri().then(setSecenekler).catch(() => undefined);
+  }, [yukle, api]);
 
   const degisti = () => window.dispatchEvent(new Event(ADMIN_DESTEK_DEGISTI));
 
@@ -55,7 +65,7 @@ const BildirimlerPage: React.FC = () => {
 
   const duzenleAc = async (k: KonuOzet) => {
     try {
-      const d = await adminApi.destekKonu(k.konuId);
+      const d = await api.destekKonu(k.konuId);
       setDuzenlenen(k.konuId);
       setForm({
         baslik: d.konu.baslik,
@@ -85,8 +95,8 @@ const BildirimlerPage: React.FC = () => {
     setFormHata(null);
     try {
       const veri = { ...form, gonder };
-      if (duzenlenen) await adminApi.bildirimGuncelle(duzenlenen, veri);
-      else await adminApi.bildirimOlustur(veri);
+      if (duzenlenen) await api.bildirimGuncelle(duzenlenen, veri);
+      else await api.bildirimOlustur(veri);
       setFormAcik(false);
       setMesaj(gonder ? "Bildirim gönderildi." : "Taslak kaydedildi.");
       degisti();
@@ -101,7 +111,7 @@ const BildirimlerPage: React.FC = () => {
   const geriCek = async (k: KonuOzet) => {
     if (!window.confirm(`"${k.baslik}" geri çekilsin mi? Tüm kullanıcılardan kalkar.`)) return;
     try {
-      await adminApi.bildirimGeriCek(k.konuId);
+      await api.bildirimGeriCek(k.konuId);
       setMesaj("Bildirim geri çekildi.");
       yukle();
     } catch (err: any) {
@@ -192,7 +202,7 @@ const BildirimlerPage: React.FC = () => {
                   </td>
                   <td className="small">{k.gonderimTarihi ? zamanYaz(k.gonderimTarihi) : <span className="text-muted">{zamanYaz(k.olusturmaTarihi)}</span>}</td>
                   <td className="text-end" style={{ minWidth: 110 }}>
-                    <Button size="sm" variant="link" className="p-0 me-2" onClick={() => adminApi.destekKonu(k.konuId).then(setDetay).catch((e) => setHata(e?.message))}>
+                    <Button size="sm" variant="link" className="p-0 me-2" onClick={() => api.destekKonu(k.konuId).then(setDetay).catch((e) => setHata(e?.message))}>
                       Ayrıntı
                     </Button>
                     {k.durum === "TASLAK" && (
@@ -331,7 +341,7 @@ const BildirimlerPage: React.FC = () => {
               )}
               {typeof detay.yanitSayisi === "number" && detay.yanitSayisi > 0 && (
                 <div className="mt-3">
-                  <Link to={`/destek?kaynak=${detay.konu.konuId}`}>{detay.yanitSayisi} yanıt talebi</Link>
+                  <Link to={`${destekYolu}?kaynak=${detay.konu.konuId}`}>{detay.yanitSayisi} yanıt talebi</Link>
                 </div>
               )}
             </>

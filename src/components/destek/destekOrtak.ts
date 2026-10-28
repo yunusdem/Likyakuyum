@@ -29,6 +29,7 @@ export interface MesajDto {
   gonderenTur: Taraf;
   gonderenAd: string | null;
   adminId?: number | null;
+  personelId?: number | null;
   kullaniciId?: number | null;
   metin: string;
   icNot: boolean;
@@ -58,6 +59,10 @@ export interface KonuOzet {
   kullaniciAdi: string | null;
   atananAdminId: number | null;
   atananAdmin: string | null;
+  /** Destek paneli (ekip tarafında dolu): atanan personel, TELEFON talebi, ilk cevap zamanı */
+  atananPersonelId?: number | null;
+  kaynak?: string | null;
+  ilkCevapTarihi?: string | null;
   olusturmaTarihi: string;
   sonMesajTarihi: string;
   sonMesajTaraf: Taraf;

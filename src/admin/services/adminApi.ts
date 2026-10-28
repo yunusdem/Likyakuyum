@@ -577,6 +577,12 @@ export interface DestekHedef {
   kullaniciId: number | null;
   kullaniciAdi: string | null;
 }
+export interface DestekEkipUyesi {
+  personelId: number;
+  adSoyad: string;
+  rol: "ADMIN" | "PERSONEL";
+  adminId: number | null;
+}
 export interface DestekKonuDetay {
   konu: KonuOzet;
   mesajlar: MesajDto[];
@@ -793,7 +799,9 @@ export const adminApi = {
   destekKonular: (f: DestekKonuFiltresi) => istek<{ satirlar: KonuOzet[]; toplam: number; kurulu: boolean }>("GET", `/destek/konular${sorgu({ ...f })}`),
   destekKonu: (konuId: number) => istek<DestekKonuDetay>("GET", `/destek/konular/${konuId}`),
   destekMesajYaz: (konuId: number, metin: string, icNot: boolean) => istek<DestekKonuDetay>("POST", `/destek/konular/${konuId}/mesajlar`, { metin, icNot }),
-  destekKonuGuncelle: (konuId: number, veri: { durum?: "KAPALI" | "ACIK"; atananAdminId?: number | null }) =>
+  /** Atama listesi: destek ekibi (destek paneli göçü yoksa kurulu=false; ekran admin listesine düşer) */
+  destekEkip: () => istek<{ kurulu: boolean; ekip: DestekEkipUyesi[] }>("GET", "/destek/ekip"),
+  destekKonuGuncelle: (konuId: number, veri: { durum?: "KAPALI" | "ACIK"; atananAdminId?: number | null; atananPersonelId?: number | null }) =>
     istek<DestekKonuDetay>("PUT", `/destek/konular/${konuId}`, veri),
   bildirimler: () => istek<{ satirlar: KonuOzet[]; toplam: number; kurulu: boolean }>("GET", "/destek/bildirimler"),
   bildirimHedefleri: () => istek<DestekHedefSecenekleri>("GET", "/destek/hedefler"),

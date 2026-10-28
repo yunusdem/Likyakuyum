@@ -9,6 +9,8 @@ export type KonuDurumu = TalepDurumu | BildirimDurumu;
 export type BildirimTuru = "DUYURU" | "BAKIM" | "SURUM" | "UYARI";
 export type BildirimHedefi = "TUMU" | "FIRMA" | "KULLANICI";
 export type Taraf = "ADMIN" | "KULLANICI" | "SISTEM";
+/** ADM_KONU_OKUMA.TARAF: müşteri, admin paneli admini, destek paneli personeli */
+export type OkumaTarafi = "KULLANICI" | "ADMIN" | "PERSONEL";
 export type SistemOlay =
   | "LISANS_30"
   | "LISANS_7"
@@ -51,6 +53,8 @@ export interface MesajDto {
   gonderenTur: Taraf;
   gonderenAd: string | null;
   adminId: number | null;
+  /** Destek ekibi mesajında yazan personel (yalnız ekip tarafında dolu) */
+  personelId?: number | null;
   kullaniciId: number | null;
   metin: string;
   icNot: boolean;
@@ -79,7 +83,12 @@ export interface KonuOzet {
   kullaniciId: number | null;
   kullaniciAdi: string | null;
   atananAdminId: number | null;
+  /** Atanan kişinin adı (göç 002 sonrası destek personeli) */
   atananAdmin: string | null;
+  atananPersonelId?: number | null;
+  /** TELEFON: destek ekibinin müşteri adına açtığı talep */
+  kaynak?: string | null;
+  ilkCevapTarihi?: Date | null;
   olusturmaTarihi: Date;
   sonMesajTarihi: Date;
   sonMesajTaraf: Taraf;
@@ -161,6 +170,7 @@ export interface AdminKonuFiltresi {
   firmaId?: number;
   arama?: string;
   atananAdminId?: number;
+  atananPersonelId?: number;
   /** Bir bildirime verilen yanıt talepleri */
   kaynakKonuId?: number;
   sayfa?: number;

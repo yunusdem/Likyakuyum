@@ -19,6 +19,7 @@ export class DestekAdminController {
         durum: q.durum,
         firmaId: q.firmaId ? Number(q.firmaId) : undefined,
         atananAdminId: q.atananAdminId ? Number(q.atananAdminId) : undefined,
+        atananPersonelId: q.atananPersonelId ? Number(q.atananPersonelId) : undefined,
         kaynakKonuId: q.kaynakKonuId ? Number(q.kaynakKonuId) : undefined,
         arama: q.arama,
         sayfa: q.sayfa ? Number(q.sayfa) : undefined,
@@ -45,6 +46,11 @@ export class DestekAdminController {
 
   public static hedefSecenekleri = asyncHandler(async (req: Request, res: Response) => {
     return ApiResponse.ok(res, "Hedef seçenekleri.", await DestekService.hedefSecenekleri());
+  });
+
+  /** Atama listesi: destek ekibi (göç 002 yoksa boş; ekran eski admin listesine düşer). */
+  public static ekip = asyncHandler(async (req: Request, res: Response) => {
+    return ApiResponse.ok(res, "Destek ekibi.", await DestekService.ekip());
   });
 
   public static bildirimOlustur = asyncHandler(async (req: Request, res: Response) => {

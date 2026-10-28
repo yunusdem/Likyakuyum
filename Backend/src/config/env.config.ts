@@ -169,6 +169,15 @@ const envSchema = z.object({
       "http://admin.likyakuyum.com,https://admin.likyakuyum.com,http://localhost:3001,http://127.0.0.1:3001"
     )
     .transform((val) => val.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)),
+  // Destek ekibi paneli (destek.likyakuyum.com, docs/DESTEK_PANELI_YOL_HARITASI.md). Gizi boşsa ADMIN_JWT_SECRET'tan türetilir.
+  DESTEK_JWT_SECRET: z.string().default(""),
+  DESTEK_JWT_EXPIRES_IN: z.string().default("10h"),
+  DESTEK_ORIGIN: z
+    .string()
+    .default(
+      "http://destek.likyakuyum.com,https://destek.likyakuyum.com,http://localhost:3005,http://127.0.0.1:3005"
+    )
+    .transform((val) => val.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)),
 });
 
 

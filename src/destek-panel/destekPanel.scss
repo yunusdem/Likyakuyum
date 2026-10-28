@@ -1,0 +1,123 @@
+// Destek paneli (destek.likyakuyum.com): admin paneli kabuğu (admin.scss) üzerine; yönetim panelinden ayırt edilsin diye koyu petrol rengi.
+$dsp-renk: #0f5560;
+$dsp-renk-koyu: #0a3f47;
+
+.dsp-kabuk {
+  .adm-yan {
+    background: $dsp-renk;
+  }
+  .adm-marka {
+    background: $dsp-renk-koyu;
+  }
+  .adm-icerik {
+    padding: 16px 20px;
+  }
+}
+
+.dsp-menu-baslik {
+  margin: 14px 20px 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.btn-adm {
+  background: $dsp-renk;
+  border-color: $dsp-renk;
+
+  &:hover,
+  &:focus,
+  &:disabled {
+    background: $dsp-renk-koyu;
+    border-color: $dsp-renk-koyu;
+  }
+}
+
+.dsp-giris .card {
+  border-top-color: $dsp-renk;
+}
+
+.adm-gecici-sifre {
+  border-color: $dsp-renk;
+}
+
+.dsp-firma-karti {
+  margin-top: 8px;
+
+  &-ac {
+    border: 0;
+    background: none;
+    padding: 0;
+    font-size: 0.8rem;
+    color: $dsp-renk;
+  }
+
+  &-govde {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 4px 16px;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #f3f8f9;
+    border: 1px solid #dcebee;
+    border-radius: 6px;
+    font-size: 0.82rem;
+
+    // yalnız alan etiketi (ilk span) satır başı; rozetler satır içinde kalır
+    > div > span:first-child {
+      display: block;
+      font-size: 0.7rem;
+      color: #6c757d;
+    }
+  }
+}
+
+// temanın .card genişlik kuralını ezmek için .card ile birlikte
+.card.dsp-musteri-detay {
+  width: 440px;
+  flex: 0 0 440px;
+  position: sticky;
+  top: 16px;
+
+  .dsp-firma-karti-govde {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 992px) {
+  .card.dsp-musteri-detay {
+    width: 100%;
+    flex: 1 1 100%;
+    position: static;
+  }
+}
+
+.dsp-mini-satir {
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+
+  &:hover {
+    background: #f6f9fa;
+  }
+}
+
+.dsp-cevrimici {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #2fb344;
+  vertical-align: middle;
+}
+
+.dsp-rapor-kart {
+  padding: 10px 12px;
+  border: 1px solid #e6e1e3;
+  border-radius: 8px;
+  background: #fff;
+  height: 100%;
+}

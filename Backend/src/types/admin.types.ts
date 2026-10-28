@@ -94,7 +94,12 @@ export type AdminIslem =
   | "DESTEK_DURUM"
   | "BILDIRIM_TASLAK"
   | "BILDIRIM_GONDERILDI"
-  | "BILDIRIM_GERI_CEKILDI";
+  | "BILDIRIM_GERI_CEKILDI"
+  | "DESTEK_PERSONEL_EKLENDI"
+  | "DESTEK_PERSONEL_GUNCELLENDI"
+  | "DESTEK_PERSONEL_SIFRE"
+  | "DESTEK_TELEFON_TALEBI"
+  | "DESTEK_HIZLI_CEVAP";
 
 /** SILINECEK: panelden silme istendi, 30 gün geri alınabilir · SILINDI: veritabanı kaldırıldı (kayıt arşivde) */
 export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF" | "SILINECEK" | "SILINDI";

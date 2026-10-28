@@ -1,5 +1,7 @@
 import sql from "mssql";
 import { getAdminPool } from "../../config/adminDb.config.js";
+import { DestekPersonelSqlRepository } from "./destekPersonelSql.repository.js";
+import { DESTEK_GORUNEN_AD, PanelKonuFiltresi, PersonelBaglam } from "../../types/destekPanel.types.js";
 import {
   AdminKonuFiltresi,
   BildirimGirdi,
@@ -10,6 +12,7 @@ import {
   KonuTuru,
   KullaniciSekmesi,
   MesajDto,
+  OkumaTarafi,
   Taraf,
 } from "../../types/destek.types.js";
 
@@ -21,10 +24,11 @@ import {
 const KURULU_ONBELLEK_MS = 60_000;
 let kuruluOnbellek: { deger: boolean; zaman: number } | null = null;
 
-const KONU_SECIM = `
+const konuSecimi = (panel: boolean) => `
   SELECT k.KONU_ID, k.TUR, k.BASLIK, k.DURUM, k.TALEP_TURU, k.ONCELIK, k.EKRAN, k.BILDIRIM_TURU, k.ONEMLI, k.CEVAP_ALIR,
          k.HEDEF, k.SURUM, k.SISTEM_OLAY, k.KAYNAK_KONU_ID, k.FIRMA_ID, f.FIRMA_KODU, f.UNVAN AS FIRMA_UNVAN,
-         k.KULLANICI_ID, ISNULL(k.KULLANICI_ADI, ku.AD_SOYAD) AS KULLANICI_ADI, k.ATANAN_ADMIN_ID, a.AD_SOYAD AS ATANAN_ADMIN,
+         k.KULLANICI_ID, ISNULL(k.KULLANICI_ADI, ku.AD_SOYAD) AS KULLANICI_ADI, k.ATANAN_ADMIN_ID,
+         ${panel ? "k.ATANAN_PERSONEL_ID, ISNULL(pa.AD_SOYAD, ap.AD_SOYAD) AS ATANAN_ADMIN, k.KAYNAK, k.ILK_CEVAP_TARIHI," : "a.AD_SOYAD AS ATANAN_ADMIN,"}
          k.OLUSTURMA_TARIHI, k.SON_MESAJ_TARIHI, k.SON_MESAJ_TARAF, k.GONDERIM_TARIHI, k.KAPANIS_TARIHI,
          (SELECT TOP 1 LEFT(m.METIN, 160) FROM dbo.ADM_KONU_MESAJ m WHERE m.KONU_ID = k.KONU_ID AND m.IC_NOT = 0 ORDER BY m.MESAJ_ID DESC) AS SON_MESAJ,
          (SELECT COUNT(*) FROM dbo.ADM_KONU_MESAJ m WHERE m.KONU_ID = k.KONU_ID AND m.IC_NOT = 0) AS MESAJ_SAYISI,
@@ -34,9 +38,21 @@ const KONU_SECIM = `
   FROM dbo.ADM_KONU k
   LEFT JOIN dbo.ADM_FIRMA f ON f.FIRMA_ID = k.FIRMA_ID
   LEFT JOIN dbo.ADM_KULLANICI ku ON ku.KULLANICI_ID = k.KULLANICI_ID
-  LEFT JOIN dbo.ADM_ADMIN a ON a.ADMIN_ID = k.ATANAN_ADMIN_ID
+  ${panel
+    ? `LEFT JOIN dbo.ADM_DESTEK_PERSONEL ap ON ap.PERSONEL_ID = k.ATANAN_PERSONEL_ID
+  LEFT JOIN dbo.ADM_ADMIN pa ON pa.ADMIN_ID = ap.ADMIN_ID`
+    : "LEFT JOIN dbo.ADM_ADMIN a ON a.ADMIN_ID = k.ATANAN_ADMIN_ID"}
   LEFT JOIN dbo.ADM_KONU_OKUMA o ON o.KONU_ID = k.KONU_ID AND o.TARAF = @taraf AND o.KISI_ID = @kisiId
 `;
+const KONU_SECIM_ESKI = konuSecimi(false);
+const KONU_SECIM_PANEL = konuSecimi(true);
+
+/** Göç 002 (destek paneli) uygulandıysa personel ataması ve ek kolonlar okunur; uygulanmadıysa eski düzen çalışmaya devam eder. */
+const panelVar = (): Promise<boolean> => DestekPersonelSqlRepository.kuruluMu();
+const secim = async (): Promise<string> => ((await panelVar()) ? KONU_SECIM_PANEL : KONU_SECIM_ESKI);
+
+/** Destek panelinde personelin görebildiği talep / sistem kayıtları (D6, D7): ATANAN yetkisinde havuz + kendine atananlar. */
+const PERSONEL_GORUNURLUK = `(k.TUR IN ('TALEP','SISTEM') AND (@gorme = 'TUMU' OR k.ATANAN_PERSONEL_ID IS NULL OR k.ATANAN_PERSONEL_ID = @personelId))`;
 
 /** Kullanıcının görebildiği konular (K15): kendi/yönetici talepleri, firmanın sistem kayıtları, hedefindeki bildirimler. */
 const KULLANICI_GORUNURLUK = `
@@ -76,6 +92,9 @@ const satirdanKonu = (r: any): KonuOzet => {
     kullaniciAdi: r.KULLANICI_ADI ?? null,
     atananAdminId: r.ATANAN_ADMIN_ID ?? null,
     atananAdmin: r.ATANAN_ADMIN ?? null,
+    atananPersonelId: r.ATANAN_PERSONEL_ID ?? null,
+    kaynak: r.KAYNAK ?? null,
+    ilkCevapTarihi: r.ILK_CEVAP_TARIHI ?? null,
     olusturmaTarihi: r.OLUSTURMA_TARIHI,
     sonMesajTarihi: r.SON_MESAJ_TARIHI,
     sonMesajTaraf: r.SON_MESAJ_TARAF,
@@ -91,8 +110,8 @@ const satirdanKonu = (r: any): KonuOzet => {
   };
 };
 
-/** Karşı taraf: kullanıcı için ADMIN+SISTEM, admin için KULLANICI+SISTEM. */
-const karsiTaraf = (taraf: "KULLANICI" | "ADMIN"): [Taraf, Taraf] => (taraf === "KULLANICI" ? ["ADMIN", "SISTEM"] : ["KULLANICI", "SISTEM"]);
+/** Karşı taraf: kullanıcı için ADMIN+SISTEM, admin / destek personeli için KULLANICI+SISTEM. */
+const karsiTaraf = (taraf: OkumaTarafi): [Taraf, Taraf] => (taraf === "KULLANICI" ? ["ADMIN", "SISTEM"] : ["KULLANICI", "SISTEM"]);
 
 const kimlikGirdileri = (req: sql.Request, kimlik: DestekKimlik): sql.Request =>
   req
@@ -101,7 +120,7 @@ const kimlikGirdileri = (req: sql.Request, kimlik: DestekKimlik): sql.Request =>
     .input("kullaniciAdi", sql.NVarChar(100), kimlik.kullaniciAdi)
     .input("yonetici", sql.Bit, kimlik.yonetici);
 
-const okumaGirdileri = (req: sql.Request, taraf: "KULLANICI" | "ADMIN", kisiId: number | null): sql.Request => {
+const okumaGirdileri = (req: sql.Request, taraf: OkumaTarafi, kisiId: number | null): sql.Request => {
   const [k1, k2] = karsiTaraf(taraf);
   return req.input("taraf", sql.VarChar(10), taraf).input("kisiId", sql.Int, kisiId ?? -1).input("karsi1", sql.VarChar(10), k1).input("karsi2", sql.VarChar(10), k2);
 };
@@ -145,8 +164,13 @@ export class DestekSqlRepository {
     yerelAnahtar?: string | null;
     sonMesajTaraf: Taraf;
     gonderildi?: boolean;
+    /** Destek paneli: telefon talebi (KAYNAK='TELEFON'), açan personel, hemen atanan personel */
+    kaynak?: string | null;
+    olusturanPersonelId?: number | null;
+    atananPersonelId?: number | null;
   }): Promise<number> {
     const pool = await getAdminPool();
+    const panel = await panelVar();
     const r = await pool
       .request()
       .input("tur", sql.VarChar(10), k.tur)
@@ -169,14 +193,17 @@ export class DestekSqlRepository {
       .input("olusturan", sql.Int, k.olusturanAdminId ?? null)
       .input("yerel", sql.VarChar(60), k.yerelAnahtar ?? null)
       .input("taraf", sql.VarChar(10), k.sonMesajTaraf)
-      .input("gonderildi", sql.Bit, !!k.gonderildi).query(`
+      .input("gonderildi", sql.Bit, !!k.gonderildi)
+      .input("kaynakTur", sql.VarChar(10), k.kaynak ?? null)
+      .input("olusturanP", sql.Int, k.olusturanPersonelId ?? null)
+      .input("atananP", sql.Int, k.atananPersonelId ?? null).query(`
         INSERT INTO dbo.ADM_KONU (TUR, FIRMA_ID, KULLANICI_ID, KULLANICI_ADI, BASLIK, TALEP_TURU, ONCELIK, EKRAN, DURUM, BILDIRIM_TURU, ONEMLI,
                                   CEVAP_ALIR, HEDEF, SURUM, SISTEM_OLAY, OLAY_ANAHTARI, KAYNAK_KONU_ID, OLUSTURAN_ADMIN_ID, YEREL_ANAHTAR,
-                                  SON_MESAJ_TARAF, GONDERIM_TARIHI)
+                                  SON_MESAJ_TARAF, GONDERIM_TARIHI${panel ? ", KAYNAK, OLUSTURAN_PERSONEL_ID, ATANAN_PERSONEL_ID, ATAMA_TARIHI" : ""})
         OUTPUT INSERTED.KONU_ID
         VALUES (@tur, @firmaId, @kullaniciId, @kullaniciAdi, @baslik, @talepTuru, @oncelik, @ekran, @durum, @bildirimTuru, @onemli,
                 @cevapAlir, @hedef, @surum, @sistemOlay, @olayAnahtari, @kaynak, @olusturan, @yerel,
-                @taraf, CASE WHEN @gonderildi = 1 THEN GETDATE() ELSE NULL END)`);
+                @taraf, CASE WHEN @gonderildi = 1 THEN GETDATE() ELSE NULL END${panel ? ", @kaynakTur, @olusturanP, @atananP, CASE WHEN @atananP IS NULL THEN NULL ELSE GETDATE() END" : ""})`);
     return r.recordset[0].KONU_ID as number;
   }
 
@@ -189,10 +216,17 @@ export class DestekSqlRepository {
     metin: string;
     icNot?: boolean;
     yerelAnahtar?: string | null;
+    /** Destek ekibi mesajı (admin panelinden yazanda adminin personel satırı) */
+    personelId?: number | null;
+    /** false: talebin ilk cevabı sayılmaz (telefon talebinin açılış metni) */
+    ilkCevapSayilir?: boolean;
   }): Promise<number> {
     const pool = await getAdminPool();
+    const panel = await panelVar();
     const r = await pool
       .request()
+      .input("personelId", sql.Int, m.personelId ?? null)
+      .input("ilkSay", sql.Bit, m.ilkCevapSayilir !== false)
       .input("konuId", sql.Int, m.konuId)
       .input("tur", sql.VarChar(10), m.gonderenTur)
       .input("adminId", sql.Int, m.adminId ?? null)
@@ -201,25 +235,33 @@ export class DestekSqlRepository {
       .input("metin", sql.NVarChar(4000), m.metin.slice(0, 4000))
       .input("icNot", sql.Bit, !!m.icNot)
       .input("yerel", sql.VarChar(60), m.yerelAnahtar ?? null).query(`
-        INSERT INTO dbo.ADM_KONU_MESAJ (KONU_ID, GONDEREN_TUR, ADMIN_ID, KULLANICI_ID, GONDEREN_AD, METIN, IC_NOT, YEREL_ANAHTAR)
+        INSERT INTO dbo.ADM_KONU_MESAJ (KONU_ID, GONDEREN_TUR, ADMIN_ID, KULLANICI_ID, GONDEREN_AD, METIN, IC_NOT, YEREL_ANAHTAR${panel ? ", PERSONEL_ID" : ""})
         OUTPUT INSERTED.MESAJ_ID
-        VALUES (@konuId, @tur, @adminId, @kullaniciId, @ad, @metin, @icNot, @yerel);
+        VALUES (@konuId, @tur, @adminId, @kullaniciId, @ad, @metin, @icNot, @yerel${panel ? ", @personelId" : ""});
         -- İç not karşı tarafa görünmez; konunun "son mesaj" bilgisini değiştirmez
-        UPDATE dbo.ADM_KONU SET SON_MESAJ_TARIHI = GETDATE(), SON_MESAJ_TARAF = @tur WHERE KONU_ID = @konuId AND @icNot = 0;`);
+        UPDATE dbo.ADM_KONU SET SON_MESAJ_TARIHI = GETDATE(), SON_MESAJ_TARAF = @tur WHERE KONU_ID = @konuId AND @icNot = 0;
+        ${panel
+          ? `-- Talebe destek tarafından verilen ilk cevap (rapor: ilk cevap süresi)
+        UPDATE dbo.ADM_KONU SET ILK_CEVAP_TARIHI = GETDATE(), ILK_CEVAP_PERSONEL_ID = @personelId
+        WHERE KONU_ID = @konuId AND @tur = 'ADMIN' AND @icNot = 0 AND @ilkSay = 1 AND TUR = 'TALEP' AND ISNULL(KAYNAK, '') <> 'TELEFON' AND ILK_CEVAP_TARIHI IS NULL;`
+          : ""}`);
     return r.recordset[0].MESAJ_ID as number;
   }
 
-  public static async durumYaz(konuId: number, durum: KonuDurumu, adminId?: number | null): Promise<void> {
+  public static async durumYaz(konuId: number, durum: KonuDurumu, adminId?: number | null, personelId?: number | null): Promise<void> {
     const pool = await getAdminPool();
+    const panel = await panelVar();
     await pool
       .request()
       .input("id", sql.Int, konuId)
       .input("durum", sql.VarChar(20), durum)
+      .input("personelId", sql.Int, personelId ?? null)
       .input("adminId", sql.Int, adminId ?? null).query(`
         UPDATE dbo.ADM_KONU
         SET DURUM = @durum,
             KAPANIS_TARIHI = CASE WHEN @durum = 'KAPALI' THEN GETDATE() ELSE NULL END,
             KAPATAN_ADMIN_ID = CASE WHEN @durum = 'KAPALI' THEN @adminId ELSE NULL END,
+            ${panel ? "KAPATAN_PERSONEL_ID = CASE WHEN @durum = 'KAPALI' THEN @personelId ELSE NULL END," : ""}
             GONDERIM_TARIHI = CASE WHEN @durum = 'GONDERILDI' AND GONDERIM_TARIHI IS NULL THEN GETDATE() ELSE GONDERIM_TARIHI END
         WHERE KONU_ID = @id`);
   }
@@ -231,6 +273,35 @@ export class DestekSqlRepository {
       .input("id", sql.Int, konuId)
       .input("admin", sql.Int, atananAdminId)
       .query(`UPDATE dbo.ADM_KONU SET ATANAN_ADMIN_ID = @admin WHERE KONU_ID = @id`);
+  }
+
+  /** Destek paneli ataması (D7, D9): personel ya da null (havuza geri). */
+  public static async personelAtamaYaz(konuId: number, personelId: number | null): Promise<void> {
+    const pool = await getAdminPool();
+    await pool
+      .request()
+      .input("id", sql.Int, konuId)
+      .input("p", sql.Int, personelId)
+      .query(`
+        UPDATE dbo.ADM_KONU
+        SET ATANAN_PERSONEL_ID = @p, ATAMA_TARIHI = CASE WHEN @p IS NULL THEN NULL ELSE GETDATE() END,
+            -- eski kolon da tutarlı kalsın (admin paneli hesabıysa admin no, değilse boş)
+            ATANAN_ADMIN_ID = (SELECT ADMIN_ID FROM dbo.ADM_DESTEK_PERSONEL WHERE PERSONEL_ID = @p)
+        WHERE KONU_ID = @id`);
+  }
+
+  /** Havuzdaki talebi üstlenme: başkası daha önce aldıysa false döner (iki kişi aynı anda bastığında). */
+  public static async ustlen(konuId: number, personelId: number): Promise<boolean> {
+    const pool = await getAdminPool();
+    const r = await pool
+      .request()
+      .input("id", sql.Int, konuId)
+      .input("p", sql.Int, personelId)
+      .query(`
+        UPDATE dbo.ADM_KONU SET ATANAN_PERSONEL_ID = @p, ATAMA_TARIHI = GETDATE(),
+               ATANAN_ADMIN_ID = (SELECT ADMIN_ID FROM dbo.ADM_DESTEK_PERSONEL WHERE PERSONEL_ID = @p)
+        WHERE KONU_ID = @id AND ATANAN_PERSONEL_ID IS NULL`);
+    return (r.rowsAffected?.[0] || 0) > 0;
   }
 
   /** Taslak bildirimin başlığı, türü vb. (gövde ilk mesajda ayrıca güncellenir). */
@@ -308,7 +379,7 @@ export class DestekSqlRepository {
     return (r.recordsets as any[][])[0].map((x) => x.YOL as string);
   }
 
-  public static async okunduYaz(konuId: number, taraf: "KULLANICI" | "ADMIN", kisiId: number, sonMesajId: number | null): Promise<void> {
+  public static async okunduYaz(konuId: number, taraf: OkumaTarafi, kisiId: number, sonMesajId: number | null): Promise<void> {
     const pool = await getAdminPool();
     await pool
       .request()
@@ -336,7 +407,7 @@ export class DestekSqlRepository {
       WHEN NOT MATCHED THEN INSERT (KONU_ID, TARAF, KISI_ID, SON_OKUNAN_MESAJ_ID, OKUNDU_TARIHI) VALUES (y.KONU_ID, 'KULLANICI', @kullaniciId, y.SON, GETDATE());`);
   }
 
-  public static async bayrakYaz(konuId: number, taraf: "KULLANICI" | "ADMIN", kisiId: number, alan: "ARSIV" | "ONEMLI_OKUNDU", deger: boolean): Promise<void> {
+  public static async bayrakYaz(konuId: number, taraf: OkumaTarafi, kisiId: number, alan: "ARSIV" | "ONEMLI_OKUNDU", deger: boolean): Promise<void> {
     const pool = await getAdminPool();
     await pool
       .request()
@@ -352,9 +423,9 @@ export class DestekSqlRepository {
 
   // ------------------------------------------------------------------ Okuma ---
 
-  public static async konuGetir(konuId: number, taraf: "KULLANICI" | "ADMIN", kisiId: number | null): Promise<KonuOzet | null> {
+  public static async konuGetir(konuId: number, taraf: OkumaTarafi, kisiId: number | null): Promise<KonuOzet | null> {
     const pool = await getAdminPool();
-    const r = await okumaGirdileri(pool.request(), taraf, kisiId).input("id", sql.Int, konuId).query(`${KONU_SECIM} WHERE k.KONU_ID = @id`);
+    const r = await okumaGirdileri(pool.request(), taraf, kisiId).input("id", sql.Int, konuId).query(`${await secim()} WHERE k.KONU_ID = @id`);
     return r.recordset[0] ? satirdanKonu(r.recordset[0]) : null;
   }
 
@@ -413,7 +484,7 @@ export class DestekSqlRepository {
             : "AND ISNULL(o.ARSIV, 0) = 0";
     const r = await okumaGirdileri(kimlikGirdileri(pool.request(), kimlik), "KULLANICI", kimlik.kullaniciId)
       .input("adet", sql.Int, adet)
-      .query(`${KONU_SECIM} WHERE ${KULLANICI_GORUNURLUK} ${kosul} ORDER BY k.SON_MESAJ_TARIHI DESC OFFSET 0 ROWS FETCH NEXT @adet ROWS ONLY`);
+      .query(`${await secim()} WHERE ${KULLANICI_GORUNURLUK} ${kosul} ORDER BY k.SON_MESAJ_TARIHI DESC OFFSET 0 ROWS FETCH NEXT @adet ROWS ONLY`);
     return r.recordset.map(satirdanKonu);
   }
 
@@ -428,15 +499,20 @@ export class DestekSqlRepository {
         LEFT JOIN dbo.ADM_KONU_OKUMA o ON o.KONU_ID = k.KONU_ID AND o.TARAF = @taraf AND o.KISI_ID = @kisiId
         WHERE ${KULLANICI_GORUNURLUK}
       ) x WHERE x.KARSI_SON IS NOT NULL AND ISNULL(x.ARSIV, 0) = 0 AND (x.SON_OKUNAN_MESAJ_ID IS NULL OR x.SON_OKUNAN_MESAJ_ID < x.KARSI_SON);
-      ${KONU_SECIM} WHERE ${KULLANICI_GORUNURLUK} AND k.TUR = 'BILDIRIM' AND k.ONEMLI = 1 AND ISNULL(o.ONEMLI_OKUNDU, 0) = 0
+      ${await secim()} WHERE ${KULLANICI_GORUNURLUK} AND k.TUR = 'BILDIRIM' AND k.ONEMLI = 1 AND ISNULL(o.ONEMLI_OKUNDU, 0) = 0
       ORDER BY k.GONDERIM_TARIHI DESC;`);
     return { okunmamis: Number((r.recordsets as any[][])[0][0]?.N ?? 0), onemli: (r.recordsets as any[][])[1].map(satirdanKonu) };
   }
 
+  /**
+   * Konunun mesajları. icNotDahil=false müşteri tarafıdır: iç notlar gelmez, destek ekibinin mesajları
+   * kişi bilgisi olmadan "Likya Destek" adıyla döner (D14).
+   */
   public static async mesajlar(konuId: number, icNotDahil: boolean): Promise<MesajDto[]> {
     const pool = await getAdminPool();
+    const panel = await panelVar();
     const r = await pool.request().input("id", sql.Int, konuId).input("icNot", sql.Bit, icNotDahil).query(`
-      SELECT MESAJ_ID, GONDEREN_TUR, ADMIN_ID, KULLANICI_ID, GONDEREN_AD, METIN, IC_NOT, TARIH
+      SELECT MESAJ_ID, GONDEREN_TUR, ADMIN_ID, KULLANICI_ID, GONDEREN_AD, METIN, IC_NOT, TARIH${panel ? ", PERSONEL_ID" : ""}
       FROM dbo.ADM_KONU_MESAJ WHERE KONU_ID = @id AND (IC_NOT = 0 OR @icNot = 1) ORDER BY MESAJ_ID;
       SELECT EK_ID, MESAJ_ID, DOSYA_ADI, MIME, BOYUT, SILINDI FROM dbo.ADM_KONU_EK WHERE KONU_ID = @id ORDER BY EK_ID;`);
     const ekler = new Map<number, EkDto[]>();
@@ -445,17 +521,21 @@ export class DestekSqlRepository {
       liste.push({ ekId: e.EK_ID, dosyaAdi: e.DOSYA_ADI, mime: e.MIME, boyut: e.BOYUT, silindi: !!e.SILINDI });
       ekler.set(e.MESAJ_ID, liste);
     }
-    return (r.recordsets as any[][])[0].map((m) => ({
-      mesajId: m.MESAJ_ID,
-      gonderenTur: m.GONDEREN_TUR,
-      gonderenAd: m.GONDEREN_AD ?? null,
-      adminId: m.ADMIN_ID ?? null,
-      kullaniciId: m.KULLANICI_ID ?? null,
-      metin: m.METIN,
-      icNot: !!m.IC_NOT,
-      tarih: m.TARIH,
-      ekler: ekler.get(m.MESAJ_ID) ?? [],
-    }));
+    return (r.recordsets as any[][])[0].map((m) => {
+      const musteriyeEkip = !icNotDahil && m.GONDEREN_TUR === "ADMIN";
+      return {
+        mesajId: m.MESAJ_ID,
+        gonderenTur: m.GONDEREN_TUR,
+        gonderenAd: musteriyeEkip ? DESTEK_GORUNEN_AD : (m.GONDEREN_AD ?? null),
+        adminId: musteriyeEkip ? null : (m.ADMIN_ID ?? null),
+        personelId: icNotDahil ? (m.PERSONEL_ID ?? null) : null,
+        kullaniciId: m.KULLANICI_ID ?? null,
+        metin: m.METIN,
+        icNot: !!m.IC_NOT,
+        tarih: m.TARIH,
+        ekler: ekler.get(m.MESAJ_ID) ?? [],
+      };
+    });
   }
 
   public static async adminKonulari(adminId: number, f: AdminKonuFiltresi): Promise<{ satirlar: KonuOzet[]; toplam: number }> {
@@ -471,7 +551,8 @@ export class DestekSqlRepository {
       else kosullar.push("k.DURUM = @durum"), req.input("durum", sql.VarChar(20), f.durum);
     }
     if (f.firmaId) kosullar.push("k.FIRMA_ID = @firmaId"), req.input("firmaId", sql.Int, f.firmaId);
-    if (f.atananAdminId) kosullar.push("k.ATANAN_ADMIN_ID = @atanan"), req.input("atanan", sql.Int, f.atananAdminId);
+    if (f.atananPersonelId && (await panelVar())) kosullar.push("k.ATANAN_PERSONEL_ID = @atananP"), req.input("atananP", sql.Int, f.atananPersonelId);
+    else if (f.atananAdminId) kosullar.push("k.ATANAN_ADMIN_ID = @atanan"), req.input("atanan", sql.Int, f.atananAdminId);
     if (f.kaynakKonuId) kosullar.push("k.KAYNAK_KONU_ID = @kaynak"), req.input("kaynak", sql.Int, f.kaynakKonuId);
     if (f.arama) {
       kosullar.push("(k.BASLIK LIKE @arama OR f.UNVAN LIKE @arama OR f.FIRMA_KODU LIKE @arama OR k.KULLANICI_ADI LIKE @arama)");
@@ -483,7 +564,7 @@ export class DestekSqlRepository {
       .input("adet", sql.Int, sayfaBoyu)
       .query(`
         SELECT COUNT(*) AS N FROM dbo.ADM_KONU k LEFT JOIN dbo.ADM_FIRMA f ON f.FIRMA_ID = k.FIRMA_ID ${where};
-        ${KONU_SECIM} ${where} ORDER BY k.SON_MESAJ_TARIHI DESC OFFSET @atla ROWS FETCH NEXT @adet ROWS ONLY;`);
+        ${await secim()} ${where} ORDER BY k.SON_MESAJ_TARIHI DESC OFFSET @atla ROWS FETCH NEXT @adet ROWS ONLY;`);
     return { toplam: Number((r.recordsets as any[][])[0][0]?.N ?? 0), satirlar: (r.recordsets as any[][])[1].map(satirdanKonu) };
   }
 
@@ -526,6 +607,108 @@ export class DestekSqlRepository {
       FROM dbo.ADM_FIRMA f INNER JOIN dbo.ADM_LISANS l ON l.FIRMA_ID = f.FIRMA_ID AND l.AKTIF = 1
       WHERE f.DURUM IN ('AKTIF','DONDURULMUS')`);
     return r.recordset.map((x: any) => ({ firmaId: x.FIRMA_ID, lisansId: x.LISANS_ID, kalanGun: Number(x.KALAN), unvan: x.UNVAN, bitis: x.BITIS }));
+  }
+
+  // ------------------------------------------------------------ Destek paneli ---
+
+  private static personelGirdileri(req: sql.Request, p: PersonelBaglam): sql.Request {
+    return okumaGirdileri(req, "PERSONEL", p.personelId).input("personelId", sql.Int, p.personelId).input("gorme", sql.VarChar(10), p.gorme);
+  }
+
+  /** Personel bu talep / sistem kaydını görebilir mi (D6). Bildirimleri herkes görür. */
+  public static async personelGorebilirMi(konuId: number, p: PersonelBaglam): Promise<boolean> {
+    const pool = await getAdminPool();
+    const r = await this.personelGirdileri(pool.request(), p)
+      .input("id", sql.Int, konuId)
+      .query(`SELECT 1 AS V FROM dbo.ADM_KONU k WHERE k.KONU_ID = @id AND (k.TUR = 'BILDIRIM' OR ${PERSONEL_GORUNURLUK})`);
+    return r.recordset.length > 0;
+  }
+
+  /**
+   * Destek paneli listesi. Sekmeler: havuz (atanmamış açık talepler), benim (bana atanan talepler),
+   * tumu (görebildiği bütün talepler), sistem (sistem kayıtları).
+   */
+  public static async panelKonulari(p: PersonelBaglam, f: PanelKonuFiltresi): Promise<{ satirlar: KonuOzet[]; toplam: number }> {
+    const pool = await getAdminPool();
+    const sayfaBoyu = Math.min(Math.max(f.sayfaBoyu ?? 50, 1), 200);
+    const sayfa = Math.max(f.sayfa ?? 1, 1);
+    const req = this.personelGirdileri(pool.request(), p);
+    const kosullar: string[] = [PERSONEL_GORUNURLUK];
+    if (f.sekme === "sistem") kosullar.push("k.TUR = 'SISTEM'");
+    else kosullar.push("k.TUR = 'TALEP'");
+    if (f.sekme === "havuz") kosullar.push("k.ATANAN_PERSONEL_ID IS NULL AND k.DURUM <> 'KAPALI'");
+    if (f.sekme === "benim") kosullar.push("k.ATANAN_PERSONEL_ID = @personelId");
+    const durum = f.durum ?? (f.sekme === "havuz" ? "HEPSI" : "ACIK_HEPSI");
+    if (durum !== "HEPSI") {
+      if (durum === "ACIK_HEPSI") kosullar.push("k.DURUM <> 'KAPALI'");
+      else kosullar.push("k.DURUM = @durum"), req.input("durum", sql.VarChar(20), durum);
+    }
+    if (f.firmaId) kosullar.push("k.FIRMA_ID = @firmaId"), req.input("firmaId", sql.Int, f.firmaId);
+    if (f.kaynakKonuId) kosullar.push("k.KAYNAK_KONU_ID = @kaynak"), req.input("kaynak", sql.Int, f.kaynakKonuId);
+    if (f.personelId && p.gorme === "TUMU") kosullar.push("k.ATANAN_PERSONEL_ID = @filtreP"), req.input("filtreP", sql.Int, f.personelId);
+    if (f.arama) {
+      kosullar.push("(k.BASLIK LIKE @arama OR f.UNVAN LIKE @arama OR f.FIRMA_KODU LIKE @arama OR f.MUSTERI_NO LIKE @arama OR k.KULLANICI_ADI LIKE @arama)");
+      req.input("arama", sql.NVarChar(120), `%${f.arama.trim().slice(0, 100)}%`);
+    }
+    const where = `WHERE ${kosullar.join(" AND ")}`;
+    const r = await req
+      .input("atla", sql.Int, (sayfa - 1) * sayfaBoyu)
+      .input("adet", sql.Int, sayfaBoyu)
+      .query(`
+        SELECT COUNT(*) AS N FROM dbo.ADM_KONU k LEFT JOIN dbo.ADM_FIRMA f ON f.FIRMA_ID = k.FIRMA_ID ${where};
+        ${KONU_SECIM_PANEL} ${where}
+        ORDER BY CASE WHEN k.DURUM = 'KAPALI' THEN 1 ELSE 0 END, CASE WHEN k.ONCELIK = 'ACIL' THEN 0 ELSE 1 END, k.SON_MESAJ_TARIHI DESC
+        OFFSET @atla ROWS FETCH NEXT @adet ROWS ONLY;`);
+    return { toplam: Number((r.recordsets as any[][])[0][0]?.N ?? 0), satirlar: (r.recordsets as any[][])[1].map(satirdanKonu) };
+  }
+
+  /** Panel sayaçları: havuz, bana atanan açık, okunmamış (görebildikleri), sistem okunmamış, taslak bildirim. */
+  public static async panelOzet(p: PersonelBaglam): Promise<{ havuz: number; benim: number; okunmamis: number; sistemOkunmamis: number; taslakBildirim: number; sonTalepId: number }> {
+    const pool = await getAdminPool();
+    const r = await this.personelGirdileri(pool.request(), p).query(`
+      SELECT
+        (SELECT COUNT(*) FROM dbo.ADM_KONU k WHERE k.TUR = 'TALEP' AND k.DURUM <> 'KAPALI' AND k.ATANAN_PERSONEL_ID IS NULL) AS HAVUZ,
+        (SELECT COUNT(*) FROM dbo.ADM_KONU k WHERE k.TUR = 'TALEP' AND k.DURUM <> 'KAPALI' AND k.ATANAN_PERSONEL_ID = @personelId) AS BENIM,
+        (SELECT COUNT(*) FROM dbo.ADM_KONU WHERE TUR = 'BILDIRIM' AND DURUM = 'TASLAK') AS TASLAK,
+        (SELECT ISNULL(MAX(k.KONU_ID), 0) FROM dbo.ADM_KONU k WHERE k.TUR = 'TALEP' AND ${PERSONEL_GORUNURLUK}) AS SON_TALEP;
+      SELECT x.TUR, COUNT(*) AS N FROM (
+        SELECT k.TUR,
+               (SELECT MAX(m.MESAJ_ID) FROM dbo.ADM_KONU_MESAJ m WHERE m.KONU_ID = k.KONU_ID AND m.IC_NOT = 0 AND m.GONDEREN_TUR IN (@karsi1, @karsi2)) AS KARSI_SON,
+               o.SON_OKUNAN_MESAJ_ID
+        FROM dbo.ADM_KONU k
+        LEFT JOIN dbo.ADM_KONU_OKUMA o ON o.KONU_ID = k.KONU_ID AND o.TARAF = @taraf AND o.KISI_ID = @kisiId
+        WHERE ${PERSONEL_GORUNURLUK} AND k.DURUM <> 'KAPALI'
+      ) x WHERE x.KARSI_SON IS NOT NULL AND (x.SON_OKUNAN_MESAJ_ID IS NULL OR x.SON_OKUNAN_MESAJ_ID < x.KARSI_SON)
+      GROUP BY x.TUR;`);
+    const a = (r.recordsets as any[][])[0][0] ?? {};
+    const okunmamis = (r.recordsets as any[][])[1];
+    const say = (tur: string) => Number(okunmamis.find((x) => x.TUR === tur)?.N ?? 0);
+    return {
+      havuz: Number(a.HAVUZ ?? 0),
+      benim: Number(a.BENIM ?? 0),
+      taslakBildirim: Number(a.TASLAK ?? 0),
+      sonTalepId: Number(a.SON_TALEP ?? 0),
+      okunmamis: say("TALEP"),
+      sistemOkunmamis: say("SISTEM"),
+    };
+  }
+
+  /** Bir firmanın talepleri (Müşteriler sayfası, D13) — personelin görme yetkisine süzülü. */
+  public static async firmaTalepleri(p: PersonelBaglam, firmaId: number): Promise<KonuOzet[]> {
+    const pool = await getAdminPool();
+    const r = await this.personelGirdileri(pool.request(), p)
+      .input("firma", sql.Int, firmaId)
+      .query(`${KONU_SECIM_PANEL} WHERE k.FIRMA_ID = @firma AND ${PERSONEL_GORUNURLUK} ORDER BY k.SON_MESAJ_TARIHI DESC OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY`);
+    return r.recordset.map(satirdanKonu);
+  }
+
+  /** Bildirim listesi (destek panelinde okuma kaydı personelin kendi satırına bağlı). */
+  public static async panelBildirimleri(p: PersonelBaglam): Promise<KonuOzet[]> {
+    const pool = await getAdminPool();
+    const r = await okumaGirdileri(pool.request(), "PERSONEL", p.personelId).query(
+      `${KONU_SECIM_PANEL} WHERE k.TUR = 'BILDIRIM' ORDER BY CASE WHEN k.DURUM = 'TASLAK' THEN 0 ELSE 1 END, k.KONU_ID DESC OFFSET 0 ROWS FETCH NEXT 300 ROWS ONLY`
+    );
+    return r.recordset.map(satirdanKonu);
   }
 
   /** Bildirim hedef seçimi için firmalar ve kullanıcılar (admin ekranı). */

@@ -1,5 +1,6 @@
 import { JwtPayload } from "./auth.types.js";
 import { AdminBaglam } from "./admin.types.js";
+import { PersonelBaglam } from "./destekPanel.types.js";
 
 declare global {
   namespace Express {
@@ -7,6 +8,7 @@ declare global {
       user?: JwtPayload;
       accessToken?: string;
       admin?: AdminBaglam;
+      personel?: PersonelBaglam;
     }
   }
 }

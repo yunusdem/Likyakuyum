@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Alert, Badge, Button, Card, Form, Spinner } from "react-bootstrap";
 import { useSearchParams } from "react-router-dom";
 import { IconRefresh } from "@tabler/icons-react";
-import { adminApi, AdminDto, DestekKonuFiltresi } from "../services/adminApi";
+import { adminApi, AdminDto, DestekEkipUyesi, DestekKonuFiltresi } from "../services/adminApi";
 import AdminKonuSohbet from "../components/AdminKonuSohbet";
 import { DURUM_ADI, DURUM_RENGI, KonuOzet, konuEtiketi, zamanOnce } from "../../components/destek/destekOrtak";
 import "../../components/destek/destek.scss";
@@ -26,10 +26,13 @@ const DestekPage: React.FC = () => {
   const [hata, setHata] = useState<string | null>(null);
   const [firmalar, setFirmalar] = useState<{ firmaId: number; unvan: string; firmaKodu: string }[]>([]);
   const [adminler, setAdminler] = useState<AdminDto[]>([]);
+  const [ekip, setEkip] = useState<DestekEkipUyesi[] | null>(null);
 
   useEffect(() => {
     adminApi.bildirimHedefleri().then((h) => setFirmalar(h.firmalar)).catch(() => undefined);
     adminApi.adminler().then((a) => setAdminler(a.adminler.filter((x) => x.durum === "AKTIF"))).catch(() => undefined);
+    // Destek paneli kuruluysa atama destek ekibine (personel) yapılır; değilse eski admin listesi
+    adminApi.destekEkip().then((e) => setEkip(e.kurulu ? e.ekip : null)).catch(() => undefined);
   }, []);
 
   const yukle = useCallback(
@@ -141,7 +144,7 @@ const DestekPage: React.FC = () => {
                       </div>
                       {k.sonMesaj && (
                         <div className="destek-ozet">
-                          {k.sonMesajTaraf === "ADMIN" ? "Siz: " : ""}
+                          {k.sonMesajTaraf === "ADMIN" ? "Destek: " : ""}
                           {k.sonMesaj}
                         </div>
                       )}
@@ -180,7 +183,7 @@ const DestekPage: React.FC = () => {
           </div>
           <div className="destek-sag">
             {seciliId ? (
-              <AdminKonuSohbet key={seciliId} konuId={seciliId} adminler={adminler} onDegisti={sohbetDegisti} />
+              <AdminKonuSohbet key={seciliId} konuId={seciliId} adminler={adminler} ekip={ekip} onDegisti={sohbetDegisti} />
             ) : (
               <div className="d-flex align-items-center justify-content-center h-100 text-muted py-5">Soldan bir kayıt seçin.</div>
             )}

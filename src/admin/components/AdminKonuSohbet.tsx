@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, Form, Spinner } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import { IconLockOpen, IconLock, IconSend } from "@tabler/icons-react";
-import { adminApi, AdminDto, DestekKonuDetay } from "../services/adminApi";
+import { adminApi, AdminDto, DestekEkipUyesi, DestekKonuDetay } from "../services/adminApi";
 import { MesajBalonu } from "../../components/destek/MesajBalonu";
 import { DURUM_ADI, DURUM_RENGI, konuEtiketi, zamanYaz } from "../../components/destek/destekOrtak";
 
@@ -13,11 +13,13 @@ const degisti = () => window.dispatchEvent(new Event(ADMIN_DESTEK_DEGISTI));
 interface Props {
   konuId: number;
   adminler: AdminDto[];
+  /** Destek ekibi (destek paneli kuruluysa atama buna yapılır) */
+  ekip?: DestekEkipUyesi[] | null;
   onDegisti?: () => void;
 }
 
 /** Admin tarafı sohbet (K12, K16): cevap, iç not, atama, kapat / yeniden aç. Bildirimler burada yalnız okunur. */
-const AdminKonuSohbet: React.FC<Props> = ({ konuId, adminler, onDegisti }) => {
+const AdminKonuSohbet: React.FC<Props> = ({ konuId, adminler, ekip, onDegisti }) => {
   const [detay, setDetay] = useState<DestekKonuDetay | null>(null);
   const [hata, setHata] = useState<string | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
@@ -85,7 +87,7 @@ const AdminKonuSohbet: React.FC<Props> = ({ konuId, adminler, onDegisti }) => {
     }
   };
 
-  const guncelle = async (veri: { durum?: "KAPALI" | "ACIK"; atananAdminId?: number | null }) => {
+  const guncelle = async (veri: { durum?: "KAPALI" | "ACIK"; atananAdminId?: number | null; atananPersonelId?: number | null }) => {
     setHata(null);
     try {
       uygula(await adminApi.destekKonuGuncelle(konuId, veri));
@@ -131,20 +133,37 @@ const AdminKonuSohbet: React.FC<Props> = ({ konuId, adminler, onDegisti }) => {
           </div>
           {talepGibi && (
             <div className="d-flex align-items-center gap-2">
-              <Form.Select
-                size="sm"
-                style={{ width: 170 }}
-                value={k.atananAdminId ?? ""}
-                onChange={(e) => guncelle({ atananAdminId: e.target.value ? Number(e.target.value) : null })}
-                title="Atanan admin"
-              >
-                <option value="">Atanmadı</option>
-                {adminler.map((a) => (
-                  <option key={a.adminId} value={a.adminId}>
-                    {a.adSoyad}
-                  </option>
-                ))}
-              </Form.Select>
+              {ekip ? (
+                <Form.Select
+                  size="sm"
+                  style={{ width: 170 }}
+                  value={k.atananPersonelId ?? ""}
+                  onChange={(e) => guncelle({ atananPersonelId: e.target.value ? Number(e.target.value) : null })}
+                  title="Atanan (destek ekibi)"
+                >
+                  <option value="">Havuz (atanmadı)</option>
+                  {ekip.map((p) => (
+                    <option key={p.personelId} value={p.personelId}>
+                      {p.adSoyad}
+                    </option>
+                  ))}
+                </Form.Select>
+              ) : (
+                <Form.Select
+                  size="sm"
+                  style={{ width: 170 }}
+                  value={k.atananAdminId ?? ""}
+                  onChange={(e) => guncelle({ atananAdminId: e.target.value ? Number(e.target.value) : null })}
+                  title="Atanan admin"
+                >
+                  <option value="">Atanmadı</option>
+                  {adminler.map((a) => (
+                    <option key={a.adminId} value={a.adminId}>
+                      {a.adSoyad}
+                    </option>
+                  ))}
+                </Form.Select>
+              )}
               {k.durum === "KAPALI" ? (
                 <Button size="sm" variant="outline-secondary" onClick={() => guncelle({ durum: "ACIK" })}>
                   <IconLockOpen size={16} className="me-1" />
