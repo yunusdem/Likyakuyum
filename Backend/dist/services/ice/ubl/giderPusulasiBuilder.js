@@ -59,6 +59,19 @@ export const IADE_BELGE_TIPLERI = ["EARSIV_FATURA", "BELGESIZ", "SATIS_FISI"];
 /** `eArsiv.xsd` → `ContactTypeEnum` */
 export const IADE_KANAL_TIPLERI = ["IADEKODU", "SMS"];
 /* ==========================================================================
+   Vergi türleri (docs/E_GIDER_YOL_HARITASI.md K5, K6)
+
+   Stopaj (0003 GV, 0011 KV) satıcıya ödenecek tutardan DÜŞÜLÜR (e-Müstahsil gibi); KDV (0015) EKLENİR
+   (iade gider pusulasında iade edilen malın KDV'si). Vatandaşın kendi eşyasında stopaj yok → 0003 %0.
+   ========================================================================== */
+export const KESINTI_VERGI_KODLARI = new Set(["0003", "0011"]);
+export const VERGI_ADLARI = {
+    "0003": "GV STOPAJI",
+    "0011": "KV STOPAJI",
+    "0015": "KDV",
+};
+export const kesintiMi = (vergiKodu) => KESINTI_VERGI_KODLARI.has((vergiKodu || "").trim());
+/* ==========================================================================
    Yardımcılar
    ========================================================================== */
 const tutar = (n) => (Math.round(n * 100) / 100).toFixed(2);
@@ -212,7 +225,8 @@ export const dogrulaGiderPusulasi = (girdi) => {
 /* ==========================================================================
    Hesaplama — tutarlar burada üretilir, istemciden gelenlere güvenilmez
    ========================================================================== */
-export const hesaplaGiderPusulasi = (satirlar) => {
+export const hesaplaGiderPusulasi = (satirlar, vergiKodu = "0015") => {
+    const kesinti = kesintiMi(vergiKodu);
     const satirHesaplari = satirlar.map((satir, i) => {
         const matrah = yuvarla(satir.miktar * satir.birimFiyat);
         const vergiTutari = yuvarla((matrah * satir.vergiOrani) / 100);
@@ -232,7 +246,9 @@ export const hesaplaGiderPusulasi = (satirlar) => {
         satirlar: satirHesaplari,
         malHizmetToplam,
         vergiToplam,
-        odenecekTutar: yuvarla(malHizmetToplam + vergiToplam),
+        vergiDahilToplam: kesinti ? malHizmetToplam : yuvarla(malHizmetToplam + vergiToplam),
+        odenecekTutar: yuvarla(kesinti ? malHizmetToplam - vergiToplam : malHizmetToplam + vergiToplam),
+        kesinti,
         vergiGruplari: [...gruplar.entries()]
             .map(([oran, v]) => ({ oran, ...v }))
             .sort((a, b) => a.oran - b.oran),
@@ -320,6 +336,8 @@ const taxSubtotalXml = (matrah, vergi, oran, paraBirimi, vergiKodu) => `<cac:Tax
     `<cbc:TaxAmount currencyID="${paraBirimi}">${tutar(vergi)}</cbc:TaxAmount>` +
     `<cbc:Percent>${oran}</cbc:Percent>` +
     `<cac:TaxCategory><cac:TaxScheme>` +
+    // Vergi adı: GİB şablonu toplamlarda "Ad (%oran)" basar; yoksa PDF'te ad boş kalıyordu
+    etiket("cbc:Name", VERGI_ADLARI[vergiKodu]) +
     `<cbc:TaxTypeCode>${escapeXml(vergiKodu)}</cbc:TaxTypeCode>` +
     `</cac:TaxScheme></cac:TaxCategory>` +
     `</cac:TaxSubtotal>`;
@@ -340,13 +358,13 @@ const satirXml = (satir, hesap, paraBirimi, vergiKodu) => `<cac:InvoiceLine>` +
     `</cac:InvoiceLine>`;
 export const buildGiderPusulasiXml = (girdi) => {
     dogrulaGiderPusulasi(girdi);
-    const ozet = hesaplaGiderPusulasi(girdi.satirlar);
+    const vergiKodu = girdi.vergiTuruKodu?.trim() || "0015";
+    const ozet = hesaplaGiderPusulasi(girdi.satirlar, vergiKodu);
     const uuid = girdi.uuid?.trim() || randomUUID();
     const paraBirimi = (girdi.paraBirimi || "TRY").toUpperCase();
     const tarih = girdi.tarih?.trim() || bugun();
     const saat = girdi.saat?.trim() || simdi();
     const belgeNo = girdi.belgeNo.trim().toUpperCase();
-    const vergiKodu = girdi.vergiTuruKodu?.trim() || "0015";
     const notlarXml = (girdi.notlar || [])
         .filter((n) => n && n.trim())
         .map((n) => `<cbc:Note>${escapeXml(n)}</cbc:Note>`)
@@ -389,7 +407,8 @@ export const buildGiderPusulasiXml = (girdi) => {
         `<cac:LegalMonetaryTotal>` +
         `<cbc:LineExtensionAmount currencyID="${paraBirimi}">${tutar(ozet.malHizmetToplam)}</cbc:LineExtensionAmount>` +
         `<cbc:TaxExclusiveAmount currencyID="${paraBirimi}">${tutar(ozet.malHizmetToplam)}</cbc:TaxExclusiveAmount>` +
-        `<cbc:TaxInclusiveAmount currencyID="${paraBirimi}">${tutar(ozet.odenecekTutar)}</cbc:TaxInclusiveAmount>` +
+        // Stopajda (kesinti) vergiler dahil = mal toplamı, ödenecek = mal − stopaj (e-Müstahsil ile aynı)
+        `<cbc:TaxInclusiveAmount currencyID="${paraBirimi}">${tutar(ozet.vergiDahilToplam)}</cbc:TaxInclusiveAmount>` +
         `<cbc:PayableAmount currencyID="${paraBirimi}">${tutar(ozet.odenecekTutar)}</cbc:PayableAmount>` +
         `</cac:LegalMonetaryTotal>` +
         girdi.satirlar

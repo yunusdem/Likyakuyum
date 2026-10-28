@@ -20,7 +20,7 @@ export const RAPOR_SEED: { kod: string; ad: string; kagit: string }[] = [
   { kod: "FIRVAR1", ad: "Firma Varlıkları Raporu", kagit: "A4" },
   { kod: "KASDEF1", ad: "Kasa Defteri", kagit: "A4" },
   { kod: "KASHAR1", ad: "Kasa Hareket Listesi", kagit: "A4-yatay" },
-  { kod: "HESEKS1", ad: "Hesap Ekstresi", kagit: "A4" },
+  { kod: "HESEKS1", ad: "Hesap Ekstresi", kagit: "A4-yatay" },
   { kod: "HESBAK1", ad: "Hesap Bakiye Raporu", kagit: "A4" },
   { kod: "VEZANL1", ad: "Vezne Bakiye Raporu (Anlık)", kagit: "A4" },
   { kod: "KURKON1", ad: "Kur Sapma Raporu", kagit: "A4-yatay" },

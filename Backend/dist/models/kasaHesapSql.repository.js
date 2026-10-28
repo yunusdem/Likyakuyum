@@ -97,6 +97,101 @@ export class KasaHesapSqlRepository {
             ALTER TABLE [dbo].[TODVZ_HESAP_HAREKETI] ADD [GUNCELLEYEN_ID] INT NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_HESAP_HAREKETI' AND COLUMN_NAME = 'GUNCELLEME_ZAMANI')
             ALTER TABLE [dbo].[TODVZ_HESAP_HAREKETI] ADD [GUNCELLEME_ZAMANI] DATETIME NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_HESAP_HAREKETI' AND COLUMN_NAME = 'MIKTAR')
+            ALTER TABLE [dbo].[TODVZ_HESAP_HAREKETI] ADD [MIKTAR] FLOAT NULL DEFAULT 0;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_HESAP_HAREKETI' AND COLUMN_NAME = 'HAS_TUTARI')
+            ALTER TABLE [dbo].[TODVZ_HESAP_HAREKETI] ADD [HAS_TUTARI] FLOAT NULL DEFAULT 0;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_HESAP_HAREKETI' AND COLUMN_NAME = 'KUR')
+            ALTER TABLE [dbo].[TODVZ_HESAP_HAREKETI] ADD [KUR] FLOAT NULL DEFAULT 0;
+        END;
+
+        IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TODVZ_LOG_HESAP_HAREKETI')
+        BEGIN
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_LOG_HESAP_HAREKETI' AND COLUMN_NAME = 'O_MIKTAR')
+            ALTER TABLE [dbo].[TODVZ_LOG_HESAP_HAREKETI] ADD [O_MIKTAR] FLOAT NULL, [S_MIKTAR] FLOAT NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_LOG_HESAP_HAREKETI' AND COLUMN_NAME = 'O_HAS_TUTARI')
+            ALTER TABLE [dbo].[TODVZ_LOG_HESAP_HAREKETI] ADD [O_HAS_TUTARI] FLOAT NULL, [S_HAS_TUTARI] FLOAT NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_LOG_HESAP_HAREKETI' AND COLUMN_NAME = 'O_KUR')
+            ALTER TABLE [dbo].[TODVZ_LOG_HESAP_HAREKETI] ADD [O_KUR] FLOAT NULL, [S_KUR] FLOAT NULL;
+        END;
+
+        -- Geçmiş işçilik kayıtlarının Miktar, Has Tutarı ve Kurlarını geriye dönük tamamlama
+        IF OBJECT_ID('dbo.TODVZ_SARRAF_FISI', 'U') IS NOT NULL AND OBJECT_ID('dbo.TODVZ_SARRAF_FISI_SATIRI', 'U') IS NOT NULL
+        BEGIN
+          UPDATE H
+          SET 
+            H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
+            H.HAS_TUTARI = ISNULL(agg.TOPLAM_HAS, 0),
+            H.KUR = ISNULL(SF.ALTIN_HAS_KURU, 0)
+          FROM dbo.TODVZ_HESAP_HAREKETI H
+          CROSS APPLY (
+            SELECT TOP 1 SF.SARRAF_FISI_ID, SF.ALTIN_HAS_KURU
+            FROM dbo.TODVZ_SARRAF_FISI SF
+            WHERE H.ACIKLAMA LIKE '%Sarraf Fişi İşçilik%' 
+              AND (H.ACIKLAMA LIKE '%' + LTRIM(RTRIM(SF.FIS_NO)) + '%' OR H.ACIKLAMA LIKE '%' + LTRIM(RTRIM(SF.BELGE_NO)) + '%')
+            ORDER BY SF.SARRAF_FISI_ID DESC
+          ) SF
+          CROSS APPLY (
+            SELECT 
+              SUM(CASE WHEN ISNULL(S.ISCILIK_MIKTARI, 0) > 0 THEN S.ISCILIK_MIKTARI ELSE ISNULL(S.GRAM, ISNULL(S.ADET, 0)) END) AS TOPLAM_MIKTAR,
+              SUM(ISNULL(S.ISCILIK_HAS_GRAM, 0)) AS TOPLAM_HAS
+            FROM dbo.TODVZ_SARRAF_FISI_SATIRI S
+            WHERE S.SARRAF_FISI_ID = SF.SARRAF_FISI_ID
+          ) agg
+          WHERE H.ACIKLAMA LIKE '%Sarraf Fişi İşçilik%'
+            AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
+        END;
+
+        IF OBJECT_ID('dbo.TODVZ_FATURA', 'U') IS NOT NULL AND OBJECT_ID('dbo.TODVZ_FATURA_SATIRI', 'U') IS NOT NULL
+        BEGIN
+          UPDATE H
+          SET 
+            H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
+            H.HAS_TUTARI = ISNULL(agg.TOPLAM_HAS, 0),
+            H.KUR = CASE WHEN ISNULL(agg.TOPLAM_HAS, 0) > 0 AND H.MEBLAG > 0 THEN H.MEBLAG / agg.TOPLAM_HAS ELSE 0 END
+          FROM dbo.TODVZ_HESAP_HAREKETI H
+          CROSS APPLY (
+            SELECT TOP 1 F.FATURA_ID
+            FROM dbo.TODVZ_FATURA F
+            WHERE H.ACIKLAMA LIKE '%Perakende Fişi İşçilik%' 
+              AND H.ACIKLAMA LIKE '%' + LTRIM(RTRIM(F.FATURA_NO)) + '%'
+            ORDER BY F.FATURA_ID DESC
+          ) F
+          CROSS APPLY (
+            SELECT 
+              SUM(CASE WHEN ISNULL(S.GRAM, 0) > 0 THEN S.GRAM ELSE ISNULL(S.MIKTAR, 0) END) AS TOPLAM_MIKTAR,
+              SUM(ISNULL(S.HAS_GRAM, 0)) AS TOPLAM_HAS
+            FROM dbo.TODVZ_FATURA_SATIRI S
+            WHERE S.FATURA_ID = F.FATURA_ID
+          ) agg
+          WHERE H.ACIKLAMA LIKE '%Perakende Fişi İşçilik%'
+            AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
+        END;
+
+        IF OBJECT_ID('dbo.TODVZ_FIS', 'U') IS NOT NULL AND OBJECT_ID('dbo.TODVZ_FIS_SATIRI', 'U') IS NOT NULL
+        BEGIN
+          UPDATE H
+          SET 
+            H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
+            H.HAS_TUTARI = CASE WHEN ISNULL(agg.FIRST_KUR, 0) > 0 AND H.MEBLAG > 0 THEN H.MEBLAG / agg.FIRST_KUR ELSE 0 END,
+            H.KUR = ISNULL(agg.FIRST_KUR, 0)
+          FROM dbo.TODVZ_HESAP_HAREKETI H
+          CROSS APPLY (
+            SELECT TOP 1 DF.FIS_ID
+            FROM dbo.TODVZ_FIS DF
+            WHERE H.ACIKLAMA LIKE '%Döviz Fişi İşçilik%' 
+              AND H.ACIKLAMA LIKE '%' + LTRIM(RTRIM(DF.SERI_NO)) + '%'
+            ORDER BY DF.FIS_ID DESC
+          ) DF
+          CROSS APPLY (
+            SELECT 
+              SUM(CASE WHEN ISNULL(S.ISCILIK, 0) > 0 THEN ISNULL(S.MIKTAR, 0) ELSE 0 END) AS TOPLAM_MIKTAR,
+              MAX(CASE WHEN ISNULL(S.ISCILIK, 0) > 0 THEN S.KUR ELSE 0 END) AS FIRST_KUR
+            FROM dbo.TODVZ_FIS_SATIRI S
+            WHERE S.FIS_ID = DF.FIS_ID
+          ) agg
+          WHERE H.ACIKLAMA LIKE '%Döviz Fişi İşçilik%'
+            AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
         END;
       `);
         }
@@ -226,7 +321,10 @@ export class KasaHesapSqlRepository {
           @TIP TINYINT,
           @VEZNE_ID INT,
           @KULLANICI_ID INT,
-          @DEGISIKLIK_TAKIP_VAR BIT
+          @DEGISIKLIK_TAKIP_VAR BIT,
+          @MIKTAR FLOAT = 0,
+          @HAS_TUTARI FLOAT = 0,
+          @KUR FLOAT = 0
         AS
         BEGIN
           SET NOCOUNT ON;
@@ -252,9 +350,11 @@ export class KasaHesapSqlRepository {
           BEGIN
             INSERT INTO TODVZ_HESAP_HAREKETI(
                 HESAP_ID, TARIH, ACIKLAMA, PARA_ID, MEBLAG, KDV_ORANI, KDV, TIP, VEZNE_ID,
+                MIKTAR, HAS_TUTARI, KUR,
                 EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI)
               VALUES(
                 @HESAP_ID, @TARIH, @ACIKLAMA, @PARA_ID, @MEBLAG, @KDV_ORANI, @KDV, @TIP, @VEZNE_ID,
+                ISNULL(@MIKTAR, 0), ISNULL(@HAS_TUTARI, 0), ISNULL(@KUR, 0),
                 @KULLANICI_ID, @ZAMAN, @KULLANICI_ID, @ZAMAN)
             IF @@ERROR<>0  GOTO UNDO
             SELECT @HESAP_HAREKETI_ID = SCOPE_IDENTITY()
@@ -275,10 +375,12 @@ export class KasaHesapSqlRepository {
               INSERT INTO TODVZ_LOG_HESAP_HAREKETI(
                 ZAMAN, KULLANICI_ID, ISLEM, HESAP_HAREKETI_ID, VEZNE_ID,
                 O_HESAP_ID, S_HESAP_ID, O_TARIH, S_TARIH, O_ACIKLAMA, S_ACIKLAMA,
-                O_PARA_ID, S_PARA_ID, O_MEBLAG, S_MEBLAG, O_KDV, S_KDV, O_TIP, S_TIP)
+                O_PARA_ID, S_PARA_ID, O_MEBLAG, S_MEBLAG, O_KDV, S_KDV, O_TIP, S_TIP,
+                O_MIKTAR, S_MIKTAR, O_HAS_TUTARI, S_HAS_TUTARI, O_KUR, S_KUR)
               SELECT  @ZAMAN, @KULLANICI_ID, 1, @HESAP_HAREKETI_ID, @VEZNE_ID,
                 V.HESAP_ID, @HESAP_ID, V.TARIH, @TARIH, V.ACIKLAMA, @ACIKLAMA,
-                V.PARA_ID, @PARA_ID, V.MEBLAG, @MEBLAG, V.KDV, @KDV, V.TIP, @TIP
+                V.PARA_ID, @PARA_ID, V.MEBLAG, @MEBLAG, V.KDV, @KDV, V.TIP, @TIP,
+                V.MIKTAR, @MIKTAR, V.HAS_TUTARI, @HAS_TUTARI, V.KUR, @KUR
               FROM TODVZ_HESAP_HAREKETI V
               WHERE V.HESAP_HAREKETI_ID = @HESAP_HAREKETI_ID AND
                 (V.HESAP_ID <> @HESAP_ID OR
@@ -286,6 +388,9 @@ export class KasaHesapSqlRepository {
                 ISNULL(V.ACIKLAMA,'') <> ISNULL(@ACIKLAMA,'') OR
                 V.PARA_ID <> @PARA_ID OR
                 V.MEBLAG <> @MEBLAG OR
+                ISNULL(V.MIKTAR, 0) <> ISNULL(@MIKTAR, 0) OR
+                ISNULL(V.HAS_TUTARI, 0) <> ISNULL(@HAS_TUTARI, 0) OR
+                ISNULL(V.KUR, 0) <> ISNULL(@KUR, 0) OR
                 V.KDV <> @KDV OR
                 V.TIP <> @TIP)
 
@@ -296,6 +401,9 @@ export class KasaHesapSqlRepository {
                 ACIKLAMA = @ACIKLAMA,
                 PARA_ID = @PARA_ID,
                 MEBLAG = @MEBLAG,
+                MIKTAR = ISNULL(@MIKTAR, 0),
+                HAS_TUTARI = ISNULL(@HAS_TUTARI, 0),
+                KUR = ISNULL(@KUR, 0),
                 KDV_ORANI = @KDV_ORANI,
                 KDV = @KDV,
                 TIP = @TIP,
@@ -530,6 +638,7 @@ export class KasaHesapSqlRepository {
         HH.HESAP_HAREKETI_ID, HH.HESAP_ID, H.KOD AS HESAP_KOD, H.AD AS HESAP_AD,
         HH.TARIH, HH.ACIKLAMA, HH.PARA_ID, P.KOD AS PARA_KODU, P.AD AS PARA_ADI,
         HH.MEBLAG, HH.KDV_ORANI, HH.KDV, HH.TIP, HH.VEZNE_ID, V.KOD AS VEZNE_KOD, V.AD AS VEZNE_AD,
+        HH.MIKTAR, HH.HAS_TUTARI, HH.KUR,
         HH.EKLEYEN_ID, HH.EKLEME_ZAMANI, HH.GUNCELLEYEN_ID, HH.GUNCELLEME_ZAMANI
       FROM TODVZ_HESAP_HAREKETI HH
       LEFT JOIN TODVZ_HESAP H ON H.HESAP_ID = HH.HESAP_ID
@@ -568,6 +677,9 @@ export class KasaHesapSqlRepository {
             paraKodu: (r.PARA_KODU || "").trim(),
             paraAdi: (r.PARA_ADI || "").trim(),
             meblag: Number(r.MEBLAG) || 0,
+            miktar: Number(r.MIKTAR) || 0,
+            hasTutari: Number(r.HAS_TUTARI) || 0,
+            kur: Number(r.KUR) || 0,
             kdvOrani: Number(r.KDV_ORANI) || 0,
             kdv: Number(r.KDV) || 0,
             tip: Number(r.TIP),
@@ -590,6 +702,9 @@ export class KasaHesapSqlRepository {
         await this.ensureProcedures(pool);
         const targetId = dto.hesapHareketiId && Number(dto.hesapHareketiId) > 0 ? Number(dto.hesapHareketiId) : null;
         const meblag = Number(dto.meblag) || 0;
+        const miktar = Number(dto.miktar) || 0;
+        const hasTutari = Number(dto.hasTutari) || 0;
+        const kur = Number(dto.kur) || 0;
         const kdvOrani = Number(dto.kdvOrani) || 0;
         const kdv = dto.kdv !== undefined && dto.kdv !== null ? Number(dto.kdv) : parseFloat(((meblag * kdvOrani) / 100).toFixed(4));
         const tip = dto.tip === 0 ? 0 : 1;
@@ -605,6 +720,9 @@ export class KasaHesapSqlRepository {
         req.input("ACIKLAMA", sql.VarChar(250), dto.aciklama ? dto.aciklama.trim() : null);
         req.input("PARA_ID", sql.Int, Number(dto.paraId));
         req.input("MEBLAG", sql.Float, meblag);
+        req.input("MIKTAR", sql.Float, miktar);
+        req.input("HAS_TUTARI", sql.Float, hasTutari);
+        req.input("KUR", sql.Float, kur);
         req.input("KDV_ORANI", sql.Float, kdvOrani);
         req.input("KDV", sql.Float, kdv);
         req.input("TIP", sql.TinyInt, tip);
@@ -627,7 +745,10 @@ export class KasaHesapSqlRepository {
         @TIP = @TIP,
         @VEZNE_ID = @VEZNE_ID,
         @KULLANICI_ID = @KULLANICI_ID,
-        @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR;
+        @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR,
+        @MIKTAR = @MIKTAR,
+        @HAS_TUTARI = @HAS_TUTARI,
+        @KUR = @KUR;
 
       SELECT @OUT_ID AS RESULT_ID;
     `;

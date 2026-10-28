@@ -1199,6 +1199,9 @@ export class PerakendeSqlRepository {
           DECLARE @F_KDV_ORANI FLOAT;
           DECLARE @F_KDV_TUTAR FLOAT;
           DECLARE @F_ARA_TOPLAM FLOAT;
+          DECLARE @F_TOPLAM_MIKTAR FLOAT = 0;
+          DECLARE @F_TOPLAM_HAS FLOAT = 0;
+          DECLARE @F_HAS_KURU FLOAT = 0;
 
           SELECT 
             @F_NO = FATURA_NO,
@@ -1211,20 +1214,31 @@ export class PerakendeSqlRepository {
           FROM dbo.TODVZ_FATURA 
           WHERE FATURA_ID = @FATURA_ID;
 
+          SELECT 
+            @F_TOPLAM_MIKTAR = ISNULL(SUM(CASE WHEN ISNULL(GRAM, 0) > 0 THEN GRAM ELSE ISNULL(MIKTAR, 0) END), 0),
+            @F_TOPLAM_HAS = ISNULL(SUM(ISNULL(HAS_GRAM, 0)), 0)
+          FROM dbo.TODVZ_FATURA_SATIRI
+          WHERE FATURA_ID = @FATURA_ID;
+
+          IF (@F_TOPLAM_HAS > 0 AND @F_ARA_TOPLAM > 0)
+            SET @F_HAS_KURU = @F_ARA_TOPLAM / @F_TOPLAM_HAS;
+
           DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] 
           WHERE ACIKLAMA LIKE '%Perakende Fişi İşçilik%' AND ACIKLAMA LIKE '%' + LTRIM(RTRIM(@F_NO)) + '%';
 
-          IF (@F_ARA_TOPLAM > 0)
+          IF (@F_ARA_TOPLAM > 0 OR @F_TOPLAM_HAS > 0)
           BEGIN
             DECLARE @HH_ACIKLAMA VARCHAR(200) = 'Perakende Fişi İşçilik - Fatura No: ' + LTRIM(RTRIM(@F_NO));
             DECLARE @HH_TIP TINYINT = CASE WHEN @F_TIP = 1 THEN 0 ELSE 1 END; -- Satış: 0 (Gelir Girişi), İade: 1 (Çıkış)
             
             INSERT INTO [dbo].[TODVZ_HESAP_HAREKETI] (
               HESAP_ID, TARIH, ACIKLAMA, PARA_ID, MEBLAG, KDV_ORANI, KDV, TIP, VEZNE_ID,
+              MIKTAR, HAS_TUTARI, KUR,
               EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
             ) VALUES (
               @TARGET_ISCILIK_HESAP_ID, @F_TARIH, @HH_ACIKLAMA, 1, @F_ARA_TOPLAM, 
               0, ISNULL(@F_KDV_TUTAR, 0), @HH_TIP, @F_VEZNE,
+              @F_TOPLAM_MIKTAR, @F_TOPLAM_HAS, @F_HAS_KURU,
               @F_EKLEYEN, GETDATE(), @F_EKLEYEN, GETDATE()
             );
           END;

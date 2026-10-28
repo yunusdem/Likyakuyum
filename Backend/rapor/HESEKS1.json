@@ -1,8 +1,8 @@
 {
   "kod": "HESEKS1",
   "ad": "Hesap Ekstresi",
-  "aciklama": "Seçilen kasa hesaplarının tarih aralığındaki hareketleri; hesap × para grubu, devir ve yürüyen bakiye.",
-  "kagit": "A4",
+  "aciklama": "Seçilen kasa hesaplarının tarih aralığındaki hareketleri; hesap × para grubu, devir ve yürüyen bakiye, işçilik miktar ve has tutarları.",
+  "kagit": "A4-yatay",
   "parametreler": [
     {
       "ad": "hesapIdler",
@@ -28,39 +28,59 @@
     {
       "anahtar": "tarih",
       "baslik": "Tarih",
-      "g": 1.5,
+      "g": 1.4,
       "bicim": "tarih"
     },
     {
       "anahtar": "aciklama",
       "baslik": "Açıklama",
-      "g": 4.4
+      "g": 3.4
     },
     {
       "anahtar": "vezneKod",
       "baslik": "Vezne",
-      "g": 0.9,
+      "g": 0.8,
       "hiza": "center",
       "pdf": false
     },
     {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
+      "anahtar": "hasKuru",
+      "baslik": "Has Kuru",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "hasTutari",
+      "baslik": "Has Tutarı",
+      "g": 1.6,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
       "anahtar": "borc",
-      "baslik": "Borç",
-      "g": 2,
+      "baslik": "Borç (TL)",
+      "g": 1.8,
       "bicim": "sayi",
       "toplam": true
     },
     {
       "anahtar": "alacak",
-      "baslik": "Alacak",
-      "g": 2,
+      "baslik": "Alacak (TL)",
+      "g": 1.8,
       "bicim": "sayi",
       "toplam": true
     },
     {
       "anahtar": "bakiye",
-      "baslik": "Bakiye",
-      "g": 2.1,
+      "baslik": "Bakiye (TL)",
+      "g": 1.9,
       "bicim": "sayi"
     },
     {
@@ -72,7 +92,7 @@
     {
       "anahtar": "giris",
       "baslik": "Giriş",
-      "g": 2,
+      "g": 1.8,
       "bicim": "sayi",
       "toplam": true,
       "pdf": false
@@ -80,7 +100,7 @@
     {
       "anahtar": "cikis",
       "baslik": "Çıkış",
-      "g": 2,
+      "g": 1.8,
       "bicim": "sayi",
       "toplam": true,
       "pdf": false
@@ -88,14 +108,14 @@
     {
       "anahtar": "kdv",
       "baslik": "KDV (TL)",
-      "g": 1.3,
+      "g": 1.2,
       "bicim": "sayi",
       "pdf": false
     },
     {
       "anahtar": "kaydeden",
       "baslik": "Kaydeden",
-      "g": 1.4,
+      "g": 1.3,
       "pdf": false
     }
   ],
@@ -108,11 +128,13 @@
   "ozet": {
     "baslik": "Kapanış bakiyeleri — hesap ve para bazında",
     "kolonlar": [
-      { "anahtar": "hesap", "baslik": "Hesap", "g": 4 },
-      { "anahtar": "paraKod", "baslik": "Para", "g": 1, "hiza": "center" },
-      { "anahtar": "borc", "baslik": "Borç", "g": 2, "bicim": "sayi" },
-      { "anahtar": "alacak", "baslik": "Alacak", "g": 2, "bicim": "sayi" },
-      { "anahtar": "bakiye", "baslik": "Bakiye", "g": 2, "bicim": "sayi" },
+      { "anahtar": "hesap", "baslik": "Hesap", "g": 3.5 },
+      { "anahtar": "paraKod", "baslik": "Para", "g": 0.9, "hiza": "center" },
+      { "anahtar": "miktar", "baslik": "Miktar", "g": 1.4, "bicim": "sayi", "toplam": true },
+      { "anahtar": "hasTutari", "baslik": "Has Tutarı", "g": 1.6, "bicim": "sayi4", "toplam": true },
+      { "anahtar": "borc", "baslik": "Borç", "g": 1.8, "bicim": "sayi", "toplam": true },
+      { "anahtar": "alacak", "baslik": "Alacak", "g": 1.8, "bicim": "sayi", "toplam": true },
+      { "anahtar": "bakiye", "baslik": "Bakiye", "g": 1.8, "bicim": "sayi" },
       { "anahtar": "bakiyeTipi", "baslik": "B/A", "g": 0.6, "hiza": "center" }
     ]
   }

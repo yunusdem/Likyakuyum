@@ -342,7 +342,8 @@ export const ebelgeGiderPusulasiSchema = z.object({
     gonderici: gpTarafSchema.partial({ vknTckn: true }).optional(),
     alici: gpTarafSchema,
     satirlar: z.array(gpSatirSchema).min(1, "En az bir satır bulunmalıdır.").max(500),
-    vergiTuruKodu: z.string().trim().regex(/^\d{4}$/, "Vergi türü kodu 4 haneli olmalıdır.").optional(),
+    // Boş bırakılan kod "verilmedi" sayılır (üreteç 0015 kullanır); "" eskiden şemada reddediliyordu (docs/E_GIDER_YOL_HARITASI.md K20)
+    vergiTuruKodu: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().trim().regex(/^\d{4}$/, "Vergi türü kodu 4 haneli olmalıdır.").optional()),
     iadeDayanak: z
         .object({
         belgeTipi: z.enum(["EARSIV_FATURA", "BELGESIZ", "SATIS_FISI"]),
@@ -369,6 +370,54 @@ export const ebelgeGiderPusulasiSchema = z.object({
     })
         .optional(),
 });
+/**
+ * Gider pusulası şema hatalarını kullanıcının okuyacağı metne çevirir: hangi alan, ne sorun (K20). Eskiden yalnız
+ * "Gider pusulası bilgileri geçersiz." dönüyordu, hatalı alan görünmüyordu.
+ */
+const GIDER_ALAN_ADLARI = {
+    belgeNo: "Belge no",
+    tarih: "Tarih",
+    saat: "Saat",
+    belgeTipi: "İşlem",
+    vergiTuruKodu: "Vergi türü kodu",
+    alici: "Satıcı",
+    vknTckn: "TC / VKN",
+    unvan: "Ünvan",
+    ad: "Ad",
+    soyad: "Soyad",
+    il: "İl",
+    ilce: "İlçe",
+    adres: "Adres",
+    satirlar: "Satırlar",
+    aciklama: "Açıklama",
+    miktar: "Miktar",
+    birimKodu: "Birim",
+    birimFiyat: "Birim fiyat",
+    vergiOrani: "Vergi %",
+    iadeDayanak: "İade dayanağı",
+    belgeTarihi: "Dayanak tarihi",
+    notlar: "Not",
+};
+const ZOD_KOD_METNI = {
+    invalid_type: "girilmeli ya da geçersiz",
+    too_small: "çok kısa ya da çok küçük",
+    too_big: "çok uzun ya da çok büyük",
+    invalid_enum_value: "geçersiz seçim",
+    invalid_string: "biçimi hatalı",
+};
+export const giderHataMetni = (issues) => {
+    const parcalar = issues.slice(0, 6).map((i) => {
+        const yol = i.path
+            .map((p, idx) => (typeof p === "number" ? (i.path[idx - 1] === "satirlar" ? `${p + 1}. satır` : `${p + 1}.`) : GIDER_ALAN_ADLARI[p] || p))
+            .filter((p) => p !== "Satırlar" || i.path.length === 1)
+            .join(" › ");
+        // Şemadaki Türkçe mesaj varsa o; zod'un İngilizce varsayılanı yerine kısa Türkçe karşılık
+        const mesaj = /[çğıöşüÇĞİÖŞÜ]|zorunlu|olmalı/.test(i.message) ? i.message.replace(/\.$/, "") : ZOD_KOD_METNI[i.code] || "geçersiz";
+        return yol ? `${yol}: ${mesaj}` : mesaj;
+    });
+    const fazla = issues.length > 6 ? ` (+${issues.length - 6} hata daha)` : "";
+    return `Gider pusulası bilgileri geçersiz — ${parcalar.join(" · ")}${fazla}`;
+};
 export const ebelgeMustahsilSchema = z.object({
     belgeNo: z.string().trim().regex(/^[A-Za-z0-9]{3}\d{13}$/),
     uuid: z.string().uuid().optional(), tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -400,6 +449,8 @@ export const ebelgeKaynakGonderSchema = z.intersection(ebelgeKaynakKimlikSchema,
     parmakizi: z.string().regex(/^[a-f0-9]{64}$/),
     // e-Döviz'de senaryo yerine CreditNoteTypeCode taşınır; fatura senaryoları sabit kalır.
     senaryo: z.union([z.enum(["TICARIFATURA", "EARSIVFATURA"]), z.string().trim().min(1).max(40)]),
+    // KDV'li sarraf alışını "KDV 0" olarak göndermeye onay (docs/E_GIDER_YOL_HARITASI.md K9)
+    kdvSifir: z.boolean().optional(),
 }));
 const kaynakTarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v, "Geçersiz tarih");
 export const ebelgeKaynakListeSchema = z.object({

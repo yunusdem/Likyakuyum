@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EbelgeKaynakRepository, dovizMi, kaynakAnahtar, kaynakKimlikCoz, perakendeMi, sarrafMi } from "../models/ebelgeKaynak.repository.js";
 import { NIHAI_TUKETICI, perakendeFaturaGirdisi, perakendeGiderGirdisi } from "./ebelgePerakende.js";
-import { sarrafAliciVkn, sarrafFaturaGirdisi, sarrafGiderGirdisi, sarrafKaynakTuru, sarrafPerakendeBicimi, sarrafSatirKdvleri, sarrafToplam } from "./ebelgeSarraf.js";
+import { KDV_SIFIR_UYARISI, sarrafAliciVkn, sarrafFaturaGirdisi, sarrafGiderGirdisi, sarrafKaynakTuru, sarrafKdvVar, sarrafPerakendeBicimi, sarrafSatirKdvleri, sarrafToplam } from "./ebelgeSarraf.js";
 import { getEDovizCikti, getEDovizStatus, previewEDoviz } from "./ice/ice.edoviz.js";
 import { logger } from "../utils/logger.js";
 import { EbelgeKuyrukService } from "./ebelgeKuyruk.service.js";
@@ -319,11 +319,11 @@ export class EbelgeKaynakService {
         return { kaynak, alis: tur === 3, yil: Number(tarih.toISOString().slice(0, 4)) };
     }
     /** Sarraf satışında senaryo: Perakende ile aynı (nihai tüketici → e-Arşiv, diğerinde ICE mükellef sorgusu) */
-    static async sarrafGirdisi(k, kullanici, ctx) {
+    static async sarrafGirdisi(k, kullanici, ctx, secenek = {}) {
         const { kaynak, alis, yil } = await this.sarrafOku(k, ctx);
         if (alis) {
             const belgeNo = await EbelgeService.siradakiBelgeNo("EGider", yil, ctx);
-            return { kaynak, alis, girdi: await this.aliciAdresiniTamamla(sarrafGiderGirdisi(kaynak, belgeNo), ctx), senaryo: "GIDERPUSULASI" };
+            return { kaynak, alis, girdi: await this.aliciAdresiniTamamla(sarrafGiderGirdisi(kaynak, belgeNo, secenek), ctx), senaryo: "GIDERPUSULASI" };
         }
         const senaryo = await this.perakendeSenaryo(sarrafAliciVkn(kaynak.baslik), kullanici, ctx);
         const belgeNo = await EbelgeService.siradakiBelgeNo(senaryo === "TICARIFATURA" ? "EFatura" : "EArsiv", yil, ctx);
@@ -333,10 +333,12 @@ export class EbelgeKaynakService {
     }
     /** Sarraf hazırlama: satış → ICE doğrulaması, alış → gider pusulası ön izleme. Hiçbir şey gönderilmez. */
     static async sarrafHazirla(k, kullanici, ctx) {
-        const { kaynak, alis, girdi, senaryo } = await this.sarrafGirdisi(k, kullanici, ctx);
+        // Hazırlama KDV'li alışta da yapılır; gönderim onay (kdvSifir) ister. Uyarı ekranda sorulur (K9).
+        const { kaynak, alis, girdi, senaryo } = await this.sarrafGirdisi(k, kullanici, ctx, { kdvSifir: true });
         if (alis) {
             const { ozet } = await EbelgeService.giderPusulasiOnizle(girdi, ctx);
-            return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan || "", belgeTuruAdi: "e-Gider pusulası", parmakizi: kaynakParmakizi(kaynak), senaryo, tutar: ozet.odenecekTutar, durum: "HAZIR" };
+            const uyari = sarrafKdvVar(kaynak.baslik) ? KDV_SIFIR_UYARISI : undefined;
+            return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan || "", belgeTuruAdi: "e-Gider pusulası", parmakizi: kaynakParmakizi(kaynak), senaryo, tutar: ozet.odenecekTutar, durum: "HAZIR", uyari };
         }
         const sonuc = await EbelgeService.dogrulaGidenBelge(girdi, kullanici, false, ctx);
         if (!sonuc.semaGecerli || !sonuc.schematronGecerli)
@@ -348,8 +350,8 @@ export class EbelgeKaynakService {
      * Sarraf gönderimi: Perakende ile aynı güvenlik sırası. Numara burada yeniden alınır (hazırlamadan beri seri
      * ilerlemiş olabilir); kaynak kaydı bu numarayla yer tutulur, sonuç kaynak kaydına ve fişe yazılır.
      */
-    static async sarrafGonder(k, parmakizi, senaryo, kullanici, ctx) {
-        const ilk = await this.sarrafGirdisi(k, kullanici, ctx);
+    static async sarrafGonder(k, parmakizi, senaryo, kullanici, ctx, kdvSifir = false) {
+        const ilk = await this.sarrafGirdisi(k, kullanici, ctx, { kdvSifir });
         if (kaynakParmakizi(ilk.kaynak) !== parmakizi)
             throw ApiError.conflict("Fiş değişmiş. Yeniden hazırlayın ve onaylayın.");
         if (ilk.senaryo !== senaryo)
@@ -401,13 +403,13 @@ export class EbelgeKaynakService {
             return PerakendeService.deleteInvoice(k.belgeId, ctx);
         return TicariSatisSqlRepository.sil(k.belgeId, ctx);
     }
-    static async gonder(k, parmakizi, senaryo, kullanici, ctx) {
+    static async gonder(k, parmakizi, senaryo, kullanici, ctx, kdvSifir = false) {
         if (dovizMi(k))
             return this.dovizGonder(k, parmakizi, kullanici, ctx);
         if (perakendeMi(k))
             return this.perakendeGonder(k, parmakizi, senaryo, kullanici, ctx);
         if (sarrafMi(k))
-            return this.sarrafGonder(k, parmakizi, senaryo, kullanici, ctx);
+            return this.sarrafGonder(k, parmakizi, senaryo, kullanici, ctx, kdvSifir);
         throw ApiError.badRequest("Bilinmeyen kaynak belge türü.");
     }
     /**
