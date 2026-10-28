@@ -1,0 +1,236 @@
+{
+  "kod": "VEZHAS1",
+  "ad": "Vezne Hareket (Has)",
+  "aciklama": "Vezne hareket listesi (Has bazında) — belge ve banka hesabı olmadan, milyem ve has karşılığı ile vezne bazında giriş / çıkış miktarları.",
+  "kagit": "A4-yatay",
+  "parametreler": [
+    {
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
+      "zorunlu": true,
+      "varsayilan": "bugun"
+    },
+    {
+      "ad": "baslangicSaat",
+      "etiket": "Saat aralığı",
+      "tip": "saatAralik"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
+      "ad": "paraIdler",
+      "etiket": "Para (dürbünden seçin)",
+      "tip": "paraCoklu"
+    },
+    {
+      "ad": "fisTipi",
+      "etiket": "Tip",
+      "tip": "fisTipi"
+    },
+    {
+      "ad": "kurTuru",
+      "etiket": "Kur",
+      "tip": "kurSecimi"
+    }
+  ],
+  "kolonlar": [
+    {
+      "anahtar": "tarih",
+      "baslik": "Tarih",
+      "g": 1.4,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "milyem",
+      "baslik": "Milyem",
+      "g": 1,
+      "bicim": "tam",
+      "hiza": "center"
+    },
+    {
+      "anahtar": "yon",
+      "baslik": "",
+      "g": 0.5,
+      "hiza": "center"
+    },
+    {
+      "anahtar": "aciklama",
+      "baslik": "Açıklama",
+      "g": 3.4
+    },
+    {
+      "anahtar": "kur",
+      "baslik": "Kur",
+      "g": 1.4,
+      "bicim": "kur"
+    },
+    {
+      "anahtar": "giris",
+      "baslik": "Giriş",
+      "g": 1.9,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "cikis",
+      "baslik": "Çıkış",
+      "g": 1.9,
+      "bicim": "sayi"
+    },
+    {
+      "anahtar": "hasKarsiligi",
+      "baslik": "Has karşılığı",
+      "g": 1.9,
+      "bicim": "sayi4",
+      "toplam": true
+    },
+    {
+      "anahtar": "belgeNo",
+      "baslik": "Belge no",
+      "g": 2.2,
+      "pdf": false
+    },
+    {
+      "anahtar": "tip",
+      "baslik": "Tip",
+      "g": 0.9,
+      "hiza": "center",
+      "pdf": false
+    },
+    {
+      "anahtar": "unvan",
+      "baslik": "Ünvan",
+      "g": 3.6,
+      "pdf": false
+    },
+    {
+      "anahtar": "miktar",
+      "baslik": "Miktar",
+      "g": 1.8,
+      "bicim": "sayi",
+      "pdf": false
+    },
+    {
+      "anahtar": "tutar",
+      "baslik": "Tutar (TL)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "komisyon",
+      "baslik": "Komisyon",
+      "g": 1.5,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "bmv",
+      "baslik": "BSMV",
+      "g": 1.3,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "secilenKur",
+      "baslik": "Seçilen kur",
+      "g": 1.4,
+      "bicim": "kur",
+      "pdf": false
+    },
+    {
+      "anahtar": "secilenTl",
+      "baslik": "Seçilen kurla TL",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true,
+      "pdf": false
+    },
+    {
+      "anahtar": "kurSatis",
+      "baslik": "Satış kuru",
+      "g": 1.4,
+      "bicim": "kur",
+      "kosul": "kurIkisi",
+      "pdf": false
+    },
+    {
+      "anahtar": "tlSatis",
+      "baslik": "TL (satış kuru)",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "kurIkisi"
+    }
+  ],
+  "grup": {
+    "anahtar": "vezneKod",
+    "baslik": "Vezne {{vezneBaslik}}",
+    "altToplam": true
+  },
+  "ozet": {
+    "baslik": "Vezne ve para bazında giriş / çıkış / has karşılığı",
+    "kolonlar": [
+      {
+        "anahtar": "vezne",
+        "baslik": "Vezne",
+        "g": 3
+      },
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "milyem",
+        "baslik": "Milyem",
+        "g": 1,
+        "hiza": "center",
+        "bicim": "tam"
+      },
+      {
+        "anahtar": "giris",
+        "baslik": "Giriş",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "cikis",
+        "baslik": "Çıkış",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "net",
+        "baslik": "Net",
+        "g": 2.2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "hasKarsiligi",
+        "baslik": "Net Has",
+        "g": 2.2,
+        "bicim": "sayi4"
+      }
+    ]
+  }
+}

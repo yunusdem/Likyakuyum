@@ -79,6 +79,8 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
       "vezne:vezne/transfer-kayit",
       "vezne:vezne/transfer-duzeltme",
       "vezne:raporlar/vezne-hareket-listesi",
+      "vezne:raporlar/vezne-hareket-has",
+      "vezne:raporlar/vezne-hareket-altin",
       "vezne:vezne/fis-aktarma",
       "vezne:raporlar/vezne-bakiye-anlik",
       "vezne:raporlar/vezne-bakiye",

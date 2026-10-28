@@ -8209,6 +8209,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         pageType="sarraf"
         show={showTeklifTaniModal}
         onHide={() => setShowTeklifTaniModal(false)}
+        fisId={fisId}
         tip={tip}
         tarih={tarih}
         saat={saat}
@@ -8230,6 +8231,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         detayPasaportNo={detayPasaportNo}
         detayCariTipi={detayKisilikTipi === 1 ? "Firma" : "Şahıs"}
         detayVergiDairesi={""}
+        satirlar={lines.filter((l) => Number(l.miktar) > 0 || Number(l.tutar) > 0 || Number(l.adet) > 0 || (l.urunAdi && l.urunAdi.trim() !== ""))}
+        odemeSatirlari={odemeRows.filter((o) => parseDecimal(o.miktar) > 0 || parseDecimal(o.tutar) > 0 || parseDecimal(o.adet) > 0 || (o.paraKodu && o.paraKodu.trim() !== ""))}
+        toplamHas={alisHas}
+        odenenTutar={totalOdemeTutar}
+        kalanTutar={farkTL}
+        vezne={vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null)}
+        kullaniciAdi={user?.fullName || user?.username || "Kasiyer"}
         lines={lines
           .filter((l) => (l.urunId > 0 || (l.urunKodu && l.urunKodu.trim() !== "")) && (parseDecimal(l.miktar) > 0 || parseDecimal(l.adet) > 0 || parseDecimal(l.tutar) > 0))
           .map((l: any) => ({

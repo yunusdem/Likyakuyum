@@ -3,6 +3,7 @@ import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
 import { type RaporParametreler, TL_PARA_SQL, adetOzeti, aralikOzeti, filtreler, idFiltre, kurCoz, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 import { ISCILIK_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketleriSql } from "../kaynak.js";
+import { KasaHesapSqlRepository } from "../../../models/kasaHesapSql.repository.js";
 
 /**
  * Kasa raporları (docs/raporlar-faz2.md, Faz R2-K) — yalnızca SELECT.
@@ -15,13 +16,13 @@ import { ISCILIK_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketler
 type Sorgu = (pool: sql.ConnectionPool, p: RaporParametreler, t: RaporTanim) => Promise<RaporSonucVeri>;
 
 /** Kasadan geçen nakit satırları: meblağ kendi parasında; KDV > 0 ise ayrı TL satırı (eski VODVZR_KASA_HAREKET_LISTESI gibi, TL hareketinde de ayrı). Saf fonksiyon. */
-export function kasaNakitSatirlari<T extends { paraId: number; paraKod: string; meblag: number; kdv: number; tip: number; aciklama: string }>(
-  h: T, tl: { id: number; kod: string }): (T & { giris: number; cikis: number; kdvSatiri: boolean })[] {
+export function kasaNakitSatirlari<T extends { paraId: number; paraKod: string; meblag: number; kdv: number; tip: number; aciklama: string; miktar?: number; hasTutari?: number; hasKuru?: number }>(
+  h: T, tl: { id: number; kod: string }): (T & { giris: number; cikis: number; kdvSatiri: boolean; miktar?: number; hasTutari?: number; hasKuru?: number })[] {
   const yon = (tutar: number) => ({ giris: h.tip === 0 ? tutar : 0, cikis: h.tip === 1 ? tutar : 0 });
   const kdv = Number(h.kdv) || 0, meblag = Number(h.meblag) || 0;
   const ana = { ...h, ...yon(meblag), kdv, kdvSatiri: false };
   if (kdv <= 0) return [ana];
-  return [ana, { ...h, paraId: tl.id, paraKod: tl.kod, meblag: kdv, ...yon(kdv), kdv: 0, aciklama: `KDV — ${h.aciklama}`.trim(), kdvSatiri: true }];
+  return [ana, { ...h, paraId: tl.id, paraKod: tl.kod, meblag: kdv, ...yon(kdv), kdv: 0, aciklama: `KDV — ${h.aciklama}`.trim(), kdvSatiri: true, miktar: 0, hasTutari: 0, hasKuru: 0 }];
 }
 
 /** Devir + yürüyen bakiye: gruplar sıralı gelir; her grubun başına devir satırı eklenir. Saf fonksiyon. */
@@ -44,7 +45,8 @@ const paraSecimi = (p: RaporParametreler) => new Set((p.paraIdler || []).filter(
 
 const HAREKET_ALANLARI = `H.HESAP_HAREKETI_ID hareketId, H.TARIH tarih, H.HESAP_ID hesapId, RTRIM(ISNULL(K.KOD,'')) hesapKod, RTRIM(ISNULL(K.AD,'')) hesapAd,
   RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, H.PARA_ID paraId, RTRIM(ISNULL(P.KOD,'')) paraKod, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(H.MEBLAG,0) meblag,
-  ISNULL(H.KDV_ORANI,0) kdvOrani, ISNULL(H.KDV,0) kdv, H.TIP tip, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(U.AD,'')) kaydeden`;
+  ISNULL(H.KDV_ORANI,0) kdvOrani, ISNULL(H.KDV,0) kdv, H.TIP tip, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(U.AD,'')) kaydeden,
+  ISNULL(H.MIKTAR,0) miktar, ISNULL(H.HAS_TUTARI,0) hasTutari, ISNULL(H.KUR,0) hasKuru`;
 const HAREKET_JOIN = `dbo.TODVZ_HESAP_HAREKETI H
   LEFT JOIN dbo.TODVZ_HESAP K ON K.HESAP_ID=H.HESAP_ID LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=H.PARA_ID
   LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID LEFT JOIN dbo.TODVZ_KULLANICI U ON U.KULLANICI_ID=H.EKLEYEN_ID`;
@@ -61,6 +63,7 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
    */
   async KASDEF1(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
+    await KasaHesapSqlRepository.ensureTables(pool);
     const tl = await tlPara(pool);
     const istek = () => pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
     const satirlarHam: any[] = [];
@@ -188,6 +191,7 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
   async HESEKS1(pool, p, t) {
     if (!p.hesapIdler?.length) throw ApiError.badRequest("En az bir hesap seçilmelidir.");
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
+    await KasaHesapSqlRepository.ensureTables(pool);
     const tl = await tlPara(pool);
     const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
     const f = idFiltre(req, p.hesapIdler, "H.HESAP_ID", "hs");
@@ -199,30 +203,60 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
     const secili = paraSecimi(p);
     // Eski "HESAP EKSTRE" raporuyla aynı metrikler: Borç = çıkış (TIP 1), Alacak = giriş (TIP 0), bakiye = Borç − Alacak → mutlak değer + B/A.
     // Devir brüt tutulur (dönem öncesi borç ve alacak ayrı): eski raporda ara toplam dönem öncesi hareketleri de böyle içerir.
-    const gruplar = new Map<string, { devirBorc: number; devirAlacak: number; siraNo: number; ortak: Record<string, any>; hareketler: any[] }>();
-    for (const r of res.recordset) for (const n of kasaNakitSatirlari({ ...r, paraId: Number(r.paraId), tip: Number(r.tip), meblag: Number(r.meblag), kdv: Number(r.kdv) }, tl)) {
+    const gruplar = new Map<string, { devirBorc: number; devirAlacak: number; devirHas: number; devirMiktar: number; siraNo: number; ortak: Record<string, any>; hareketler: any[] }>();
+    for (const r of res.recordset) for (const n of kasaNakitSatirlari({ ...r, paraId: Number(r.paraId), tip: Number(r.tip), meblag: Number(r.meblag), kdv: Number(r.kdv), miktar: Number(r.miktar), hasTutari: Number(r.hasTutari), hasKuru: Number(r.hasKuru) }, tl)) {
       if (secili.size && !secili.has(n.paraId)) continue;
       const k = `${n.hesapKod}|${n.paraKod}`, meblag = Number(n.meblag) || 0, giris = Number(n.tip) === 0;
-      if (!gruplar.has(k)) gruplar.set(k, { devirBorc: 0, devirAlacak: 0, siraNo: n.kdvSatiri ? tl.siraNo : Number(r.siraNo), hareketler: [],
+      if (!gruplar.has(k)) gruplar.set(k, { devirBorc: 0, devirAlacak: 0, devirHas: 0, devirMiktar: 0, siraNo: n.kdvSatiri ? tl.siraNo : Number(r.siraNo), hareketler: [],
         ortak: { grupAnahtar: k, grupBaslik: `${n.hesapKod} — ${n.hesapAd} · ${n.paraKod}`, hesapKod: n.hesapKod, hesapAd: n.hesapAd, paraKod: n.paraKod } });
       const g = gruplar.get(k)!;
-      if (r.onceki) { if (giris) g.devirAlacak += meblag; else g.devirBorc += meblag; }
-      else g.hareketler.push({ ...n, borc: giris ? 0 : meblag, alacak: giris ? meblag : 0, kdv: n.kdvSatiri ? 0 : Number(n.kdv) || 0 });
+      const miktar = Number(n.miktar) || 0;
+      const hasTutari = Number(n.hasTutari) || 0;
+      const hasKuru = Number(n.hasKuru) || 0;
+      if (r.onceki) {
+        if (giris) g.devirAlacak += meblag; else g.devirBorc += meblag;
+        g.devirHas += hasTutari;
+        g.devirMiktar += miktar;
+      }
+      else {
+        g.hareketler.push({
+          ...n,
+          borc: giris ? 0 : meblag,
+          alacak: giris ? meblag : 0,
+          miktar: miktar > 0 ? miktar : null,
+          hasKuru: hasKuru > 0 ? hasKuru : null,
+          hasTutari: hasTutari > 0 ? hasTutari : null,
+          kdv: n.kdvSatiri ? 0 : Number(n.kdv) || 0
+        });
+      }
     }
     const bakiyeAlanlari = (b: number) => ({ bakiye: Math.abs(b), bakiyeTipi: b > 0 ? "B" : b < 0 ? "A" : "" });
     const satirlar: Record<string, any>[] = [], kapanis: Record<string, any>[] = [];
     for (const g of [...gruplar.values()].sort((a, b) => a.ortak.hesapKod.localeCompare(b.ortak.hesapKod) || a.siraNo - b.siraNo || a.ortak.paraKod.localeCompare(b.ortak.paraKod))) {
       let bakiye = g.devirBorc - g.devirAlacak, borc = g.devirBorc, alacak = g.devirAlacak;
+      let toplamHas = g.devirHas, toplamMiktar = g.devirMiktar;
       satirlar.push({ ...g.ortak, tarih: p.baslangic, aciklama: `${tarihTr(p.baslangic)} öncesi devir`, vezneKod: "", kdv: 0, kaydeden: "", devirSatiri: true,
+        miktar: g.devirMiktar > 0 ? g.devirMiktar : null, hasKuru: null, hasTutari: g.devirHas > 0 ? g.devirHas : null,
         borc: g.devirBorc, alacak: g.devirAlacak, giris: g.devirAlacak, cikis: g.devirBorc, ...bakiyeAlanlari(bakiye) });
       for (const h of g.hareketler) {
         bakiye += h.borc - h.alacak; borc += h.borc; alacak += h.alacak;
+        toplamHas += Number(h.hasTutari) || 0;
+        toplamMiktar += Number(h.miktar) || 0;
         satirlar.push({ ...g.ortak, ...h, giris: h.alacak, cikis: h.borc, ...bakiyeAlanlari(bakiye) });
       }
-      kapanis.push({ hesap: `${g.ortak.hesapKod} — ${g.ortak.hesapAd}`, paraKod: g.ortak.paraKod, borc, alacak, ...bakiyeAlanlari(bakiye) });
+      kapanis.push({
+        hesap: `${g.ortak.hesapKod} — ${g.ortak.hesapAd}`,
+        paraKod: g.ortak.paraKod,
+        miktar: toplamMiktar > 0 ? toplamMiktar : null,
+        hasTutari: toplamHas > 0 ? toplamHas : null,
+        borc,
+        alacak,
+        bakiye: Math.abs(bakiye),
+        bakiyeTipi: bakiye > 0 ? "B" : bakiye < 0 ? "A" : ""
+      });
     }
     return sinirla(satirlar, t, `${aralikOzeti(p)}${adetOzeti(p.hesapIdler, "hesap")}${ozetEk(p)}`,
-      "Her hesap ve para birimi ayrı gruplanır. Borç = kasadan çıkış, Alacak = kasaya giriş; bakiye = Borç − Alacak (B: borç bakiyesi, A: alacak bakiyesi). İlk satır başlangıç tarihinden önceki hareketlerin borç ve alacak toplamıdır ve ara toplama dahildir. KDV hesabın TL grubunda ayrı satırdır.",
+      "Her hesap ve para birimi ayrı gruplanır. Borç = kasadan çıkış, Alacak = kasaya giriş; bakiye = Borç − Alacak (B: borç bakiyesi, A: alacak bakiyesi). İşçilik hareketlerinde miktar, has tutarı ve has kuru gösterilir. İlk satır başlangıç tarihinden önceki hareketlerin borç ve alacak toplamıdır ve ara toplama dahildir. KDV hesabın TL grubunda ayrı satırdır.",
       kapanis);
   },
 

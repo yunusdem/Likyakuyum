@@ -20,7 +20,7 @@ import { ebelgeKnskVknSchema, ebelgeKnskListeSchema, ebelgeKnskOnaySchema } from
 import { ebelgeYerelTaslakListeSchema, ebelgeYerelTaslakKaydetSchema } from "../schemas/ebelge.schema.js";
 import { ebelgeKodListeSchema, ebelgeKodEkleSchema } from "../schemas/ebelge.schema.js";
 import { ebelgeKaynakKimlikSchema, ebelgeKaynakGonderSchema, ebelgeKaynakListeSchema, ebelgeMustahsilSchema } from "../schemas/ebelge.schema.js";
-import { ebelgeAyarSchema, ebelgeDogrulaSchema, ebelgeTaslakSchema, ebelgeTarihSchema, ebelgeArsivSenkronizeSchema, ebelgeArsivListeSchema, ebelgeArsivStatuSchema, ebelgeGiderPusulasiSchema, ebelgeIrsaliyeSchema, } from "../schemas/ebelge.schema.js";
+import { ebelgeAyarSchema, ebelgeDogrulaSchema, ebelgeTaslakSchema, ebelgeTarihSchema, ebelgeArsivSenkronizeSchema, ebelgeArsivListeSchema, ebelgeArsivStatuSchema, ebelgeGiderPusulasiSchema, giderHataMetni, ebelgeIrsaliyeSchema, } from "../schemas/ebelge.schema.js";
 import { EbelgeSqlRepository } from "../models/ebelgeSql.repository.js";
 import { ICE_BELGE_STATULERI } from "../services/ice/ice.efatura.js";
 export class EbelgeController {
@@ -59,7 +59,7 @@ export class EbelgeController {
         if (!parsed.success)
             throw ApiError.badRequest("Kaynak belge gönderim bilgileri geçersiz.");
         const p = parsed.data;
-        return ApiResponse.ok(res, "Kaynak belge gönderildi.", await EbelgeKaynakService.gonder(p, p.parmakizi, p.senaryo, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req)));
+        return ApiResponse.ok(res, "Kaynak belge gönderildi.", await EbelgeKaynakService.gonder(p, p.parmakizi, p.senaryo, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req), p.kdvSifir === true));
     });
     /** POST /kaynak/sil — GİB'e gitmemiş kaynak fişi siler (fiş türünün kendi silme / yetki kuralıyla) */
     static kaynakSil = asyncHandler(async (req, res) => {
@@ -368,8 +368,10 @@ export class EbelgeController {
      */
     static faturaNoOnerileri = asyncHandler(async (req, res) => {
         const belgeTuru = String(req.query.belgeTuru || "").trim();
-        if (belgeTuru !== "EFatura" && belgeTuru !== "EArsiv")
-            throw ApiError.badRequest("Belge türü EFatura ya da EArsiv olmalıdır.");
+        // EGider: e-Gider elle giriş ekranının numara önerisi (docs/E_GIDER_YOL_HARITASI.md K11)
+        if (belgeTuru !== "EFatura" && belgeTuru !== "EArsiv" && belgeTuru !== "EGider") {
+            throw ApiError.badRequest("Belge türü EFatura, EArsiv ya da EGider olmalıdır.");
+        }
         const yil = Number(req.query.yil) || new Date().getFullYear();
         if (!Number.isInteger(yil) || yil < 2000 || yil > 2100)
             throw ApiError.badRequest("Yıl geçersiz.");
@@ -727,14 +729,14 @@ export class EbelgeController {
     static giderPusulasiOnizle = asyncHandler(async (req, res) => {
         const parsed = ebelgeGiderPusulasiSchema.safeParse(req.body);
         if (!parsed.success)
-            throw ApiError.badRequest("Gider pusulası bilgileri geçersiz.", parsed.error.format());
+            throw ApiError.badRequest(giderHataMetni(parsed.error.issues), parsed.error.format());
         const sonuc = await EbelgeService.giderPusulasiOnizle(parsed.data, EbelgeController.getDbContext(req));
         return ApiResponse.ok(res, "Yerel kontrol tamamlandı; ICE doğrulaması yapılmadı.", sonuc);
     });
     static giderPusulasiGonder = asyncHandler(async (req, res) => {
         const parsed = ebelgeGiderPusulasiSchema.safeParse(req.body);
         if (!parsed.success) {
-            throw ApiError.badRequest("Gider pusulası bilgileri geçersiz.", parsed.error.format());
+            throw ApiError.badRequest(giderHataMetni(parsed.error.issues), parsed.error.format());
         }
         const sonuc = await EbelgeService.giderPusulasiGonder(parsed.data, EbelgeController.getKullanici(req), EbelgeController.getDbContext(req));
         return ApiResponse.created(res, "e-Gider Pusulası gönderildi.", sonuc);

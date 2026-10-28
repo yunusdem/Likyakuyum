@@ -74,6 +74,12 @@ export const RaporService = {
   async pdfBlobUrl(kod: string, p: RaporParametreDegerleri): Promise<string> {
     return URL.createObjectURL(await dosyaGetir(`/rapor/${encodeURIComponent(kod)}/pdf?${sorgu(p)}`, "application/pdf"));
   },
+  async pdfBlob(kod: string, p: RaporParametreDegerleri): Promise<Blob> {
+    return dosyaGetir(`/rapor/${encodeURIComponent(kod)}/pdf?${sorgu(p)}`, "application/pdf");
+  },
+  async excelBlob(kod: string, p: RaporParametreDegerleri): Promise<Blob> {
+    return dosyaGetir(`/rapor/${encodeURIComponent(kod)}/excel?${sorgu(p)}`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  },
   async pdfIndir(kod: string, p: RaporParametreDegerleri, ad: string) { indirBlob(await dosyaGetir(`/rapor/${encodeURIComponent(kod)}/pdf?${sorgu({ ...p, indir: "1" })}`, "application/pdf"), `${ad}.pdf`); },
   async secimListesi(kaynak: RaporSecimKaynagi): Promise<RaporSecimKaydi[]> { return (await apiClient.get<RaporSecimKaydi[]>(`/rapor/secim/${kaynak}`)).data || []; },
   async aramalar(kod: string): Promise<RaporArama[]> { return (await apiClient.get<RaporArama[]>(`/rapor/${encodeURIComponent(kod)}/aramalar`)).data || []; },

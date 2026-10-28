@@ -124,9 +124,52 @@ export function sarrafFaturaGirdisi(kaynak, belgeNo) {
         throw ApiError.badRequest("Fişte belge türü e-İrsaliye seçili; e-İrsaliye ekranından gönderin.");
     return perakendeFaturaGirdisi(sarrafPerakendeBicimi(kaynak, belgeNo));
 }
-/** Alış fişi → e-Gider pusulası girdisi. Mükellef (VKN'li) kişiden alışta belgeyi karşı taraf keser. */
-export function sarrafGiderGirdisi(kaynak, belgeNo) {
-    if (Number(kaynak.baslik.TIP) !== 0)
+/* ==========================================================================
+   Alış → kuyum e-Gider pusulası (docs/E_GIDER_YOL_HARITASI.md K19, K22, K23)
+   ========================================================================== */
+/** Fişte KDV var mı (alışta olmamalı: satıcı KDV mükellefi değil) */
+export const sarrafKdvVar = (b) => sayi(b.KDV) > 0 && sayi(b.KDV_ORANI) > 0;
+export const KDV_SIFIR_UYARISI = "Bu alış fişinde KDV var; gider pusulasında KDV olmaz. Belge KDV 0 olarak, satıcıya ödenen tutarla (KDV dahil) gönderilecektir.";
+/** Milyem binde (916); satırda yoksa ürün kartından; kesir (0,916) ya da binde tutulabilir */
+export const sarrafMilyemBin = (s) => {
+    const m = sayi(s.MILYEM) > 0 ? sayi(s.MILYEM) : sayi(s.PARA_HAS_ORANI);
+    if (!(m > 0))
+        return null;
+    return Math.round(m <= 1 ? m * 1000 : m);
+};
+/** Belgede kuyum satır adı: "22 AYAR BİLEZİK (Milyem 916, Has 11,450 gr)"; adet / gram eki varsa aynı parantezde */
+export const sarrafKuyumAdi = (ad, s) => {
+    const ek = [];
+    const milyem = sarrafMilyemBin(s);
+    if (milyem)
+        ek.push(`Milyem ${milyem}`);
+    const has = sayi(s.HAS_GRAM);
+    if (has > 0)
+        ek.push(`Has ${has.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} gr`);
+    if (!ek.length)
+        return ad;
+    return ad.endsWith(")") ? `${ad.slice(0, -1)}; ${ek.join(", ")})` : `${ad} (${ek.join(", ")})`;
+};
+/**
+ * Alış fişi → kuyum e-Gider pusulası girdisi. Mükellef (VKN'li) kişiden alışta belgeyi karşı taraf keser.
+ *  - Satır tutarı satıcıya ödenen tutardır (fiş satırı; KDV varsa içinde, K22); belge toplamı fiş toplamıyla aynı.
+ *  - Vergi 0003 GV stopajı %0 (vatandaşın kendi eşyası, K23).
+ *  - Fişte KDV varsa onay (kdvSifir) olmadan durur: KDV 0 olarak gönderileceği kullanıcıya sorulur (K9).
+ *  - Satır adı kuyum biçiminde (milyem, has gram), fiş no not olarak.
+ */
+export function sarrafGiderGirdisi(kaynak, belgeNo, secenek = {}) {
+    const b = kaynak.baslik;
+    if (Number(b.TIP) !== 0)
         throw ApiError.badRequest("Bu fiş satış fişi; gider pusulası düzenlenmez.");
-    return perakendeGiderGirdisi(sarrafPerakendeBicimi(kaynak, belgeNo));
+    if (!kaynak.satirlar.length)
+        throw ApiError.badRequest("Sarraf fişinin satırları bulunamadı.");
+    if (kaynak.satirlar.some((s) => sayi(s.TUTAR) < 0))
+        throw ApiError.badRequest("Sarraf fişinde eksi tutarlı satır var; e-belge düzenlenemez.");
+    if (sarrafKdvVar(b) && !secenek.kdvSifir)
+        throw ApiError.conflict(`${KDV_SIFIR_UYARISI} Göndermek için onay gerekir.`);
+    const bicim = sarrafPerakendeBicimi({ baslik: { ...b, KDV: 0, KDV_ORANI: 0 }, satirlar: kaynak.satirlar }, belgeNo);
+    bicim.satirlar = bicim.satirlar.map((satir, i) => ({ ...satir, URUN_ADI: sarrafKuyumAdi(String(satir.URUN_ADI || ""), kaynak.satirlar[i]) }));
+    const girdi = perakendeGiderGirdisi(bicim);
+    const fisNo = temiz(b.SARRAF_FIS_NO) || temiz(b.FIS_NO);
+    return { ...girdi, vergiTuruKodu: "0003", notlar: fisNo ? [`Sarraf fiş no: ${fisNo}`] : girdi.notlar };
 }

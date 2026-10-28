@@ -56,9 +56,10 @@ import html2canvas from "html2canvas";
 
 export function showWhatsAppToast(
   msg: string,
-  title: string = "📋 Fiş Panoya Kopyalandı",
+  title: string = "📄 PDF İndirildi",
   phone?: string | null,
-  messageText?: string
+  messageText?: string,
+  icon: string = "📄"
 ) {
   const existing = document.getElementById("wa-toast-alert");
   if (existing) existing.remove();
@@ -89,7 +90,7 @@ export function showWhatsAppToast(
 
   div.innerHTML = `
     <div style="background: rgba(37,211,102,0.22); width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;">
-      📋
+      ${icon}
     </div>
     <div style="flex: 1; min-width: 0;">
       <div style="font-weight: 700; color: #25D366; margin-bottom: 2px; font-size: 14px;">${title}</div>
@@ -144,10 +145,12 @@ function downloadBlob(blob: Blob, fileName: string) {
 export interface SharePdfOptions {
   elementId?: string;
   pdfBlob?: Blob | null;
+  fileBlob?: Blob | null;
   pdfUrl?: string | null;
   fileName: string;
   phone?: string | null;
   message?: string;
+  fileType?: "pdf" | "excel";
 }
 
 /**
@@ -252,32 +255,38 @@ export async function captureElementToPngBlob(elementOrId: HTMLElement | string)
 }
 
 /**
- * PDF dosyasını ve/veya rapor tablosunun tam görüntüsünü doğrudan WhatsApp sohbetine aktarır:
- * - Mobilde (Android / iOS): Web Share API ile PDF dosyasını doğrudan WhatsApp'a belgeli/seçili olarak gönderir.
- * - Masaüstünde (Mac / Windows):
- *   1. Rapor tablosunun tam fotoğrafını panoya kopyalar (WhatsApp'ta Cmd+V / Ctrl+V ile anında yapışır).
- *   2. PDF dosyasını indirir.
- *   3. WhatsApp uygulamasını açar.
+ * Dosyayı (PDF veya Excel) doğrudan WhatsApp'a aktarır (ekran görüntüsü almaz, gecikme yapmaz):
+ * 1. Web Share API ile (Mac Safari, iPhone/iPad, Android vb.):
+ *    Dosyayı doğrudan WhatsApp'a belge olarak aktarır.
+ * 2. Diğer masaüstü tarayıcılarda:
+ *    - Dosyayı (.pdf veya .xlsx) anında bilgisayara indirir.
+ *    - WhatsApp uygulamasını veya Web'i açar.
+ *    - Kullanıcıya dosyayı sohbete sürükleyip bırakabileceği bildirimi gösterir.
  */
 export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void> {
-  const { fileName, phone, message, elementId } = options;
-  const safeFileName = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
-  const isMobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
+  const { phone, message, fileType = "pdf" } = options;
+  const isExcel = fileType === "excel" || options.fileName.toLowerCase().endsWith(".xlsx");
+  const ext = isExcel ? ".xlsx" : ".pdf";
+  const mimeType = isExcel
+    ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    : "application/pdf";
+  const baseName = options.fileName.replace(/\.(pdf|xlsx|png)$/i, "");
+  const safeFileName = `${baseName}${ext}`;
 
-  let blob = options.pdfBlob || null;
+  let blob = options.fileBlob || options.pdfBlob || null;
   if (!blob && options.pdfUrl) {
     try {
       const res = await fetch(options.pdfUrl);
       blob = await res.blob();
     } catch (e) {
-      console.warn("PDF blob alınamadı:", e);
+      console.warn("Dosya blob alınamadı:", e);
     }
   }
 
-  // 1. Mobilde doğrudan yerel dosya paylaşımı (Kişi seçilince PDF ekli olarak açılır, metinsiz)
-  if (isMobile && blob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+  // 1. Web Share API ile doğrudan dosya paylaşımı (Mac Safari, iPhone/iPad, Android vb.)
+  if (blob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
     try {
-      const file = new File([blob], safeFileName, { type: "application/pdf" });
+      const file = new File([blob], safeFileName, { type: mimeType });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
@@ -287,53 +296,28 @@ export async function sharePdfToWhatsApp(options: SharePdfOptions): Promise<void
       }
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        return; // Kullanıcı paylaşımı iptal etti
+        return; // Kullanıcı iptal etti
       }
-      console.warn("Mobil dosya paylaşımı:", err);
+      console.warn("Web Share API dosya paylaşımı:", err);
     }
   }
 
-  // 2. Masaüstünde tablonun tam görüntüsünü panoya kopyala
-  const targetId = elementId || "rapor-tablo-karti";
-  const targetEl = document.getElementById(targetId) || document.getElementById("rapor-tablo-alani") || document.querySelector(".rapor-tablo-karti");
-  let imgBlob: Blob | null = null;
-  if (targetEl) {
-    imgBlob = await captureElementToPngBlob(targetEl as HTMLElement);
-  }
-
-  let copiedToClipboard = false;
-  if (imgBlob && typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
-    try {
-      const item = new ClipboardItem({ "image/png": imgBlob });
-      await navigator.clipboard.write([item]);
-      copiedToClipboard = true;
-    } catch (e) {
-      console.warn("Panoya tablo görseli kopyalama hatası:", e);
-    }
-  }
-
-  // 3. Masaüstünde PDF dosyasını otomatik olarak indir
+  // 2. Masaüstünde dosyayı hemen indir (html2canvas beklemesi olmadan anında)
   if (blob) {
     downloadBlob(blob, safeFileName);
   }
 
-  // 4. Bilgisayarda doğrudan WhatsApp uygulamasını aç (yazı ve sohbet seçimi olmadan)
+  // 3. Bilgisayarda doğrudan WhatsApp uygulamasını aç
   openWhatsAppDirect(message, phone);
 
-  // 5. Kullanıcıya yönlendirici bildirim göster
-  if (copiedToClipboard) {
-    showWhatsAppToast(
-      `WhatsApp açıldı. İlgili sohbete girip <b>Yapıştır (Cmd+V / Ctrl+V)</b> yaparak rapor tablosunun tam görüntüsünü anında gönderebilirsiniz. (PDF ayrıca indirildi).`,
-      "📋 Rapor Tablosu Panoya Kopyalandı",
-      phone
-    );
-  } else {
-    showWhatsAppToast(
-      `<b>${safeFileName}</b> indirildi.<br/>WhatsApp açıldı. İlgili sohbete dosyayı sürükleyebilirsiniz.`,
-      "📄 PDF İndirildi",
-      phone
-    );
-  }
+  // 4. Kullanıcıya yönlendirici bildirim göster
+  showWhatsAppToast(
+    `<b>${safeFileName}</b> indirildi ve WhatsApp açıldı.<br/>İndirilen dosyayı WhatsApp sohbetine sürükleyip bırakarak veya raptiye (📎 Belge) butonundan seçerek anında gönderebilirsiniz.`,
+    isExcel ? "📊 Excel Dosyası İndirildi" : "📄 PDF Dosyası İndirildi",
+    phone,
+    message,
+    isExcel ? "📊" : "📄"
+  );
 }
 
 export interface ShareReceiptOptions {
@@ -368,8 +352,8 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
     }
   }
 
-  // 1. Mobilde doğrudan yerel PDF dosya paylaşımı (Kişi seçilince PDF ekli olarak açılır, metinsiz)
-  if (isMobile && pdfBlob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+  // 1. Web Share API ile doğrudan yerel PDF dosya paylaşımı (Mac Safari, iPhone/iPad, Android vb.)
+  if (pdfBlob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
     try {
       const file = new File([pdfBlob], `${safeName}.pdf`, { type: "application/pdf" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -383,7 +367,7 @@ export async function shareReceiptVisualOrPdfToWhatsApp(options: ShareReceiptOpt
       if (err?.name === "AbortError") {
         return; // Kullanıcı vazgeçti
       }
-      console.warn("Mobil PDF paylaşımı:", err);
+      console.warn("PDF dosya paylaşımı:", err);
     }
   }
 

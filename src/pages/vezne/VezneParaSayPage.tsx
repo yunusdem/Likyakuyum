@@ -701,7 +701,7 @@ export const VezneParaSayPage: React.FC = () => {
 
       {/* 1. ERP Aksiyon Toolbar */}
       <ERPToolbar
-        pageTitle="M- Vezne Para Say"
+        pageTitle="O- Vezne Para Say"
         pageIcon={<IconCash size={20} />}
         onSave={handleSave}
         onNew={handleResetNew}

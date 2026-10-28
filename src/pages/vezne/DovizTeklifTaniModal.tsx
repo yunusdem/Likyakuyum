@@ -21,6 +21,7 @@ import { useAuth } from "../../context/AuthContext";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { ImageCropperModal } from "../../components/common/ImageCropperModal";
 import { autoCropIdCard } from "../../utils/imageCropUtils";
+import { sarrafFisHtml, dovizFisHtml, FisHtml } from "../../utils/belgeSablon/fisCikti";
 
 const formatNumberTr = (val: number, decimals: number = 2) => {
   if (val === undefined || val === null || isNaN(val)) return "0,00";
@@ -66,6 +67,7 @@ export interface DovizTeklifTaniModalProps {
   pageType?: "doviz" | "sarraf";
   show: boolean;
   onHide: () => void;
+  fisId?: number | null;
   tip: number; // 0: Alış, 1: Satış
   tarih: string;
   saat?: string;
@@ -99,7 +101,16 @@ export interface DovizTeklifTaniModalProps {
     bmv?: number | string;
     kmv?: number | string;
     ettn?: string;
+    adet?: number | string;
+    milyem?: number | string;
+    hasGram?: number | string;
+    iscilikiMiktari?: number | string;
+    iscilikHasGram?: number | string;
+    urunKodu?: string;
+    urunAdi?: string;
   }>;
+  satirlar?: any[];
+  odemeSatirlari?: any[];
   toplamTutar?: number;
   totalMasraf?: number;
   sonToplam?: number;
@@ -112,6 +123,11 @@ export interface DovizTeklifTaniModalProps {
   geldigiUlke?: string;
   vezneKod?: string;
   vezneAd?: string;
+  vezne?: any;
+  kullaniciAdi?: string;
+  toplamHas?: number;
+  odenenTutar?: number;
+  kalanTutar?: number;
   // Firma bilgileri
   companyDefinitions?: TodvzTanimDto | null;
   firmaVergiDairesi?: string;
@@ -124,6 +140,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   pageType = "doviz",
   show,
   onHide,
+  fisId,
   tip,
   tarih,
   saat,
@@ -146,6 +163,8 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   detayCariTipi = "",
   detayVergiDairesi = "",
   lines = [],
+  satirlar,
+  odemeSatirlari,
   toplamTutar = 0,
   totalMasraf = 0,
   sonToplam = 0,
@@ -158,6 +177,11 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   geldigiUlke = "",
   vezneKod = "",
   vezneAd = "",
+  vezne,
+  kullaniciAdi,
+  toplamHas = 0,
+  odenenTutar = 0,
+  kalanTutar = 0,
   companyDefinitions,
   firmaVergiDairesi = "",
   firmaIlce = "",
@@ -186,6 +210,237 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
 
   // Müşteri Tanı Formu alanlarının sıfırlanması için key ve düzenleme yardımcıları
   const [taniFormResetKey, setTaniFormResetKey] = useState<number>(0);
+
+  // Müşteri Tanı Formu Alanları (Müşteri bilgisi varsa otomatik doldurulur, kullanıcı düzenleyebilir)
+  const [taniData, setTaniData] = useState({
+    adSoyad: "",
+    dogumTarihi: "",
+    dogumYeri: "",
+    tcKimlikNo: "",
+    kimlikTuruNo: "",
+    uyruk: "",
+    adres: "",
+    meslek: "",
+    telefon: "",
+  });
+
+  // 80 mm Termal Fiş Önizleme Durumu (F9 Fiş Yazdırma ile birebir aynı)
+  const [thermalReceiptHtml, setThermalReceiptHtml] = useState<string | null>(null);
+  const [thermalReceiptHeight, setThermalReceiptHeight] = useState<number>(0);
+  const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<boolean>(false);
+
+  // Müşteri bilgisi varsa otomatik doldur (Cari Kart veya fiş detayları)
+  useEffect(() => {
+    if (!show) return;
+
+    const buildAdres = (adr?: string, ilce?: string, il?: string) => {
+      const parts = [adr?.trim(), ilce?.trim(), il?.trim()].filter(Boolean);
+      return parts.join(" - ");
+    };
+
+    const buildKimlikTuru = (tckn?: string, pasaport?: string) => {
+      if (pasaport?.trim()) return `PASAPORT: ${pasaport.trim()}`;
+      if (tckn?.trim()) return `T.C. KİMLİK KARTI / ${tckn.trim()}`;
+      return "";
+    };
+
+    const initial = {
+      adSoyad: cleanValue(unvan),
+      dogumTarihi: formatDateTr(detayDogumTarihi),
+      dogumYeri: cleanValue(detayDogumYeri),
+      tcKimlikNo: cleanValue(vergiKimlikNo),
+      kimlikTuruNo: buildKimlikTuru(cleanValue(vergiKimlikNo), cleanValue(detayPasaportNo)),
+      uyruk: cleanValue(detayUyruk) || (cleanValue(vergiKimlikNo) ? "T.C." : ""),
+      adres: buildAdres(detayAdres, detayIlce, detayIl),
+      meslek: cleanValue(detayMeslek),
+      telefon: cleanValue(detayTelefon),
+    };
+
+    setTaniData(initial);
+
+    // Cari kart id varsa detayları sunucudan da sorgula ve eksik alanları tamamla
+    if (cariKartId && cariKartId > 0) {
+      CariService.getCariKartById(cariKartId)
+        .then((cari) => {
+          if (!cari) return;
+          setTaniData((prev) => ({
+            adSoyad: prev.adSoyad || cleanValue(cari.ad) || cleanValue(cari.yetkiliKisi),
+            dogumTarihi: prev.dogumTarihi || formatDateTr(cari.dogumTarihi),
+            dogumYeri: prev.dogumYeri || cleanValue(cari.dogumYeri),
+            tcKimlikNo: prev.tcKimlikNo || cleanValue(cari.vergiKimlikNo),
+            kimlikTuruNo:
+              prev.kimlikTuruNo ||
+              buildKimlikTuru(cleanValue(cari.vergiKimlikNo), cleanValue(cari.pasaportNo)),
+            uyruk: prev.uyruk || (cleanValue(cari.vergiKimlikNo) ? "T.C." : ""),
+            adres: prev.adres || cleanValue(cari.adres),
+            meslek: prev.meslek || "",
+            telefon: prev.telefon || cleanValue(cari.telefon),
+          }));
+        })
+        .catch(() => {});
+    }
+  }, [
+    show,
+    cariKartId,
+    unvan,
+    vergiKimlikNo,
+    detayDogumTarihi,
+    detayDogumYeri,
+    detayBabaAdi,
+    detayAnneAdi,
+    detayMeslek,
+    detayTelefon,
+    detayAdres,
+    detayUyruk,
+    detayPasaportNo,
+    detayIlce,
+    detayIl,
+  ]);
+
+  // 80 mm Termal Fiş Çıktısını Hazırla (F9 ile birebir aynı sarrafFisHtml veya dovizFisHtml)
+  useEffect(() => {
+    if (!show) {
+      setThermalReceiptHtml(null);
+      setThermalReceiptHeight(0);
+      return;
+    }
+    let cancelled = false;
+    setIsGeneratingReceipt(true);
+
+    const loadReceipt = async () => {
+      try {
+        if (pageType === "sarraf") {
+          const rawSatirlar =
+            satirlar && satirlar.length > 0
+              ? satirlar
+              : lines.map((l: any, i: number) => ({
+                  satirNo: i + 1,
+                  urunKodu: l.paraKodu || l.urunKodu || "",
+                  urunAdi: l.paraAdi || l.urunAdi || l.paraKodu || "SARRAFİYE",
+                  miktar: l.miktar || 0,
+                  adet: l.adet || 1,
+                  kur: l.kur || 0,
+                  tutar: l.tutar || 0,
+                  milyem: l.milyem,
+                  hasGram: l.hasGram,
+                  iscilikiMiktari: l.iscilikiMiktari,
+                  iscilikHasGram: l.iscilikHasGram,
+                }));
+          const girdi = {
+            fisId: fisId || null,
+            tip,
+            tarih,
+            saat,
+            seriNo,
+            belgeNo: belgeNo || "TEKLİF",
+            unvan: taniData.adSoyad || unvan,
+            vergiKimlikNo: taniData.tcKimlikNo || vergiKimlikNo,
+            detayIl: detayIl,
+            detayIlce: detayIlce,
+            detayUyruk: taniData.uyruk || detayUyruk,
+            detayPasaportNo: detayPasaportNo,
+            detayMeslek: taniData.meslek || detayMeslek,
+            detayCariTipi: detayCariTipi,
+            detayAdres: taniData.adres || detayAdres,
+            detayTelefonNo: taniData.telefon || detayTelefon,
+            vezneKod: vezneKod,
+            vezne: vezne || (vezneAd ? { ad: vezneAd, kod: vezneKod } : null),
+            kullaniciAdi: kullaniciAdi || user?.fullName || user?.username || "Kasiyer",
+            satirlar: rawSatirlar,
+            odemeSatirlari: odemeSatirlari || [],
+            toplamTutar: toplamTutar || sonToplam || 0,
+            toplamHas: toplamHas || 0,
+            odenenTutar: odenenTutar || 0,
+            kalanTutar: kalanTutar || 0,
+          };
+          const res = await sarrafFisHtml(girdi, "80");
+          if (!cancelled && res?.html) {
+            setThermalReceiptHtml(res.html);
+            setThermalReceiptHeight(res.yukseklik || 0);
+          }
+        } else {
+          // Döviz fişi
+          const girdi = {
+            fisId: fisId || null,
+            tip,
+            tarih,
+            saat,
+            seriNo,
+            belgeNo: belgeNo || "TEKLİF",
+            unvan: taniData.adSoyad || unvan,
+            vergiKimlikNo: taniData.tcKimlikNo || vergiKimlikNo,
+            detayIl: detayIl,
+            detayIlce: detayIlce,
+            detayUyruk: taniData.uyruk || detayUyruk,
+            detayPasaportNo: detayPasaportNo,
+            detayMeslek: taniData.meslek || detayMeslek,
+            detayCariTipi: detayCariTipi,
+            detayAdres: taniData.adres || detayAdres,
+            detayTelefonNo: taniData.telefon || detayTelefon,
+            vezneKod: vezneKod,
+            vezne: vezne || (vezneAd ? { ad: vezneAd, kod: vezneKod } : null),
+            kullaniciAdi: kullaniciAdi || user?.fullName || user?.username || "Kasiyer",
+            lines: lines || [],
+            toplamTutar: toplamTutar || 0,
+            totalMasraf: totalMasraf || 0,
+            sonToplam: sonToplam || toplamTutar || 0,
+            bsmvTutari: bsmvTutari || 0,
+            totalKmv: totalKmv || 0,
+            komisyonTutari: komisyonTutari || 0,
+            giseUsdKuru: giseUsdKuru || 1,
+            istatistikKodu: istatistikKodu || "",
+            gelisNedeni: gelisNedeni || "",
+            geldigiUlke: geldigiUlke || "",
+          };
+          const res = await dovizFisHtml(girdi);
+          if (!cancelled && res?.html) {
+            setThermalReceiptHtml(res.html);
+            setThermalReceiptHeight(res.yukseklik || 0);
+          }
+        }
+      } catch (err) {
+        console.warn("Müşteri tanı formunda 80mm fiş oluşturma hatası:", err);
+      } finally {
+        if (!cancelled) setIsGeneratingReceipt(false);
+      }
+    };
+
+    loadReceipt();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    show,
+    pageType,
+    tip,
+    tarih,
+    saat,
+    seriNo,
+    belgeNo,
+    unvan,
+    vergiKimlikNo,
+    lines,
+    satirlar,
+    odemeSatirlari,
+    toplamTutar,
+    sonToplam,
+    toplamHas,
+    odenenTutar,
+    kalanTutar,
+    taniData.adSoyad,
+    taniData.tcKimlikNo,
+    taniData.adres,
+    taniData.telefon,
+  ]);
+
+  const thermalScale = useMemo(() => {
+    if (!thermalReceiptHeight || thermalReceiptHeight <= 0) return 0.95;
+    // 340pt is the available height in the right column of the A4 layout
+    if (thermalReceiptHeight > 340) {
+      return Math.min(1, Math.max(0.68, Math.round((340 / thermalReceiptHeight) * 100) / 100));
+    }
+    return 0.95;
+  }, [thermalReceiptHeight]);
 
   useEffect(() => {
     if (show) {
@@ -562,12 +817,16 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
             break-inside: avoid !important;
             overflow: hidden !important;
           }
-          table {
+          #tani-formu-tablosu {
             border-collapse: collapse !important;
             width: 100%;
           }
-          table, th, td {
+          #tani-formu-tablosu, #tani-formu-tablosu th, #tani-formu-tablosu td {
             border: 1px solid #000000 !important;
+          }
+          .belge-sablon {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .tani-editable-cell {
             outline: none !important;
@@ -1054,8 +1313,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                 </div>
               </div>
 
-              {/* 2. MÜŞTERİ TANI FORMU TABLOSU (Görseldeki Gibi - Bilgi yoksa - vs konulmaz, boş bırakılır) */}
+              {/* 2. MÜŞTERİ TANI FORMU TABLOSU (Müşteri bilgisi varsa otomatik doldurulur, düzenlenebilir) */}
               <table
+                id="tani-formu-tablosu"
                 style={{
                   width: "100%",
                   borderCollapse: "collapse",
@@ -1065,7 +1325,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                   marginBottom: "9px",
                 }}
               >
-                <tbody key={taniFormResetKey}>
+                <tbody key={`${taniFormResetKey}-${taniData.adSoyad || ''}-${taniData.tcKimlikNo || ''}`}>
                   <tr>
                     <td style={{ width: "210px", fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Adı ve soyadı
@@ -1076,6 +1336,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, adSoyad: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1088,7 +1352,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.adSoyad}
+                    </td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
@@ -1100,6 +1366,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, dogumTarihi: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1110,7 +1380,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.dogumTarihi}
+                    </td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
@@ -1122,6 +1394,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, dogumYeri: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1133,7 +1409,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.dogumYeri}
+                    </td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
@@ -1145,6 +1423,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, tcKimlikNo: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1155,7 +1437,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.tcKimlikNo}
+                    </td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
@@ -1167,6 +1451,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, kimlikTuruNo: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1177,7 +1465,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.kimlikTuruNo}
+                    </td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
@@ -1189,6 +1479,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, uyruk: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1200,7 +1494,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.uyruk}
+                    </td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
@@ -1212,6 +1508,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, true)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, adres: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1222,7 +1522,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.adres}
+                    </td>
                   </tr>
                   <tr style={{ height: "13px" }}>
                     <td style={{ border: "1px solid #000", padding: "1px 6px" }}></td>
@@ -1254,6 +1556,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, meslek: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1265,7 +1571,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.meslek}
+                    </td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
@@ -1277,6 +1585,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       className="tani-editable-cell"
                       onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
                       onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, telefon: v }));
+                      }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
                         border: "1px solid #000",
@@ -1287,7 +1599,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         outline: "none",
                         verticalAlign: "middle",
                       }}
-                    ></td>
+                    >
+                      {taniData.telefon}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -1414,283 +1728,91 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                   </div>
                 </div>
 
-                {/* SAĞ SÜTUN: DÖVİZ / SARRAF İŞLEM FİŞİ */}
+                {/* SAĞ SÜTUN: 80 MM TERMAL FİŞ (F9 İLE BİREBİR AYNI) */}
                 <div style={{ width: "53%", display: "flex", flexDirection: "column" }}>
-                  <div style={{ fontWeight: "bold", fontSize: "10.5px", textTransform: "uppercase", marginBottom: "5px" }}>
-                    {pageType === "sarraf" ? "SARRAF İŞLEM FİŞİ" : "DÖVİZ İŞLEM FİŞİ"}
-                  </div>
-
                   <div
                     style={{
-                      border: "1px solid #000",
-                      width: "100%",
-                      padding: "5px 7px",
-                      fontSize: "8px",
-                      lineHeight: "1.2",
-                      backgroundColor: "#ffffff",
+                      fontWeight: "bold",
+                      fontSize: "10px",
+                      textTransform: "uppercase",
+                      marginBottom: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                     }}
                   >
-                    {/* GİB Logo ve QR Satırı */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "3px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "70%" }}>
-                        <img
-                          src="/images/logo/logo-gib.png"
-                          alt="GİB"
-                          style={{ height: "36px", objectFit: "contain", marginBottom: "1px" }}
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = "none";
-                          }}
-                        />
-                        <div style={{ fontSize: "8px", fontWeight: "bold", textAlign: "center", lineHeight: "1.15" }}>
-                          e-DÖVİZ VE KIYMETLİ<br />
-                          MADEN {isAlis ? "ALIM" : "SATIM"} BELGESİ
-                        </div>
-                      </div>
-
-                      <div style={{ width: "30%", textAlign: "right" }}>
-                        {qrCodeDataUrl ? (
-                          <img src={qrCodeDataUrl} alt="QR Kod" style={{ width: "56px", height: "56px" }} />
-                        ) : (
-                          <div style={{ width: "56px", height: "56px", border: "1px solid #000", display: "inline-block" }}></div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Müessese Bilgileri */}
-                    <div style={{ textAlign: "center", marginTop: "4px" }}>
-                      <div style={{ fontWeight: "bold", fontSize: "8px", textTransform: "uppercase" }}>
-                        DÜZENLEYEN YETKİLİ MÜESSESE BİLGİLERİ
-                      </div>
-                      <div style={{ fontWeight: "bold", fontSize: "8.5px" }}>
-                        {firmaAdi}
-                      </div>
-                      {firmaAdres ? (
-                        <div style={{ fontSize: "7.5px" }}>
-                          {firmaAdres}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div style={{ fontSize: "7.5px", marginTop: "3px", lineHeight: "1.2" }}>
-                      <div><strong>Tel</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {firmaTel}</div>
-                      <div><strong>Web Sitesi</strong> : {firmaWeb}</div>
-                      <div><strong>E-posta</strong> &nbsp;&nbsp;&nbsp;: {firmaEposta}</div>
-                      <div><strong>VD / VKN</strong> &nbsp;: {firmaVdVkn}</div>
-                      <div><strong>Mersis / Tic.Sic.No</strong> : {firmaMersisSicil}</div>
-                    </div>
-
-                    {/* Alım / Satım Belgesi Bilgileri Tablosu */}
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        border: "1px solid #000",
-                        marginTop: "5px",
-                        fontSize: "7.5px",
-                      }}
-                    >
-                      <thead>
-                        <tr>
-                          <th
-                            colSpan={2}
-                            style={{
-                              textAlign: "center",
-                              border: "1px solid #000",
-                              padding: "1px 3px",
-                              fontSize: "8px",
-                              fontWeight: "bold",
-                            }}
-                          >
-                            {isAlis ? "ALIM" : "SATIŞ"} BELGESİ BİLGİLERİ
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td style={{ width: "36%", padding: "1px 3px", border: "1px solid #000" }}>Belge No</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold" }}>{effectiveBelgeNo}</td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Tarih</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>{displayTarih} {displaySaat}</td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Şube / İst. No</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>{subeIstNo}</td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Sen. / Tip</td>
-                          <td style={{ padding: "1px 3px", border: "1px solid #000" }}>
-                            {pageType === "sarraf" ? "ESARRAFBELGE" : "EDOVIZBELGE"} / {isAlis ? "ALIM" : "SATIM"}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-
-                    {/* Müşteri Bilgileri */}
-                    <div style={{ marginTop: "4px", fontSize: "7.5px", lineHeight: "1.2" }}>
-                      <div style={{ fontWeight: "bold", fontSize: "8px", textTransform: "uppercase" }}>
-                        {pageType === "sarraf" ? "SARRAF / KIYMETLİ MADEN" : "DÖVİZ"} {isAlis ? "SATAN" : "ALAN"} KİŞİ / KURULUŞ BİLGİLERİ
-                      </div>
-                      <div style={{ fontWeight: "bold", fontSize: "8.5px", textTransform: "uppercase" }}>
-                        {cleanValue(unvan) || "İSİM BEYAN EDİLMEMİŞTİR"}
-                      </div>
-                      <div style={{ textTransform: "uppercase" }}>{cleanValue(musteriAdres)}</div>
-                      <div>
-                        Uyruk : {cleanValue(detayUyruk) || (cleanValue(vergiKimlikNo) ? "TR" : "")} / Pasaport no : {cleanValue(detayPasaportNo)}
-                      </div>
-                      <div>
-                        VD : {cleanValue(detayVergiDairesi)} / TCKN : {cleanValue(vergiKimlikNo)}
-                      </div>
-                      <div>
-                        Müşteri Türü : {detayCariTipi === "Firma" ? "TUZELKISI" : "GERCEKKISI"} / Mesleği : {cleanValue(detayMeslek).toUpperCase()}
-                      </div>
-                      {effectiveEttn ? (
-                        <div style={{ fontSize: "7px", color: "#333" }}>
-                          ETTN : {effectiveEttn}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {/* Satın Alınan Döviz / Sarrafiye Tablosu */}
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        border: "1px solid #000",
-                        marginTop: "5px",
-                        fontSize: "7.5px",
-                      }}
-                    >
-                      <thead>
-                        <tr>
-                          <th
-                            colSpan={validLines.length > 1 ? 4 : 2}
-                            style={{
-                              textAlign: "center",
-                              border: "1px solid #000",
-                              padding: "1px 3px",
-                              fontSize: "8px",
-                              fontWeight: "bold",
-                            }}
-                          >
-                            {isAlis ? "SATIN ALINAN" : "SATILAN"} {pageType === "sarraf" ? "ÜRÜNE / SARRAFİYEYE" : "DÖVİZE / EFEKTİFE"} AİT BİLGİLER
-                          </th>
-                        </tr>
-                        {validLines.length > 1 && (
-                          <tr style={{ backgroundColor: "#f5f5f5", fontWeight: "bold" }}>
-                            <th style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "left" }}>Ürün / Cins</th>
-                            <th style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>Miktar</th>
-                            <th style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>Kur / Fiyat</th>
-                            <th style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>Tutar (TL)</th>
-                          </tr>
-                        )}
-                      </thead>
-                      <tbody>
-                        {validLines.length > 1 ? (
-                          <>
-                            {validLines.map((vl, idx) => (
-                              <tr key={idx}>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold" }}>
-                                  {vl.paraAdi || vl.paraKodu}
-                                </td>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                                  {formatNumberTr(Number(vl.miktar), dovizKurusSayisi)}
-                                </td>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                                  {formatNumberTr(Number(vl.kur), kurKurusSayisi)}
-                                </td>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                                  {formatNumberTr(Number(vl.tutar), tlKurusSayisi)}
-                                </td>
-                              </tr>
-                            ))}
-                            {Number(bsmvTutari || 0) > 0 ? (
-                              <tr>
-                                <td colSpan={3} style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>BSMV</td>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                                  {formatNumberTr(Number(bsmvTutari || 0), tlKurusSayisi)} TL
-                                </td>
-                              </tr>
-                            ) : null}
-                            {Number(totalKmv || 0) > 0 ? (
-                              <tr>
-                                <td colSpan={3} style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>KMV</td>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                                  {formatNumberTr(Number(totalKmv || 0), tlKurusSayisi)} TL
-                                </td>
-                              </tr>
-                            ) : null}
-                            <tr>
-                              <td colSpan={3} style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold", textAlign: "right" }}>Toplam Tutar</td>
-                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                                {formatNumberTr(Number(sonToplam || 0), tlKurusSayisi)} TL
-                              </td>
-                            </tr>
-                          </>
-                        ) : (
-                          <>
-                            <tr>
-                              <td style={{ width: "55%", padding: "1px 3px", border: "1px solid #000" }}>
-                                {pageType === "sarraf" ? "Ürün / Maden Mik. / Brm" : "Döviz / Efektifin Mik. / Brm"}
-                              </td>
-                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                                {primaryLine ? `${formatNumberTr(Number(primaryLine.miktar), dovizKurusSayisi)} ${primaryLine.paraKodu || ""}` : ""}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td style={{ padding: "1px 3px", border: "1px solid #000" }}>Uygulanan Kur</td>
-                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                                {primaryLine ? formatNumberTr(Number(primaryLine.kur), kurKurusSayisi) : ""}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td style={{ padding: "1px 3px", border: "1px solid #000" }}>TL Karşılığı</td>
-                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                                {primaryLine ? `${formatNumberTr(Number(primaryLine.tutar), tlKurusSayisi)} TL` : ""}
-                              </td>
-                            </tr>
-                            {pageType !== "sarraf" && (
-                              <tr>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000" }}>ABD Doları Karşılığı</td>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                                  {primaryLine ? `${formatNumberTr(Number(primaryLine.usdKarsiligi || primaryLine.miktar), 2)} USD` : ""}
-                                </td>
-                              </tr>
-                            )}
-                            {Number(bsmvTutari || 0) > 0 ? (
-                              <tr>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000" }}>BSMV</td>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                                  {formatNumberTr(Number(bsmvTutari || 0), tlKurusSayisi)} TL
-                                </td>
-                              </tr>
-                            ) : null}
-                            {Number(totalKmv || 0) > 0 ? (
-                              <tr>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000" }}>KMV</td>
-                                <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right" }}>
-                                  {formatNumberTr(Number(totalKmv || 0), tlKurusSayisi)} TL
-                                </td>
-                              </tr>
-                            ) : null}
-                            <tr>
-                              <td style={{ padding: "1px 3px", border: "1px solid #000", fontWeight: "bold" }}>Toplam Tutar</td>
-                              <td style={{ padding: "1px 3px", border: "1px solid #000", textAlign: "right", fontWeight: "bold" }}>
-                                {formatNumberTr(Number(sonToplam || 0), tlKurusSayisi)} TL
-                              </td>
-                            </tr>
-                          </>
-                        )}
-                      </tbody>
-                    </table>
-
-                    {/* Alt Bilgiler */}
-                    <div style={{ marginTop: "3px", fontSize: "7.5px", lineHeight: "1.25" }}>
-                      <div>Geldiği Ülke : {displayGeldigiUlke}</div>
-                      <div>Komisyon : {formatNumberTr(Number(komisyonTutari || 0), tlKurusSayisi)} &nbsp;&nbsp;&nbsp;&nbsp; Vezne adı : {displayVezne}</div>
-                      <div>Yazıyla {tutarYaziyla}</div>
-                    </div>
+                    <span>{pageType === "sarraf" ? "SARRAF İŞLEM FİŞİ (80 mm)" : "DÖVİZ İŞLEM FİŞİ (80 mm)"}</span>
+                    <span style={{ fontSize: "8px", fontWeight: "normal", color: "#666" }}>
+                      80 mm Termal Fiş
+                    </span>
                   </div>
+
+                  {thermalReceiptHtml ? (
+                    <div
+                      style={{
+                        border: "1px dashed #777",
+                        borderRadius: "2px",
+                        padding: "2px",
+                        backgroundColor: "#ffffff",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "flex-start",
+                        overflow: "hidden",
+                        minHeight: "155mm",
+                        maxHeight: "172mm",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      <div
+                        style={{
+                          transform: `scale(${thermalScale})`,
+                          transformOrigin: "top center",
+                          width: "226.77pt", // 80mm
+                          backgroundColor: "#ffffff",
+                        }}
+                        dangerouslySetInnerHTML={{ __html: thermalReceiptHtml }}
+                      />
+                    </div>
+                  ) : isGeneratingReceipt ? (
+                    <div
+                      style={{
+                        border: "1px dashed #aaa",
+                        borderRadius: "2px",
+                        padding: "30px 10px",
+                        textAlign: "center",
+                        color: "#555",
+                        fontSize: "9.5px",
+                        backgroundColor: "#fafafa",
+                        minHeight: "155mm",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <div className="spinner-border spinner-border-sm text-primary" role="status" />
+                      <span>80 mm işlem fişi hazırlanıyor...</span>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        border: "1px dashed #aaa",
+                        borderRadius: "2px",
+                        padding: "20px",
+                        textAlign: "center",
+                        color: "#888",
+                        fontSize: "9.5px",
+                        backgroundColor: "#fafafa",
+                        minHeight: "155mm",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      Fiş bilgisi bulunamadı veya henüz eklenmedi.
+                    </div>
+                  )}
                 </div>
               </div>
 
