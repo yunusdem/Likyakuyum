@@ -1,6 +1,6 @@
 {
   "name": "printercekme-app",
-  "version": "1.0.0",
+  "version": "1.0.9",
   "description": "Likya ERP - Yerel Yazıcı Köprüsü ve Tarama Ajanı (Local Printer Bridge)",
   "main": "index.js",
   "type": "commonjs",

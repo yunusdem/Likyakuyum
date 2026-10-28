@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.0.8";
+const CURRENT_VERSION = "1.0.9";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -42,6 +42,16 @@ function initWindowsPrinterRegistry() {
   }
 }
 initWindowsPrinterRegistry();
+
+// Windows ortamında açılışta konsol penceresini hemen gizle (arka planda çalışması için)
+function hideConsoleImmediately() {
+  if (os.platform() !== "win32") return;
+  try {
+    const hideCmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w=Add-Type -Name W -Namespace C -MemberDefinition '[DllImport(\\"Kernel32.dll\\")]public static extern IntPtr GetConsoleWindow();[DllImport(\\"user32.dll\\")]public static extern bool ShowWindow(IntPtr h,int c);' -PassThru;$h=[C.W]::GetConsoleWindow();if($h -ne [IntPtr]::Zero){[C.W]::ShowWindow($h,0)}"`;
+    exec(hideCmd, { windowsHide: true }, () => {});
+  } catch {}
+}
+hideConsoleImmediately();
 
 // PowerShell scriptlerini Base64 Unicode (-EncodedCommand) ile güvenle ve asılı kalmadan çalıştıran fonksiyon
 function runPowerShell(script, timeoutMs = 12000) {
@@ -1288,6 +1298,210 @@ wss.on("connection", (ws) => {
   sendPrinters();
 });
 
+// ─── Windows Otomatik Başlangıç (Startup) Ayarı ───────────────────────────
+function setupWindowsAutoStart() {
+  if (os.platform() !== "win32") return;
+  try {
+    const currentExec = process.pkg ? process.execPath : process.argv[1];
+    if (!currentExec || (!currentExec.endsWith(".exe") && !process.pkg)) {
+      return;
+    }
+
+    // 1. Kayıt defteri (Registry HKCU Run key)
+    const regCmd = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "LikyaPrinterAgent" /t REG_SZ /d "\\"${currentExec}\\"" /f`;
+    exec(regCmd, { windowsHide: true }, (err) => {
+      if (err) {
+        console.warn("[printercekmeApp] Otomatik başlangıç kayıt defteri uyarısı:", err.message);
+      } else {
+        console.log(`[printercekmeApp] Otomatik başlangıç kayıt defterine eklendi: ${currentExec}`);
+      }
+    });
+
+    // 2. Windows Başlangıç Klasörüne VBS kısayolu (%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup)
+    const appData = process.env.APPDATA;
+    if (appData) {
+      const startupDir = path.join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
+      if (fs.existsSync(startupDir)) {
+        const vbsPath = path.join(startupDir, "LikyaPrinterAgent.vbs");
+        const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """${currentExec}""", 0, False\r\n`;
+        try {
+          fs.writeFileSync(vbsPath, vbsContent, "utf8");
+          console.log(`[printercekmeApp] Başlangıç klasörü kısayolu oluşturuldu: ${vbsPath}`);
+        } catch (vbsErr) {
+          console.warn("[printercekmeApp] Başlangıç vbs oluşturulamadı:", vbsErr.message);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[printercekmeApp] Başlangıç ayarı hatası:", e.message);
+  }
+}
+
+// ─── Windows Sistem Tepsisi (System Tray / Bildirim Alanı) ve Pencere Gizleme ──
+function startSystemTray() {
+  if (os.platform() !== "win32") return;
+
+  const currentExec = process.pkg ? process.execPath : process.argv[1];
+  const safeExecPath = (currentExec || "").replace(/\\/g, "\\\\");
+
+  const psScript = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$win32 = Add-Type -Name Win32 -Namespace Native -PassThru -MemberDefinition '
+    [DllImport("Kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+'
+
+# Hide parent console window
+$parentPid = ${process.pid}
+$hwnd = [IntPtr]::Zero
+try {
+    $parentProc = [System.Diagnostics.Process]::GetProcessById($parentPid)
+    $hwnd = $parentProc.MainWindowHandle
+} catch {}
+if ($hwnd -eq [IntPtr]::Zero) {
+    $hwnd = [Native.Win32]::GetConsoleWindow()
+}
+if ($hwnd -ne [IntPtr]::Zero) {
+    [Native.Win32]::ShowWindow($hwnd, 0)
+}
+
+# Create NotifyIcon
+$notify = New-Object System.Windows.Forms.NotifyIcon
+$notify.Icon = [System.Drawing.SystemIcons]::Application
+
+try {
+    if ([System.IO.File]::Exists("${safeExecPath}")) {
+        $extracted = [System.Drawing.Icon]::ExtractAssociatedIcon("${safeExecPath}")
+        if ($extracted -ne $null) { $notify.Icon = $extracted }
+    }
+} catch {}
+
+$notify.Text = "Likya ERP - Yazıcı Servisi (v${CURRENT_VERSION})"
+$notify.Visible = $true
+
+# Context Menu
+$menu = New-Object System.Windows.Forms.ContextMenuStrip
+
+$itemHeader = $menu.Items.Add("Likya ERP - Yazıcı Servisi (v${CURRENT_VERSION})")
+$itemHeader.Enabled = $false
+
+$itemStatus = $menu.Items.Add("● Durum: Aktif (Port: ${PORT})")
+$itemStatus.Enabled = $false
+
+$menu.Items.Add("-") | Out-Null
+
+$itemToggle = $menu.Items.Add("Konsol Penceresini Göster")
+$itemToggle.add_Click({
+    if ($hwnd -ne [IntPtr]::Zero) {
+        $visible = [Native.Win32]::IsWindowVisible($hwnd)
+        if ($visible) {
+            [Native.Win32]::ShowWindow($hwnd, 0)
+            $itemToggle.Text = "Konsol Penceresini Göster"
+        } else {
+            [Native.Win32]::ShowWindow($hwnd, 5)
+            $itemToggle.Text = "Konsol Penceresini Gizle"
+        }
+    }
+})
+
+$itemAutostart = $menu.Items.Add("✔ Bilgisayar Açılışında Otomatik Başlat")
+$itemAutostart.Enabled = $false
+
+$menu.Items.Add("-") | Out-Null
+
+$itemExit = $menu.Items.Add("Çıkış")
+$itemExit.add_Click({
+    $notify.Visible = $false
+    $notify.Dispose()
+    [Console]::WriteLine("ACTION:EXIT")
+    [System.Windows.Forms.Application]::Exit()
+})
+
+$notify.ContextMenuStrip = $menu
+
+# Double click toggles window
+$notify.add_DoubleClick({
+    if ($hwnd -ne [IntPtr]::Zero) {
+        $visible = [Native.Win32]::IsWindowVisible($hwnd)
+        if ($visible) {
+            [Native.Win32]::ShowWindow($hwnd, 0)
+            $itemToggle.Text = "Konsol Penceresini Göster"
+        } else {
+            [Native.Win32]::ShowWindow($hwnd, 5)
+            $itemToggle.Text = "Konsol Penceresini Gizle"
+        }
+    } else {
+        $notify.ShowBalloonTip(2000, "Likya ERP", "Yazıcı servisi arka planda aktif.", [System.Windows.Forms.ToolTipIcon]::Info)
+    }
+})
+
+# Show balloon tip on startup
+try {
+    $notify.BalloonTipTitle = "Likya ERP Yazıcı Servisi"
+    $notify.BalloonTipText = "Servis arka planda (sağ alt sistem tepsisinde) çalışıyor."
+    $notify.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+    $notify.ShowBalloonTip(3000)
+} catch {}
+
+# Parent process watcher timer
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 2000
+$timer.add_Tick({
+    try {
+        $p = [System.Diagnostics.Process]::GetProcessById($parentPid)
+        if ($p.HasExited) {
+            $notify.Visible = $false
+            $notify.Dispose()
+            [System.Windows.Forms.Application]::Exit()
+        }
+    } catch {
+        $notify.Visible = $false
+        $notify.Dispose()
+        [System.Windows.Forms.Application]::Exit()
+    }
+})
+$timer.Start()
+
+[System.Windows.Forms.Application]::Run()
+`;
+
+  const b64 = Buffer.from(psScript, "utf16le").toString("base64");
+  const systemRoot = process.env.SystemRoot || "C:\\Windows";
+  const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+
+  const trayProc = spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+
+  trayProc.stdout.on("data", (data) => {
+    const msg = data.toString("utf8").trim();
+    if (msg.includes("ACTION:EXIT")) {
+      console.log("[printercekmeApp] Sistem tepsisinden çıkış komutu alındı. Kapatılıyor...");
+      process.exit(0);
+    }
+  });
+
+  trayProc.on("error", (err) => {
+    console.warn("[printercekmeApp] Sistem tepsisi başlatma uyarısı:", err.message);
+  });
+
+  process.on("exit", () => {
+    try { trayProc.kill(); } catch {}
+  });
+}
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.log(`[printercekmeApp] Port ${PORT} zaten kullanımda. Servis arka planda çalışıyor.`);
+    process.exit(0);
+  }
+  console.error("[printercekmeApp] Sunucu hatası:", err);
+});
+
 server.listen(PORT, HOST, () => {
   console.log(`================================================================`);
   console.log(`🖨️  printercekmeApp - Yerel Yazıcı Köprüsü Aktif! (v${CURRENT_VERSION})`);
@@ -1298,4 +1512,8 @@ server.listen(PORT, HOST, () => {
   console.log(`================================================================`);
   // Başlangıçta yazıcı listesini ve durumlarını arka planda ısıt (cache warm-up)
   getSystemPrinters().catch(() => {});
+  // Windows başlangıç ve sistem tepsisi (System Tray) entegrasyonu
+  setupWindowsAutoStart();
+  startSystemTray();
 });
+

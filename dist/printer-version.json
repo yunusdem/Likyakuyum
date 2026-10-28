@@ -1,8 +1,8 @@
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "Ultra hızlı sessiz yazdırma motoru (Gecikme süresi 0.3 saniyeye düşürüldü)",
+  "releaseNotes": "Sistem tepsisi (System Tray) arka plan servis modu ve bilgisayar başlangıcında otomatik açılma desteği eklendi",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-10-26T16:15:00Z"
+  "updatedAt": "2026-10-28T14:50:00Z"
 }
