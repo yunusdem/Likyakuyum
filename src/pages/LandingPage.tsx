@@ -145,11 +145,8 @@ export const LandingPage: React.FC = () => {
               <div className="furni-product-item">
                 <div className="furni-product-thumbnail">
                   <img
-                    src="https://images.unsplash.com/photo-1556740758-90de374c12ad?w=500&h=400&fit=crop&auto=format"
-                    alt="Perakende Satış Vezne POS"
-                    onError={(e) => {
-                      e.currentTarget.src = "/images/hero/hero-6.jpeg";
-                    }}
+                    src="/images/landing/vezne-pos-terazi.jpg"
+                    alt="Perakende Satış Vezne POS - 0.0001 Gr Terazi Senkron"
                   />
                 </div>
                 <h3 className="furni-product-title">Perakende Vezne POS</h3>
@@ -296,11 +293,8 @@ export const LandingPage: React.FC = () => {
                 </div>
                 <div className="furni-grid-3">
                   <img
-                    src="https://images.unsplash.com/photo-1450133064473-71024230f91b?w=450&h=400&fit=crop&auto=format"
+                    src="/images/landing/kdv-3065-ozel-matrah.jpg"
                     alt="GİB E-Fatura ve Muhasebe"
-                    onError={(e) => {
-                      e.currentTarget.src = "/images/hero/hero-12.jpeg";
-                    }}
                   />
                 </div>
               </div>
@@ -690,11 +684,8 @@ export const LandingPage: React.FC = () => {
               <div className="furni-blog-card">
                 <div className="furni-blog-img">
                   <img
-                    src="https://images.unsplash.com/photo-1450133064473-71024230f91b?w=600&h=400&fit=crop&auto=format"
-                    alt="3065 Sayılı KDV Özel Matrahı"
-                    onError={(e) => {
-                      e.currentTarget.src = "/images/hero/hero-10.jpeg";
-                    }}
+                    src="/images/landing/kdv-3065-ozel-matrah.jpg"
+                    alt="3065 Sayılı KDV Özel Matrahı ve Altın Muhasebesi"
                   />
                 </div>
                 <div className="p-4">
