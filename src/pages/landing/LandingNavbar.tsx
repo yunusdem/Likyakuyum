@@ -43,10 +43,10 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
 
   const navLinks = [
     { label: "Ana Sayfa", targetId: "home" },
+    { label: "Kampanya", targetId: "kampanya" },
     { label: "Çözümler", targetId: "cozumler" },
     { label: "Neden Biz?", targetId: "neden-biz" },
     { label: "Özellikler", targetId: "avantajlar" },
-    { label: "Kampanya", targetId: "kampanya" },
     { label: "Yorumlar", targetId: "yorumlar" },
     { label: "İletişim", targetId: "iletisim" },
   ];

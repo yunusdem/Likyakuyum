@@ -122,6 +122,91 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
+      {/* ─── KAMPANYA & PAKETLER BÖLÜMÜ (Resmi Broşür & Paket Karşılaştırması) ─── */}
+      <section className="furni-section-pad" id="kampanya" style={{ background: "linear-gradient(180deg, #f8fbf9 0%, #edf4f0 100%)" }}>
+        <div className="container" style={{ maxWidth: "1280px" }}>
+          {/* Bölüm Başlığı */}
+          <div className="text-center mb-5">
+            <span
+              className="badge px-3 py-2 fw-bold text-uppercase rounded-pill mb-3 shadow-xs"
+              style={{
+                backgroundColor: "#f9bf29",
+                color: "#2c4c41",
+                fontSize: "0.85rem",
+                letterSpacing: "1px",
+              }}
+            >
+              🔥 Sınırlı Süreli Kampanya
+            </span>
+            <h2 className="fw-bold mb-3" style={{ fontSize: "2.3rem", color: "#2f2f2f" }}>
+              İşinizi Büyütmenin En Akıllı Bulut Yolu
+            </h2>
+            <p className="text-secondary mx-auto mb-0" style={{ maxWidth: "780px", fontSize: "1.05rem" }}>
+              Likya ERP ile satıştan stok yönetimine, karar almaktan raporlamaya kadar tüm süreçler tek ekranda.
+              Kuyumculara özel avantajlı kampanya fiyatları ve paket karşılaştırması aşağıda yer almaktadır.
+            </p>
+          </div>
+
+          {/* Kampanya Broşürü Vitrin Kartı */}
+          <div className="card border-0 shadow-lg rounded-4 overflow-hidden bg-white mb-0">
+            <div className="position-relative">
+              <img
+                src="/images/kampanya/likya-erp-kampanya-brosur.jpg"
+                alt="Likya ERP Sınırlı Süreli Kampanya ve Paket Karşılaştırması Broşürü"
+                className="img-fluid w-100"
+                style={{
+                  cursor: "zoom-in",
+                  display: "block",
+                  maxHeight: "750px",
+                  objectFit: "contain",
+                  backgroundColor: "#0d1b2a",
+                }}
+                onClick={() => setIsBrosurModalOpen(true)}
+              />
+              <div
+                className="p-3 p-md-4 d-flex flex-wrap align-items-center justify-content-between gap-3 text-white"
+                style={{
+                  background: "linear-gradient(180deg, #132435 0%, #0d1b2a 100%)",
+                }}
+              >
+                <div>
+                  <div className="fw-bold fs-5 text-warning mb-1 d-flex align-items-center gap-2">
+                    <span>Likya ERP Resmi Kampanya & Modül Broşürü</span>
+                    <span className="badge bg-warning text-dark px-2 py-0.5 rounded-pill" style={{ fontSize: "11px" }}>
+                      2026 Güncel
+                    </span>
+                  </div>
+                  <div className="small text-light opacity-75">
+                    Detaylı incelemek ve tam boyutta görüntülemek için görsele veya "Büyüt" butonuna tıklayabilirsiniz.
+                  </div>
+                </div>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsBrosurModalOpen(true)}
+                    className="btn btn-warning fw-bold px-3 py-2 rounded-pill shadow-sm d-flex align-items-center gap-1.5"
+                    style={{ fontSize: "0.9rem" }}
+                  >
+                    <IconZoomIn size={18} />
+                    Broşürü Büyüt
+                  </button>
+                  <a
+                    href="https://wa.me/905326732622?text=Merhaba,%20Likya%20ERP%20kampanya%20paketleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-success fw-bold px-3 py-2 rounded-pill shadow-sm d-flex align-items-center gap-1.5"
+                    style={{ backgroundColor: "#25D366", borderColor: "#25D366", fontSize: "0.9rem" }}
+                  >
+                    <IconBrandWhatsapp size={18} />
+                    WhatsApp: 0532 673 26 22
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ─── 3. 4-COLUMN PRODUCT SECTION ("Crafted with excellent material") ─── */}
       <section className="furni-section-pad bg-white" id="cozumler">
         <div className="container" style={{ maxWidth: "1280px" }}>
@@ -402,206 +487,7 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ─── KAMPANYA & PAKETLER BÖLÜMÜ (Resmi Broşür & Paket Karşılaştırması) ─── */}
-      <section className="furni-section-pad" id="kampanya" style={{ background: "linear-gradient(180deg, #f8fbf9 0%, #edf4f0 100%)" }}>
-        <div className="container" style={{ maxWidth: "1280px" }}>
-          {/* Bölüm Başlığı */}
-          <div className="text-center mb-5">
-            <span
-              className="badge px-3 py-2 fw-bold text-uppercase rounded-pill mb-3 shadow-xs"
-              style={{
-                backgroundColor: "#f9bf29",
-                color: "#2c4c41",
-                fontSize: "0.85rem",
-                letterSpacing: "1px",
-              }}
-            >
-              🔥 Sınırlı Süreli Kampanya
-            </span>
-            <h2 className="fw-bold mb-3" style={{ fontSize: "2.3rem", color: "#2f2f2f" }}>
-              İşinizi Büyütmenin En Akıllı Bulut Yolu
-            </h2>
-            <p className="text-secondary mx-auto mb-0" style={{ maxWidth: "780px", fontSize: "1.05rem" }}>
-              Likya ERP ile satıştan stok yönetimine, karar almaktan raporlamaya kadar tüm süreçler tek ekranda.
-              Kuyumculara özel avantajlı kampanya fiyatları ve paket karşılaştırması aşağıda yer almaktadır.
-            </p>
-          </div>
 
-          {/* Kampanya Broşürü Vitrin Kartı */}
-          <div className="card border-0 shadow-lg rounded-4 overflow-hidden mb-5 bg-white">
-            <div className="position-relative">
-              <img
-                src="/images/kampanya/likya-erp-kampanya-brosur.jpg"
-                alt="Likya ERP Sınırlı Süreli Kampanya ve Paket Karşılaştırması Broşürü"
-                className="img-fluid w-100"
-                style={{
-                  cursor: "zoom-in",
-                  display: "block",
-                  maxHeight: "750px",
-                  objectFit: "contain",
-                  backgroundColor: "#0d1b2a",
-                }}
-                onClick={() => setIsBrosurModalOpen(true)}
-              />
-              <div
-                className="p-3 p-md-4 d-flex flex-wrap align-items-center justify-content-between gap-3 text-white"
-                style={{
-                  background: "linear-gradient(180deg, #132435 0%, #0d1b2a 100%)",
-                }}
-              >
-                <div>
-                  <div className="fw-bold fs-5 text-warning mb-1 d-flex align-items-center gap-2">
-                    <span>Likya ERP Resmi Kampanya & Modül Broşürü</span>
-                    <span className="badge bg-warning text-dark px-2 py-0.5 rounded-pill" style={{ fontSize: "11px" }}>
-                      2026 Güncel
-                    </span>
-                  </div>
-                  <div className="small text-light opacity-75">
-                    Detaylı incelemek ve tam boyutta görüntülemek için görsele veya "Büyüt" butonuna tıklayabilirsiniz.
-                  </div>
-                </div>
-                <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setIsBrosurModalOpen(true)}
-                    className="btn btn-warning fw-bold px-3 py-2 rounded-pill shadow-sm d-flex align-items-center gap-1.5"
-                    style={{ fontSize: "0.9rem" }}
-                  >
-                    <IconZoomIn size={18} />
-                    Broşürü Büyüt
-                  </button>
-                  <a
-                    href="https://wa.me/905326732622?text=Merhaba,%20Likya%20ERP%20kampanya%20paketleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-success fw-bold px-3 py-2 rounded-pill shadow-sm d-flex align-items-center gap-1.5"
-                    style={{ backgroundColor: "#25D366", borderColor: "#25D366", fontSize: "0.9rem" }}
-                  >
-                    <IconBrandWhatsapp size={18} />
-                    WhatsApp: 0532 673 26 22
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Hızlı Paket Kartları (Broşürle Birebir Uyumlu) */}
-          <div className="row g-4 justify-content-center">
-            {/* Kuyum Paketi */}
-            <div className="col-12 col-md-6 col-lg-5">
-              <div
-                className="h-100 p-4 p-lg-5 rounded-4 bg-white shadow-sm border position-relative d-flex flex-column justify-content-between"
-                style={{ borderColor: "#e2e8f0" }}
-              >
-                <div>
-                  <div className="small fw-bold text-uppercase text-muted mb-1" style={{ letterSpacing: "1px" }}>
-                    LİKYA ERP
-                  </div>
-                  <h3 className="fw-bold fs-4 text-dark mb-2">Kuyum Paketi</h3>
-                  <div className="d-flex align-items-baseline gap-2 mb-3">
-                    <span className="text-muted text-decoration-line-through fs-5">$3.500</span>
-                    <span className="fw-bolder" style={{ fontSize: "2.4rem", color: "#3b5d50" }}>
-                      $2.480
-                    </span>
-                    <span className="text-secondary small fw-semibold">+ KDV</span>
-                  </div>
-                  <div className="badge bg-light text-secondary border px-3 py-2 rounded-pill mb-4" style={{ fontSize: "0.82rem" }}>
-                    RFID ve e-Banka hariç tüm temel modüller
-                  </div>
-
-                  <ul className="list-unstyled d-flex flex-column gap-2 mb-4" style={{ fontSize: "0.93rem" }}>
-                    {[
-                      "Kuyumculuk ve Hızlı Satış İşlemleri",
-                      "Stok ve Vitrin Yönetimi",
-                      "Cari, Kasa ve Raporlama",
-                      "Hassas Terazi ve Barkod Entegrasyonu",
-                      "e-Fatura, e-Arşiv ve e-Gider Pusulası",
-                      "MASAK Müşteri ve Kimlik İşlemleri",
-                      "Çoklu Şube Yönetimi",
-                    ].map((feature, i) => (
-                      <li key={i} className="d-flex align-items-center gap-2 text-dark">
-                        <IconCheck size={18} className="text-success flex-shrink-0" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <a
-                  href="https://wa.me/905326732622?text=Merhaba,%20Kuyum%20Paketi%20($2.480)%20i%C3%A7in%20bilgi%20ve%20kurulum%20teklifi%20almak%20istiyorum."
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-outline-dark fw-bold w-100 py-2.5 rounded-pill d-flex align-items-center justify-content-center gap-2"
-                >
-                  <span>Bu Paketi Seç</span>
-                  <IconArrowRight size={16} />
-                </a>
-              </div>
-            </div>
-
-            {/* Kuyum Pro Paketi (En Kapsamlı) */}
-            <div className="col-12 col-md-6 col-lg-5">
-              <div
-                className="h-100 p-4 p-lg-5 rounded-4 bg-white shadow border border-2 position-relative d-flex flex-column justify-content-between"
-                style={{ borderColor: "#f9bf29" }}
-              >
-                <div
-                  className="position-absolute top-0 end-0 translate-middle-y me-4 badge px-3 py-1.5 fw-bold rounded-pill shadow-xs"
-                  style={{ backgroundColor: "#f9bf29", color: "#2c4c41", fontSize: "0.82rem" }}
-                >
-                  EN KAPSAMLI ÇÖZÜM
-                </div>
-
-                <div>
-                  <div className="small fw-bold text-uppercase text-muted mb-1" style={{ letterSpacing: "1px" }}>
-                    LİKYA ERP
-                  </div>
-                  <h3 className="fw-bold fs-4 text-dark mb-2">Kuyum Pro Paketi</h3>
-                  <div className="d-flex align-items-baseline gap-2 mb-3">
-                    <span className="text-muted text-decoration-line-through fs-5">$6.000</span>
-                    <span className="fw-bolder" style={{ fontSize: "2.4rem", color: "#c88f18" }}>
-                      $3.980
-                    </span>
-                    <span className="text-secondary small fw-semibold">+ KDV</span>
-                  </div>
-                  <div className="badge bg-warning bg-opacity-20 text-dark border border-warning px-3 py-2 rounded-pill mb-4" style={{ fontSize: "0.82rem" }}>
-                    🌟 Tüm özellikler & modüller sınırsız açık
-                  </div>
-
-                  <ul className="list-unstyled d-flex flex-column gap-2 mb-4" style={{ fontSize: "0.93rem" }}>
-                    {[
-                      "Kuyumculuk ve Hızlı Satış İşlemleri",
-                      "Stok ve Vitrin Yönetimi",
-                      "Cari, Kasa ve Raporlama",
-                      "Hassas Terazi ve Barkod Entegrasyonu",
-                      "e-Fatura, e-Arşiv ve e-Gider Pusulası",
-                      "MASAK Müşteri ve Kimlik İşlemleri",
-                      "Çoklu Şube Yönetimi",
-                      "⚡ RFID Stok Sayım Sistemi (Saniyeler içinde toplu sayım)",
-                      "💳 e-Banka & Sanal POS Entegrasyonu",
-                    ].map((feature, i) => (
-                      <li key={i} className="d-flex align-items-center gap-2 text-dark fw-semibold">
-                        <IconCheck size={18} className="text-warning flex-shrink-0" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <a
-                  href="https://wa.me/905326732622?text=Merhaba,%20Kuyum%20Pro%20Paketi%20($3.980)%20i%C3%A7in%20bilgi%20ve%20kurulum%20teklifi%20almak%20istiyorum."
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="furni-btn-gold w-100 py-2.5 text-center text-decoration-none d-flex align-items-center justify-content-center gap-2"
-                >
-                  <span>Pro Paketi Seç</span>
-                  <IconArrowRight size={16} />
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* ─── 7. TESTIMONIALS SECTION (Furni Slider Centered Quote) ─── */}
       <section className="furni-section-pad" id="yorumlar">
