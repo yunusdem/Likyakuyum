@@ -6,10 +6,10 @@ import type { VknSorguSonucu } from "../services/gibService";
  * boş alanlar direkt dolar; dolu ve farklı alan varsa "GİB'deki: X — değiştirilsin mi?" diye sorulur.
  */
 
-export type GibAlan = "unvan" | "ad" | "soyad" | "vergiDairesi";
+export type GibAlan = "unvan" | "ad" | "soyad" | "vergiDairesi" | "il" | "ilce";
 export type GibDegerleri = Partial<Record<GibAlan, string>>;
 
-const ETIKET: Record<GibAlan, string> = { unvan: "Unvan", ad: "Ad", soyad: "Soyad", vergiDairesi: "Vergi dairesi" };
+const ETIKET: Record<GibAlan, string> = { unvan: "Unvan", ad: "Ad", soyad: "Soyad", vergiDairesi: "Vergi dairesi", il: "İl", ilce: "İlçe" };
 
 export const trBuyuk = (s: string | null | undefined): string =>
   String(s ?? "").toLocaleUpperCase("tr-TR").replace(/\s+/g, " ").trim();
@@ -91,9 +91,10 @@ export const gibSorgulaVeDoldur = async (p: {
   }
 
   const tamAd = [sonuc.ad, sonuc.soyad].filter(Boolean).join(" ");
+  const ilIlce = { il: sonuc.il || null, ilce: sonuc.ilce || null };
   const gelen: Partial<Record<GibAlan, string | null>> = p.tekAdAlani
-    ? { unvan: sonuc.unvan || tamAd, vergiDairesi: sonuc.vergiDairesi }
-    : { unvan: sonuc.unvan, ad: sonuc.ad, soyad: sonuc.soyad, vergiDairesi: sonuc.vergiDairesi };
+    ? { unvan: sonuc.unvan || tamAd, vergiDairesi: sonuc.vergiDairesi, ...ilIlce }
+    : { unvan: sonuc.unvan, ad: sonuc.ad, soyad: sonuc.soyad, vergiDairesi: sonuc.vergiDairesi, ...ilIlce };
 
   const plan = gibPlani(p.mevcut, gelen);
   const degisecek: GibDegerleri = { ...plan.doldur };
@@ -103,12 +104,34 @@ export const gibSorgulaVeDoldur = async (p: {
       for (const f of plan.farklar) degisecek[f.alan] = f.gelen;
     }
   }
+  // İl değişmediyse (sorulup hayır denildiyse) başka ilin ilçesi yazılmaz
+  const sonDegisecek = ilceIleUyumlu(p.mevcut, gelen, degisecek);
 
-  const ek = Object.keys(degisecek).length ? p.uygula(degisecek, sonuc) : undefined;
+  const ek = Object.keys(sonDegisecek).length ? p.uygula(sonDegisecek, sonuc) : undefined;
   const ad = sonuc.unvan || tamAd;
   const parcalar = [`GİB kaydı bulundu: ${ad}`];
   if (sonuc.vergiDairesi) parcalar.push(`vergi dairesi: ${sonuc.vergiDairesi}`);
+  if (sonuc.il) parcalar.push(`il / ilçe: ${[sonuc.il, sonuc.ilce].filter(Boolean).join(" / ")}`);
   if (sonuc.uyari) parcalar.push(sonuc.uyari);
+  // Formda il / ilçe alanı varsa eksik kaldığı söylenir
+  const ilIlceUyari = "il" in p.mevcut || "ilce" in p.mevcut ? sonuc.ilIlceUyari : null;
+  if (ilIlceUyari) parcalar.push(ilIlceUyari);
   if (ek) parcalar.push(ek);
-  return { tur: sonuc.uyari || ek ? "warning" : "success", mesaj: parcalar.join(" · "), sonuc };
+  return { tur: sonuc.uyari || ilIlceUyari || ek ? "warning" : "success", mesaj: parcalar.join(" · "), sonuc };
+};
+
+/**
+ * İlçe, ekrandaki il ile GİB'in ili aynıysa ya da il de değişiyorsa yazılır; ekranda başka il kalıyorsa ilçe yazılmaz.
+ */
+export const ilceIleUyumlu = (
+  mevcut: GibDegerleri,
+  gelen: Partial<Record<GibAlan, string | null>>,
+  degisecek: GibDegerleri
+): GibDegerleri => {
+  if (!("ilce" in degisecek) || !("il" in mevcut)) return degisecek;
+  const ekrandakiIl = (mevcut.il ?? "").trim();
+  const gibIli = (gelen.il ?? "").trim();
+  if ("il" in degisecek || !ekrandakiIl || !gibIli || trBuyuk(ekrandakiIl) === trBuyuk(gibIli)) return degisecek;
+  const { ilce: _atla, ...kalan } = degisecek;
+  return kalan;
 };

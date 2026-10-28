@@ -2,14 +2,12 @@ import { noTuru } from "../../../Backend/src/utils/vknKontrol";
 import type { VknSorguSonucu } from "../../services/gibService";
 
 /**
- * Sarraf ve Perakende fişinde TC / VKN'den müşteri adı: e-Belge'deki GİB sorgusunun aynısı (docs/GIB_VKN_SORGU_YOL_HARITASI.md).
+ * Sarraf, Perakende ve Döviz fişinde TC / VKN'den müşteri adı: e-Belge'deki GİB sorgusunun aynısı (docs/GIB_VKN_SORGU_YOL_HARITASI.md).
+ * Sorgu yalnız GİB düğmesiyle yapılır (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md).
  * Sıra: yerel cari → kayıtsız müşteri → e-Fatura listesi (ICE) → GİB.
  * Ad yalnız boşken ("İsim beyan edilmemiştir") ya da önceki seçimden / sorgudan kalmışken yazılır;
  * kasiyerin elle yazdığı ada dokunulmaz.
  */
-
-/** Yazma durunca sorgu: TCKN yazılırken 10. hanede gereksiz VKN sorgusu gitmesin. */
-export const GIB_BEKLEME_MS = 600;
 
 /**
  * Uzak sorguya (ICE / GİB) gidilir mi: kontrol hanesi tutmayan numara gönderilmez.

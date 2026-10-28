@@ -77,6 +77,10 @@ import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yaz
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { ebelgeService } from "../../services/ebelgeService";
+import { gibService } from "../../services/gibService";
+import { GibFisDugmesi } from "../../components/common/GibSorguButonu";
+import { vergiDairesiBul } from "../../utils/gibSorgu";
+import { gibAdi, uzakSorguYapilir } from "./musteriGibAd";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
 
 interface VezneItem {
@@ -2694,7 +2698,55 @@ export const DovizFisiPage: React.FC = () => {
     [statisticList, tip]
   );
 
-  // TC / VKN Girişi / Değişiminde Otomatik Cari, Kayıtsız Müşteri veya GİP Sorgulama
+  /**
+   * GİB sorgusu (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md): e-Fatura listesinde de yoksa ad; boşsa vergi dairesi,
+   * il, ilçe (liste kayıtlarıyla) dolar. Ref'te durur ki handleVknLookup güncel liste ve değerleri görsün.
+   */
+  const gibdenDoldurRef = useRef<(no: string) => Promise<void>>(async () => {});
+  gibdenDoldurRef.current = async (no: string) => {
+    if (!uzakSorguYapilir(no)) {
+      setNotification({ type: "warning", message: `${no} numarasının kontrol hanesi tutmuyor; GİB'e sorulmadı.` });
+      return;
+    }
+    try {
+      const s = await gibService.vknSorgu(no);
+      if (vergiKimlikNoRef.current.replace(/\D/g, "") !== no) return;
+      const ad = gibAdi(s);
+      if (s.sonuc !== "BULUNDU" || !ad) {
+        setNotification({ type: "warning", message: `${no} numarası GİB'de kayıtlı değil. Numarayı kontrol edin.` });
+        return;
+      }
+      setUnvan(ad);
+      lastFocusedUnvanRef.current = ad;
+      // Bu adım yalnız kayıtlı cari / e-Fatura listesinde bulunamayınca çalışır (adres vb. az önce temizlendi):
+      // önceki müşteriden kalan vergi dairesi / il / ilçe GİB'inkiyle değişir, GİB'de olmayan alan boşalır
+      const tr = (x: string) => x.toLocaleUpperCase("tr-TR").trim();
+      const vd = (s.vergiDairesi || "").trim();
+      setDetayVergiDairesi(vd);
+      setDetayVergiDairesiId(vd ? vergiDairesiBul(vd, lookupData.vergiDairesiList)?.id ?? null : null);
+      const gIl = (s.il || "").trim();
+      const ilKaydi = gIl ? lookupData.ilList.find((x) => tr(x.ad) === tr(gIl)) : undefined;
+      setDetayIl(gIl);
+      setDetayIlId(ilKaydi?.id ?? null);
+      const gIlce = (s.ilce || "").trim();
+      const adaylar = gIlce ? lookupData.ilceList.filter((x) => tr(x.ad) === tr(gIlce)) : [];
+      const ildeki = adaylar.filter((x) => ilKaydi && x.ustId === ilKaydi.id);
+      setDetayIlce(gIlce);
+      setDetayIlceId((ildeki.length === 1 ? ildeki[0] : adaylar.length === 1 ? adaylar[0] : undefined)?.id ?? null);
+      setNotification({
+        type: s.ilIlceUyari ? "warning" : "success",
+        message: `Müşteri adı GİB'den alındı: ${ad}${s.ilIlceUyari ? ` · ${s.ilIlceUyari}` : ""}`,
+      });
+    } catch (err: any) {
+      if (vergiKimlikNoRef.current.replace(/\D/g, "") !== no) return;
+      setNotification({ type: "warning", message: err?.message || "GİB sorgusu yapılamadı." });
+    }
+  };
+  const vergiKimlikNoRef = useRef(vergiKimlikNo);
+  vergiKimlikNoRef.current = vergiKimlikNo;
+  const [gibSorgulaniyor, setGibSorgulaniyor] = useState(false);
+
+  // TC / VKN: sorgu yalnız GİB düğmesiyle; yerel cari → kayıtsız müşteri → e-Fatura listesi → GİB
   const handleVknLookup = useCallback(async (inputVal: string, isEnterOrBlur = false) => {
     const cleanVal = (inputVal || "").replace(/\D/g, "").slice(0, 11);
     if (!cleanVal) {
@@ -2787,6 +2839,8 @@ export const DovizFisiPage: React.FC = () => {
       setDetayAdres("");
       setDetayTelefon("");
       setDetayEposta("");
+      // GİB'den ad, vergi dairesi, il, ilçe (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md)
+      await gibdenDoldurRef.current(cleanVal);
       return;
     }
 
@@ -6370,11 +6424,10 @@ export const DovizFisiPage: React.FC = () => {
                           onChange={(e) => {
                             const v = e.target.value.replace(/\D/g, "").slice(0, 11);
                             setVergiKimlikNo(v);
+                            // Yazınca sorgu yapılmaz; GİB düğmesiyle (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md K2)
                             if (!v) {
                               void handleVknLookup("", false);
-                            } else if (v.length === 11 || v.length === 10) {
-                              void handleVknLookup(v, false);
-                            } else {
+                            } else if (v !== lastFocusedVknRef.current) {
                               setCariKod("");
                               setUnvan(DEFAULT_CUSTOMER_NAME);
                               setCariKartId(null);
@@ -6382,22 +6435,16 @@ export const DovizFisiPage: React.FC = () => {
                               lastFocusedUnvanRef.current = "";
                             }
                           }}
-                          onBlur={() => {
-                            if (vergiKimlikNo.length === 10 || vergiKimlikNo.length === 11 || !vergiKimlikNo) {
-                              void handleVknLookup(vergiKimlikNo, true);
-                            }
-                          }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
                               istatistikRef.current?.focus();
                               istatistikRef.current?.select();
-                              void handleVknLookup(vergiKimlikNo, true);
                             }
                           }}
                           className="font-monospace px-2.5 py-1"
                           style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
-                          placeholder="TCKN / VKN (Enter ile ara)"
+                          placeholder="TCKN / VKN"
                         />
                         <Button
                           variant="outline-secondary"
@@ -6425,6 +6472,15 @@ export const DovizFisiPage: React.FC = () => {
                           {isSearchingMasak ? <Spinner animation="border" size="sm" /> : <IconShieldExclamation size={14} color="#dc2626" />}
                           <span className="d-none d-xl-inline text-danger"></span>
                         </Button>
+                        <GibFisDugmesi
+                          no={vergiKimlikNo}
+                          bekliyor={gibSorgulaniyor}
+                          disabled={isLocked}
+                          onClick={async () => {
+                            setGibSorgulaniyor(true);
+                            try { await handleVknLookup(vergiKimlikNo, true); } finally { setGibSorgulaniyor(false); }
+                          }}
+                        />
                       </InputGroup>
                     </div>
                   </div>

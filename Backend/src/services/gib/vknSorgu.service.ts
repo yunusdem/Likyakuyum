@@ -4,6 +4,7 @@ import { ApiError } from "../../utils/ApiError.js";
 import { isEncryptionConfigured } from "../../utils/crypto.utils.js";
 import { logger } from "../../utils/logger.js";
 import { NoTuru, noTemizle, noTuru } from "../../utils/vknKontrol.js";
+import { vergiDairesiIlIlce } from "../../utils/vergiDaireleri.js";
 import { EbelgeService } from "../ebelge.service.js";
 import { EarsivPortalClient, GibPortalHatasi } from "./earsivPortal.client.js";
 
@@ -31,7 +32,14 @@ export interface VknSorguSonucu {
   sorguTarihi: string;
   /** ICE yedeğinden gelince: vergi dairesi yok, GİB'e ulaşılamadı bilgisi */
   uyari: string | null;
+  /** Vergi dairesinden bulunan il / ilçe (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md); bulunamazsa boş */
+  il: string;
+  ilce: string;
+  /** il / ilçe doldurulamadıysa kısa uyarı ("ilçeyi girin" vb.) */
+  ilIlceUyari: string | null;
 }
+
+type HamSonuc = Omit<VknSorguSonucu, "il" | "ilce" | "ilIlceUyari">;
 
 const gunOnce = (gun: number) => Date.now() - gun * 86_400_000;
 
@@ -49,6 +57,15 @@ const sifrelemeKontrol = () => {
 
 export class VknSorguService {
   public static async sorgula(girdi: string, ctx: DbContext, kullanici: string): Promise<VknSorguSonucu> {
+    const ham = await this.hamSorgu(girdi, ctx, kullanici);
+    if (!ham.vergiDairesi) return { ...ham, il: "", ilce: "", ilIlceUyari: null };
+    // Aynı adlı daire birden çok ilde varsa firmanın kendi ili seçilir
+    const firmaIli = await GibSqlRepository.firmaIli(ctx).catch(() => null);
+    const { il, ilce, uyari } = vergiDairesiIlIlce(ham.vergiDairesi, firmaIli);
+    return { ...ham, il, ilce, ilIlceUyari: uyari };
+  }
+
+  private static async hamSorgu(girdi: string, ctx: DbContext, kullanici: string): Promise<HamSonuc> {
     const no = noTemizle(girdi);
     const tur = noTuru(no);
     if (!tur) {

@@ -13,6 +13,11 @@ export interface VknSorguSonucu {
   sorguTarihi: string;
   /** ICE yedeğinden gelince dolu: vergi dairesi yok */
   uyari: string | null;
+  /** Vergi dairesinden bulunan il / ilçe (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md); bulunamazsa boş */
+  il?: string;
+  ilce?: string;
+  /** il / ilçe doldurulamadıysa kısa uyarı */
+  ilIlceUyari?: string | null;
 }
 
 /** Firmanın kendi GİB hesabı (şifre hiçbir zaman dönmez) */

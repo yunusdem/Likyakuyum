@@ -93,8 +93,8 @@ const KARTLAR: ModulKarti[] = [
 
 /**
  * e-Fatura / e-Arşiv Oluştur kartı (yönetici isteği 14.09.2026): sayfaya gitmeden önce pop-up'ta TCKN/VKN alınır,
- * numara tamamlanınca mükellef sorgusu kendiliğinden çalışır ve sonuca göre form (e-Fatura ya da e-Arşiv) ilgili
- * senaryoyla otomatik açılır. Sorgu başarısızsa kullanıcı yine de forma geçebilir; tür orada belirlenir.
+ * Sorgula'ya (ya da Enter'a) basınca mükellef sorgusu çalışır ve sonuca göre form (e-Fatura ya da e-Arşiv) ilgili
+ * senaryoyla açılır. Sorgu başarısızsa kullanıcı yine de forma geçebilir; tür orada belirlenir.
  */
 const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHide }) => {
   const navigate = useNavigate();
@@ -128,36 +128,38 @@ const VknPopup: React.FC<{ show: boolean; onHide: () => void }> = ({ show, onHid
   const taslakAc = (id: number) => { onHide(); navigate(`/e-belge/dogrula?taslak=${id}`); };
   const sira = useRef(0);
   const formaGec = (earsiv: boolean) => { onHide(); navigate(`/e-belge/dogrula?senaryo=${earsiv ? "EARSIVFATURA" : "TICARIFATURA"}${vkn ? `&vkn=${encodeURIComponent(vkn)}` : ""}`); };
-  const yonlendir = (m: boolean, no: string) => { onHide(); navigate(`/e-belge/dogrula?vkn=${encodeURIComponent(no)}&senaryo=${m ? "TICARIFATURA" : "EARSIVFATURA"}`); };
+  const yonlendir = (m: boolean, no: string) => { onHide(); navigate(`/e-belge/dogrula?sorgu=1&vkn=${encodeURIComponent(no)}&senaryo=${m ? "TICARIFATURA" : "EARSIVFATURA"}`); };
   useEffect(() => {
     if (show) { setVkn(""); setSonuc(null); setHata(null); setSorgulaniyor(false); setFormSor(false); setTaslaklar(null); setTaslakHata(null); }
   }, [show]);
-  useEffect(() => {
-    if (!/^\d{10,11}$/.test(vkn)) { setSonuc(null); setHata(null); return; }
+  // Sorgu yalnız Sorgula düğmesi / Enter ile (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md K3, K5); numara değişince eski sonuç silinir
+  useEffect(() => { ++sira.current; setSonuc(null); setHata(null); setSorgulaniyor(false); }, [vkn]);
+  const sorgula = async () => {
+    if (!/^\d{10,11}$/.test(vkn)) { setHata("VKN 10, TCKN 11 haneli olmalıdır."); return; }
     const no = vkn, s = ++sira.current;
-    const zaman = setTimeout(async () => {
-      setSorgulaniyor(true); setHata(null); setSonuc(null);
-      try {
-        const cevap = await ebelgeService.mukellefSorgula(no);
-        if (s !== sira.current) return;
-        setSonuc({ mukellefMi: cevap.mukellefMi, mesaj: cevap.mesaj });
-        // Sonuç görülsün diye kısa bekleme, sonra otomatik yönlendirme
-        setTimeout(() => { if (s === sira.current) yonlendir(cevap.mukellefMi, no); }, 900);
-      } catch (e: any) {
-        if (s !== sira.current) return;
-        setHata((e?.message || "Mükellef sorgulanamadı.") + " Numarayı kontrol edin ya da türü formda seçmek için Forma geç'e basın.");
-      } finally { if (s === sira.current) setSorgulaniyor(false); }
-    }, 500);
-    return () => clearTimeout(zaman);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vkn]);
+    setSorgulaniyor(true); setHata(null); setSonuc(null);
+    try {
+      const cevap = await ebelgeService.mukellefSorgula(no);
+      if (s !== sira.current) return;
+      setSonuc({ mukellefMi: cevap.mukellefMi, mesaj: cevap.mesaj });
+      // Sonuç görülsün diye kısa bekleme, sonra yönlendirme
+      setTimeout(() => { if (s === sira.current) yonlendir(cevap.mukellefMi, no); }, 900);
+    } catch (e: any) {
+      if (s !== sira.current) return;
+      setHata((e?.message || "Mükellef sorgulanamadı.") + " Numarayı kontrol edin ya da türü formda seçmek için Forma geç'e basın.");
+    } finally { if (s === sira.current) setSorgulaniyor(false); }
+  };
   return (
     <Modal show={show} onHide={onHide} centered>
       <Modal.Header closeButton className="py-2"><Modal.Title className="fs-6 fw-semibold">e-Fatura / e-Arşiv — Alıcı TCKN / VKN</Modal.Title></Modal.Header>
       <Modal.Body>
         <Form.Label className="small fw-semibold text-secondary">Alıcı TCKN (11) veya VKN (10)</Form.Label>
-        <Form.Control autoFocus size="lg" className="font-monospace" inputMode="numeric" maxLength={11} value={vkn} placeholder="Numara tamamlanınca sorgu kendiliğinden yapılır"
-          onChange={e => setVkn(e.target.value.replace(/\D/g, ""))} />
+        <div className="input-group">
+          <Form.Control autoFocus size="lg" className="font-monospace" inputMode="numeric" maxLength={11} value={vkn} placeholder="Numarayı yazıp Sorgula'ya basın"
+            onChange={e => setVkn(e.target.value.replace(/\D/g, ""))}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (!sorgulaniyor) void sorgula(); } }} />
+          <Button variant="primary" disabled={sorgulaniyor || !/^\d{10,11}$/.test(vkn)} onClick={() => void sorgula()}>Sorgula</Button>
+        </div>
         <div className="mt-3" style={{ minHeight: 48 }}>
           {sorgulaniyor && <div className="text-muted small"><Spinner size="sm" animation="border" className="me-2" />GİB mükellef listesi sorgulanıyor…</div>}
           {sonuc && <Alert variant={sonuc.mukellefMi ? "primary" : "success"} className="py-2 mb-0 small">

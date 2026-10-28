@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import EBelgeCariSec from "./EBelgeCariSec";
 import { EbelgeGiderIstegi, ebelgeService, ebelgeTutar } from "../../services/ebelgeService";
 import { useYerelTaslak } from "./useYerelTaslak";
-import GibSorguButonu, { gibSorgula, useGibOtomatikSorgu } from "../../components/common/GibSorguButonu";
+import GibSorguButonu from "../../components/common/GibSorguButonu";
 import { GibDegerleri, GibDoldurmaSonucu } from "../../utils/gibSorgu";
 import "./ebelgeForm.css";
 
@@ -28,11 +28,16 @@ export default function EBelgeGiderGenel({ turSecici }: { turSecici?: React.Reac
   const taslak = useYerelTaslak<EbelgeGiderIstegi & Record<string, unknown>>("EGiderPusulasi", (t) => setGirdi(t));
   // GİB'den unvan / ad-soyad (docs/GIB_VKN_SORGU_YOL_HARITASI.md): boşlar dolar, farklıysa sorulur
   const [gibMesaji, setGibMesaji] = useState<GibDoldurmaSonucu | null>(null);
-  const gibMevcut = (no: string): GibDegerleri => no.replace(/\D/g, "").length === 11
-    ? { ad: girdi.alici.ad || "", soyad: girdi.alici.soyad || "" } : { unvan: girdi.alici.unvan || "" };
-  const gibUygula = (d: GibDegerleri) => { setGirdi(o => ({ ...o, alici: { ...o.alici, ...d } })); setOnizleme(null); };
-  useGibOtomatikSorgu(girdi.alici.vknTckn, (no) => void gibSorgula({ no, mevcut: gibMevcut(no), uygula: gibUygula }).then(setGibMesaji),
-    busy || gonderimDenendi);
+  // Sorgu yalnız GİB düğmesiyle (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md); il / ilçe vergi dairesinden
+  const gibMevcut = (no: string): GibDegerleri => ({
+    ...(no.replace(/\D/g, "").length === 11
+      ? { ad: girdi.alici.ad || "", soyad: girdi.alici.soyad || "" } : { unvan: girdi.alici.unvan || "" }),
+    il: girdi.alici.il || "", ilce: girdi.alici.ilce || "",
+  });
+  const gibUygula = (d: GibDegerleri) => {
+    const { vergiDairesi: _vd, ...alanlar } = d;
+    setGirdi(o => ({ ...o, alici: { ...o.alici, ...alanlar } })); setOnizleme(null);
+  };
   const aliciAdi = girdi.alici.unvan || `${girdi.alici.ad || ""} ${girdi.alici.soyad || ""}`.trim();
   const taslakKaydet = () => taslak.kaydet({ belgeNo: girdi.belgeNo, aliciVkn: girdi.alici.vknTckn, aliciUnvan: aliciAdi, paraBirimi: "TRY",
     tutar: girdi.satirlar.reduce((t, s) => t + (s.miktar || 0) * (s.birimFiyat || 0) * (1 + (s.vergiOrani || 0) / 100), 0) },

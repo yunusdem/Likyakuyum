@@ -973,21 +973,39 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
   const gibSorguMevcut = (): GibDegerleri => ({
     unvan: formData.ad || "",
     vergiDairesi: lookups.vergiDairesiList.find((x) => x.id === formData.vergiDairesiId)?.ad || "",
+    // İl / ilçe vergi dairesinden (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md)
+    il: lookups.ilList.find((x) => x.id === formData.ilId)?.ad || "",
+    ilce: lookups.ilceList.find((x) => x.id === formData.ilceId)?.ad || "",
   });
 
   const gibSorguUygula = (d: GibDegerleri, sonuc: VknSorguSonucu): string | void => {
-    let ek: string | undefined;
+    const ekler: string[] = [];
     const vd = d.vergiDairesi ? vergiDairesiBul(d.vergiDairesi, lookups.vergiDairesiList) : null;
-    if (d.vergiDairesi && !vd) ek = `"${d.vergiDairesi}" vergi dairesi listede yok, listeden elle seçin`;
+    if (d.vergiDairesi && !vd) ekler.push(`"${d.vergiDairesi}" vergi dairesi listede yok, listeden elle seçin`);
+    // İl / ilçe adları listedeki kayda çevrilir; aynı adlı birden çok ilçe varsa ilin altındaki seçilir
+    const gIl = d.il || "";
+    const gIlce = d.ilce || "";
+    const il = gIl ? lookups.ilList.find((x) => normalizeTr(x.ad) === normalizeTr(gIl)) : undefined;
+    if (gIl && !il) ekler.push(`"${gIl}" ili listede yok, elle seçin`);
+    const ilIdSonra = il ? il.id : formData.ilId;
+    let ilce: (typeof lookups.ilceList)[number] | undefined;
+    if (gIlce) {
+      const adaylar = lookups.ilceList.filter((x) => normalizeTr(x.ad) === normalizeTr(gIlce));
+      const ildekiler = adaylar.filter((x) => x.ustId && x.ustId === ilIdSonra);
+      ilce = ildekiler.length === 1 ? ildekiler[0] : adaylar.length === 1 ? adaylar[0] : undefined;
+      if (!ilce) ekler.push(`"${gIlce}" ilçesi listede bulunamadı, elle seçin`);
+    }
     setFormData((prev) => ({
       ...prev,
       ...(d.unvan ? { ad: d.unvan } : {}),
       ...(vd ? { vergiDairesiId: vd.id } : {}),
+      ...(il ? { ilId: il.id, ...(il.id !== prev.ilId && !ilce ? { ilceId: null } : {}) } : {}),
+      ...(ilce ? { ilceId: ilce.id } : {}),
       // TCKN her zaman gerçek kişidir
       ...(sonuc.tur === "TCKN" && prev.kisilikTipi === 2 ? { kisilikTipi: 1 } : {}),
     }));
     if (d.unvan) setFieldErrors((prev) => { const c = { ...prev }; delete c.ad; return c; });
-    return ek;
+    return ekler.join(" · ") || undefined;
   };
 
   const gibSorguMesaji = (m: GibDoldurmaSonucu) => {

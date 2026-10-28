@@ -164,8 +164,6 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [sorgulananVkn, setSorgulananVkn] = useState("");
   /** Son mükellef sorgusunun sonucu (null = sorgulanmadı); kullanıcı türü elle değiştirirse uyarı için */
   const [gibMukellefMi, setGibMukellefMi] = useState<boolean | null>(null);
-  /** Otomatik sorgunun aynı numara için tekrar tekrar denenmesini engeller. */
-  const otomatikDenenen = useRef("");
   /** Geç dönen eski sorgunun yeni sonucu ezmesini engeller. */
   const sorguSirasi = useRef(0);
 
@@ -304,8 +302,8 @@ const EBelgeDogrulaPage: React.FC = () => {
   };
 
   // GİB sorgusu, önceki adımların (yerel cari, ICE) doldurduğu güncel değerlerle karşılaştırır
-  const aliciRef = useRef({ unvan: "", ad: "", soyad: "", vd: "" });
-  aliciRef.current = { unvan: aliciUnvan, ad: aliciAd, soyad: aliciSoyad, vd: aliciVd };
+  const aliciRef = useRef({ unvan: "", ad: "", soyad: "", vd: "", il: "", ilce: "" });
+  aliciRef.current = { unvan: aliciUnvan, ad: aliciAd, soyad: aliciSoyad, vd: aliciVd, il: aliciIl, ilce: aliciIlce };
 
   /** GİB'den unvan / ad-soyad / vergi dairesi: boşlar dolar, farklıysa sorulur (docs/GIB_VKN_SORGU_YOL_HARITASI.md) */
   const gibdenDoldur = async (vkn: string, sira: number) => {
@@ -313,9 +311,10 @@ const EBelgeDogrulaPage: React.FC = () => {
     await new Promise((r) => setTimeout(r, 50));
     if (sira !== sorguSirasi.current) return;
     const a = aliciRef.current;
+    // İl / ilçe vergi dairesinden (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md): zorunlu alanlar boşsa dolar
     const mevcut: GibDegerleri = vkn.length === 11
-      ? { ad: a.ad, soyad: a.soyad, vergiDairesi: a.vd }
-      : { unvan: a.unvan, vergiDairesi: a.vd };
+      ? { ad: a.ad, soyad: a.soyad, vergiDairesi: a.vd, il: a.il, ilce: a.ilce }
+      : { unvan: a.unvan, vergiDairesi: a.vd, il: a.il, ilce: a.ilce };
     const m = await gibSorgula({
       no: vkn,
       mevcut,
@@ -325,6 +324,8 @@ const EBelgeDogrulaPage: React.FC = () => {
         if (d.ad) setAliciAd(d.ad);
         if (d.soyad) setAliciSoyad(d.soyad);
         if (d.vergiDairesi) setAliciVd(d.vergiDairesi);
+        if (d.il) setAliciIl(d.il);
+        if (d.ilce) setAliciIlce(d.ilce);
       },
     });
     if (sira !== sorguSirasi.current) return;
@@ -371,20 +372,15 @@ const EBelgeDogrulaPage: React.FC = () => {
   };
 
   // TCKN/VKN tamamlanınca tür sorgusu kendiliğinden çalışır; sonuç e-Fatura/e-Arşiv'i seçer.
+  // Sorgu yalnız Sorgula düğmesiyle (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md K3). Tek istisna: e-Belge ana sayfasında
+  // numara yazılıp Sorgula'ya basılmış ve buraya ?vkn=…&sorgu=1 ile gelinmişse sorgu açılışta bir kez yapılır.
   useEffect(() => {
-    const vkn = aliciVkn.trim();
-    if (!/^\d{10,11}$/.test(vkn)) {
-      otomatikDenenen.current = "";
-      if (sorgulananVkn) setSorgulananVkn("");
-      return;
-    }
-    if (vkn === sorgulananVkn || vkn === otomatikDenenen.current) return;
-    const zaman = setTimeout(() => {
-      otomatikDenenen.current = vkn;
-      void mukellefSorgula(vkn, true);
-    }, 600);
-    return () => clearTimeout(zaman);
+    const vkn = (searchParams.get("vkn") || "").replace(/\D/g, "");
+    if (searchParams.get("sorgu") === "1" && /^\d{10,11}$/.test(vkn) && !searchParams.get("taslak")) void mukellefSorgula(vkn, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!/^\d{10,11}$/.test(aliciVkn.trim()) && sorgulananVkn) setSorgulananVkn("");
   }, [aliciVkn, sorgulananVkn]);
 
   /** Numara değişti ve sorgu sonucu yok → tür seçimi güvenilmez. */
@@ -1500,7 +1496,7 @@ const EBelgeDogrulaPage: React.FC = () => {
                 />
                 <Button size="sm" variant="outline-primary" disabled={mukellefSorgulaniyor}
                   title="GİB mükellef listesini sorgular; sonuca göre e-Fatura / e-Arşiv seçilir"
-                  onClick={() => { otomatikDenenen.current = ""; void mukellefSorgula(); }}>
+                  onClick={() => void mukellefSorgula()}>
                   {mukellefSorgulaniyor ? <Spinner animation="border" size="sm" /> : "Sorgula"}
                 </Button>
               </div>

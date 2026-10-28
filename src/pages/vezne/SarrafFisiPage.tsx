@@ -46,7 +46,8 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { sarrafFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { gibService } from "../../services/gibService";
-import { GIB_BEKLEME_MS, adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
+import { adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
+import { GibFisDugmesi } from "../../components/common/GibSorguButonu";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
@@ -953,7 +954,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const lastFocusedVknRef = useRef<string>("");
   // TC / VKN'den uzak sorgu (e-Fatura listesi + GİB, musteriGibAd.ts): numara değişince eski sorgunun yanıtı yok sayılır
   const uzakSorguSiraRef = useRef(0);
-  const gibHataRef = useRef("");
   const unvanRef = useRef(unvan);
   unvanRef.current = unvan;
   const vknRef = useRef(detayVergiKimlikNo);
@@ -2574,7 +2574,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
    */
   const gibdenAdDoldur = async (no: string, sira: number) => {
     const guncelMi = () => sira === uzakSorguSiraRef.current && vknRef.current.replace(/\D/g, "") === no;
-    if (!adYazilabilir(unvanRef.current, lastFocusedUnvanRef.current, isAnonymousCustomerName)) return;
     try {
       const sonuc = await gibService.vknSorgu(no);
       if (!guncelMi()) return;
@@ -2583,8 +2582,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         showNotif("warning", `${no} numarası GİB'de kayıtlı değil. Numarayı kontrol edin.`);
         return;
       }
-      // Sorgu sürerken kasiyer ad yazdıysa ona dokunulmaz
-      if (!adYazilabilir(unvanRef.current, lastFocusedUnvanRef.current, isAnonymousCustomerName)) return;
+      // Kasiyer ad yazdıysa ona dokunulmaz
+      if (!adYazilabilir(unvanRef.current, lastFocusedUnvanRef.current, isAnonymousCustomerName)) {
+        showNotif("success", `GİB kaydı bulundu: ${ad} (yazdığınız ad korundu)`);
+        return;
+      }
       setUnvan(ad);
       setDetayUnvan(ad);
       lastFocusedUnvanRef.current = ad;
@@ -2592,11 +2594,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       gibSonrasiRef.current(ad, no);
     } catch (err: any) {
       if (!guncelMi()) return;
-      // Aynı hata (ör. GİB hesabı tanımlı değil) her numarada yeniden gösterilmez
-      const mesaj = err?.message || "GİB sorgusu yapılamadı.";
-      if (gibHataRef.current === mesaj) return;
-      gibHataRef.current = mesaj;
-      showNotif("warning", mesaj);
+      showNotif("warning", err?.message || "GİB sorgusu yapılamadı.");
+    }
+  };
+
+  // GİB düğmesi (TC kutusunda MASAK'ın yanında): sorgu yalnız buna basınca yapılır (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md K2)
+  const [gibSorgulaniyor, setGibSorgulaniyor] = useState(false);
+  const gibDugmesineBasildi = async () => {
+    setGibSorgulaniyor(true);
+    try {
+      await handleVknLookup(vknRef.current, true);
+    } finally {
+      setGibSorgulaniyor(false);
     }
   };
 
@@ -2647,15 +2656,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         return;
       }
 
-      // Uzak sorgu yazma durunca ve yalnız kontrol hanesi tutan numarayla yapılır (TCKN yazılırken 10. hanede gitmez);
+      // Uzak sorgu (GİB düğmesiyle) yalnız kontrol hanesi tutan numarayla yapılır;
       // bu arada numara değiştiyse eski sorgunun yanıtı yok sayılır
       const sira = ++uzakSorguSiraRef.current;
       const guncelMi = () => sira === uzakSorguSiraRef.current && vknRef.current.replace(/\D/g, "") === cleanVal;
       const uzak = uzakSorguYapilir(cleanVal);
+      if (!uzak) showNotif("warning", `${cleanVal} numarasının kontrol hanesi tutmuyor; GİB'e sorulmadı. Numarayı kontrol edin.`);
       if (uzak) {
-        await new Promise((r) => setTimeout(r, GIB_BEKLEME_MS));
-        if (!guncelMi()) return;
-
         // GİB / GİP Mukellef Sorgulama (10 veya 11 hane ise)
         try {
           const res = await ebelgeService.mukellefSorgula(cleanVal);
@@ -2690,8 +2697,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         } catch { }
         if (!guncelMi()) return;
 
-        // e-Fatura listesinde ad yoksa GİB'den (şahıs TCKN'leri dahil); yanıt beklenmez, gelince ad yazılır
-        void gibdenAdDoldur(cleanVal, sira);
+        // e-Fatura listesinde ad yoksa GİB'den (şahıs TCKN'leri dahil); düğme dönerken beklenir
+        await gibdenAdDoldur(cleanVal, sira);
       }
 
       // Hem DB'de hem GİP'te yoksa (kayıtsız perakende müşteri)
@@ -3957,15 +3964,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (field === "islem") {
         tcknRef.current?.focus();
       } else if (field === "tckn") {
-        const val = (detayKimlikBelgeTuru === 1 ? detayPasaportNo : detayVergiKimlikNo).trim();
-        if (detayKimlikBelgeTuru === 1) {
-          cariKodRef.current?.focus();
-          cariKodRef.current?.select();
-          return;
-        }
+        // Enter sorgu yapmaz; sorgu GİB düğmesiyle (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md K5)
         cariKodRef.current?.focus();
         cariKodRef.current?.select();
-        void handleVknLookup(val, true);
         return;
       } else if (field === "kodu") {
         const val = (cariKod || "").trim();
@@ -5529,18 +5530,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         } else {
                           const val = onlyDigits(e.target.value).slice(0, 11);
                           setDetayVergiKimlikNo(val);
-                          if (val.length === 10 || val.length === 11) {
-                            void handleVknLookup(val, false);
-                          } else {
+                          // Yazınca sorgu yapılmaz; GİB düğmesine basınca yapılır (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md K2).
+                          // Seçilmiş carinin numarası değişince cari bağı kalkar (bugünkü davranış).
+                          if (!val) {
+                            void handleVknLookup("", false);
+                          } else if (val !== lastFocusedVknRef.current) {
+                            ++uzakSorguSiraRef.current;
                             setCariKod("");
                             setCariKartId(null);
                             lastFocusedCariKodRef.current = "";
                           }
-                        }
-                      }}
-                      onBlur={(e) => {
-                        if (detayKimlikBelgeTuru !== 1) {
-                          void handleVknLookup(e.target.value, false);
                         }
                       }}
                       onKeyDown={(e) => {
@@ -5595,6 +5594,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     >
                       {isSearchingMasak ? <Spinner animation="border" size="sm" /> : <IconShieldExclamation size={14} color="#dc2626" />}
                     </Button>
+                    {detayKimlikBelgeTuru !== 1 && (
+                      <GibFisDugmesi no={detayVergiKimlikNo} bekliyor={gibSorgulaniyor} onClick={() => void gibDugmesineBasildi()} />
+                    )}
                   </InputGroup>
                 </div>
 

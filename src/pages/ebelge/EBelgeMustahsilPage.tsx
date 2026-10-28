@@ -3,7 +3,7 @@ import {Alert,Button,Card,Col,Form,Row,Table} from "react-bootstrap";
 import {Link} from "react-router-dom";
 import {ebelgeService,EbelgeMustahsilIstegi} from "../../services/ebelgeService";
 import {useYerelTaslak} from "./useYerelTaslak";
-import GibSorguButonu,{gibSorgula,useGibOtomatikSorgu} from "../../components/common/GibSorguButonu";
+import GibSorguButonu from "../../components/common/GibSorguButonu";
 import {GibDegerleri,GibDoldurmaSonucu} from "../../utils/gibSorgu";
 import "./ebelgeForm.css";
 
@@ -17,9 +17,9 @@ export default function EBelgeMustahsilPage(){
  const u=(k:string,v:string)=>setG(x=>({...x,uretici:{...x.uretici,[k]:v}}));
  // GİB'den ad / soyad (docs/GIB_VKN_SORGU_YOL_HARITASI.md): boşlar dolar, farklıysa sorulur; ürünün tek ad alanı olmadığından unvan ada yazılmaz
  const [gibMesaji,setGibMesaji]=useState<GibDoldurmaSonucu|null>(null);
- const gibMevcut=():GibDegerleri=>({ad:g.uretici.ad||"",soyad:g.uretici.soyad||""});
- const gibUygula=(d:GibDegerleri)=>setG(x=>({...x,uretici:{...x.uretici,...(d.ad?{ad:d.ad}:{}),...(d.soyad?{soyad:d.soyad}:{})}}));
- useGibOtomatikSorgu(g.uretici.vknTckn,no=>void gibSorgula({no,mevcut:gibMevcut(),uygula:gibUygula}).then(setGibMesaji),busy);
+ // Sorgu yalnız GİB düğmesiyle (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md); il / ilçe vergi dairesinden
+ const gibMevcut=():GibDegerleri=>({ad:g.uretici.ad||"",soyad:g.uretici.soyad||"",il:g.uretici.il||"",ilce:g.uretici.ilce||""});
+ const gibUygula=(d:GibDegerleri)=>setG(x=>({...x,uretici:{...x.uretici,...(d.ad?{ad:d.ad}:{}),...(d.soyad?{soyad:d.soyad}:{}),...(d.il?{il:d.il}:{}),...(d.ilce?{ilce:d.ilce}:{})}}));
  const s=(i:number,k:string,v:string|number)=>setG(x=>({...x,satirlar:x.satirlar.map((r,n)=>n===i?{...r,[k]:v}:r)}));
  const ekle=()=>setG(x=>({...x,satirlar:[...x.satirlar,{ad:"",miktar:1,birimKodu:"C62",birimFiyat:0,stopajOrani:2,stopajKodu:"0003",stopajAdi:"GELİR VERGİSİ S. (MUHTASAR)"}]}));
  const calistir=async(send=false)=>{setBusy(true);setHata("");setMesaj("");try{const d=await ebelgeService.mustahsilDogrula(g);const r=send?await ebelgeService.mustahsilGonder(g):d;if(send)await taslak.gonderildi();setMesaj(send?`${r.belgeNo} gönderildi. ETTN: ${r.uuid}`:`Şema ve schematron doğrulandı. Net ödeme: ${r.ozet.netOdenecek} TRY`);}catch(e:any){setHata(e.message||"İşlem başarısız.");}finally{setBusy(false)}};

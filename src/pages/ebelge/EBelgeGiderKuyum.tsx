@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import EBelgeCariSec from "./EBelgeCariSec";
 import { EbelgeFaturaNoOnerisi, EbelgeGiderIstegi, EbelgeGiderOzet, ebelgeService, ebelgeTutar } from "../../services/ebelgeService";
 import { useYerelTaslak } from "./useYerelTaslak";
-import GibSorguButonu, { gibSorgula, useGibOtomatikSorgu } from "../../components/common/GibSorguButonu";
+import GibSorguButonu from "../../components/common/GibSorguButonu";
 import { GibDegerleri, GibDoldurmaSonucu } from "../../utils/gibSorgu";
 import { SarrafFisService } from "../../services/sarrafFisService";
 import { KurService } from "../../services/kurService";
@@ -143,17 +143,21 @@ export default function EBelgeGiderKuyum({ turSecici }: { turSecici?: React.Reac
   useEffect(() => { void onerileriYukle(); }, [yil]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // GİB'den ad / soyad (TCKN) ya da ünvan (VKN): boşlar dolar, farklıysa sorulur
-  const gibMevcut = (no: string): GibDegerleri =>
-    no.replace(/\D/g, "").length === 11 ? { ad: form.alici.ad, soyad: form.alici.soyad } : { unvan: form.alici.unvan };
+  // Sorgu yalnız GİB düğmesiyle (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md); il / ilçe vergi dairesinden
+  const gibMevcut = (no: string): GibDegerleri => ({
+    ...(no.replace(/\D/g, "").length === 11 ? { ad: form.alici.ad, soyad: form.alici.soyad } : { unvan: form.alici.unvan }),
+    il: form.alici.il, ilce: form.alici.ilce,
+  });
   const gibUygula = (d: GibDegerleri) => {
-    setForm((o) => ({ ...o, alici: { ...o.alici, ad: d.ad ?? o.alici.ad, soyad: d.soyad ?? o.alici.soyad, unvan: d.unvan ?? o.alici.unvan } }));
+    setForm((o) => ({
+      ...o,
+      alici: {
+        ...o.alici, ad: d.ad ?? o.alici.ad, soyad: d.soyad ?? o.alici.soyad, unvan: d.unvan ?? o.alici.unvan,
+        il: d.il ?? o.alici.il, ilce: d.ilce ?? o.alici.ilce,
+      },
+    }));
     setOnizleme(null);
   };
-  useGibOtomatikSorgu(
-    form.alici.vknTckn,
-    (no) => void gibSorgula({ no, mevcut: gibMevcut(no), uygula: gibUygula }).then(setGibMesaji),
-    busy || gonderimDenendi
-  );
 
   const toplam = kuyumToplam(form);
   const kimlikUzunluk = form.alici.vknTckn.replace(/\D/g, "").length;

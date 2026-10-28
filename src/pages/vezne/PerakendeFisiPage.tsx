@@ -52,7 +52,8 @@ import {
 } from "../../services/cariService";
 import { ebelgeService } from "../../services/ebelgeService";
 import { gibService } from "../../services/gibService";
-import { GIB_BEKLEME_MS, adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
+import { adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
+import { GibFisDugmesi } from "../../components/common/GibSorguButonu";
 import {
   DovizFisService,
   KayitsizMusteriItem,
@@ -892,8 +893,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const lastFocusedUnvanRef = useRef<string>("");
   // TC / VKN'den uzak sorgu (e-Fatura listesi + GİB, musteriGibAd.ts): numara değişince eski sorgunun yanıtı yok sayılır
   const uzakSorguSiraRef = useRef(0);
-  const gibHataRef = useRef("");
-  const gibSonucRef = useRef<{ no: string; ad: string } | null>(null);
   const aliciUnvanDegerRef = useRef(aliciUnvan);
   aliciUnvanDegerRef.current = aliciUnvan;
   const aliciVknDegerRef = useRef(aliciVknTckn);
@@ -4183,12 +4182,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   };
 
   /**
-   * e-Fatura listesinde ad yoksa GİB'den (e-Belge'deki sorgu, musteriGibAd.ts): ad ve boşsa vergi dairesi dolar.
-   * Ad yalnız boşken ya da önceki seçimden / sorgudan kalmışken yazılır; kasiyerin elle yazdığı ada dokunulmaz.
+   * e-Fatura listesinde ad yoksa GİB'den (e-Belge'deki sorgu, musteriGibAd.ts): ad; boşsa vergi dairesi, il, ilçe dolar
+   * (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md). Ad yalnız boşken ya da önceki seçimden / sorgudan kalmışken yazılır;
+   * kasiyerin elle yazdığı ada dokunulmaz.
    */
   const gibdenAdDoldur = async (no: string, sira: number) => {
     const guncelMi = () => sira === uzakSorguSiraRef.current && aliciVknDegerRef.current.replace(/\D/g, "") === no;
-    if (!adYazilabilir(aliciUnvanDegerRef.current, lastFocusedUnvanRef.current, isAnonymousCustomerName)) return;
     try {
       const sonuc = await gibService.vknSorgu(no);
       if (!guncelMi()) return;
@@ -4197,26 +4196,47 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         showWarning(`${no} numarası GİB'de kayıtlı değil. Numarayı kontrol edin.`);
         return;
       }
-      // Sorgu sürerken kasiyer ad yazdıysa ona dokunulmaz
-      if (!adYazilabilir(aliciUnvanDegerRef.current, lastFocusedUnvanRef.current, isAnonymousCustomerName)) return;
-      setAliciUnvan(ad);
-      setDetayUnvan(ad);
-      lastFocusedUnvanRef.current = ad;
-      gibSonucRef.current = { no, ad };
       const vd = (sonuc.vergiDairesi || "").trim();
       if (vd) {
         setVergiDairesi((v) => v || vd);
         setDetayVergiDairesi((v) => v || vd);
       }
-      showSuccess(`Müşteri adı GİB'den alındı: ${ad}`);
+      const gIl = (sonuc.il || "").trim();
+      const gIlce = (sonuc.ilce || "").trim();
+      if (gIl) {
+        setIl((v) => v || gIl);
+        setDetayIl((v) => v || gIl);
+      }
+      if (gIlce) {
+        setIlce((v) => v || gIlce);
+        setDetayIlce((v) => v || gIlce);
+      }
+      const ilUyari = sonuc.ilIlceUyari ? ` · ${sonuc.ilIlceUyari}` : "";
+      // Kasiyer ad yazdıysa ona dokunulmaz; diğer bilgiler yine dolar
+      if (!adYazilabilir(aliciUnvanDegerRef.current, lastFocusedUnvanRef.current, isAnonymousCustomerName)) {
+        showSuccess(`GİB kaydı bulundu: ${ad} (yazdığınız ad korundu)${ilUyari}`);
+        return;
+      }
+      setAliciUnvan(ad);
+      setDetayUnvan(ad);
+      lastFocusedUnvanRef.current = ad;
+      if (ilUyari) showWarning(`Müşteri adı GİB'den alındı: ${ad}${ilUyari}`);
+      else showSuccess(`Müşteri adı GİB'den alındı: ${ad}`);
       gibSonrasiRef.current(ad, no);
     } catch (err: any) {
       if (!guncelMi()) return;
-      // Aynı hata (ör. GİB hesabı tanımlı değil) her numarada yeniden gösterilmez
-      const mesaj = err?.message || "GİB sorgusu yapılamadı.";
-      if (gibHataRef.current === mesaj) return;
-      gibHataRef.current = mesaj;
-      showWarning(mesaj);
+      showWarning(err?.message || "GİB sorgusu yapılamadı.");
+    }
+  };
+
+  // GİB düğmesi (TC kutusunda MASAK'ın yanında): sorgu yalnız buna basınca yapılır (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md K2)
+  const [gibSorgulaniyor, setGibSorgulaniyor] = useState(false);
+  const gibDugmesineBasildi = async () => {
+    setGibSorgulaniyor(true);
+    try {
+      await handleVknLookup(aliciVknDegerRef.current, true);
+    } finally {
+      setGibSorgulaniyor(false);
     }
   };
 
@@ -4284,22 +4304,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         return;
       }
 
-      // Aynı numara az önce GİB'den dolduysa yeniden sorulmaz (odaktan çıkınca ad silinip yeniden gelmesin)
-      const onceki = gibSonucRef.current;
-      if (onceki && onceki.no === cleanVal && aliciUnvanDegerRef.current === onceki.ad) {
-        lastFocusedVknRef.current = cleanVal;
-        return;
-      }
-
-      // Uzak sorgu yazma durunca ve yalnız kontrol hanesi tutan numarayla yapılır (TCKN yazılırken 10. hanede gitmez);
+      // Uzak sorgu (GİB düğmesiyle) yalnız kontrol hanesi tutan numarayla yapılır;
       // bu arada numara değiştiyse eski sorgunun yanıtı yok sayılır
       const sira = ++uzakSorguSiraRef.current;
       const guncelMi = () => sira === uzakSorguSiraRef.current && aliciVknDegerRef.current.replace(/\D/g, "") === cleanVal;
       const uzak = uzakSorguYapilir(cleanVal);
+      if (!uzak) showWarning(`${cleanVal} numarasının kontrol hanesi tutmuyor; GİB'e sorulmadı. Numarayı kontrol edin.`);
       if (uzak) {
-        await new Promise((r) => setTimeout(r, GIB_BEKLEME_MS));
-        if (!guncelMi()) return;
-
         // GİB / GİP Mukellef Sorgulama (10 veya 11 hane ise)
         try {
           const res = await ebelgeService.mukellefSorgula(cleanVal);
@@ -4338,6 +4349,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     setVergiDairesi(first.vergiDairesi);
                     setDetayVergiDairesi(first.vergiDairesi);
                   }
+                  if (first.il) {
+                    setIl(first.il);
+                    setDetayIl(first.il);
+                  }
+                  if (first.ilce) {
+                    setIlce(first.ilce);
+                    setDetayIlce(first.ilce);
+                  }
                 }
               } catch { }
               return;
@@ -4369,8 +4388,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       setIlce("");
       setDetayIlce("");
       setSenaryo("EARSIVFATURA");
-      // e-Fatura listesinde ad yoksa GİB'den (şahıs TCKN'leri dahil); yanıt beklenmez, gelince ad yazılır
-      if (uzak) void gibdenAdDoldur(cleanVal, sira);
+      // e-Fatura listesinde ad yoksa GİB'den (şahıs TCKN'leri dahil); düğme dönerken beklenir
+      if (uzak) await gibdenAdDoldur(cleanVal, sira);
       return;
     }
 
@@ -6145,11 +6164,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     const rawVal = e.target.value.replace(/\D/g, "").slice(0, 11);
                     setAliciVknTckn(rawVal);
                     setDetayVknTckn(rawVal);
+                    // Yazınca sorgu yapılmaz; GİB düğmesine basınca yapılır (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md K2).
+                    // Numara değişince seçilmiş / sorgudan gelmiş müşteri adı silinir ki yanlış kişiye fiş kesilmesin;
+                    // kasiyerin elle yazdığı ada dokunulmaz.
                     if (!rawVal) {
                       void handleVknLookup("", false);
-                    } else if (rawVal.length === 10 || rawVal.length === 11) {
-                      void handleVknLookup(rawVal, false);
-                    } else {
+                    } else if ((lastFocusedVknRef.current || lastFocusedUnvanRef.current || cariKartId) && rawVal !== lastFocusedVknRef.current) {
+                      ++uzakSorguSiraRef.current;
+                      lastFocusedVknRef.current = "";
                       setCariKod("");
                       setAliciUnvan(DEFAULT_CUSTOMER_NAME);
                       setDetayUnvan(DEFAULT_CUSTOMER_NAME);
@@ -6163,12 +6185,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                       e.preventDefault();
                       cariKodRef.current?.focus();
                       cariKodRef.current?.select();
-                      void handleVknLookup(aliciVknTckn, true);
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (aliciVknTckn.length === 10 || aliciVknTckn.length === 11 || !aliciVknTckn) {
-                      void handleVknLookup(aliciVknTckn, true);
                     }
                   }}
                   placeholder="TCKN / VKN / Pasaport"
@@ -6204,6 +6220,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     <IconShieldCheck size={15} className="text-danger" />
                   )}
                 </Button>
+                <GibFisDugmesi no={aliciVknTckn} bekliyor={gibSorgulaniyor} onClick={() => void gibDugmesineBasildi()} />
               </InputGroup>
             </div>
 

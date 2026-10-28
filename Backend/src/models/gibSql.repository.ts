@@ -90,6 +90,19 @@ export class GibSqlRepository {
     return pool;
   }
 
+  /** Firma tanımındaki il adı (TODVZ_TANIM.IL_ID); vergi dairesi adı birden çok ilde varsa seçim için. Yoksa null. */
+  public static async firmaIli(ctx: DbContext): Promise<string | null> {
+    const pool = await getDbPool(ctx.dbServer, ctx.dbName);
+    const s = (
+      await pool.request().query(`
+        SELECT TOP 1 tm.AD
+        FROM dbo.TODVZ_TANIM t
+        JOIN dbo.TODVZ_TABLO_MADDESI tm ON tm.TABLO_MADDESI_ID = t.IL_ID
+      `)
+    ).recordset[0];
+    return s?.AD ? String(s.AD).trim() || null : null;
+  }
+
   /** Çözülmüş hesap bilgisi; tanımsızsa null. Yalnız sunucu içinde kullanılır. */
   public static async hesap(ctx: DbContext): Promise<{ kullaniciKodu: string; sifre: string } | null> {
     const pool = await this.havuz(ctx);
