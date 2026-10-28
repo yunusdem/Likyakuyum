@@ -57,7 +57,7 @@ export const AnaSayfa: React.FC = () => {
           <div className="hero-izgara">
             <div>
               <span className="rozet">
-                <i>6 ürün</i> Tek altyapı, tek destek ekibi
+                <i>6 ürün</i> Likya ürün ailesi
               </span>
               <h1 id="hero-baslik">
                 İşletmenize göre şekillenen <em>yönetim yazılımı</em>

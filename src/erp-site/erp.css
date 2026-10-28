@@ -1840,3 +1840,20 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Kuyum ürün sayfası kampanya broşürü */
+.kampanya-brosur {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.kampanya-brosur img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.16);
+}
+.kampanya-dugmeler {
+  justify-content: center;
+  margin-top: 28px;
+}
