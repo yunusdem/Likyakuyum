@@ -571,15 +571,19 @@ export const RAPOR_SORGULARI = {
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
         const d = await belgeTablolari(pool);
         const ISCILIK_SEKLI = { 0: "Adet", 1: "Toplam", 2: "Gram" };
-        const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis)
-            .input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null);
-        const fSarraf = filtreler(req, p, { vezne: "V", para: "S.URUN_ID" });
-        const fDoviz = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
-        const fOdeme = filtreler(req, p, { vezne: "V", para: "OS.PARA_ID" });
+        const yeniReq = (paraKolon) => {
+            const r = pool.request()
+                .input("bas", sql.Date, p.baslangic)
+                .input("bit", sql.Date, p.bitis)
+                .input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null);
+            const f = filtreler(r, p, { vezne: "V", para: paraKolon });
+            return { req: r, f };
+        };
         const satirlarHam = [];
         if (d.sarraf) {
             // 1. Sarraf Fişi Satırları (ürünler ve işçilik)
-            const sres = await req.query(`
+            const { req: sReq, f: fSarraf } = yeniReq("S.URUN_ID");
+            const sres = await sReq.query(`
         SELECT
           F.SARRAF_FISI_ID fisId, S.SATIR_NO satirNo, F.TARIH tarih, ISNULL(F.SAAT, F.EKLEME_ZAMANI) zaman,
           'Sarraf fişi' belge, RTRIM(ISNULL(F.FIS_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan,
@@ -600,7 +604,8 @@ export const RAPOR_SORGULARI = {
         ORDER BY F.TARIH, F.SARRAF_FISI_ID, S.SATIR_NO;`);
             satirlarHam.push(...sres.recordset);
             // 2. Sarraf Fişi Altın Ödeme Satırları (hurda / has ile ödeme)
-            const ores = await req.query(`
+            const { req: oReq, f: fOdeme } = yeniReq("OS.PARA_ID");
+            const ores = await oReq.query(`
         SELECT
           F.SARRAF_FISI_ID fisId, OS.SATIR_NO satirNo, F.TARIH tarih, ISNULL(F.SAAT, F.EKLEME_ZAMANI) zaman,
           'Sarraf ödeme' belge, RTRIM(ISNULL(F.FIS_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan,
@@ -625,7 +630,8 @@ export const RAPOR_SORGULARI = {
             satirlarHam.push(...ores.recordset);
         }
         // 3. Döviz fişlerindeki altın satırları
-        const dres = await req.query(`
+        const { req: dReq, f: fDoviz } = yeniReq("S.PARA_ID");
+        const dres = await dReq.query(`
       SELECT
         F.FIS_ID fisId, S.SATIR_NO satirNo, F.TARIH tarih, ISNULL(F.ZAMAN, F.EKLEME_ZAMANI) zaman,
         'Döviz fişi' belge, COALESCE(NULLIF(RTRIM(F.SERI_NO),''), RTRIM(ISNULL(F.BELGE_NO,''))) belgeNo,
