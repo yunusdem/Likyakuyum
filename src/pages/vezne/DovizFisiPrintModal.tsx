@@ -1,12 +1,14 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Modal, Button, Form, Spinner } from "react-bootstrap";
-import { IconPrinter, IconX } from "@tabler/icons-react";
+import { IconPrinter, IconX, IconBrandWhatsapp } from "@tabler/icons-react";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
 import { dovizFisHtml, dovizFisleriHtml, type FisHtml } from "../../utils/belgeSablon/fisCikti";
 import { fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { SablonluFisOnizleme, useSablonluFis } from "../../components/belge/SablonluFisOnizleme";
+import { BelgeService } from "../../services/belgeService";
+import { shareReceiptVisualOrPdfToWhatsApp, buildDovizWhatsAppMessage } from "../../utils/whatsAppMessageBuilder";
 
 export interface PrintLineItem {
   paraKodu: string;
@@ -42,6 +44,7 @@ export interface DovizFisiPrintModalProps {
   detayPasaportNo?: string;
   detayMeslek?: string;
   detayCariTipi?: string;
+  detayTelefonNo?: string;
   vezneKod?: string;
   vezne?: any;
   istatistikKodu?: string;
@@ -77,6 +80,55 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
   const [isPrinting, setIsPrinting] = useState(false);
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  const [isSharingPdf, setIsSharingPdf] = useState(false);
+  const pdfBlobRef = useRef<Blob | null>(null);
+
+  useEffect(() => {
+    if (!show) { pdfBlobRef.current = null; return; }
+    const { show: _s, onHide: _o, autoPrint: _a, vezne: _v, ...girdi } = propsRef.current;
+    BelgeService.onizlemePdfBlob("doviz", girdi, "80")
+      .then((b) => { pdfBlobRef.current = b; })
+      .catch(() => {});
+  }, [show]);
+
+  const handleWhatsAppPdfShare = useCallback(async () => {
+    setIsSharingPdf(true);
+    const docNo = props.belgeNo || props.seriNo || (props.fisId ? `DOV-${props.fisId}` : "doviz_fisi");
+    const cached = pdfBlobRef.current;
+
+    const { show: _s, onHide: _o, autoPrint: _a, vezne: _v, ...girdi } = propsRef.current;
+    const pdfPromise = cached
+      ? Promise.resolve(cached)
+      : BelgeService.onizlemePdfBlob("doviz", girdi, "80")
+          .catch(async () => {
+            if (props.fisId || props.belgeNo) {
+              const res = await BelgeService.pdfBlobUrl({
+                fisId: props.fisId,
+                belgeNo: props.belgeNo || props.seriNo,
+                bicim: "80",
+              });
+              if (res?.url) {
+                const r = await fetch(res.url);
+                return await r.blob();
+              }
+            }
+            return null;
+          });
+
+    try {
+      await shareReceiptVisualOrPdfToWhatsApp({
+        elementId: "sablonlu-fis-icerik",
+        pdfBlob: cached,
+        pdfPromise,
+        fileName: docNo,
+        phone: props.detayTelefonNo,
+        message: buildDovizWhatsAppMessage(props),
+      });
+    } finally {
+      setIsSharingPdf(false);
+    }
+  }, [props.fisId, props.belgeNo, props.seriNo, props.detayTelefonNo]);
 
   const { fis, hata } = useSablonluFis(show, "doviz", () => {
     const { show: _s, onHide: _o, autoPrint: _a, vezne: _v, ...girdi } = propsRef.current;
@@ -340,6 +392,29 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
               <IconPrinter size={14} className="me-1" />
               Tarayıcı
             </Button>
+
+            <Button
+              variant="success"
+              size="sm"
+              onClick={handleWhatsAppPdfShare}
+              disabled={!fis || isPrinting || isSharingPdf}
+              className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
+              style={{
+                backgroundColor: "#25D366",
+                borderColor: "#25D366",
+                width: "30px",
+                height: "30px",
+                minWidth: "30px",
+              }}
+              title="PDF Olarak WhatsApp ile Gönder"
+              aria-label="PDF Olarak WhatsApp ile Gönder"
+            >
+              {isSharingPdf ? (
+                <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+              ) : (
+                <IconBrandWhatsapp size={18} className="text-white" />
+              )}
+            </Button>
           </div>
         </div>
       </Modal.Header>
@@ -348,11 +423,13 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
         <SablonluFisOnizleme fis={fis} hata={hata} />
       </Modal.Body>
 
-      <Modal.Footer className="bg-light py-2 d-flex justify-content-between">
-        <Button variant="secondary" size="sm" onClick={onHide} disabled={isPrinting} className="d-flex align-items-center gap-1">
-          <IconX size={15} /> Kapat
-        </Button>
-        <div className="d-flex gap-2">
+      <Modal.Footer className="bg-light py-2 px-3 d-flex justify-content-between align-items-center">
+        <div className="d-flex align-items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={onHide} disabled={isPrinting} className="d-flex align-items-center gap-1">
+            <IconX size={15} /> Kapat
+          </Button>
+        </div>
+        <div className="d-flex gap-2 align-items-center">
           <Button
             variant="outline-primary"
             size="sm"

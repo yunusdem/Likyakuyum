@@ -6,16 +6,23 @@ import type { EDovizGirdi, EDovizTaraf } from './ice/ice.edoviz.js';
 
 /** Türkçe destekli TTF yazı tipi; kalın varyant yoksa normal kullanılır. */
 function yaziTipleri(): { normal: string; kalin: string } {
-  const adaylar = [process.env.EBELGE_PDF_FONT,
+  const adaylar = [
+    process.env.EBELGE_PDF_FONT,
     path.join(process.env.WINDIR || 'C:/Windows', 'Fonts', 'arial.ttf'),
+    '/System/Library/Fonts/Supplemental/Arial.ttf',
+    '/Library/Fonts/Arial Unicode.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf'];
+    '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf'
+  ];
   const normal = adaylar.find((f): f is string => !!f && existsSync(f));
   if (!normal) throw ApiError.badRequest('PDF yazı tipi bulunamadı. Sunucuda EBELGE_PDF_FONT ile Türkçe destekli bir TTF yazı tipi tanımlayın.');
-  const kalinAday = [process.env.EBELGE_PDF_FONT_BOLD,
+  const kalinAday = [
+    process.env.EBELGE_PDF_FONT_BOLD,
     path.join(process.env.WINDIR || 'C:/Windows', 'Fonts', 'arialbd.ttf'),
+    '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-    '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf'].find((f): f is string => !!f && existsSync(f));
+    '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf'
+  ].find((f): f is string => !!f && existsSync(f));
   return { normal, kalin: kalinAday || normal };
 }
 
@@ -169,8 +176,11 @@ export interface KaynakFisDetay {
 
 /** Kaydedilmiş fişin PDF önizlemesi. ICE doğrulaması veya gönderimi yapmaz. */
 export function kaynakFisPdf(fis: KaynakFisDetay): Promise<Buffer> {
-  const font = [process.env.EBELGE_PDF_FONT,
+  const font = [
+    process.env.EBELGE_PDF_FONT,
     path.join(process.env.WINDIR || 'C:/Windows', 'Fonts', 'arial.ttf'),
+    '/System/Library/Fonts/Supplemental/Arial.ttf',
+    '/Library/Fonts/Arial Unicode.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
     '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
   ].find((f): f is string => !!f && existsSync(f));

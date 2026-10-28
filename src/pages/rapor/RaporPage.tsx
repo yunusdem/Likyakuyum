@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Col, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
 import { useParams } from "react-router-dom";
-import { IconAdjustments, IconChevronUp, IconDownload, IconFileSpreadsheet, IconFileTypePdf, IconPrinter, IconReportAnalytics, IconRefresh, IconSearch, IconX } from "@tabler/icons-react";
+import { IconAdjustments, IconChevronUp, IconDownload, IconFileSpreadsheet, IconFileTypePdf, IconPrinter, IconReportAnalytics, IconRefresh, IconSearch, IconX, IconBrandWhatsapp } from "@tabler/icons-react";
 import { CashDeskService, type VezneItem } from "../../services/cashDeskService";
 import { ProductDefinitionService, type ProductItem } from "../../services/productDefinitionService";
 import { CariService, type CariKartItem } from "../../services/cariService";
@@ -10,6 +10,7 @@ import {
   type RaporParametre, type RaporParametreDegerleri, type RaporSecimKaydi, type RaporSecimKaynagi, type RaporTanim, type RaporVeri,
 } from "../../services/raporService";
 import { DurbunAlan, type SecimKolon } from "./RaporSecim";
+import { buildRaporWhatsAppMessage, openWhatsAppDirect, sharePdfToWhatsApp } from "../../utils/whatsAppMessageBuilder";
 
 /**
  * Tek rapor sayfası (G- Raporlar altındaki 9 rapor): /raporlar/:yol
@@ -109,14 +110,53 @@ export const RaporPage: React.FC = () => {
   const [parametreAcik, setParametreAcik] = useState(true);
   const istekNo = useRef(0);
 
+  const whatsAppRaporMesaji = useMemo(() => {
+    if (!veri || !menu) return "";
+    return buildRaporWhatsAppMessage({
+      raporAdi: menu.ad,
+      filtreOzeti: veri.filtreOzeti,
+      veri,
+      tanim,
+    });
+  }, [menu, veri, tanim]);
+
+  const [isSharingPdf, setIsSharingPdf] = useState(false);
+  const handleWhatsAppPdfShare = async () => {
+    if (!pdfUrl) return;
+    setIsSharingPdf(true);
+    try {
+      const res = await fetch(pdfUrl);
+      const blob = await res.blob();
+      const msg = veri ? buildRaporWhatsAppMessage({
+        raporAdi: menu?.ad || tanim?.ad || "Rapor",
+        filtreOzeti: veri.filtreOzeti,
+        veri,
+        tanim,
+      }) : "";
+      await sharePdfToWhatsApp({
+        elementId: "rapor-tablo-karti",
+        pdfBlob: blob,
+        fileName: `${menu?.ad || "rapor"}.pdf`,
+        message: msg,
+      });
+    } catch (e) {
+      console.warn("Rapor PDF WhatsApp paylaşım hatası:", e);
+      openWhatsAppDirect("");
+    } finally {
+      setIsSharingPdf(false);
+    }
+  };
+
   useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
 
-  // Tanım + dürbün listeleri
+  // Tanım + dürbün listeleri ve ilk otomatik listeleme
   useEffect(() => {
     if (!kod) return;
     setTanim(null); setVeri(null); setPdfUrl(null); setHata(null);
-    RaporService.tanim(kod).then(t => {
-      setTanim(t); setDegerler(baslangicDegerleri(t.parametreler));
+    RaporService.tanim(kod).then(async t => {
+      setTanim(t);
+      const def = baslangicDegerleri(t.parametreler);
+      setDegerler(def);
       const tipler = new Set(t.parametreler.map(p => p.tip));
       setListeYukleniyor(true);
       const isler: Promise<unknown>[] = [];
@@ -126,6 +166,17 @@ export const RaporPage: React.FC = () => {
       for (const kaynak of new Set(t.parametreler.filter(p => p.tip === "listeCoklu" && p.kaynak).map(p => p.kaynak!)))
         isler.push(RaporService.secimListesi(kaynak).then(l => setListeler(o => ({ ...o, [kaynak]: l }))).catch(() => setListeler(o => ({ ...o, [kaynak]: [] }))));
       Promise.all(isler).finally(() => setListeYukleniyor(false));
+
+      // Sayfa açılır açılmaz raporu otomatik listele
+      setYukleniyor(true);
+      try {
+        const v = await RaporService.veri(kod, def);
+        setVeri(v);
+      } catch (err: any) {
+        console.warn("Otomatik rapor listeleme:", err);
+      } finally {
+        setYukleniyor(false);
+      }
     }).catch(e => setHata(e?.message || "Rapor tanımı alınamadı."));
   }, [kod]);
 
@@ -178,6 +229,34 @@ export const RaporPage: React.FC = () => {
     try { await RaporService.pdfIndir(kod, degerler, kod); } catch (e: any) { setHata(e?.message || "PDF indirilemedi."); } finally { setDosyaIsi(false); } };
   const excelIndir = async () => { if (!kod) return; setDosyaIsi(true); setHata(null);
     try { await RaporService.excelIndir(kod, degerler, kod); } catch (e: any) { setHata(e?.message || "Excel indirilemedi."); } finally { setDosyaIsi(false); } };
+  const toolbarWhatsAppPaylas = async () => {
+    if (!kod) return;
+    if (zorunluEksik) { setHata(zorunluEksik); return; }
+    setIsSharingPdf(true);
+    setHata(null);
+    try {
+      const url = await RaporService.pdfBlobUrl(kod, degerler);
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const msg = veri ? buildRaporWhatsAppMessage({
+        raporAdi: menu?.ad || tanim?.ad || "Rapor",
+        filtreOzeti: veri.filtreOzeti,
+        veri,
+        tanim,
+      }) : "";
+      await sharePdfToWhatsApp({
+        elementId: "rapor-tablo-karti",
+        pdfBlob: blob,
+        fileName: `${menu?.ad || "rapor"}.pdf`,
+        message: msg,
+      });
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e: any) {
+      setHata(e?.message || "WhatsApp paylaşımı başlatılamadı.");
+    } finally {
+      setIsSharingPdf(false);
+    }
+  };
   const yazdir = async () => {
     if (!kod) return; setDosyaIsi(true); setHata(null);
     try {
@@ -267,7 +346,18 @@ export const RaporPage: React.FC = () => {
     switch (p.tip) {
       case "tarih": return satir(p.ad, etiket, tarihKutu(p.ad), p.not, GENISLIK.tarih);
       case "tarihAralik": { const [b, s] = aralikAnahtarlari(p); const ana = p.ad === "baslangic" && p.etiket === "Tarih aralığı";
-        return ciftSatir(`tarihAralik-${p.ad}`, [<>{ana ? "İlk tarih" : `${p.etiket} — ilk`}{zorunluIsareti(p)}</>, tarihKutu(b), p.not], [ana ? "Son tarih" : `${p.etiket} — son`, tarihKutu(s)], GENISLIK.tarih); }
+        return (
+          <div key={`tarihAralik-${p.ad}`} className="d-flex align-items-center gap-2 flex-wrap" style={{ maxWidth: "100%" }}>
+            {ciftSatir(`tarihAralik-${p.ad}`, [<>{ana ? "İlk tarih" : `${p.etiket} — ilk`}{zorunluIsareti(p)}</>, tarihKutu(b), p.not], [ana ? "Son tarih" : `${p.etiket} — son`, tarihKutu(s)], GENISLIK.tarih)}
+            {ana && (
+              <div className="btn-group btn-group-sm ms-1">
+                <Button variant="outline-secondary" size="sm" className="py-0 px-2" style={{ fontSize: "11px" }} onClick={() => { set(b, gun(0)); set(s, gun(0)); void uygula({ ...degerler, [b]: gun(0), [s]: gun(0) }); }}>Bugün</Button>
+                <Button variant="outline-secondary" size="sm" className="py-0 px-2" style={{ fontSize: "11px" }} onClick={() => { set(b, gun(-1)); set(s, gun(-1)); void uygula({ ...degerler, [b]: gun(-1), [s]: gun(-1) }); }}>Dün</Button>
+                <Button variant="outline-secondary" size="sm" className="py-0 px-2" style={{ fontSize: "11px" }} onClick={() => { set(b, gun(-7)); set(s, gun(0)); void uygula({ ...degerler, [b]: gun(-7), [s]: gun(0) }); }}>Son 7 Gün</Button>
+              </div>
+            )}
+          </div>
+        ); }
       case "secim": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)}>
         {(p.secenekler || []).map(o => <option key={o.deger} value={o.deger}>{o.ad}</option>)}</Form.Select>, p.not, secimGenisligi(p.secenekler));
       case "sayi": return satir(p.ad, etiket, <Form.Control size="sm" type="number" min={0} step="any" inputMode="decimal" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />, p.not, GENISLIK.sayi);
@@ -379,6 +469,21 @@ export const RaporPage: React.FC = () => {
                     <Button size="sm" variant="outline-danger" onClick={pdfOnizle} disabled={!veri || veri.sinirAsildi} title="A4 PDF önizlemesini pencerede aç"><IconFileTypePdf size={15} /> PDF</Button>
                     <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={!veri || veri.sinirAsildi} title="PDF indir"><IconDownload size={15} /> İndir</Button>
                     <Button size="sm" variant="outline-success" onClick={excelIndir} disabled={!veri || veri.sinirAsildi} title="Excel indir"><IconFileSpreadsheet size={15} /> Excel</Button>
+                    <Button
+                      size="sm"
+                      variant="success"
+                      onClick={toolbarWhatsAppPaylas}
+                      disabled={!veri || veri.sinirAsildi || isSharingPdf}
+                      style={{ backgroundColor: "#25D366", borderColor: "#25D366", color: "#fff" }}
+                      title="Raporu Doğrudan PDF Olarak WhatsApp ile Gönder"
+                    >
+                      {isSharingPdf ? (
+                        <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} className="me-1" />
+                      ) : (
+                        <IconBrandWhatsapp size={15} className="me-1" />
+                      )}
+                      WhatsApp
+                    </Button>
                     <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={!veri || veri.sinirAsildi} title="Yazdır"><IconPrinter size={15} /> Yazdır</Button>
                     {parametreAcik
                       ? <Button size="sm" variant="light" onClick={() => setParametreAcik(false)} title="Parametreleri gizle"><IconChevronUp size={15} /></Button>
@@ -399,9 +504,20 @@ export const RaporPage: React.FC = () => {
 
       <Row className="g-3">
         <Col xs={12}>
-          <Card className="border shadow-sm w-100 bg-white">
+          <Card className="border shadow-sm w-100 bg-white" id="rapor-tablo-karti">
+            <Card.Header className="bg-light py-2 px-3 d-flex justify-content-between align-items-center border-bottom">
+              <span className="fw-bold d-flex align-items-center gap-1 text-dark" style={{ fontSize: "0.92rem" }}>
+                <IconReportAnalytics size={18} className="text-primary" />
+                {menu?.ad || tanim?.ad || "Rapor"}
+              </span>
+              {veri && (
+                <span className="small text-muted">
+                  {veri.toplamKayit.toLocaleString("tr-TR")} Kayıt
+                </span>
+              )}
+            </Card.Header>
             <Card.Body className="p-0">
-              {veri?.filtreOzeti && <div className="px-3 py-2 small text-muted border-bottom text-center">{veri.filtreOzeti}</div>}
+              {veri?.filtreOzeti && <div className="px-3 py-2 small text-muted border-bottom text-center bg-light bg-opacity-50">{veri.filtreOzeti}</div>}
               <div className="table-responsive" style={{ maxHeight: "68vh" }}>
                 <Table hover size="sm" className="mb-0 align-middle" style={{ fontSize: "0.82rem" }}>
                   <thead className="table-light sticky-top"><tr>
@@ -421,7 +537,20 @@ export const RaporPage: React.FC = () => {
                       </tr>;
                     })}
                     {!gridSatirlari.length && <tr><td colSpan={kolonlar.length || 1} className="text-center text-muted py-4">
-                      {yukleniyor ? <><Spinner size="sm" animation="border" /> Rapor oluşturuluyor…</> : veri ? "Seçilen ölçütlerde kayıt bulunamadı." : "Parametreleri seçip Uygula'ya basın; rapor ekranda ve PDF olarak gelir."}
+                      {yukleniyor ? (
+                        <><Spinner size="sm" animation="border" className="me-2" /> Rapor verileri yükleniyor…</>
+                      ) : veri ? (
+                        <div>
+                          <div className="mb-2">Seçilen ölçütlerde kayıt bulunamadı.</div>
+                          <div className="small d-flex justify-content-center align-items-center gap-2 flex-wrap">
+                            <span className="text-secondary">Farklı tarih görmek için:</span>
+                            <Button variant="outline-primary" size="sm" className="py-0.5 px-2" style={{ fontSize: "11.5px" }} onClick={() => { set("baslangic", gun(-1)); set("bitis", gun(-1)); void uygula({ ...degerler, baslangic: gun(-1), bitis: gun(-1) }); }}>Dünün Kayıtları</Button>
+                            <Button variant="outline-primary" size="sm" className="py-0.5 px-2" style={{ fontSize: "11.5px" }} onClick={() => { set("baslangic", gun(-7)); set("bitis", gun(0)); void uygula({ ...degerler, baslangic: gun(-7), bitis: gun(0) }); }}>Son 7 Gün</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <><Spinner size="sm" animation="border" className="me-2" /> Rapor hazırlanıyor…</>
+                      )}
                     </td></tr>}
                   </tbody>
                 </Table>
@@ -448,14 +577,40 @@ export const RaporPage: React.FC = () => {
 
       {/* PDF önizleme pop-up (yönetici kararı 14.09.2026: Uygula'da otomatik açılmaz) */}
       <Modal show={!!pdfUrl} onHide={() => setPdfUrl(null)} size="xl" centered>
-        <Modal.Header closeButton className="py-2">
-          <Modal.Title className="fs-6 d-flex align-items-center gap-2"><IconFileTypePdf size={18} className="text-danger" />{menu.ad} — A4 önizleme</Modal.Title>
+        <Modal.Header closeButton className="py-2 d-flex align-items-center">
+          <Modal.Title className="fs-6 d-flex align-items-center gap-2 me-auto mb-0"><IconFileTypePdf size={18} className="text-danger" />{menu.ad} — A4 önizleme</Modal.Title>
+          <div className="d-flex align-items-center me-2">
+            <Button
+              size="sm"
+              variant="success"
+              onClick={handleWhatsAppPdfShare}
+              disabled={dosyaIsi || isSharingPdf || !pdfUrl}
+              className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
+              style={{
+                backgroundColor: "#25D366",
+                borderColor: "#25D366",
+                width: "28px",
+                height: "28px",
+                minWidth: "28px",
+              }}
+              title="PDF Olarak WhatsApp ile Gönder"
+              aria-label="PDF Olarak WhatsApp ile Gönder"
+            >
+              {isSharingPdf ? (
+                <Spinner size="sm" animation="border" style={{ width: 13, height: 13 }} />
+              ) : (
+                <IconBrandWhatsapp size={17} className="text-white" />
+              )}
+            </Button>
+          </div>
         </Modal.Header>
         <Modal.Body className="p-0">{pdfUrl && <iframe title="Rapor PDF" src={pdfUrl} style={{ width: "100%", height: "80vh", border: 0 }} />}</Modal.Body>
-        <Modal.Footer className="py-2">
-          <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={dosyaIsi}><IconDownload size={15} /> İndir</Button>
-          <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={dosyaIsi}><IconPrinter size={15} /> Yazdır</Button>
-          <Button size="sm" variant="secondary" onClick={() => setPdfUrl(null)}><IconX size={15} /> Kapat</Button>
+        <Modal.Footer className="py-2 px-3 d-flex justify-content-end align-items-center">
+          <div className="d-flex gap-2 align-items-center">
+            <Button size="sm" variant="outline-primary" onClick={pdfIndir} disabled={dosyaIsi}><IconDownload size={15} /> İndir</Button>
+            <Button size="sm" variant="outline-secondary" onClick={yazdir} disabled={dosyaIsi}><IconPrinter size={15} /> Yazdır</Button>
+            <Button size="sm" variant="secondary" onClick={() => setPdfUrl(null)}><IconX size={15} /> Kapat</Button>
+          </div>
         </Modal.Footer>
       </Modal>
     </div>

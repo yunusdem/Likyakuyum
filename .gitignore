@@ -20,6 +20,7 @@ yayin/
 
 # likyaerp.com tanıtım sitesi build çıktısı (npm run build:erp); sunucuda üretilir
 dist-erp/
+node_modules/
 node_modules/.vite-erp/
 
 # Destek ekibi paneli build çıktısı (npm run build:destek; docs/DESTEK_PANELI_YOL_HARITASI.md); sunucuda üretilir

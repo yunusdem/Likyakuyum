@@ -73,22 +73,24 @@ const sorgu = (i: BelgeIstek, ek: Record<string, string> = {}) => {
  * URL.revokeObjectURL ile bırakılmalıdır.
  */
 /** Kimlik başlıklarıyla dosya indirme (PDF, şablon JSON). */
-async function korumaliGetir(yol: string, kabul: string): Promise<Response> {
+async function korumaliGetir(yol: string, kabul: string, init?: RequestInit): Promise<Response> {
   const token = localStorage.getItem("kuyumcu_erp_access_token");
   const dbServer = localStorage.getItem("kuyumcu_erp_last_server") || localStorage.getItem("kuyumcu_erp_active_server");
   const dbName = localStorage.getItem("kuyumcu_erp_last_db") || localStorage.getItem("kuyumcu_erp_active_db");
   const dbUser = localStorage.getItem("kuyumcu_erp_db_user");
   const dbPassword = localStorage.getItem("kuyumcu_erp_db_password");
   const res = await fetch(`${getEffectiveApiUrl()}${yol}`, {
-    method: "GET",
+    method: init?.method || "GET",
     headers: {
       Accept: kabul,
+      ...(init?.headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(dbServer ? { "x-db-server": dbServer } : {}),
       ...(dbName ? { "x-db-name": dbName } : {}),
       ...(dbUser ? { "x-db-user": dbUser } : {}),
       ...(dbPassword !== null && dbPassword !== undefined ? { "x-db-password": dbPassword } : {}),
     },
+    body: init?.body,
   });
   if (!res.ok) {
     let mesaj = `Dosya alınamadı (HTTP ${res.status}).`;
@@ -104,6 +106,16 @@ async function pdfGetir(yol: string): Promise<{ blob: Blob; kaynak: string; oniz
 }
 
 export const BelgeService = {
+  /** Ekrandaki canlı fiş verisinden (kayıtlı olmasa dahi) doğrudan PDF Blob döner */
+  async onizlemePdfBlob(tur: "sarraf" | "doviz" | "perakende" | "ticari", girdi: Record<string, any>, bicim: "80" | "A4" = "80"): Promise<Blob> {
+    const res = await korumaliGetir("/belge/pdf/onizleme", "application/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tur, bicim, ...girdi }),
+    });
+    return res.blob();
+  },
+
   async sablonlar(tur: "BELGE" | "RAPOR" = "BELGE"): Promise<BelgeSablon[]> {
     const r = await apiClient.get<BelgeSablon[]>("/belge/sablonlar", { tur });
     return r.data || [];
