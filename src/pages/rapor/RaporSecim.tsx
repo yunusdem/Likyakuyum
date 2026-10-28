@@ -29,10 +29,19 @@ const kucult = (v: unknown) => String(v ?? "").toLocaleLowerCase("tr-TR");
 export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolonlar, aramaAlanlari, anahtar, aramaYerTutucu, coklu, secili, onSec }: SecimPenceresiProps<T>) {
   const [arama, setArama] = useState("");
   const [isaretli, setIsaretli] = useState<Set<string>>(new Set());
+  const isaretliRef = useRef<Set<string>>(new Set());
   const [imlec, setImlec] = useState<string | null>(null);
   const aramaRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { if (show) { setArama(""); setIsaretli(new Set(secili || [])); setImlec(null); } }, [show, secili]);
+  useEffect(() => {
+    if (show) {
+      setArama("");
+      const initial = new Set(secili || []);
+      setIsaretli(initial);
+      isaretliRef.current = initial;
+      setImlec(null);
+    }
+  }, [show, secili]);
 
   const suzulmus = useMemo(() => {
     const t = kucult(arama.trim());
@@ -42,13 +51,48 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
   }, [items, arama, aramaAlanlari]);
 
   const sec = (x: T) => {
-    if (coklu) { setIsaretli(o => { const n = new Set(o); const k = anahtar(x); if (n.has(k)) n.delete(k); else n.add(k); return n; }); setImlec(anahtar(x)); }
-    else { onSec([x]); onHide(); }
+    if (coklu) {
+      const k = anahtar(x);
+      setIsaretli(o => {
+        const n = new Set(o);
+        if (n.has(k)) n.delete(k);
+        else n.add(k);
+        isaretliRef.current = n;
+        return n;
+      });
+      setImlec(k);
+    } else {
+      onSec([x]);
+      onHide();
+    }
   };
+
   /** Satıra tıklama (yönetici isteği 14.09.2026): ilk tık yalnızca üzerine gelir, aynı satıra ikinci tık seçer / işaretler. */
   const tikla = (x: T) => { const k = anahtar(x); if (k === imlec) sec(x); else setImlec(k); };
+
+  /** Çift tıklama: önceden işaretliler ve çift tıklanan satır işaretli şekilde seçilip modalı kapatır */
+  const ciftTikla = (x: T) => {
+    if (coklu) {
+      const k = anahtar(x);
+      const n = new Set(isaretliRef.current);
+      n.add(k);
+      isaretliRef.current = n;
+      setIsaretli(n);
+      const secilenler = items.filter(item => n.has(anahtar(item)));
+      onSec(secilenler);
+      onHide();
+    } else {
+      onSec([x]);
+      onHide();
+    }
+  };
+
   const onayla = () => {
-    if (coklu) { onSec(items.filter(x => isaretli.has(anahtar(x)))); onHide(); return; }
+    if (coklu) {
+      onSec(items.filter(x => isaretliRef.current.has(anahtar(x))));
+      onHide();
+      return;
+    }
     const hedef = (imlec && suzulmus.find(x => anahtar(x) === imlec)) || suzulmus[0];
     if (hedef) { onSec([hedef]); onHide(); }
   };
@@ -75,7 +119,7 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
           {arama && <Button variant="outline-secondary" className="bg-white" onClick={() => { setArama(""); aramaRef.current?.focus(); }}><IconX size={14} /></Button>}
         </InputGroup>
         <div className="d-flex justify-content-between align-items-center mb-2 small text-muted px-1">
-          <span>{coklu ? "İlk tık satırın üzerine gelir, ikinci tık işaretler; birden fazla seçilebilir." : "İlk tık satırın üzerine gelir, ikinci tık seçer; ↑↓ ve Enter de kullanılabilir."}</span>
+          <span>{coklu ? "İlk tık satırın üzerine gelir, ikinci tık işaretler; çift tık seçip onaylar." : "İlk tık satırın üzerine gelir, ikinci tık veya çift tık seçer; ↑↓ ve Enter de kullanılabilir."}</span>
           {coklu ? <Badge bg="primary">{isaretli.size} seçili</Badge> : null}
         </div>
         <style>{`
@@ -101,7 +145,7 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
                   // Renk hücre stilinde verilir: Bootstrap'in hover gölgesi (inset box-shadow) ve tablo değişkenleri satır rengini ezemez.
                   const hucre: React.CSSProperties | undefined = im ? { backgroundColor: "#bfdbfe", boxShadow: "none" } : isr ? { backgroundColor: "#dcfce7", boxShadow: "none" } : undefined;
                   return <tr key={k} style={{ cursor: "pointer", userSelect: "none" }} className={[isr ? "rapor-secim-isaretli" : "", im ? "rapor-secim-imlec" : ""].filter(Boolean).join(" ")}
-                    onClick={() => tikla(x)} onDoubleClick={() => sec(x)}>
+                    onClick={() => tikla(x)} onDoubleClick={() => ciftTikla(x)}>
                     <td className="text-center small text-secondary" style={hucre}>{coklu ? <Form.Check type="checkbox" checked={isr} readOnly tabIndex={-1} /> : im ? <IconCheck size={15} className="text-primary" /> : i + 1}</td>
                     {kolonlar.map((c, ci) => <td key={ci} style={hucre} className={c.hiza === "center" ? "text-center" : c.hiza === "right" ? "text-end" : ""}>{c.deger(x)}</td>)}
                     {!coklu && <td className="text-center" style={hucre}><Button size="sm" variant={im ? "primary" : "outline-secondary"} className="py-0 px-2" onClick={e => { e.stopPropagation(); sec(x); }}>Seç</Button></td>}
@@ -113,7 +157,7 @@ export function SecimPenceresi<T>({ show, onHide, title, items, yukleniyor, kolo
       <Modal.Footer className="py-2 bg-light d-flex justify-content-between">
         <span className="small text-muted">{suzulmus.length} / {items.length} kayıt</span>
         <div className="d-flex gap-2">
-          {coklu && <Button variant="outline-secondary" size="sm" onClick={() => setIsaretli(new Set())}>İşaretleri kaldır</Button>}
+          {coklu && <Button variant="outline-secondary" size="sm" onClick={() => { const b = new Set<string>(); isaretliRef.current = b; setIsaretli(b); }}>İşaretleri kaldır</Button>}
           <Button variant="secondary" size="sm" onClick={onHide}>Kapat</Button>
           <Button variant="primary" size="sm" onClick={onayla} disabled={!coklu && !suzulmus.length}>{coklu ? "Seçimi onayla" : "Seç"}</Button>
         </div>
