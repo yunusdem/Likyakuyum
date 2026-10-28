@@ -2,6 +2,7 @@ import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import { TL_PARA_SQL, adetOzeti, aralikOzeti, filtreler, idFiltre, kurCoz, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 import { ISCILIK_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketleriSql } from "../kaynak.js";
+import { KasaHesapSqlRepository } from "../../../models/kasaHesapSql.repository.js";
 /** Kasadan geçen nakit satırları: meblağ kendi parasında; KDV > 0 ise ayrı TL satırı (eski VODVZR_KASA_HAREKET_LISTESI gibi, TL hareketinde de ayrı). Saf fonksiyon. */
 export function kasaNakitSatirlari(h, tl) {
     const yon = (tutar) => ({ giris: h.tip === 0 ? tutar : 0, cikis: h.tip === 1 ? tutar : 0 });
@@ -48,6 +49,7 @@ export const KASA_SORGULARI = {
     async KASDEF1(pool, p, t) {
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
+        await KasaHesapSqlRepository.ensureTables(pool);
         const tl = await tlPara(pool);
         const istek = () => pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
         const satirlarHam = [];
@@ -217,6 +219,7 @@ export const KASA_SORGULARI = {
             throw ApiError.badRequest("En az bir hesap seçilmelidir.");
         if (!p.baslangic || !p.bitis)
             throw ApiError.badRequest("Tarih aralığı zorunludur.");
+        await KasaHesapSqlRepository.ensureTables(pool);
         const tl = await tlPara(pool);
         const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
         const f = idFiltre(req, p.hesapIdler, "H.HESAP_ID", "hs");

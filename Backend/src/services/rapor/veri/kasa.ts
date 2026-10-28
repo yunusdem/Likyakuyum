@@ -3,6 +3,7 @@ import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
 import { type RaporParametreler, TL_PARA_SQL, adetOzeti, aralikOzeti, filtreler, idFiltre, kurCoz, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 import { ISCILIK_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketleriSql } from "../kaynak.js";
+import { KasaHesapSqlRepository } from "../../../models/kasaHesapSql.repository.js";
 
 /**
  * Kasa raporları (docs/raporlar-faz2.md, Faz R2-K) — yalnızca SELECT.
@@ -62,6 +63,7 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
    */
   async KASDEF1(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
+    await KasaHesapSqlRepository.ensureTables(pool);
     const tl = await tlPara(pool);
     const istek = () => pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
     const satirlarHam: any[] = [];
@@ -189,6 +191,7 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
   async HESEKS1(pool, p, t) {
     if (!p.hesapIdler?.length) throw ApiError.badRequest("En az bir hesap seçilmelidir.");
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
+    await KasaHesapSqlRepository.ensureTables(pool);
     const tl = await tlPara(pool);
     const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
     const f = idFiltre(req, p.hesapIdler, "H.HESAP_ID", "hs");

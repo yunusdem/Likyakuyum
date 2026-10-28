@@ -111,6 +111,9 @@ export class KasaHesapSqlRepository {
             [KDV] FLOAT NOT NULL DEFAULT 0,
             [TIP] TINYINT NOT NULL DEFAULT 1,
             [VEZNE_ID] INT NOT NULL,
+            [MIKTAR] FLOAT NULL DEFAULT 0,
+            [HAS_TUTARI] FLOAT NULL DEFAULT 0,
+            [KUR] FLOAT NULL DEFAULT 0,
             [EKLEYEN_ID] INT NULL,
             [EKLEME_ZAMANI] DATETIME NOT NULL DEFAULT GETDATE(),
             [GUNCELLEYEN_ID] INT NULL,
@@ -140,7 +143,13 @@ export class KasaHesapSqlRepository {
             [O_KDV] FLOAT NULL,
             [S_KDV] FLOAT NULL,
             [O_TIP] TINYINT NULL,
-            [S_TIP] TINYINT NULL
+            [S_TIP] TINYINT NULL,
+            [O_MIKTAR] FLOAT NULL,
+            [S_MIKTAR] FLOAT NULL,
+            [O_HAS_TUTARI] FLOAT NULL,
+            [S_HAS_TUTARI] FLOAT NULL,
+            [O_KUR] FLOAT NULL,
+            [S_KUR] FLOAT NULL
           );
         END;
 
@@ -189,82 +198,94 @@ export class KasaHesapSqlRepository {
         END;
 
         -- Geçmiş işçilik kayıtlarının Miktar, Has Tutarı ve Kurlarını geriye dönük tamamlama
-        IF OBJECT_ID('dbo.TODVZ_SARRAF_FISI', 'U') IS NOT NULL AND OBJECT_ID('dbo.TODVZ_SARRAF_FISI_SATIRI', 'U') IS NOT NULL
+        IF OBJECT_ID('dbo.TODVZ_SARRAF_FISI', 'U') IS NOT NULL 
+           AND OBJECT_ID('dbo.TODVZ_SARRAF_FISI_SATIRI', 'U') IS NOT NULL
+           AND OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI', 'U') IS NOT NULL
         BEGIN
-          UPDATE H
-          SET 
-            H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
-            H.HAS_TUTARI = ISNULL(agg.TOPLAM_HAS, 0),
-            H.KUR = ISNULL(SF.ALTIN_HAS_KURU, 0)
-          FROM dbo.TODVZ_HESAP_HAREKETI H
-          CROSS APPLY (
-            SELECT TOP 1 SF.SARRAF_FISI_ID, SF.ALTIN_HAS_KURU
-            FROM dbo.TODVZ_SARRAF_FISI SF
-            WHERE H.ACIKLAMA LIKE '%Sarraf Fişi İşçilik%' 
-              AND (H.ACIKLAMA LIKE '%' + LTRIM(RTRIM(SF.FIS_NO)) + '%' OR H.ACIKLAMA LIKE '%' + LTRIM(RTRIM(SF.BELGE_NO)) + '%')
-            ORDER BY SF.SARRAF_FISI_ID DESC
-          ) SF
-          CROSS APPLY (
-            SELECT 
-              SUM(CASE WHEN ISNULL(S.ISCILIK_MIKTARI, 0) > 0 THEN S.ISCILIK_MIKTARI ELSE ISNULL(S.GRAM, ISNULL(S.ADET, 0)) END) AS TOPLAM_MIKTAR,
-              SUM(ISNULL(S.ISCILIK_HAS_GRAM, 0)) AS TOPLAM_HAS
-            FROM dbo.TODVZ_SARRAF_FISI_SATIRI S
-            WHERE S.SARRAF_FISI_ID = SF.SARRAF_FISI_ID
-          ) agg
-          WHERE H.ACIKLAMA LIKE '%Sarraf Fişi İşçilik%'
-            AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
+          EXEC('
+            UPDATE H
+            SET 
+              H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
+              H.HAS_TUTARI = ISNULL(agg.TOPLAM_HAS, 0),
+              H.KUR = ISNULL(SF.ALTIN_HAS_KURU, 0)
+            FROM dbo.TODVZ_HESAP_HAREKETI H
+            CROSS APPLY (
+              SELECT TOP 1 SF.SARRAF_FISI_ID, SF.ALTIN_HAS_KURU
+              FROM dbo.TODVZ_SARRAF_FISI SF
+              WHERE H.ACIKLAMA LIKE ''%Sarraf Fişi İşçilik%'' 
+                AND H.ACIKLAMA LIKE ''%'' + LTRIM(RTRIM(SF.FIS_NO)) + ''%''
+              ORDER BY SF.SARRAF_FISI_ID DESC
+            ) SF
+            CROSS APPLY (
+              SELECT 
+                SUM(CASE WHEN ISNULL(S.ISCILIK_MIKTARI, 0) > 0 THEN S.ISCILIK_MIKTARI ELSE ISNULL(S.MIKTAR, ISNULL(S.ADET, 0)) END) AS TOPLAM_MIKTAR,
+                SUM(ISNULL(S.ISCILIK_HAS_GRAM, 0)) AS TOPLAM_HAS
+              FROM dbo.TODVZ_SARRAF_FISI_SATIRI S
+              WHERE S.SARRAF_FISI_ID = SF.SARRAF_FISI_ID
+            ) agg
+            WHERE H.ACIKLAMA LIKE ''%Sarraf Fişi İşçilik%''
+              AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
+          ');
         END;
 
-        IF OBJECT_ID('dbo.TODVZ_FATURA', 'U') IS NOT NULL AND OBJECT_ID('dbo.TODVZ_FATURA_SATIRI', 'U') IS NOT NULL
+        IF OBJECT_ID('dbo.TODVZ_FATURA', 'U') IS NOT NULL 
+           AND OBJECT_ID('dbo.TODVZ_FATURA_SATIRI', 'U') IS NOT NULL
+           AND OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI', 'U') IS NOT NULL
         BEGIN
-          UPDATE H
-          SET 
-            H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
-            H.HAS_TUTARI = ISNULL(agg.TOPLAM_HAS, 0),
-            H.KUR = CASE WHEN ISNULL(agg.TOPLAM_HAS, 0) > 0 AND H.MEBLAG > 0 THEN H.MEBLAG / agg.TOPLAM_HAS ELSE 0 END
-          FROM dbo.TODVZ_HESAP_HAREKETI H
-          CROSS APPLY (
-            SELECT TOP 1 F.FATURA_ID
-            FROM dbo.TODVZ_FATURA F
-            WHERE H.ACIKLAMA LIKE '%Perakende Fişi İşçilik%' 
-              AND H.ACIKLAMA LIKE '%' + LTRIM(RTRIM(F.FATURA_NO)) + '%'
-            ORDER BY F.FATURA_ID DESC
-          ) F
-          CROSS APPLY (
-            SELECT 
-              SUM(CASE WHEN ISNULL(S.GRAM, 0) > 0 THEN S.GRAM ELSE ISNULL(S.MIKTAR, 0) END) AS TOPLAM_MIKTAR,
-              SUM(ISNULL(S.HAS_GRAM, 0)) AS TOPLAM_HAS
-            FROM dbo.TODVZ_FATURA_SATIRI S
-            WHERE S.FATURA_ID = F.FATURA_ID
-          ) agg
-          WHERE H.ACIKLAMA LIKE '%Perakende Fişi İşçilik%'
-            AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
+          EXEC('
+            UPDATE H
+            SET 
+              H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
+              H.HAS_TUTARI = ISNULL(agg.TOPLAM_HAS, 0),
+              H.KUR = CASE WHEN ISNULL(agg.TOPLAM_HAS, 0) > 0 AND H.MEBLAG > 0 THEN H.MEBLAG / agg.TOPLAM_HAS ELSE 0 END
+            FROM dbo.TODVZ_HESAP_HAREKETI H
+            CROSS APPLY (
+              SELECT TOP 1 F.FATURA_ID
+              FROM dbo.TODVZ_FATURA F
+              WHERE H.ACIKLAMA LIKE ''%Perakende Fişi İşçilik%'' 
+                AND H.ACIKLAMA LIKE ''%'' + LTRIM(RTRIM(F.FATURA_NO)) + ''%''
+              ORDER BY F.FATURA_ID DESC
+            ) F
+            CROSS APPLY (
+              SELECT 
+                SUM(CASE WHEN ISNULL(S.GRAM, 0) > 0 THEN S.GRAM ELSE ISNULL(S.MIKTAR, 0) END) AS TOPLAM_MIKTAR,
+                SUM(ISNULL(S.HAS_GRAM, 0)) AS TOPLAM_HAS
+              FROM dbo.TODVZ_FATURA_SATIRI S
+              WHERE S.FATURA_ID = F.FATURA_ID
+            ) agg
+            WHERE H.ACIKLAMA LIKE ''%Perakende Fişi İşçilik%''
+              AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
+          ');
         END;
 
-        IF OBJECT_ID('dbo.TODVZ_FIS', 'U') IS NOT NULL AND OBJECT_ID('dbo.TODVZ_FIS_SATIRI', 'U') IS NOT NULL
+        IF OBJECT_ID('dbo.TODVZ_FIS', 'U') IS NOT NULL 
+           AND OBJECT_ID('dbo.TODVZ_FIS_SATIRI', 'U') IS NOT NULL
+           AND OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI', 'U') IS NOT NULL
         BEGIN
-          UPDATE H
-          SET 
-            H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
-            H.HAS_TUTARI = CASE WHEN ISNULL(agg.FIRST_KUR, 0) > 0 AND H.MEBLAG > 0 THEN H.MEBLAG / agg.FIRST_KUR ELSE 0 END,
-            H.KUR = ISNULL(agg.FIRST_KUR, 0)
-          FROM dbo.TODVZ_HESAP_HAREKETI H
-          CROSS APPLY (
-            SELECT TOP 1 DF.FIS_ID
-            FROM dbo.TODVZ_FIS DF
-            WHERE H.ACIKLAMA LIKE '%Döviz Fişi İşçilik%' 
-              AND H.ACIKLAMA LIKE '%' + LTRIM(RTRIM(DF.SERI_NO)) + '%'
-            ORDER BY DF.FIS_ID DESC
-          ) DF
-          CROSS APPLY (
-            SELECT 
-              SUM(CASE WHEN ISNULL(S.ISCILIK, 0) > 0 THEN ISNULL(S.MIKTAR, 0) ELSE 0 END) AS TOPLAM_MIKTAR,
-              MAX(CASE WHEN ISNULL(S.ISCILIK, 0) > 0 THEN S.KUR ELSE 0 END) AS FIRST_KUR
-            FROM dbo.TODVZ_FIS_SATIRI S
-            WHERE S.FIS_ID = DF.FIS_ID
-          ) agg
-          WHERE H.ACIKLAMA LIKE '%Döviz Fişi İşçilik%'
-            AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
+          EXEC('
+            UPDATE H
+            SET 
+              H.MIKTAR = ISNULL(agg.TOPLAM_MIKTAR, 0),
+              H.HAS_TUTARI = CASE WHEN ISNULL(agg.FIRST_KUR, 0) > 0 AND H.MEBLAG > 0 THEN H.MEBLAG / agg.FIRST_KUR ELSE 0 END,
+              H.KUR = ISNULL(agg.FIRST_KUR, 0)
+            FROM dbo.TODVZ_HESAP_HAREKETI H
+            CROSS APPLY (
+              SELECT TOP 1 DF.FIS_ID
+              FROM dbo.TODVZ_FIS DF
+              WHERE H.ACIKLAMA LIKE ''%Döviz Fişi İşçilik%'' 
+                AND H.ACIKLAMA LIKE ''%'' + LTRIM(RTRIM(DF.SERI_NO)) + ''%''
+              ORDER BY DF.FIS_ID DESC
+            ) DF
+            CROSS APPLY (
+              SELECT 
+                SUM(CASE WHEN ISNULL(S.ISCILIK, 0) > 0 THEN ISNULL(S.MIKTAR, 0) ELSE 0 END) AS TOPLAM_MIKTAR,
+                MAX(CASE WHEN ISNULL(S.ISCILIK, 0) > 0 THEN S.KUR ELSE 0 END) AS FIRST_KUR
+              FROM dbo.TODVZ_FIS_SATIRI S
+              WHERE S.FIS_ID = DF.FIS_ID
+            ) agg
+            WHERE H.ACIKLAMA LIKE ''%Döviz Fişi İşçilik%''
+              AND (ISNULL(H.HAS_TUTARI, 0) = 0 OR ISNULL(H.MIKTAR, 0) = 0);
+          ');
         END;
       `);
     } catch (err: any) {
