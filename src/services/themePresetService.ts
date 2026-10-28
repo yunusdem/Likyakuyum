@@ -83,130 +83,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     },
   },
 
-  // 2. FINTECH VE ERP DASHBOARD (Zinc & Emerald)
-  {
-    id: "fintech-zinc-emerald",
-    name: "Fintech & ERP Dashboard (Zinc & Emerald)",
-    badge: "Fintech ERP",
-    badgeColor: "success",
-    description: "Finans & borsa panelleri için Zinc yüzeyler, Zümrüt Yeşili (#059669) ve DM Sans fontu",
-    previewBg: "#fafafa",
-    previewText: "#18181b",
-    previewAccent: "#059669",
-    previewFont: "DM Sans, sans-serif",
-    appearance: {
-      enableProgramTheme: true,
-      programBgColor: "#fafafa",
-      programTextColor: "#18181b",
-      programFont: "DM Sans, sans-serif",
-      gridHeaderBgColor: "#e4e4e7",
-      gridBgColor: "#ffffff",
-      gridFont: "DM Sans, sans-serif",
-      windowBgColor: "#ffffff",
-      windowTextColor: "#18181b",
-      windowFocusColor: "#059669",
-
-      enableMenuTheme: true,
-      menuBgColor: "#18181b",
-      menuSelectedBgColor: "#059669",
-      menuFont: "DM Sans, sans-serif",
-      menuHeaderBgColor: "#09090b",
-      menuHeaderFont: "DM Sans, sans-serif",
-      menuBackdropColor: "#18181b",
-
-      enableBuyHeaderTheme: true,
-      buyHeaderBgColor: "#dcfce7",
-      buyHeaderTextColor: "#15803d",
-
-      enableSellHeaderTheme: true,
-      sellHeaderBgColor: "#fef3c7",
-      sellHeaderTextColor: "#b45309",
-    },
-  },
-
-  // 3. LÜKS, KUYUMCU VE E-TİCARET (Warm Charcoal & Gold)
-  {
-    id: "luxury-charcoal-gold",
-    name: "Lüks Kuyumcu & Sarraf (Warm Charcoal & Gold)",
-    badge: "Lüks Sarraf",
-    badgeColor: "warning",
-    description: "Kuyumcu & sarraf vitrini için sıcak kömür arayüz, gerçek altın sarısı (#d4af37) ve Playfair Display fontu",
-    previewBg: "#fcfbf9",
-    previewText: "#1c1917",
-    previewAccent: "#d4af37",
-    previewFont: "Playfair Display, Cinzel, serif",
-    appearance: {
-      enableProgramTheme: true,
-      programBgColor: "#fcfbf9",
-      programTextColor: "#1c1917",
-      programFont: "Playfair Display, Cinzel, serif",
-      gridHeaderBgColor: "#fef9c3",
-      gridBgColor: "#ffffff",
-      gridFont: "Cinzel, serif",
-      windowBgColor: "#ffffff",
-      windowTextColor: "#1c1917",
-      windowFocusColor: "#d4af37",
-
-      enableMenuTheme: true,
-      menuBgColor: "#1c1b1a",
-      menuSelectedBgColor: "#d4af37",
-      menuFont: "Cinzel, serif",
-      menuHeaderBgColor: "#121212",
-      menuHeaderFont: "Playfair Display, serif",
-      menuBackdropColor: "#1c1b1a",
-
-      enableBuyHeaderTheme: true,
-      buyHeaderBgColor: "#fef3c7",
-      buyHeaderTextColor: "#92400e",
-
-      enableSellHeaderTheme: true,
-      sellHeaderBgColor: "#fef9c3",
-      sellHeaderTextColor: "#b45309",
-    },
-  },
-
-  // 4. MINIMALIST VE TECH (Neutral & Electric Blue)
-  {
-    id: "minimal-electric-blue",
-    name: "Minimalist & Tech (Neutral & Electric Blue)",
-    badge: "Tech Modern",
-    badgeColor: "primary",
-    description: "Yüksek kontrastlı nötr beyaz paneller, Royal Blue (#2563eb), Cyan vurgular ve Poppins fontu",
-    previewBg: "#ffffff",
-    previewText: "#09090b",
-    previewAccent: "#2563eb",
-    previewFont: "Poppins, sans-serif",
-    appearance: {
-      enableProgramTheme: true,
-      programBgColor: "#ffffff",
-      programTextColor: "#09090b",
-      programFont: "Poppins, sans-serif",
-      gridHeaderBgColor: "#f4f4f5",
-      gridBgColor: "#ffffff",
-      gridFont: "Poppins, sans-serif",
-      windowBgColor: "#ffffff",
-      windowTextColor: "#09090b",
-      windowFocusColor: "#2563eb",
-
-      enableMenuTheme: true,
-      menuBgColor: "#09090b",
-      menuSelectedBgColor: "#2563eb",
-      menuFont: "Poppins, sans-serif",
-      menuHeaderBgColor: "#18181b",
-      menuHeaderFont: "Poppins, sans-serif",
-      menuBackdropColor: "#09090b",
-
-      enableBuyHeaderTheme: true,
-      buyHeaderBgColor: "#ecfeff",
-      buyHeaderTextColor: "#0891b2",
-
-      enableSellHeaderTheme: true,
-      sellHeaderBgColor: "#eff6ff",
-      sellHeaderTextColor: "#1d4ed8",
-    },
-  },
-
-  // 5. KAR BEYAZI & ZARİF ALTIN
+  // 2. KAR BEYAZI & ZARİF ALTIN
   {
     id: "snow-white-gold",
     name: "Kar Beyazı & Zarif Altın",
@@ -247,48 +124,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     },
   },
 
-  // 6. LÜKS GECE & ALTIN VARAK
-  {
-    id: "midnight-gold",
-    name: "Lüks Gece & Altın Varak",
-    badge: "Popüler Koyu",
-    badgeColor: "warning",
-    description: "Koyu gece şıklığı, altın sarısı vurgular ve çağdaş lüks tipografi",
-    previewBg: "#0f172a",
-    previewText: "#f8fafc",
-    previewAccent: "#eab308",
-    previewFont: "Outfit, Inter, sans-serif",
-    appearance: {
-      enableProgramTheme: true,
-      programBgColor: "#0f172a",
-      programTextColor: "#f8fafc",
-      programFont: "Outfit, Inter, sans-serif",
-      gridHeaderBgColor: "#1e293b",
-      gridBgColor: "#0f172a",
-      gridFont: "Outfit, sans-serif",
-      windowBgColor: "#1e293b",
-      windowTextColor: "#f8fafc",
-      windowFocusColor: "#eab308",
-
-      enableMenuTheme: true,
-      menuBgColor: "#090d16",
-      menuSelectedBgColor: "#eab308",
-      menuFont: "Outfit, sans-serif",
-      menuHeaderBgColor: "#020617",
-      menuHeaderFont: "Outfit, sans-serif",
-      menuBackdropColor: "#0f172a",
-
-      enableBuyHeaderTheme: true,
-      buyHeaderBgColor: "#1e293b",
-      buyHeaderTextColor: "#38bdf8",
-
-      enableSellHeaderTheme: true,
-      sellHeaderBgColor: "#1e293b",
-      sellHeaderTextColor: "#fbbf24",
-    },
-  },
-
-  // 7. KURUMSAL AYDINLIK & KRALİYET MAVİSİ
+  // 3. KURUMSAL AYDINLIK & KRALİYET MAVİSİ
   {
     id: "corporate-blue",
     name: "Kurumsal Aydınlık & Kraliyet Mavisi",
@@ -326,47 +162,6 @@ export const THEME_PRESETS: ThemePreset[] = [
       enableSellHeaderTheme: true,
       sellHeaderBgColor: "#fef3c7",
       sellHeaderTextColor: "#b45309",
-    },
-  },
-
-  // 8. ZÜMRÜT YEŞİLİ & SARRAFİYE
-  {
-    id: "emerald-kuyumcu",
-    name: "Zümrüt Yeşili & Sarrafiye",
-    badge: "Sektörel Özel",
-    badgeColor: "success",
-    description: "Kuyumculuk ve sarrafiye sektörü için özel zümrüt yeşili paleti",
-    previewBg: "#f0fdf4",
-    previewText: "#064e3b",
-    previewAccent: "#059669",
-    previewFont: "Montserrat, sans-serif",
-    appearance: {
-      enableProgramTheme: true,
-      programBgColor: "#f0fdf4",
-      programTextColor: "#064e3b",
-      programFont: "Montserrat, sans-serif",
-      gridHeaderBgColor: "#dcfce7",
-      gridBgColor: "#ffffff",
-      gridFont: "Montserrat, sans-serif",
-      windowBgColor: "#ffffff",
-      windowTextColor: "#064e3b",
-      windowFocusColor: "#059669",
-
-      enableMenuTheme: true,
-      menuBgColor: "#064e3b",
-      menuSelectedBgColor: "#10b981",
-      menuFont: "Montserrat, sans-serif",
-      menuHeaderBgColor: "#022c22",
-      menuHeaderFont: "Montserrat, sans-serif",
-      menuBackdropColor: "#064e3b",
-
-      enableBuyHeaderTheme: true,
-      buyHeaderBgColor: "#dcfce7",
-      buyHeaderTextColor: "#065f46",
-
-      enableSellHeaderTheme: true,
-      sellHeaderBgColor: "#fef9c3",
-      sellHeaderTextColor: "#854d0e",
     },
   },
 
@@ -452,10 +247,10 @@ export const THEME_PRESETS: ThemePreset[] = [
     },
   },
 
-  // 11. OLED SAF SİYAH & MİNİMALİST
+  // 6. OLED SAF SİYAH & KOYU MOD
   {
     id: "oled-charcoal",
-    name: "OLED Saf Siyah & Minimalist",
+    name: "OLED Saf Siyah & Koyu Mod",
     badge: "OLED Dark",
     badgeColor: "dark",
     description: "Yüksek kontrast, ultra net yazı ve minimum göz yorgunluğu",
