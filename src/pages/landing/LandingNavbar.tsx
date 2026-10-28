@@ -21,7 +21,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
 
-      const sections = ["home", "cozumler", "neden-biz", "avantajlar", "yorumlar", "iletisim"];
+      const sections = ["home", "cozumler", "neden-biz", "avantajlar", "kampanya", "yorumlar", "iletisim"];
       const scrollPos = window.scrollY + 120;
 
       for (const section of sections) {
@@ -46,6 +46,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
     { label: "Çözümler", targetId: "cozumler" },
     { label: "Neden Biz?", targetId: "neden-biz" },
     { label: "Özellikler", targetId: "avantajlar" },
+    { label: "Kampanya", targetId: "kampanya" },
     { label: "Yorumlar", targetId: "yorumlar" },
     { label: "İletişim", targetId: "iletisim" },
   ];

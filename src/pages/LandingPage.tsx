@@ -27,6 +27,9 @@ import {
   IconBrandInstagram,
   IconBrandTwitter,
   IconBrandLinkedin,
+  IconX,
+  IconZoomIn,
+  IconDownload,
 } from "@tabler/icons-react";
 import LandingNavbar from "./landing/LandingNavbar";
 import IletisimFormu from "./landing/IletisimFormu";
@@ -37,6 +40,7 @@ import "../styles/LandingFurni.css";
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [activeTestiIndex, setActiveTestiIndex] = useState(0);
+  const [isBrosurModalOpen, setIsBrosurModalOpen] = useState(false);
 
   const testimonials = [
     {
@@ -141,8 +145,11 @@ export const LandingPage: React.FC = () => {
               <div className="furni-product-item">
                 <div className="furni-product-thumbnail">
                   <img
-                    src="https://images.unsplash.com/photo-1556742049-0a67e5572263?w=500&h=400&fit=crop&auto=format"
+                    src="https://images.unsplash.com/photo-1556740758-90de374c12ad?w=500&h=400&fit=crop&auto=format"
                     alt="Perakende Satış Vezne POS"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-6.jpeg";
+                    }}
                   />
                 </div>
                 <h3 className="furni-product-title">Perakende Vezne POS</h3>
@@ -157,6 +164,9 @@ export const LandingPage: React.FC = () => {
                   <img
                     src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=500&h=400&fit=crop&auto=format"
                     alt="Zebra Termal Kuyruk Etiketi"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-4.jpeg";
+                    }}
                   />
                 </div>
                 <h3 className="furni-product-title">Zebra Kuyruk Etiketi</h3>
@@ -171,6 +181,9 @@ export const LandingPage: React.FC = () => {
                   <img
                     src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&h=400&fit=crop&auto=format"
                     alt="Canlı 4K TV Vitrin Panosu"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-2.jpeg";
+                    }}
                   />
                 </div>
                 <h3 className="furni-product-title">4K TV Canlı Pano</h3>
@@ -245,6 +258,9 @@ export const LandingPage: React.FC = () => {
                   src="https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=700&h=700&fit=crop&auto=format"
                   alt="Kuyumcu Vitrini ve Mücevherat"
                   className="img-fluid w-100"
+                  onError={(e) => {
+                    e.currentTarget.src = "/images/hero/hero-1.jpeg";
+                  }}
                 />
               </div>
             </div>
@@ -264,18 +280,27 @@ export const LandingPage: React.FC = () => {
                   <img
                     src="https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?w=600&h=600&fit=crop&auto=format"
                     alt="Altın Atölyesi ve Tasarım"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-5.jpeg";
+                    }}
                   />
                 </div>
                 <div className="furni-grid-2">
                   <img
                     src="https://images.unsplash.com/photo-1610375461246-83df859d849d?w=400&h=300&fit=crop&auto=format"
                     alt="Külçe Altın ve Has Kasa"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-7.jpeg";
+                    }}
                   />
                 </div>
                 <div className="furni-grid-3">
                   <img
                     src="https://images.unsplash.com/photo-1450133064473-71024230f91b?w=450&h=400&fit=crop&auto=format"
                     alt="GİB E-Fatura ve Muhasebe"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-12.jpeg";
+                    }}
                   />
                 </div>
               </div>
@@ -332,6 +357,9 @@ export const LandingPage: React.FC = () => {
                   src="https://images.unsplash.com/photo-1610375461246-83df859d849d?w=100&h=100&fit=crop&auto=format"
                   alt="Cari & Has Emanet"
                   style={{ width: "70px", height: "70px", borderRadius: "12px", objectFit: "cover" }}
+                  onError={(e) => {
+                    e.currentTarget.src = "/images/hero/hero-7.jpeg";
+                  }}
                 />
                 <div>
                   <h5 className="fw-bold mb-1 text-dark" style={{ fontSize: "1rem" }}>Cari & Has Emanet</h5>
@@ -347,6 +375,9 @@ export const LandingPage: React.FC = () => {
                   src="https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=100&h=100&fit=crop&auto=format"
                   alt="E-Banka & Sanal POS"
                   style={{ width: "70px", height: "70px", borderRadius: "12px", objectFit: "cover" }}
+                  onError={(e) => {
+                    e.currentTarget.src = "/images/hero/hero-9.jpeg";
+                  }}
                 />
                 <div>
                   <h5 className="fw-bold mb-1 text-dark" style={{ fontSize: "1rem" }}>E-Banka & 3D Tahsilat</h5>
@@ -359,15 +390,219 @@ export const LandingPage: React.FC = () => {
             <div className="col-12 col-md-4">
               <div className="d-flex align-items-center gap-3 p-3 rounded-4 bg-light border">
                 <img
-                  src="https://images.unsplash.com/photo-1556742049-0a67e5572263?w=100&h=100&fit=crop&auto=format"
+                  src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=100&h=100&fit=crop&auto=format"
                   alt="Çoklu Kasa & Şube"
                   style={{ width: "70px", height: "70px", borderRadius: "12px", objectFit: "cover" }}
+                  onError={(e) => {
+                    e.currentTarget.src = "/images/hero/hero-3.jpeg";
+                  }}
                 />
                 <div>
                   <h5 className="fw-bold mb-1 text-dark" style={{ fontSize: "1rem" }}>Çoklu Kasa & Şube</h5>
                   <p className="small text-secondary mb-1">Tüm şubelerinizin kasa hareketlerini tek merkezden izleyin.</p>
                   <a href="#cozumler" className="small fw-bold text-dark text-decoration-none" style={{ color: "#3b5d50" }}>İncele →</a>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── KAMPANYA & PAKETLER BÖLÜMÜ (Resmi Broşür & Paket Karşılaştırması) ─── */}
+      <section className="furni-section-pad" id="kampanya" style={{ background: "linear-gradient(180deg, #f8fbf9 0%, #edf4f0 100%)" }}>
+        <div className="container" style={{ maxWidth: "1280px" }}>
+          {/* Bölüm Başlığı */}
+          <div className="text-center mb-5">
+            <span
+              className="badge px-3 py-2 fw-bold text-uppercase rounded-pill mb-3 shadow-xs"
+              style={{
+                backgroundColor: "#f9bf29",
+                color: "#2c4c41",
+                fontSize: "0.85rem",
+                letterSpacing: "1px",
+              }}
+            >
+              🔥 Sınırlı Süreli Kampanya
+            </span>
+            <h2 className="fw-bold mb-3" style={{ fontSize: "2.3rem", color: "#2f2f2f" }}>
+              İşinizi Büyütmenin En Akıllı Bulut Yolu
+            </h2>
+            <p className="text-secondary mx-auto mb-0" style={{ maxWidth: "780px", fontSize: "1.05rem" }}>
+              Likya ERP ile satıştan stok yönetimine, karar almaktan raporlamaya kadar tüm süreçler tek ekranda.
+              Kuyumculara özel avantajlı kampanya fiyatları ve paket karşılaştırması aşağıda yer almaktadır.
+            </p>
+          </div>
+
+          {/* Kampanya Broşürü Vitrin Kartı */}
+          <div className="card border-0 shadow-lg rounded-4 overflow-hidden mb-5 bg-white">
+            <div className="position-relative">
+              <img
+                src="/images/kampanya/likya-erp-kampanya-brosur.jpg"
+                alt="Likya ERP Sınırlı Süreli Kampanya ve Paket Karşılaştırması Broşürü"
+                className="img-fluid w-100"
+                style={{
+                  cursor: "zoom-in",
+                  display: "block",
+                  maxHeight: "750px",
+                  objectFit: "contain",
+                  backgroundColor: "#0d1b2a",
+                }}
+                onClick={() => setIsBrosurModalOpen(true)}
+              />
+              <div
+                className="p-3 p-md-4 d-flex flex-wrap align-items-center justify-content-between gap-3 text-white"
+                style={{
+                  background: "linear-gradient(180deg, #132435 0%, #0d1b2a 100%)",
+                }}
+              >
+                <div>
+                  <div className="fw-bold fs-5 text-warning mb-1 d-flex align-items-center gap-2">
+                    <span>Likya ERP Resmi Kampanya & Modül Broşürü</span>
+                    <span className="badge bg-warning text-dark px-2 py-0.5 rounded-pill" style={{ fontSize: "11px" }}>
+                      2026 Güncel
+                    </span>
+                  </div>
+                  <div className="small text-light opacity-75">
+                    Detaylı incelemek ve tam boyutta görüntülemek için görsele veya "Büyüt" butonuna tıklayabilirsiniz.
+                  </div>
+                </div>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsBrosurModalOpen(true)}
+                    className="btn btn-warning fw-bold px-3 py-2 rounded-pill shadow-sm d-flex align-items-center gap-1.5"
+                    style={{ fontSize: "0.9rem" }}
+                  >
+                    <IconZoomIn size={18} />
+                    Broşürü Büyüt
+                  </button>
+                  <a
+                    href="https://wa.me/905326732622?text=Merhaba,%20Likya%20ERP%20kampanya%20paketleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-success fw-bold px-3 py-2 rounded-pill shadow-sm d-flex align-items-center gap-1.5"
+                    style={{ backgroundColor: "#25D366", borderColor: "#25D366", fontSize: "0.9rem" }}
+                  >
+                    <IconBrandWhatsapp size={18} />
+                    WhatsApp: 0532 673 26 22
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Hızlı Paket Kartları (Broşürle Birebir Uyumlu) */}
+          <div className="row g-4 justify-content-center">
+            {/* Kuyum Paketi */}
+            <div className="col-12 col-md-6 col-lg-5">
+              <div
+                className="h-100 p-4 p-lg-5 rounded-4 bg-white shadow-sm border position-relative d-flex flex-column justify-content-between"
+                style={{ borderColor: "#e2e8f0" }}
+              >
+                <div>
+                  <div className="small fw-bold text-uppercase text-muted mb-1" style={{ letterSpacing: "1px" }}>
+                    LİKYA ERP
+                  </div>
+                  <h3 className="fw-bold fs-4 text-dark mb-2">Kuyum Paketi</h3>
+                  <div className="d-flex align-items-baseline gap-2 mb-3">
+                    <span className="text-muted text-decoration-line-through fs-5">$3.500</span>
+                    <span className="fw-bolder" style={{ fontSize: "2.4rem", color: "#3b5d50" }}>
+                      $2.480
+                    </span>
+                    <span className="text-secondary small fw-semibold">+ KDV</span>
+                  </div>
+                  <div className="badge bg-light text-secondary border px-3 py-2 rounded-pill mb-4" style={{ fontSize: "0.82rem" }}>
+                    RFID ve e-Banka hariç tüm temel modüller
+                  </div>
+
+                  <ul className="list-unstyled d-flex flex-column gap-2 mb-4" style={{ fontSize: "0.93rem" }}>
+                    {[
+                      "Kuyumculuk ve Hızlı Satış İşlemleri",
+                      "Stok ve Vitrin Yönetimi",
+                      "Cari, Kasa ve Raporlama",
+                      "Hassas Terazi ve Barkod Entegrasyonu",
+                      "e-Fatura, e-Arşiv ve e-Gider Pusulası",
+                      "MASAK Müşteri ve Kimlik İşlemleri",
+                      "Çoklu Şube Yönetimi",
+                    ].map((feature, i) => (
+                      <li key={i} className="d-flex align-items-center gap-2 text-dark">
+                        <IconCheck size={18} className="text-success flex-shrink-0" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <a
+                  href="https://wa.me/905326732622?text=Merhaba,%20Kuyum%20Paketi%20($2.480)%20i%C3%A7in%20bilgi%20ve%20kurulum%20teklifi%20almak%20istiyorum."
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-outline-dark fw-bold w-100 py-2.5 rounded-pill d-flex align-items-center justify-content-center gap-2"
+                >
+                  <span>Bu Paketi Seç</span>
+                  <IconArrowRight size={16} />
+                </a>
+              </div>
+            </div>
+
+            {/* Kuyum Pro Paketi (En Kapsamlı) */}
+            <div className="col-12 col-md-6 col-lg-5">
+              <div
+                className="h-100 p-4 p-lg-5 rounded-4 bg-white shadow border border-2 position-relative d-flex flex-column justify-content-between"
+                style={{ borderColor: "#f9bf29" }}
+              >
+                <div
+                  className="position-absolute top-0 end-0 translate-middle-y me-4 badge px-3 py-1.5 fw-bold rounded-pill shadow-xs"
+                  style={{ backgroundColor: "#f9bf29", color: "#2c4c41", fontSize: "0.82rem" }}
+                >
+                  EN KAPSAMLI ÇÖZÜM
+                </div>
+
+                <div>
+                  <div className="small fw-bold text-uppercase text-muted mb-1" style={{ letterSpacing: "1px" }}>
+                    LİKYA ERP
+                  </div>
+                  <h3 className="fw-bold fs-4 text-dark mb-2">Kuyum Pro Paketi</h3>
+                  <div className="d-flex align-items-baseline gap-2 mb-3">
+                    <span className="text-muted text-decoration-line-through fs-5">$6.000</span>
+                    <span className="fw-bolder" style={{ fontSize: "2.4rem", color: "#c88f18" }}>
+                      $3.980
+                    </span>
+                    <span className="text-secondary small fw-semibold">+ KDV</span>
+                  </div>
+                  <div className="badge bg-warning bg-opacity-20 text-dark border border-warning px-3 py-2 rounded-pill mb-4" style={{ fontSize: "0.82rem" }}>
+                    🌟 Tüm özellikler & modüller sınırsız açık
+                  </div>
+
+                  <ul className="list-unstyled d-flex flex-column gap-2 mb-4" style={{ fontSize: "0.93rem" }}>
+                    {[
+                      "Kuyumculuk ve Hızlı Satış İşlemleri",
+                      "Stok ve Vitrin Yönetimi",
+                      "Cari, Kasa ve Raporlama",
+                      "Hassas Terazi ve Barkod Entegrasyonu",
+                      "e-Fatura, e-Arşiv ve e-Gider Pusulası",
+                      "MASAK Müşteri ve Kimlik İşlemleri",
+                      "Çoklu Şube Yönetimi",
+                      "⚡ RFID Stok Sayım Sistemi (Saniyeler içinde toplu sayım)",
+                      "💳 e-Banka & Sanal POS Entegrasyonu",
+                    ].map((feature, i) => (
+                      <li key={i} className="d-flex align-items-center gap-2 text-dark fw-semibold">
+                        <IconCheck size={18} className="text-warning flex-shrink-0" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <a
+                  href="https://wa.me/905326732622?text=Merhaba,%20Kuyum%20Pro%20Paketi%20($3.980)%20i%C3%A7in%20bilgi%20ve%20kurulum%20teklifi%20almak%20istiyorum."
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="furni-btn-gold w-100 py-2.5 text-center text-decoration-none d-flex align-items-center justify-content-center gap-2"
+                >
+                  <span>Pro Paketi Seç</span>
+                  <IconArrowRight size={16} />
+                </a>
               </div>
             </div>
           </div>
@@ -457,6 +692,9 @@ export const LandingPage: React.FC = () => {
                   <img
                     src="https://images.unsplash.com/photo-1450133064473-71024230f91b?w=600&h=400&fit=crop&auto=format"
                     alt="3065 Sayılı KDV Özel Matrahı"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-10.jpeg";
+                    }}
                   />
                 </div>
                 <div className="p-4">
@@ -477,6 +715,9 @@ export const LandingPage: React.FC = () => {
                   <img
                     src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&h=400&fit=crop&auto=format"
                     alt="Kuyruk Etiketleme Standartları"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-11.jpeg";
+                    }}
                   />
                 </div>
                 <div className="p-4">
@@ -497,6 +738,9 @@ export const LandingPage: React.FC = () => {
                   <img
                     src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&h=400&fit=crop&auto=format"
                     alt="4K TV Vitrin Panosu"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/hero/hero-13.jpeg";
+                    }}
                   />
                 </div>
                 <div className="p-4">
@@ -705,6 +949,68 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      {/* ─── KAMPANYA BROŞÜRÜ LIGHTBOX / BÜYÜK MODAL ─── */}
+      {isBrosurModalOpen && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3 p-md-4"
+          style={{
+            backgroundColor: "rgba(10, 20, 30, 0.94)",
+            zIndex: 9999,
+            backdropFilter: "blur(8px)",
+          }}
+          onClick={() => setIsBrosurModalOpen(false)}
+        >
+          <div
+            className="position-relative d-flex flex-column align-items-center"
+            style={{ maxWidth: "1240px", width: "100%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Kapat Butonu */}
+            <button
+              type="button"
+              onClick={() => setIsBrosurModalOpen(false)}
+              className="btn btn-light position-absolute top-0 end-0 m-2 rounded-circle d-flex align-items-center justify-content-center p-0 shadow-lg"
+              style={{ width: "42px", height: "42px", zIndex: 10 }}
+              aria-label="Kapat"
+            >
+              <IconX size={22} />
+            </button>
+
+            {/* Broşür Görseli */}
+            <div className="rounded-4 overflow-hidden shadow-2xl border border-secondary border-opacity-25 bg-dark">
+              <img
+                src="/images/kampanya/likya-erp-kampanya-brosur.jpg"
+                alt="Likya ERP Resmi Kampanya Broşürü"
+                className="img-fluid"
+                style={{ maxHeight: "82vh", objectFit: "contain", width: "100%" }}
+              />
+            </div>
+
+            {/* Alt İşlem Butonları */}
+            <div className="d-flex flex-wrap justify-content-center align-items-center gap-3 mt-3">
+              <a
+                href="/images/kampanya/likya-erp-kampanya-brosur.jpg"
+                download="Likya-ERP-Kampanya-Brosuru.jpg"
+                className="btn btn-outline-light rounded-pill px-4 py-2 small fw-bold d-flex align-items-center gap-2"
+              >
+                <IconDownload size={16} />
+                Broşürü Cihazınıza İndirin
+              </a>
+              <a
+                href="https://wa.me/905326732622?text=Merhaba,%20Likya%20ERP%20kampanya%20bro%C5%9F%C3%BCr%C3%BCndeki%20paketler%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-success rounded-pill px-4 py-2 small fw-bold d-flex align-items-center gap-2"
+                style={{ backgroundColor: "#25D366", borderColor: "#25D366" }}
+              >
+                <IconBrandWhatsapp size={18} />
+                WhatsApp: 0532 673 26 22
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
