@@ -8571,6 +8571,7 @@ export const DovizFisiPage: React.FC = () => {
       <DovizTeklifTaniModal
         show={showTeklifTaniModal}
         onHide={() => setShowTeklifTaniModal(false)}
+        fisId={fisId}
         tip={tip}
         tarih={tarih}
         saat={saat}
@@ -8618,6 +8619,8 @@ export const DovizFisiPage: React.FC = () => {
         geldigiUlke={detayUyruk || detayUlke || ""}
         vezneKod={vezneKod || vezneList.find((v) => v.id === vezneId)?.kod || ""}
         vezneAd={vezneList.find((v) => v.id === vezneId)?.ad || vezneAd || ""}
+        vezne={vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null)}
+        kullaniciAdi={user?.fullName || user?.username || "Kasiyer"}
         companyDefinitions={companyDefinitions}
         firmaVergiDairesi={
           lookupData.vergiDairesiList?.find((v: any) => v.id === companyDefinitions?.VERGI_DAIRESI_ID)?.ad ||
