@@ -246,47 +246,6 @@ export const THEME_PRESETS: ThemePreset[] = [
       sellHeaderTextColor: "#9a3412",
     },
   },
-
-  // 6. OLED SAF SİYAH & KOYU MOD
-  {
-    id: "oled-charcoal",
-    name: "OLED Saf Siyah & Koyu Mod",
-    badge: "OLED Dark",
-    badgeColor: "dark",
-    description: "Yüksek kontrast, ultra net yazı ve minimum göz yorgunluğu",
-    previewBg: "#121212",
-    previewText: "#ffffff",
-    previewAccent: "#38bdf8",
-    previewFont: "Poppins, sans-serif",
-    appearance: {
-      enableProgramTheme: true,
-      programBgColor: "#121212",
-      programTextColor: "#ffffff",
-      programFont: "Poppins, sans-serif",
-      gridHeaderBgColor: "#1e1e1e",
-      gridBgColor: "#181818",
-      gridFont: "Poppins, sans-serif",
-      windowBgColor: "#1e1e1e",
-      windowTextColor: "#ffffff",
-      windowFocusColor: "#38bdf8",
-
-      enableMenuTheme: true,
-      menuBgColor: "#0a0a0a",
-      menuSelectedBgColor: "#38bdf8",
-      menuFont: "Poppins, sans-serif",
-      menuHeaderBgColor: "#000000",
-      menuHeaderFont: "Poppins, sans-serif",
-      menuBackdropColor: "#121212",
-
-      enableBuyHeaderTheme: true,
-      buyHeaderBgColor: "#1e1e1e",
-      buyHeaderTextColor: "#38bdf8",
-
-      enableSellHeaderTheme: true,
-      sellHeaderBgColor: "#1e1e1e",
-      sellHeaderTextColor: "#f59e0b",
-    },
-  },
 ];
 
 /**
