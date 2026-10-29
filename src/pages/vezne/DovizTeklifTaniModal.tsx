@@ -3,24 +3,17 @@ import { Modal, Button, Row, Col, Spinner, Badge, Alert } from "react-bootstrap"
 import {
   IconPrinter,
   IconX,
-  IconUpload,
-  IconTrash,
-  IconDeviceFloppy,
   IconId,
   IconFileText,
-  IconCamera,
   IconCheck,
-  IconCrop,
 } from "@tabler/icons-react";
 import QRCode from "qrcode";
-import { CariService } from "../../services/cariService";
+import { CariService, CariKartItem } from "../../services/cariService";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { tutarYaziylaTr } from "../../utils/tutarYaziyla";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { useAuth } from "../../context/AuthContext";
 import { triggerSilentPrint } from "../../services/silentPrintService";
-import { ImageCropperModal } from "../../components/common/ImageCropperModal";
-import { autoCropIdCard } from "../../utils/imageCropUtils";
 import { sarrafFisHtml, dovizFisHtml, FisHtml } from "../../utils/belgeSablon/fisCikti";
 
 const formatNumberTr = (val: number, decimals: number = 2) => {
@@ -197,21 +190,16 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
   const [printSuccessMsg, setPrintSuccessMsg] = useState<string | null>(null);
 
-  // Kimlik Fotoğrafları (Ön ve Arka Yüz)
+  // Kimlik Fotoğrafları (Kayıtlı Cari Karttan getirilir)
   const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
   const [backPhoto, setBackPhoto] = useState<string | null>(null);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState<boolean>(false);
-  const [isSavingToCari, setIsSavingToCari] = useState<boolean>(false);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
-
-  // Fotoğraf Kırpma (Cropper) Durumu
-  const [cropperTarget, setCropperTarget] = useState<"front" | "back" | null>(null);
 
   // Müşteri Tanı Formu alanlarının sıfırlanması için key ve düzenleme yardımcıları
   const [taniFormResetKey, setTaniFormResetKey] = useState<number>(0);
 
-  // Müşteri Tanı Formu Alanları (Müşteri bilgisi varsa otomatik doldurulur, kullanıcı düzenleyebilir)
+  // Müşteri Tanı Formu Alanları (Kayıtlı cari kart varsa otomatik doldurulur)
   const [taniData, setTaniData] = useState({
     adSoyad: "",
     dogumTarihi: "",
@@ -229,9 +217,13 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   const [thermalReceiptHeight, setThermalReceiptHeight] = useState<number>(0);
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState<boolean>(false);
 
-  // Müşteri bilgisi varsa otomatik doldur (Cari Kart veya fiş detayları)
+  // Müşteri bilgisi ve kayıtlı cari kart kontrolü (TC Kimlik varsa gösterilir, yoksa tekrar yükleme dayatılmaz)
   useEffect(() => {
     if (!show) return;
+
+    // Önceki müşteriden kalan fotoğrafları sıfırla
+    setFrontPhoto(null);
+    setBackPhoto(null);
 
     const buildAdres = (adr?: string, ilce?: string, il?: string) => {
       const parts = [adr?.trim(), ilce?.trim(), il?.trim()].filter(Boolean);
@@ -239,8 +231,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     };
 
     const buildKimlikTuru = (tckn?: string, pasaport?: string) => {
-      if (pasaport?.trim()) return `PASAPORT: ${pasaport.trim()}`;
-      if (tckn?.trim()) return `T.C. KİMLİK KARTI / ${tckn.trim()}`;
+      const cleanPass = cleanValue(pasaport);
+      const cleanTc = cleanValue(tckn);
+      if (cleanPass) return `PASAPORT: ${cleanPass}`;
+      if (cleanTc) return `T.C. KİMLİK KARTI / ${cleanTc}`;
       return "";
     };
 
@@ -258,27 +252,76 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
 
     setTaniData(initial);
 
-    // Cari kart id varsa detayları sunucudan da sorgula ve eksik alanları tamamla
-    if (cariKartId && cariKartId > 0) {
-      CariService.getCariKartById(cariKartId)
-        .then((cari) => {
-          if (!cari) return;
-          setTaniData((prev) => ({
-            adSoyad: prev.adSoyad || cleanValue(cari.ad) || cleanValue(cari.yetkiliKisi),
-            dogumTarihi: prev.dogumTarihi || formatDateTr(cari.dogumTarihi),
-            dogumYeri: prev.dogumYeri || cleanValue(cari.dogumYeri),
-            tcKimlikNo: prev.tcKimlikNo || cleanValue(cari.vergiKimlikNo),
-            kimlikTuruNo:
-              prev.kimlikTuruNo ||
-              buildKimlikTuru(cleanValue(cari.vergiKimlikNo), cleanValue(cari.pasaportNo)),
-            uyruk: prev.uyruk || (cleanValue(cari.vergiKimlikNo) ? "T.C." : ""),
-            adres: prev.adres || cleanValue(cari.adres),
-            meslek: prev.meslek || "",
-            telefon: prev.telefon || cleanValue(cari.telefon),
-          }));
-        })
-        .catch(() => {});
-    }
+    let isMounted = true;
+
+    const loadCariDetails = async () => {
+      let targetCari: CariKartItem | null = null;
+
+      // 1. Doğrudan Cari Kart ID ile sorgula
+      if (cariKartId && cariKartId > 0) {
+        try {
+          targetCari = await CariService.getCariKartById(cariKartId);
+        } catch {}
+      }
+
+      // 2. Cari Kart ID yoksa ama vergiKimlikNo veya unvan varsa kayıtlı kartlar arasında ara
+      if (!targetCari && (vergiKimlikNo || unvan)) {
+        try {
+          const list = await CariService.getCariKartlar();
+          const cleanVkn = cleanValue(vergiKimlikNo).replace(/\D/g, "");
+          if (cleanVkn) {
+            targetCari = list.find((c) => (c.vergiKimlikNo || "").replace(/\D/g, "") === cleanVkn) || null;
+          }
+          if (!targetCari && unvan && unvan.trim() && unvan.trim().toUpperCase() !== "MUHTELİF MÜŞTERİ") {
+            targetCari = list.find((c) => (c.ad || "").trim().toLowerCase() === unvan.trim().toLowerCase()) || null;
+          }
+        } catch {}
+      }
+
+      if (!isMounted || !targetCari) return;
+
+      const effectiveVkn = cleanValue(targetCari.vergiKimlikNo) || cleanValue(vergiKimlikNo);
+      const effectivePasaport = cleanValue(targetCari.pasaportNo) || cleanValue(detayPasaportNo);
+
+      setTaniData((prev) => ({
+        adSoyad: cleanValue(targetCari?.ad) || cleanValue(targetCari?.yetkiliKisi) || prev.adSoyad,
+        dogumTarihi: formatDateTr(targetCari?.dogumTarihi) || prev.dogumTarihi,
+        dogumYeri: cleanValue(targetCari?.dogumYeri) || prev.dogumYeri,
+        tcKimlikNo: effectiveVkn || prev.tcKimlikNo,
+        kimlikTuruNo: buildKimlikTuru(effectiveVkn || prev.tcKimlikNo, effectivePasaport) || prev.kimlikTuruNo,
+        uyruk: (effectiveVkn ? "T.C." : "") || prev.uyruk,
+        adres: cleanValue(targetCari?.adres) || prev.adres,
+        meslek: prev.meslek || "",
+        telefon: cleanValue(targetCari?.telefon) || prev.telefon,
+      }));
+
+      // Kayıtlı cari kartın önceden yüklenmiş kimlik fotoğrafları varsa otomatik getir
+      if (targetCari.id) {
+        setIsLoadingPhotos(true);
+        try {
+          const res = await CariService.getCariFotograf(targetCari.id);
+          if (!isMounted) return;
+          if (res.fotograflar && res.fotograflar.length > 0) {
+            const f1 = res.fotograflar[0]?.dataUrl || (res.fotograflar[0] as any)?.base64 || null;
+            const f2 = res.fotograflar[1]?.dataUrl || (res.fotograflar[1] as any)?.base64 || null;
+            if (f1) setFrontPhoto(f1);
+            if (f2) setBackPhoto(f2);
+          } else if (res.fotograf) {
+            const f = res.fotograf.dataUrl || (res.fotograf as any)?.base64 || null;
+            if (f) setFrontPhoto(f);
+          }
+        } catch {}
+        finally {
+          if (isMounted) setIsLoadingPhotos(false);
+        }
+      }
+    };
+
+    loadCariDetails();
+
+    return () => {
+      isMounted = false;
+    };
   }, [
     show,
     cariKartId,
@@ -490,17 +533,6 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
 
   const activeCompDef = companyDefinitions || internalCompDef;
 
-  const frontInputRef = useRef<HTMLInputElement>(null);
-  const backInputRef = useRef<HTMLInputElement>(null);
-
-  // Kamera Çekim Modalı State
-  const [showCameraModal, setShowCameraModal] = useState<boolean>(false);
-  const [cameraTarget, setCameraTarget] = useState<"front" | "back">("front");
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Yazıcıları F9'daki gibi yükle
   useEffect(() => {
@@ -561,125 +593,6 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     return list;
   }, [systemPrinters, printers]);
 
-  // Kamera akışını durdur
-  const stopCameraStream = useCallback(() => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
-    }
-  }, [cameraStream]);
-
-  // Kamera Modalını Aç
-  const openCameraModal = async (target: "front" | "back") => {
-    setCameraTarget(target);
-    setShowCameraModal(true);
-    setCameraError(null);
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError("Tarayıcınız kamera erişimini desteklemiyor veya güvenli bağlantı (HTTPS/localhost) gereklidir.");
-        return;
-      }
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const vDevs = devices.filter((d) => d.kind === "videoinput");
-      setVideoDevices(vDevs);
-
-      const constraints: MediaStreamConstraints = {
-        video: selectedDeviceId
-          ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-          : { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setCameraStream(stream);
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      }, 150);
-    } catch (err: any) {
-      setCameraError("Kameraya erişilemedi: " + (err.message || "İzin verilmedi"));
-    }
-  };
-
-  const handleDeviceChange = async (devId: string) => {
-    setSelectedDeviceId(devId);
-    stopCameraStream();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: devId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      });
-      setCameraStream(stream);
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      }, 150);
-    } catch (err: any) {
-      setCameraError("Kamera değiştirilemedi: " + (err.message || ""));
-    }
-  };
-
-  const captureCameraPhoto = async () => {
-    if (!videoRef.current) return;
-    const video = videoRef.current;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    let base64 = canvas.toDataURL("image/jpeg", 0.92);
-
-    try {
-      base64 = await autoCropIdCard(base64);
-    } catch (err) {
-      console.warn("Otomatik kırpma atlandı:", err);
-    }
-
-    if (cameraTarget === "front") {
-      setFrontPhoto(base64);
-    } else {
-      setBackPhoto(base64);
-    }
-    stopCameraStream();
-    setShowCameraModal(false);
-  };
-
-  const closeCameraModal = () => {
-    stopCameraStream();
-    setShowCameraModal(false);
-  };
-
-  useEffect(() => {
-    if (!show) {
-      stopCameraStream();
-    }
-  }, [show, stopCameraStream]);
-
-  // Müşteri kartında önceden kayıtlı fotoğraflar varsa otomatik getir (Bir kere kaydedince tekrar sormaz)
-  useEffect(() => {
-    if (!show) return;
-    if (cariKartId) {
-      setIsLoadingPhotos(true);
-      CariService.getCariFotograf(cariKartId)
-        .then((res) => {
-          if (res.fotograflar && res.fotograflar.length > 0) {
-            const f1 = res.fotograflar[0]?.dataUrl || (res.fotograflar[0] as any)?.base64 || null;
-            const f2 = res.fotograflar[1]?.dataUrl || (res.fotograflar[1] as any)?.base64 || null;
-            if (f1) setFrontPhoto(f1);
-            if (f2) setBackPhoto(f2);
-          } else if (res.fotograf) {
-            const f = res.fotograf.dataUrl || (res.fotograf as any)?.base64 || null;
-            if (f) setFrontPhoto(f);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setIsLoadingPhotos(false));
-    }
-  }, [show, cariKartId]);
-
   // Karekod üretimi (Fişte ve Firma Tanımlarında ne varsa o kodlanır)
   useEffect(() => {
     if (!show) return;
@@ -701,79 +614,6 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
       .then((url) => setQrCodeDataUrl(url))
       .catch(() => {});
   }, [show, belgeNo, seriNo, tarih, vergiKimlikNo, sonToplam, tip, activeCompDef, lines, ettn]);
-
-  // Fotoğraf Yükleme İşleyicisi (Dosya Seçimi)
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, isFront: boolean) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      let b64 = event.target?.result as string;
-      if (b64) {
-        try {
-          b64 = await autoCropIdCard(b64);
-        } catch (err) {
-          console.warn("Otomatik kırpma atlandı:", err);
-        }
-        if (isFront) {
-          setFrontPhoto(b64);
-        } else {
-          setBackPhoto(b64);
-        }
-      }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  // Kırpma Tamamlandığında
-  const handleCropDone = (croppedBase64: string) => {
-    if (cropperTarget === "front") {
-      setFrontPhoto(croppedBase64);
-    } else if (cropperTarget === "back") {
-      setBackPhoto(croppedBase64);
-    }
-    setCropperTarget(null);
-  };
-
-  // Yüklenen Fotoğrafları Müşteri Kartına Kaydet (Cari Kart Id varsa)
-  const handleSavePhotosToCari = async () => {
-    if (!cariKartId) {
-      alert("Fotoğrafları cari karta bağlayabilmek için geçerli bir kayıtlı müşteri seçilmelidir.");
-      return;
-    }
-    if (!frontPhoto && !backPhoto) {
-      alert("Lütfen önce kaydedilecek kimlik ön veya arka yüz fotoğrafı yükleyiniz.");
-      return;
-    }
-
-    try {
-      setIsSavingToCari(true);
-      if (frontPhoto) {
-        await CariService.saveCariFotograf(cariKartId, {
-          base64: frontPhoto,
-          belgeTuru: 0,
-          dosyaAdi: "kimlik_on.jpg",
-          mimeTipi: "image/jpeg",
-        });
-      }
-      if (backPhoto) {
-        await CariService.saveCariFotograf(cariKartId, {
-          base64: backPhoto,
-          belgeTuru: 0,
-          dosyaAdi: "kimlik_arka.jpg",
-          mimeTipi: "image/jpeg",
-        });
-      }
-      setSaveSuccessMsg("✅ Kimlik fotoğrafları müşteri kartına kaydedildi.");
-      setTimeout(() => setSaveSuccessMsg(null), 4000);
-    } catch (err: any) {
-      alert("Fotoğraflar kaydedilirken hata oluştu: " + (err.message || err));
-    } finally {
-      setIsSavingToCari(false);
-    }
-  };
 
   // ══════════════════════════════════════════════════════════════════════════════
   // DOĞRUDAN VE SESSİZ YAZDIRMA (CHROME ÖNİZLEMESİ AÇILMAZ, DOĞRUDAN YAZICIYA GİDER)
@@ -1050,236 +890,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
             </Alert>
           )}
 
-          {/* Fotoğraf Yükleme ve Hızlı İşlem Paneli (Yazdırmada Gizlenir) */}
-          <div className="p-2.5 mb-3 bg-white border rounded-3 shadow-2xs d-print-none">
-            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2 pb-2 border-bottom">
-              <div className="d-flex align-items-center gap-2">
-                <IconId size={18} className="text-primary" />
-                <strong style={{ fontSize: "13px" }}>Müşteri Kimlik Fotoğrafları (Ön & Arka Yüz)</strong>
-                {isLoadingPhotos && <Spinner animation="border" size="sm" className="text-primary" />}
-              </div>
-              <div className="d-flex align-items-center gap-2">
-                {cariKartId && (
-                  <Button
-                    variant="outline-success"
-                    size="sm"
-                    className="d-flex align-items-center gap-1 fw-bold"
-                    style={{ fontSize: "12px" }}
-                    onClick={handleSavePhotosToCari}
-                    disabled={isSavingToCari || (!frontPhoto && !backPhoto)}
-                  >
-                    {isSavingToCari ? <Spinner animation="border" size="sm" /> : <IconDeviceFloppy size={14} />}
-                    <span>Kimlik Fotoğraflarını Müşteri Kartına Kaydet</span>
-                  </Button>
-                )}
-              </div>
-            </div>
 
-            {saveSuccessMsg && (
-              <Alert variant="success" className="py-1 px-2 mb-2" style={{ fontSize: "12px" }}>
-                {saveSuccessMsg}
-              </Alert>
-            )}
-
-            <Row className="g-2">
-              {/* Ön Yüz Yükleme */}
-              <Col md={6}>
-                <div
-                  className="p-2 border rounded-2 d-flex align-items-center justify-content-between"
-                  style={{ backgroundColor: frontPhoto ? "#f0fdf4" : "#f8fafc", minHeight: "65px" }}
-                >
-                  <div className="d-flex align-items-center gap-2">
-                    {frontPhoto ? (
-                      <div
-                        className="position-relative"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => setCropperTarget("front")}
-                        title="Fotoğrafı kırpmak için tıklayın"
-                      >
-                        <img
-                          src={frontPhoto}
-                          alt="Ön Yüz"
-                          style={{ width: "70px", height: "45px", objectFit: "cover", borderRadius: "4px", border: "1px solid #86efac" }}
-                        />
-                        <div
-                          className="position-absolute bottom-0 end-0 bg-dark bg-opacity-70 text-white rounded-circle p-0.5 d-flex align-items-center justify-content-center m-0.5"
-                          style={{ width: "16px", height: "16px" }}
-                        >
-                          <IconCrop size={10} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        className="d-flex align-items-center justify-content-center bg-light text-muted border rounded"
-                        style={{ width: "70px", height: "45px", fontSize: "10px" }}
-                      >
-                        Ön Yüz Yok
-                      </div>
-                    )}
-                    <div>
-                      <div className="fw-bold" style={{ fontSize: "12px" }}>
-                        1. Kimlik Ön Yüzü
-                      </div>
-                      <div className="text-muted" style={{ fontSize: "11px" }}>
-                        {frontPhoto ? "Fotoğraf yüklendi ✓" : "Dosyadan seçin veya kamerayla çekin"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    {frontPhoto && (
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        className="py-1 px-2 d-inline-flex align-items-center gap-1"
-                        style={{ fontSize: "11px" }}
-                        onClick={() => setCropperTarget("front")}
-                        title="Fotoğrafı kırp ve ayarla"
-                      >
-                        <IconCrop size={13} /> Kırp
-                      </Button>
-                    )}
-                    <Button
-                      variant={frontPhoto ? "outline-primary" : "primary"}
-                      size="sm"
-                      className="py-1 px-2 d-inline-flex align-items-center gap-1"
-                      style={{ fontSize: "11px" }}
-                      onClick={() => frontInputRef.current?.click()}
-                      title="Bilgisayardan dosya seç"
-                    >
-                      <IconUpload size={13} /> {frontPhoto ? "Dosyadan Değiştir" : "Dosyadan Seç"}
-                    </Button>
-                    <Button
-                      variant={frontPhoto ? "outline-info" : "info"}
-                      size="sm"
-                      className="py-1 px-2 text-white d-inline-flex align-items-center gap-1"
-                      style={{ fontSize: "11px", backgroundColor: "#0284c7", borderColor: "#0369a1" }}
-                      onClick={() => openCameraModal("front")}
-                      title="Kamera ile fotoğraf çek"
-                    >
-                      <IconCamera size={13} /> Kamera
-                    </Button>
-                    {frontPhoto && (
-                      <Button
-                        variant="outline-danger"
-                        size="sm"
-                        className="py-1 px-1.5"
-                        onClick={() => setFrontPhoto(null)}
-                        title="Fotoğrafı Kaldır"
-                      >
-                        <IconTrash size={13} />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Col>
-
-              {/* Arka Yüz Yükleme */}
-              <Col md={6}>
-                <div
-                  className="p-2 border rounded-2 d-flex align-items-center justify-content-between"
-                  style={{ backgroundColor: backPhoto ? "#f0fdf4" : "#f8fafc", minHeight: "65px" }}
-                >
-                  <div className="d-flex align-items-center gap-2">
-                    {backPhoto ? (
-                      <div
-                        className="position-relative"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => setCropperTarget("back")}
-                        title="Fotoğrafı kırpmak için tıklayın"
-                      >
-                        <img
-                          src={backPhoto}
-                          alt="Arka Yüz"
-                          style={{ width: "70px", height: "45px", objectFit: "cover", borderRadius: "4px", border: "1px solid #86efac" }}
-                        />
-                        <div
-                          className="position-absolute bottom-0 end-0 bg-dark bg-opacity-70 text-white rounded-circle p-0.5 d-flex align-items-center justify-content-center m-0.5"
-                          style={{ width: "16px", height: "16px" }}
-                        >
-                          <IconCrop size={10} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        className="d-flex align-items-center justify-content-center bg-light text-muted border rounded"
-                        style={{ width: "70px", height: "45px", fontSize: "10px" }}
-                      >
-                        Arka Yüz Yok
-                      </div>
-                    )}
-                    <div>
-                      <div className="fw-bold" style={{ fontSize: "12px" }}>
-                        2. Kimlik Arka Yüzü
-                      </div>
-                      <div className="text-muted" style={{ fontSize: "11px" }}>
-                        {backPhoto ? "Fotoğraf yüklendi ✓" : "Dosyadan seçin veya kamerayla çekin"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    {backPhoto && (
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        className="py-1 px-2 d-inline-flex align-items-center gap-1"
-                        style={{ fontSize: "11px" }}
-                        onClick={() => setCropperTarget("back")}
-                        title="Fotoğrafı kırp ve ayarla"
-                      >
-                        <IconCrop size={13} /> Kırp
-                      </Button>
-                    )}
-                    <Button
-                      variant={backPhoto ? "outline-primary" : "primary"}
-                      size="sm"
-                      className="py-1 px-2 d-inline-flex align-items-center gap-1"
-                      style={{ fontSize: "11px" }}
-                      onClick={() => backInputRef.current?.click()}
-                      title="Bilgisayardan dosya seç"
-                    >
-                      <IconUpload size={13} /> {backPhoto ? "Dosyadan Değiştir" : "Dosyadan Seç"}
-                    </Button>
-                    <Button
-                      variant={backPhoto ? "outline-info" : "info"}
-                      size="sm"
-                      className="py-1 px-2 text-white d-inline-flex align-items-center gap-1"
-                      style={{ fontSize: "11px", backgroundColor: "#0284c7", borderColor: "#0369a1" }}
-                      onClick={() => openCameraModal("back")}
-                      title="Kamera ile fotoğraf çek"
-                    >
-                      <IconCamera size={13} /> Kamera
-                    </Button>
-                    {backPhoto && (
-                      <Button
-                        variant="outline-danger"
-                        size="sm"
-                        className="py-1 px-1.5"
-                        onClick={() => setBackPhoto(null)}
-                        title="Fotoğrafı Kaldır"
-                      >
-                        <IconTrash size={13} />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Col>
-            </Row>
-
-            <input
-              ref={frontInputRef}
-              type="file"
-              accept="image/*"
-              className="d-none"
-              onChange={(e) => handlePhotoUpload(e, true)}
-            />
-            <input
-              ref={backInputRef}
-              type="file"
-              accept="image/*"
-              className="d-none"
-              onChange={(e) => handlePhotoUpload(e, false)}
-            />
-          </div>
 
           {/* ════════════════════════════════════════════════════════════════════════════════════════════════
               BİREBİR A4 EVRAK ÇIKTISI (GÖRSELDEKİ TARZDA - TEK SAYFA, KALEMLE DOLDURULABİLİR)
@@ -1875,108 +1486,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
         `}</style>
       </Modal>
 
-      {/* KAMERA ÇEKİM MODALI */}
-      <Modal
-        show={showCameraModal}
-        onHide={closeCameraModal}
-        size="lg"
-        centered
-        backdrop="static"
-        className="d-print-none"
-      >
-        <Modal.Header closeButton className="py-2 bg-light">
-          <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
-            <IconCamera size={18} className="text-primary" />
-            <span>Kamera ile Kimlik Fotoğrafı Çek ({cameraTarget === "front" ? "Ön Yüz" : "Arka Yüz"})</span>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-3 bg-dark text-white text-center">
-          {cameraError ? (
-            <Alert variant="danger" className="mb-0 text-start">
-              {cameraError}
-            </Alert>
-          ) : (
-            <div className="position-relative d-inline-block w-100" style={{ maxWidth: "640px", minHeight: "360px" }}>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                style={{
-                  width: "100%",
-                  maxHeight: "400px",
-                  objectFit: "cover",
-                  borderRadius: "8px",
-                  backgroundColor: "#000",
-                }}
-              />
-              {/* Kimlik hizalama kılavuz çerçevesi */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: "10%",
-                  left: "10%",
-                  width: "80%",
-                  height: "80%",
-                  border: "2px dashed rgba(255, 255, 255, 0.75)",
-                  borderRadius: "10px",
-                  pointerEvents: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <span className="badge bg-dark bg-opacity-75 text-white px-3 py-1.5 fs-7 border border-white-50">
-                  Kimliği bu çerçevenin içine hizalayınız
-                </span>
-              </div>
-            </div>
-          )}
 
-          {/* Kamera Aygıtı Seçimi */}
-          {videoDevices.length > 1 && (
-            <div className="d-flex align-items-center justify-content-center gap-2 mt-2">
-              <span className="small text-white-50">Kamera Seç:</span>
-              <select
-                className="form-select form-select-sm w-auto bg-secondary text-white border-0"
-                value={selectedDeviceId}
-                onChange={(e) => handleDeviceChange(e.target.value)}
-              >
-                {videoDevices.map((dev, idx) => (
-                  <option key={dev.deviceId || idx} value={dev.deviceId}>
-                    {dev.label || `Kamera ${idx + 1}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </Modal.Body>
-        <Modal.Footer className="py-2 bg-light d-flex justify-content-between">
-          <Button variant="secondary" size="sm" onClick={closeCameraModal}>
-            İptal
-          </Button>
-          <Button
-            variant="success"
-            size="sm"
-            className="d-flex align-items-center gap-1.5 fw-bold px-3"
-            onClick={captureCameraPhoto}
-            disabled={!cameraStream || !!cameraError}
-          >
-            <IconCamera size={16} /> Fotoğrafı Çek ve Ekle
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
-      {/* Manuel Fotoğraf Kırpma (Cropper) Modalı */}
-      {cropperTarget && (
-        <ImageCropperModal
-          show={!!cropperTarget}
-          onHide={() => setCropperTarget(null)}
-          imageSrc={cropperTarget === "front" ? frontPhoto || "" : backPhoto || ""}
-          title={cropperTarget === "front" ? "Kimlik Ön Yüzünü Kırp" : "Kimlik Arka Yüzünü Kırp"}
-          onCropDone={handleCropDone}
-        />
-      )}
     </>
   );
 };

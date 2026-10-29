@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.0.9";
+const CURRENT_VERSION = "1.1.0";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -13,6 +13,29 @@ const os = require("os");
 const util = require("util");
 
 const execAsync = util.promisify(exec);
+
+// Windows GUI modunda (Subsystem = 2) konsol bağlı olmadığında console.log çökmelerini önle
+try {
+  const noop = () => {};
+  if (process.stdout) {
+    process.stdout.on("error", noop);
+    const origOut = process.stdout.write;
+    if (typeof origOut === "function") {
+      process.stdout.write = function (...args) {
+        try { return origOut.apply(process.stdout, args); } catch { return true; }
+      };
+    }
+  }
+  if (process.stderr) {
+    process.stderr.on("error", noop);
+    const origErr = process.stderr.write;
+    if (typeof origErr === "function") {
+      process.stderr.write = function (...args) {
+        try { return origErr.apply(process.stderr, args); } catch { return true; }
+      };
+    }
+  }
+} catch {}
 
 // Windows ortamında IE11/Edge ve varsayılan yazıcı ayarlarını başlangıçta kayıt defterine uygula
 function initWindowsPrinterRegistry() {
@@ -42,16 +65,6 @@ function initWindowsPrinterRegistry() {
   }
 }
 initWindowsPrinterRegistry();
-
-// Windows ortamında açılışta konsol penceresini hemen gizle (arka planda çalışması için)
-function hideConsoleImmediately() {
-  if (os.platform() !== "win32") return;
-  try {
-    const hideCmd = `powershell -NoProfile -NonInteractive -WindowStyle Hidden -Command "$w=Add-Type -Name W -Namespace C -MemberDefinition '[DllImport(\\"Kernel32.dll\\")]public static extern IntPtr GetConsoleWindow();[DllImport(\\"user32.dll\\")]public static extern bool ShowWindow(IntPtr h,int c);' -PassThru;$h=[C.W]::GetConsoleWindow();if($h -ne [IntPtr]::Zero){[C.W]::ShowWindow($h,0)}"`;
-    exec(hideCmd, { windowsHide: true }, () => {});
-  } catch {}
-}
-hideConsoleImmediately();
 
 // PowerShell scriptlerini Base64 Unicode (-EncodedCommand) ile güvenle ve asılı kalmadan çalıştıran fonksiyon
 function runPowerShell(script, timeoutMs = 12000) {
@@ -514,6 +527,415 @@ setTimeout(() => {
 
 // ─── HTTP Endpoints ─────────────────────────────────────────────────────────
 
+// HTML Durum Ekranı & Ajan Paneli (Kullanıcı dostu web arayüzü)
+app.get(["/", "/gui", "/status-page"], async (_req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Likya ERP - Yazıcı Servisi (v${CURRENT_VERSION})</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --gold: #d4af37;
+      --gold-hover: #b8860b;
+      --gold-light: rgba(212, 175, 55, 0.15);
+      --green: #10b981;
+      --green-light: rgba(16, 185, 129, 0.15);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+    }
+    .container { width: 100%; max-width: 760px; }
+    .header {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px 28px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    .brand { display: flex; align-items: center; gap: 16px; }
+    .logo-badge {
+      width: 52px;
+      height: 52px;
+      background: linear-gradient(135deg, #d4af37, #fef08a);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+    }
+    .brand-title { font-size: 20px; font-weight: 700; color: #fff; }
+    .brand-sub { font-size: 13px; color: var(--gold); margin-top: 2px; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--green-light);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .info-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+    .info-card-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .info-card-value { font-size: 15px; font-weight: 600; color: var(--text); }
+    .section-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn {
+      background: var(--gold);
+      color: #0f172a;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:hover { background: #fef08a; transform: translateY(-1px); }
+    .btn-secondary { background: #334155; color: #fff; }
+    .btn-secondary:hover { background: #475569; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th {
+      text-align: left;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--card-border);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    td {
+      padding: 14px 12px;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+      font-size: 14px;
+    }
+    tr:last-child td { border-bottom: none; }
+    .badge-default {
+      background: var(--gold-light);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      color: #fef08a;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .badge-ready {
+      background: var(--green-light);
+      color: #34d399;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .notice {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px dashed var(--gold);
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #cbd5e1;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .notice-icon { font-size: 20px; flex-shrink: 0; margin-top: -2px; }
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #10b981;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      display: none;
+      z-index: 9999;
+      animation: fadeIn 0.3s;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="brand">
+        <div class="logo-badge">🖨️</div>
+        <div>
+          <div class="brand-title">Likya ERP Yazıcı Servisi</div>
+          <div class="brand-sub">Yerel Yazıcı Köprüsü • v${CURRENT_VERSION}</div>
+        </div>
+      </div>
+      <div class="status-pill">
+        <span class="pulse-dot"></span>
+        <span>Servis Aktif</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="info-card-label">Port & Bağlantı</div>
+        <div class="info-card-value">http://127.0.0.1:${PORT}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-label">Çalışma Konumu</div>
+        <div class="info-card-value">Windows Sistem Tepsisi (Arka Plan)</div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-label">Başlangıç Durumu</div>
+        <div class="info-card-value" style="color: #34d399;">✔ Otomatik Başlatma Aktif</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-header">
+        <div class="section-title">
+          <span>📋 Algılanan Yazıcılar</span>
+        </div>
+        <div style="display:flex; gap: 8px;">
+          <button class="btn btn-secondary" onclick="loadPrinters()">🔄 Yenile</button>
+          <button class="btn" onclick="sendTestPrint()">📄 Test Sayfası Yazdır</button>
+        </div>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Yazıcı Adı</th>
+              <th>Durum</th>
+              <th>Varsayılan</th>
+              <th style="text-align: right;">İşlem</th>
+            </tr>
+          </thead>
+          <tbody id="printerList">
+            <tr><td colspan="4" style="text-align:center; color: var(--text-muted); padding: 24px;">Yazıcılar taranıyor...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="notice">
+      <div class="notice-icon">💡</div>
+      <div>
+        <b>Bu ekranı güvenle kapatabilirsiniz:</b><br/>
+        Likya ERP Yazıcı Servisi bilgisayarınızın sağ alt köşesinde bulunan <b>sistem tepsisinde (açılır yukarı ok menüsünde)</b> arka planda sessizce çalışmaya devam eder. Likya ERP üzerinden yapacağınız tüm etiket ve fiş yazdırma işlemleri otomatik olarak bu servis üzerinden yazıcılara iletilir.
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById("toast");
+      toast.textContent = msg;
+      toast.style.background = isError ? "#ef4444" : "#10b981";
+      toast.style.display = "block";
+      setTimeout(() => { toast.style.display = "none"; }, 3500);
+    }
+
+    async function loadPrinters() {
+      const tbody = document.getElementById("printerList");
+      try {
+        const res = await fetch("/api/printers");
+        const list = await res.json();
+        if (!Array.isArray(list) || list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted); padding: 20px;">Kayıtlı yazıcı bulunamadı.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.map(p => \`
+          <tr>
+            <td style="font-weight: 500;">\${p.name}</td>
+            <td><span class="badge-ready">\${p.status || 'Hazır'}</span></td>
+            <td>\${p.isDefault ? '<span class="badge-default">★ Varsayılan</span>' : '<span style="color:var(--text-muted);font-size:12px;">Hayır</span>'}</td>
+            <td style="text-align: right;">
+              \${!p.isDefault ? \`<button class="btn btn-secondary btn-sm" onclick="setDefaultPrinter('\${encodeURIComponent(p.name)}')">Varsayılan Yap</button>\` : ''}
+              <button class="btn btn-sm" style="margin-left: 6px;" onclick="sendTestPrint('\${encodeURIComponent(p.name)}')">Test Yazdır</button>
+            </td>
+          </tr>
+        \`).join("");
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: #ef4444; padding: 20px;">Yazıcılar listelenirken hata oluştu.</td></tr>';
+      }
+    }
+
+    async function setDefaultPrinter(name) {
+      try {
+        const res = await fetch("/api/set-default", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ printerName: decodeURIComponent(name) })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Varsayılan yazıcı güncellendi.");
+          loadPrinters();
+        } else {
+          showToast(data.message || "Hata oluştu", true);
+        }
+      } catch (e) {
+        showToast("İşlem başarısız: " + e.message, true);
+      }
+    }
+
+    async function sendTestPrint(name) {
+      try {
+        showToast("Test sayfası gönderiliyor...");
+        const res = await fetch("/api/test-print", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ printerName: name ? decodeURIComponent(name) : undefined })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || "Test çıktısı başarıyla gönderildi!");
+        } else {
+          showToast(data.message || "Test yazdırma başarısız oldu.", true);
+        }
+      } catch (e) {
+        showToast("Test yazdırma hatası: " + e.message, true);
+      }
+    }
+
+    loadPrinters();
+  </script>
+</body>
+</html>`);
+});
+
+// Test Sayfası Yazdırma Endpoint'i
+app.post(["/api/test-print", "/test-print"], async (req, res) => {
+  try {
+    const printers = await getSystemPrinters();
+    const defaultPrinter = printers.find((p) => p.isDefault) || printers[0];
+    const printerName = (req.body && req.body.printerName) || (defaultPrinter ? defaultPrinter.name : "");
+    if (!printerName) {
+      return res.status(400).json({ success: false, message: "Sistemde kurulu yazıcı bulunamadı." });
+    }
+    const testHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; text-align: center; color: #111; }
+          .card { border: 2px solid #d4af37; border-radius: 12px; padding: 24px; max-width: 380px; margin: 0 auto; }
+          h2 { color: #b8860b; margin-top: 0; font-size: 20px; }
+          .divider { border-top: 1px dashed #bbb; margin: 16px 0; }
+          .info { text-align: left; font-size: 13px; line-height: 1.6; }
+          .badge { background: #10b981; color: white; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 11px; display: inline-block; margin-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2>Likya ERP</h2>
+          <div style="font-weight: bold; font-size: 14px; margin-bottom: 6px;">YAZICI TEST ÇIKTISI</div>
+          <div class="divider"></div>
+          <div class="info">
+            <div><b>Yazıcı:</b> ${printerName}</div>
+            <div><b>Tarih & Saat:</b> ${new Date().toLocaleString("tr-TR")}</div>
+            <div><b>Servis:</b> Likya Printer Agent v${CURRENT_VERSION}</div>
+            <div><b>Durum:</b> Arka Plan Servisi Aktif</div>
+          </div>
+          <div class="divider"></div>
+          <div style="font-size: 12px; color: #555;">Bu çıktı Likya ERP Yazıcı Servisi bağlantı ve yazdırma testidir.</div>
+          <div class="badge">BAŞARILI</div>
+        </div>
+      </body>
+      </html>
+    `;
+    const result = await executePrintJob({
+      printerName,
+      htmlContent: testHtml,
+      widthMm: 80,
+      jobTitle: "Likya ERP Test Ciktisi",
+    });
+    return res.json({ success: true, message: `Test çıktısı "${printerName}" yazıcısına gönderildi.`, details: result });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Sağlık kontrolü
 app.get(["/health", "/status", "/api/version", "/version"], (_req, res) => {
   res.json({
@@ -524,6 +946,14 @@ app.get(["/health", "/status", "/api/version", "/version"], (_req, res) => {
     execPath: process.pkg ? process.execPath : process.argv[1],
     time: new Date().toISOString(),
   });
+});
+
+// Güvenli kapatma endpoint'i (Sistem tepsisi çıkış menüsü için)
+app.all(["/api/exit", "/exit"], (_req, res) => {
+  res.json({ success: true, message: "Likya ERP Yazıcı Servisi kapatılıyor..." });
+  setTimeout(() => {
+    process.exit(0);
+  }, 400);
 });
 
 app.post(["/api/update", "/update"], async (req, res) => {
@@ -1338,47 +1768,47 @@ function setupWindowsAutoStart() {
   }
 }
 
-// ─── Windows Sistem Tepsisi (System Tray / Bildirim Alanı) ve Pencere Gizleme ──
+// ─── Windows Sistem Tepsisi (System Tray / Bildirim Alanı) Entegrasyonu ──────
 function startSystemTray() {
   if (os.platform() !== "win32") return;
-
-  const currentExec = process.pkg ? process.execPath : process.argv[1];
-  const safeExecPath = (currentExec || "").replace(/\\/g, "\\\\");
 
   const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$win32 = Add-Type -Name Win32 -Namespace Native -PassThru -MemberDefinition '
-    [DllImport("Kernel32.dll")] public static extern IntPtr GetConsoleWindow();
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
-    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-'
-
-# Hide parent console window
-$parentPid = ${process.pid}
-$hwnd = [IntPtr]::Zero
-try {
-    $parentProc = [System.Diagnostics.Process]::GetProcessById($parentPid)
-    $hwnd = $parentProc.MainWindowHandle
-} catch {}
-if ($hwnd -eq [IntPtr]::Zero) {
-    $hwnd = [Native.Win32]::GetConsoleWindow()
-}
-if ($hwnd -ne [IntPtr]::Zero) {
-    [Native.Win32]::ShowWindow($hwnd, 0)
-}
-
 # Create NotifyIcon
 $notify = New-Object System.Windows.Forms.NotifyIcon
-$notify.Icon = [System.Drawing.SystemIcons]::Application
 
+# Gold Likya Kuyum printer badge icon in memory (32x32)
 try {
-    if ([System.IO.File]::Exists("${safeExecPath}")) {
-        $extracted = [System.Drawing.Icon]::ExtractAssociatedIcon("${safeExecPath}")
-        if ($extracted -ne $null) { $notify.Icon = $extracted }
-    }
-} catch {}
+    $bmp = New-Object System.Drawing.Bitmap 32, 32
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+
+    # Gold circle background
+    $brushGold = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(212, 175, 55))
+    $g.FillEllipse($brushGold, 1, 1, 30, 30)
+
+    # Dark printer body
+    $brushDark = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(15, 23, 42))
+    $g.FillRectangle($brushDark, 7, 12, 18, 12)
+
+    # Top paper sheet (white)
+    $brushWhite = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::White)
+    $g.FillRectangle($brushWhite, 10, 6, 12, 7)
+
+    # Printed paper output slot
+    $g.FillRectangle($brushWhite, 9, 21, 14, 5)
+
+    # Status LED dot (green)
+    $brushGreen = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(16, 185, 129))
+    $g.FillEllipse($brushGreen, 20, 14, 3, 3)
+
+    $hIcon = $bmp.GetHicon()
+    $notify.Icon = [System.Drawing.Icon]::FromHandle($hIcon)
+} catch {
+    $notify.Icon = [System.Drawing.SystemIcons]::Application
+}
 
 $notify.Text = "Likya ERP - Yazıcı Servisi (v${CURRENT_VERSION})"
 $notify.Visible = $true
@@ -1388,66 +1818,72 @@ $menu = New-Object System.Windows.Forms.ContextMenuStrip
 
 $itemHeader = $menu.Items.Add("Likya ERP - Yazıcı Servisi (v${CURRENT_VERSION})")
 $itemHeader.Enabled = $false
+try {
+    $itemHeader.Font = New-Object System.Drawing.Font($menu.Font, [System.Drawing.FontStyle]::Bold)
+} catch {}
 
 $itemStatus = $menu.Items.Add("● Durum: Aktif (Port: ${PORT})")
 $itemStatus.Enabled = $false
 
 $menu.Items.Add("-") | Out-Null
 
-$itemToggle = $menu.Items.Add("Konsol Penceresini Göster")
-$itemToggle.add_Click({
-    if ($hwnd -ne [IntPtr]::Zero) {
-        $visible = [Native.Win32]::IsWindowVisible($hwnd)
-        if ($visible) {
-            [Native.Win32]::ShowWindow($hwnd, 0)
-            $itemToggle.Text = "Konsol Penceresini Göster"
-        } else {
-            [Native.Win32]::ShowWindow($hwnd, 5)
-            $itemToggle.Text = "Konsol Penceresini Gizle"
-        }
+$itemOpen = $menu.Items.Add("🖨️ Yazıcı Paneli / Durum Ekranı")
+$itemOpen.add_Click({
+    try {
+        [System.Diagnostics.Process]::Start("http://127.0.0.1:${PORT}") | Out-Null
+    } catch {}
+})
+
+$itemTest = $menu.Items.Add("📄 Test Çıktısı Al")
+$itemTest.add_Click({
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("Content-Type", "application/json")
+        $wc.UploadString("http://127.0.0.1:${PORT}/api/test-print", "{}") | Out-Null
+        $notify.ShowBalloonTip(3000, "Likya ERP", "Test çıktısı varsayılan yazıcıya gönderildi.", [System.Windows.Forms.ToolTipIcon]::Info)
+    } catch {
+        $notify.ShowBalloonTip(3000, "Likya ERP", "Test çıktısı alınamadı.", [System.Windows.Forms.ToolTipIcon]::Warning)
     }
 })
 
-$itemAutostart = $menu.Items.Add("✔ Bilgisayar Açılışında Otomatik Başlat")
+$menu.Items.Add("-") | Out-Null
+
+$itemAutostart = $menu.Items.Add("✔ Bilgisayar Açılışında Otomatik Başlat (Aktif)")
 $itemAutostart.Enabled = $false
 
 $menu.Items.Add("-") | Out-Null
 
-$itemExit = $menu.Items.Add("Çıkış")
+$itemExit = $menu.Items.Add("Çıkış (Servisi Kapat)")
 $itemExit.add_Click({
     $notify.Visible = $false
     $notify.Dispose()
-    [Console]::WriteLine("ACTION:EXIT")
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.DownloadString("http://127.0.0.1:${PORT}/api/exit") | Out-Null
+    } catch {}
+    try { [System.Diagnostics.Process]::GetProcessById($parentPid).Kill() } catch {}
     [System.Windows.Forms.Application]::Exit()
 })
 
 $notify.ContextMenuStrip = $menu
 
-# Double click toggles window
+# Double click opens web status dashboard
 $notify.add_DoubleClick({
-    if ($hwnd -ne [IntPtr]::Zero) {
-        $visible = [Native.Win32]::IsWindowVisible($hwnd)
-        if ($visible) {
-            [Native.Win32]::ShowWindow($hwnd, 0)
-            $itemToggle.Text = "Konsol Penceresini Göster"
-        } else {
-            [Native.Win32]::ShowWindow($hwnd, 5)
-            $itemToggle.Text = "Konsol Penceresini Gizle"
-        }
-    } else {
-        $notify.ShowBalloonTip(2000, "Likya ERP", "Yazıcı servisi arka planda aktif.", [System.Windows.Forms.ToolTipIcon]::Info)
-    }
+    try {
+        [System.Diagnostics.Process]::Start("http://127.0.0.1:${PORT}") | Out-Null
+    } catch {}
 })
 
 # Show balloon tip on startup
 try {
     $notify.BalloonTipTitle = "Likya ERP Yazıcı Servisi"
-    $notify.BalloonTipText = "Servis arka planda (sağ alt sistem tepsisinde) çalışıyor."
+    $notify.BalloonTipText = "Servis arka planda (sağ alt sistem tepsisinde) aktif. Durum paneli için simgeye çift tıklayabilirsiniz."
     $notify.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
     $notify.ShowBalloonTip(3000)
 } catch {}
 
 # Parent process watcher timer
+$parentPid = ${process.pid}
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 2000
 $timer.add_Tick({
@@ -1472,27 +1908,32 @@ $timer.Start()
   const b64 = Buffer.from(psScript, "utf16le").toString("base64");
   const systemRoot = process.env.SystemRoot || "C:\\Windows";
   const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+  const wscriptPath = `${systemRoot}\\System32\\wscript.exe`;
 
-  const trayProc = spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  // PowerShell'i Windows GUI modunda wscript.exe (SW_HIDE = 0) ile başlat.
+  // Bu sayede Windows görev çubuğunda (altta) ASLA konsol penceresi veya simge oluşmaz.
+  try {
+    const tempDir = os.tmpdir();
+    const vbsPath = path.join(tempDir, "LikyaTrayRunner.vbs");
+    const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """${psPath}"" -NoProfile -NonInteractive -STA -WindowStyle Hidden -EncodedCommand ${b64}", 0, False\r\n`;
+    fs.writeFileSync(vbsPath, vbsContent, "utf8");
 
-  trayProc.stdout.on("data", (data) => {
-    const msg = data.toString("utf8").trim();
-    if (msg.includes("ACTION:EXIT")) {
-      console.log("[printercekmeApp] Sistem tepsisinden çıkış komutu alındı. Kapatılıyor...");
-      process.exit(0);
-    }
-  });
-
-  trayProc.on("error", (err) => {
-    console.warn("[printercekmeApp] Sistem tepsisi başlatma uyarısı:", err.message);
-  });
-
-  process.on("exit", () => {
-    try { trayProc.kill(); } catch {}
-  });
+    exec(`"${wscriptPath}" //B //NoLogo "${vbsPath}"`, { windowsHide: true }, (err) => {
+      if (err) {
+        console.warn("[printercekmeApp] wscript tepsi başlatıcı uyarısı:", err.message);
+        // Fallback: doğrudan gizli spawn
+        try {
+          spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
+            windowsHide: true,
+            detached: true,
+            stdio: "ignore",
+          }).unref();
+        } catch {}
+      }
+    });
+  } catch (launchErr) {
+    console.warn("[printercekmeApp] Tepsi oluşturma hatası:", launchErr.message);
+  }
 }
 
 server.on("error", (err) => {

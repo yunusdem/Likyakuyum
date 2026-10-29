@@ -227,11 +227,11 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
   const [selectedBelgeTuru, setSelectedBelgeTuru] = useState<number>(0);
 
   const handlePhotoSelected = (base64: string) => {
-    setPendingPhotos((prev) => [...prev, base64]);
+    setPendingPhotos((prev) => (prev.length >= 2 ? [prev[0], base64] : [...prev, base64]).slice(0, 2));
   };
 
   const handlePhotosSelected = (base64List: string[]) => {
-    setPendingPhotos(base64List);
+    setPendingPhotos(base64List.slice(0, 2));
   };
 
   const handlePhotoDeleted = async (index?: number, photoId?: number) => {
@@ -1202,47 +1202,31 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       setIsSaving(true);
       setAlertError(null);
 
-      const photoPayload = pendingPhotos.length > 0
-        ? {
-            fotografData: {
-              base64: pendingPhotos[0],
-              belgeTuru: selectedBelgeTuru,
-              dosyaAdi:
-                selectedBelgeTuru === 1
-                  ? "pasaport_1.jpg"
-                  : selectedBelgeTuru === 2
-                  ? "vergi_levhasi_1.jpg"
-                  : "kimlik_on.jpg",
-              mimeTipi: "image/jpeg",
-            },
-          }
-        : {};
-
       let savedCariId: number | null = null;
       let savedRecord: CariKartItem | null = null;
       if (isNewRecord || !selectedCari) {
-        const created = await CariService.createCariKart({
-          ...payload,
-          ...photoPayload,
-        });
+        const created = await CariService.createCariKart(payload);
         savedCariId = created.id;
         savedRecord = created;
         if (created.fotograf) setCurrentPhoto(created.fotograf);
         setAlertSuccess(`✅ "${created.ad}" [${created.kod}] cari kartı başarıyla eklendi.`);
       } else {
-        const updated = await CariService.updateCariKart(selectedCari.id, {
-          ...payload,
-          ...photoPayload,
-        });
+        const updated = await CariService.updateCariKart(selectedCari.id, payload);
         savedCariId = selectedCari.id;
         savedRecord = updated;
         if (updated.fotograf) setCurrentPhoto(updated.fotograf);
         setAlertSuccess(`✅ "${updated.ad}" [${updated.kod}] cari kart bilgileri başarıyla güncellendi.`);
       }
 
-      // Fotoğrafları doğrudan SQL Server TODVZ_FOTOGRAF tablosuna kaydet (Arkalı Önlü vb.)
-      const photosToSave = [...pendingPhotos];
+      // Fotoğrafları doğrudan SQL Server TODVZ_FOTOGRAF tablosuna kaydet (En fazla 2 resim: Ön ve Arka Yüz)
+      const photosToSave = [...pendingPhotos].slice(0, 2);
       if (savedCariId && photosToSave.length > 0) {
+        // Eğer kart güncelleniyorsa ve yeni fotoğraflar yüklenmişse eski fotoğrafları temizle
+        if (!isNewRecord && selectedCari) {
+          try {
+            await CariService.deleteCariFotograf(savedCariId);
+          } catch {}
+        }
         for (let i = 0; i < photosToSave.length; i++) {
           try {
             await CariService.saveCariFotograf(savedCariId, {
@@ -1253,7 +1237,7 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                   ? `pasaport_${i + 1}.jpg`
                   : selectedBelgeTuru === 2
                   ? `vergi_levhasi_${i + 1}.jpg`
-                  : `kimlik_${i === 0 ? "on" : i === 1 ? "arka" : i + 1}.jpg`,
+                  : `kimlik_${i === 0 ? "on" : "arka"}.jpg`,
               mimeTipi: "image/jpeg",
             });
           } catch (fErr) {
@@ -1266,8 +1250,8 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       if (savedCariId) {
         try {
           const refreshed = await CariService.getCariFotograf(savedCariId);
-          setCurrentPhotos(refreshed.fotograflar);
-          setCurrentPhoto(refreshed.fotograf);
+          setCurrentPhotos(refreshed.fotograflar || []);
+          setCurrentPhoto(refreshed.fotograf || null);
         } catch {}
       }
 

@@ -2250,18 +2250,25 @@ export const DovizFisiPage: React.FC = () => {
 
         if (field === "paraKodu") {
           const upper = (value || "").toUpperCase().trim();
+          const isTL = upper === "TL" || upper === "TRY" || upper === "TRL";
+          if (isTL) {
+            setNotification({
+              message: "Döviz fişinde TL seçilemez. Lütfen döviz veya maden seçiniz.",
+              type: "warning",
+            });
+            updated.paraKodu = "";
+            updated.paraId = 0;
+            updated.paraAdi = "";
+            updated.kur = "";
+            return updated;
+          }
           const matched = paraList.find((p) => p.kod.toUpperCase() === upper);
           if (matched) {
             updated.paraId = matched.id;
             updated.paraAdi = matched.ad;
-            const isTL = upper === "TL" || upper === "TRY" || upper === "TRL";
-            if (isTL) {
-              updated.kur = "";
-            } else {
-              const autoKur = resolveCurrencyRate(matched, tip, kurTuru);
-              if (autoKur > 0) {
-                updated.kur = autoKur.toFixed(kurKurusSayisi);
-              }
+            const autoKur = resolveCurrencyRate(matched, tip, kurTuru);
+            if (autoKur > 0) {
+              updated.kur = autoKur.toFixed(kurKurusSayisi);
             }
             const em = parseMiktar(updated.miktar) > 0 ? null : ebMiktar(prev, id, matched.kod, parseKur(updated.kur));
             if (em) updated.miktar = formatMiktar(em);
@@ -2380,7 +2387,14 @@ export const DovizFisiPage: React.FC = () => {
   const handleSelectCurrency = (rowId: string, para: ParaItem) => {
     if (isLocked) return;
     const isTL = para.kod?.toUpperCase() === "TL" || para.kod?.toUpperCase() === "TRY" || para.kod?.toUpperCase() === "TRL";
-    const autoKur = isTL ? 0 : resolveCurrencyRate(para, tip, kurTuru);
+    if (isTL) {
+      setNotification({
+        message: "Döviz fişinde TL seçilemez. Lütfen döviz veya maden seçiniz.",
+        type: "warning",
+      });
+      return;
+    }
+    const autoKur = resolveCurrencyRate(para, tip, kurTuru);
     const statKod = (istatistikKodu || "").trim();
     const activeStat = statKod ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === statKod))) : null;
     const compDef = companyDefinitionsRef.current || companyDefinitions;
@@ -3623,11 +3637,27 @@ export const DovizFisiPage: React.FC = () => {
           return;
         }
 
+        const upperCode = currentCode.toUpperCase();
+        if (upperCode === "TL" || upperCode === "TRY" || upperCode === "TRL") {
+          setNotification({
+            message: "Döviz fişinde TL seçilemez. Lütfen döviz veya maden seçiniz.",
+            type: "warning",
+          });
+          setLines((prev) =>
+            prev.map((r, i) =>
+              i === rowIndex ? { ...r, paraKodu: "", paraId: 0, paraAdi: "", kur: "", tutar: "" } : r
+            )
+          );
+          return;
+        }
+
         const t = currentCode.toLowerCase();
-        // Arama yap: Sadece Para kodu ile eşleşenler
-        const matched = paraList.filter(
-          (p) => (p.kod || "").toLowerCase().includes(t)
-        );
+        // Arama yap: Sadece Para kodu ile eşleşenler (TL hariç)
+        const matched = paraList.filter((p) => {
+          const k = (p.kod || "").toUpperCase().trim();
+          if (k === "TL" || k === "TRY" || k === "TRL") return false;
+          return (p.kod || "").toLowerCase().includes(t);
+        });
 
         // Yazılana göre tek veri var ise doğrudan seç ve miktar alanına geç
         if (matched.length === 1) {
@@ -5665,8 +5695,30 @@ export const DovizFisiPage: React.FC = () => {
   ];
 
   const paraColumns: LookupColumn<ParaItem>[] = [
-    { header: "Kod", width: "85px", render: (p) => <span className="font-monospace fw-bold text-primary">{p.kod}</span> },
-    { header: "Para / Döviz Adı", render: (p) => <span className="fw-medium">{p.ad}</span> },
+    {
+      header: "Kod",
+      width: "85px",
+      render: (p) => {
+        const isTL = (p.kod || "").toUpperCase().trim() === "TL" || (p.kod || "").toUpperCase().trim() === "TRY" || (p.kod || "").toUpperCase().trim() === "TRL";
+        return <span className={`font-monospace fw-bold ${isTL ? "text-muted text-decoration-line-through" : "text-primary"}`}>{p.kod}</span>;
+      },
+    },
+    {
+      header: "Para / Döviz Adı",
+      render: (p) => {
+        const isTL = (p.kod || "").toUpperCase().trim() === "TL" || (p.kod || "").toUpperCase().trim() === "TRY" || (p.kod || "").toUpperCase().trim() === "TRL";
+        return (
+          <div className="d-flex align-items-center gap-2">
+            <span className={isTL ? "text-muted" : "fw-medium"}>{p.ad}</span>
+            {isTL && (
+              <Badge bg="secondary" style={{ fontSize: "10px", opacity: 0.8 }}>
+                Pasif (Seçilemez)
+              </Badge>
+            )}
+          </div>
+        );
+      },
+    },
     {
       header: "Tip",
       width: "80px",
@@ -8030,6 +8082,10 @@ export const DovizFisiPage: React.FC = () => {
         items={paraList}
         columns={paraColumns}
         initialSearchTerm={paraSearchTerm}
+        isItemDisabled={(item) => {
+          const k = (item.kod || "").toUpperCase().trim();
+          return k === "TL" || k === "TRY" || k === "TRL";
+        }}
         filterFn={(item, term) => {
           const t = term.toLowerCase().trim();
           if (!t) return true;
@@ -8041,6 +8097,14 @@ export const DovizFisiPage: React.FC = () => {
           );
         }}
         onSelect={(item) => {
+          const k = (item.kod || "").toUpperCase().trim();
+          if (k === "TL" || k === "TRY" || k === "TRL") {
+            setNotification({
+              message: "Döviz fişinde TL seçilemez. Lütfen döviz veya maden seçiniz.",
+              type: "warning",
+            });
+            return;
+          }
           lastModalCallerRef.current = null;
           lastParaModalRowIndexRef.current = null;
           if (paraModalRowId) {
@@ -8578,7 +8642,7 @@ export const DovizFisiPage: React.FC = () => {
         seriNo={seriNo}
         belgeNo={belgeNo || (fisId ? String(fisId) : "TEKLİF")}
         unvan={unvan}
-        vergiKimlikNo={vergiKimlikNo}
+        vergiKimlikNo={vergiKimlikNo || (cariKartId ? (cariList.find((c) => c.id === cariKartId)?.vergiKimlikNo || "") : "")}
         cariKartId={cariKartId}
         detayUyruk={detayUyruk || detayUlke}
         detayDogumTarihi={detayDogumTarihi}
