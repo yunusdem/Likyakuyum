@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Button, ButtonGroup, Form, ListGroup, Modal } from "react-bootstrap";
 import { girisEkle, girisSayi } from "./TusTakimi";
+import type { SepetSatiri } from "../../../Backend/src/services/hizliSatis/hizliSatisHesap";
 import { SERBEST_KDV_ORANLARI } from "../../../Backend/src/services/hizliSatis/hizliSatisKural";
 
 /** Dokunmatik ekranda sayı sorma (gram, fiyat, indirim): kendi tuş takımı + klavye */
@@ -126,3 +127,80 @@ export function SecimModal<T>({ soru, kapat }: { soru: SecimSorusu<T> | null; ka
     </Modal>
   );
 }
+
+/**
+ * Sepet satırı düzenleme (docs/TICARI_GERI_BILDIRIM_YOL_HARITASI.md İş 5, G19): çift tık / kalem ikonuyla açılır;
+ * miktar + birim fiyat (fiyat yalnız yetkiliye; Sarraf/Döviz'de kur) + Sil. Barkodlu tekil ürünün miktarı değişmez.
+ */
+export interface SatirDuzenleProps {
+  satir: SepetSatiri | null;
+  /** Fiyat sütunu kur mu (Sarraf/Döviz) */
+  kurlu: boolean;
+  fiyatDegistirilebilir: boolean;
+  fiyatKapaliNedeni?: string;
+  kapat: () => void;
+  /** miktar ve (değiştiyse) fiyat; fiyat null = dokunulmadı */
+  onay: (miktar: number, fiyat: number | null) => void;
+  sil: () => void;
+}
+
+const sayiMetni = (n: number) => String(n).replace(".", ",");
+
+export const SatirDuzenleModal: React.FC<SatirDuzenleProps> = ({ satir, kurlu, fiyatDegistirilebilir, fiyatKapaliNedeni, kapat, onay, sil }) => {
+  const [miktar, setMiktar] = useState("");
+  const [fiyat, setFiyat] = useState("");
+  const [alan, setAlan] = useState<"miktar" | "fiyat">("miktar");
+  useEffect(() => {
+    if (!satir) return;
+    setMiktar(sayiMetni(satir.miktar));
+    setFiyat(sayiMetni(satir.birimFiyat));
+    setAlan(satir.tur === "barkod" ? "fiyat" : "miktar");
+  }, [satir]);
+  if (!satir) return null;
+  const tekil = satir.tur === "barkod";
+  const m = girisSayi(miktar);
+  const f = girisSayi(fiyat);
+  const fiyatDegisti = f !== null && Math.abs(f - satir.birimFiyat) > 0.000001;
+  const gecerli = (tekil || (m !== null && m > 0)) && (!fiyatDegisti || (fiyatDegistirilebilir && f !== null && f > 0));
+  const tamam = () => {
+    if (!gecerli) return;
+    onay(tekil ? 1 : m!, fiyatDegisti ? f! : null);
+  };
+  const yaz = (t: string) => (alan === "miktar" ? setMiktar((x) => girisEkle(x, t)) : setFiyat((x) => girisEkle(x, t)));
+  const silSon = () => (alan === "miktar" ? setMiktar((x) => x.slice(0, -1)) : setFiyat((x) => x.slice(0, -1)));
+  const tus = (t: string) => (
+    <button key={t} type="button" className="btn btn-light border fw-bold" style={{ height: 50, fontSize: 20 }} onClick={() => yaz(t)}>{t}</button>
+  );
+  const miktarKapali = tekil;
+  const fiyatKapali = !fiyatDegistirilebilir;
+  return (
+    <Modal show onHide={kapat} centered>
+      <Modal.Header closeButton className="py-2"><Modal.Title className="fs-6">{satir.ad}</Modal.Title></Modal.Header>
+      <Modal.Body>
+        <div className="d-flex gap-2">
+          <Form.Group className="flex-grow-1">
+            <Form.Label className="small mb-0">Miktar ({satir.birim})</Form.Label>
+            <Form.Control inputMode="decimal" autoFocus={!miktarKapali} disabled={miktarKapali} className={`text-end fw-bold ${alan === "miktar" ? "border-primary" : ""}`} style={{ fontSize: 22 }}
+              value={miktar} onFocus={() => setAlan("miktar")} onChange={(e) => setMiktar(e.target.value.replace(/[^\d,]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") tamam(); }} aria-label="Miktar" />
+            {miktarKapali && <div className="small text-muted">Barkodlu ürün tek parçadır.</div>}
+          </Form.Group>
+          <Form.Group className="flex-grow-1">
+            <Form.Label className="small mb-0">{kurlu ? "Kur" : "Birim fiyat (KDV dahil)"}</Form.Label>
+            <Form.Control inputMode="decimal" autoFocus={miktarKapali && !fiyatKapali} disabled={fiyatKapali} className={`text-end fw-bold ${alan === "fiyat" ? "border-primary" : ""}`} style={{ fontSize: 22 }}
+              value={fiyat} onFocus={() => setAlan("fiyat")} onChange={(e) => setFiyat(e.target.value.replace(/[^\d,]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") tamam(); }} aria-label="Birim fiyat" />
+            {fiyatKapali && <div className="small text-muted">{fiyatKapaliNedeni || "Fiyat değiştirme yetkisi yok."}</div>}
+          </Form.Group>
+        </div>
+        <div className="d-grid gap-1 mt-2" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ",", "00"].map(tus)}
+        </div>
+      </Modal.Body>
+      <Modal.Footer className="py-2 d-flex">
+        <Button variant="outline-danger" className="me-auto" onClick={sil}>Satırı Sil</Button>
+        <Button variant="outline-secondary" onClick={silSon}>Geri</Button>
+        <Button variant="secondary" onClick={kapat}>Vazgeç</Button>
+        <Button variant="primary" disabled={!gecerli} onClick={tamam}>Kaydet</Button>
+      </Modal.Footer>
+    </Modal>
+  );
+};

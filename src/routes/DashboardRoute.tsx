@@ -260,6 +260,13 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "I- Ürün Hareket Listesi", link: "ticari/urun-hareket-listesi" },
       { id: uuid(), name: "J- Stok Ayarları", link: "ticari/stok-ayarlari" },
       { id: uuid(), name: "K- Hızlı Satış", link: "hizli-satis/ticari" },
+      // Fiyat Gör + Etiket (docs/TICARI_GERI_BILDIRIM_YOL_HARITASI.md İş 2, G3–G5): stok kartı için, Kuyum'un Barkod Fiyat'ından ayrı
+      { id: uuid(), name: "L- Fiyat Gör", link: "ticari/fiyat-gor" },
+      { id: uuid(), name: "M- Etiket", link: "ticari/etiket" },
+      // Fiyat listeleri (İş 11, G6–G7)
+      { id: uuid(), name: "N- Fiyat Listeleri", link: "ticari/fiyat-listeleri" },
+      { id: uuid(), name: "O- Fiyat İşlemleri", link: "ticari/fiyat-islemleri" },
+      { id: uuid(), name: "P- Kampanyalar", link: "ticari/kampanyalar" },
     ],
   },
 

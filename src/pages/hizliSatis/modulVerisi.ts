@@ -1,6 +1,7 @@
 import { KurService } from "../../services/kurService";
 import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
-import { StokKart, TicariService } from "../../services/ticariService";
+import { AktifKampanya, StokKart, TicariService, kartSatisFiyati } from "../../services/ticariService";
+import { kampanyaSec } from "../../../Backend/src/services/ticari/ticariHesap";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { CompanyService } from "../../services/companyService";
 import { StatisticItem, StatisticService } from "../../services/statisticService";
@@ -31,6 +32,10 @@ export interface ModulVerisi {
   istatistikler: StatisticItem[];
   tanim: any;
   kmvSekli: KmvSekli;
+  /** Ticari: seçili fiyat listesi (İş 11, G7); kayıtlı müşterinin varsayılanı, yoksa ana */
+  fiyatListesiId?: number | null;
+  /** Ticari: yürürlükteki kampanyalar (İş 11, G12) */
+  kampanyalar?: AktifKampanya[];
 }
 
 let sayac = 0;
@@ -77,7 +82,11 @@ export function varsayilanIstatistik(liste: StatisticItem[], tanim: any, tip: 0 
 
 export const gayriResmiMi = (s: StatisticItem | null | undefined) => Number(s?.fisDizaynTipi) === 1;
 
-export async function modulVerisiYukle(modul: HizliSatisModul, kullanici: { id?: number; cashierCode?: string | null }): Promise<ModulVerisi> {
+/**
+ * Modül verisi. Ticari'de tam kart listesi çekilmez (G2): yalnız düzen butonlarındaki kartlar kimlikle alınır (kartIdler);
+ * barkod okutma ve bekleyen sepet eksik kartı sunucudan tek tek / kimlikle getirir.
+ */
+export async function modulVerisiYukle(modul: HizliSatisModul, kullanici: { id?: number; cashierCode?: string | null }, kartIdler: number[] = []): Promise<ModulVerisi> {
   const [kurlar, vezne, tanim] = await Promise.all([
     modul === "ticari" ? kurlariGetir().catch(() => []) : kurlariGetir(),
     vezneBul(kullanici.id, kullanici.cashierCode),
@@ -85,10 +94,11 @@ export async function modulVerisiYukle(modul: HizliSatisModul, kullanici: { id?:
   ]);
   const paralar = modul === "ticari" ? [] : await SarrafFisService.getUrunler();
   const kartlar = new Map<number, StokKart>();
-  if (modul === "ticari") for (const k of await TicariService.kartlar({ aktif: true })) kartlar.set(k.stokKartId, k);
+  if (modul === "ticari" && kartIdler.length) for (const k of await TicariService.kartlar({ idler: kartIdler, aktif: true })) kartlar.set(k.stokKartId, k);
   const istatistikler = modul === "sarraf" || modul === "doviz" || modul === "perakende" ? await StatisticService.getStatistics().catch(() => []) : [];
+  const kampanyalar = modul === "ticari" ? await TicariService.aktifKampanyalar().catch(() => [] as AktifKampanya[]) : [];
   const s = Number((tanim as any)?.KMV_UYGULAMA_SEKLI);
-  return { modul, kurlar, paralar, kartlar, vezne, istatistikler, tanim, kmvSekli: (s === 1 || s === 2 || s === 3 ? s : 3) as KmvSekli };
+  return { modul, kurlar, paralar, kartlar, vezne, istatistikler, tanim, kmvSekli: (s === 1 || s === 2 || s === 3 ? s : 3) as KmvSekli, kampanyalar };
 }
 
 /** Butondan satır taslağı. fiyat 0 dönerse ekran fiyat sorar; gramli ürünse miktar sorulur (eksikMiktar). */
@@ -113,13 +123,13 @@ export function butondanSatir(b: HizliSatisButon, v: ModulVerisi, tip: 0 | 1, is
   if (b.urunTuru === URUN_TURU.STOK) {
     const k = b.urunId ? v.kartlar.get(b.urunId) : undefined;
     if (!k) return `"${b.ad}" stok kartı bulunamadı ya da pasif.`;
-    let fiyat = b.ozelFiyat !== null && b.ozelFiyat !== undefined ? Number(b.ozelFiyat) : kartDahilFiyat(k.satisFiyati, k.kdvOrani, k.fiyatKdvDahil);
+    let fiyat = b.ozelFiyat !== null && b.ozelFiyat !== undefined ? Number(b.ozelFiyat) : kartDahilFiyat(kartSatisFiyati(k), k.kdvOrani, k.fiyatKdvDahil);
     if (b.ozelFiyat === null && k.paraId && !["TL", "TRY"].includes(String(k.paraKodu || "").trim().toUpperCase())) {
       const kur = urunKuru(v.kurlar, { paraId: k.paraId, kod: k.paraKodu }, 1);
       fiyat = kur > 0 ? Math.round(fiyat * kur * 100) / 100 : 0;
     }
     return {
-      satir: { anahtar: satirAnahtari(), ad: b.ozelAd || k.ad, kod: k.kod, tur: "stok", urunId: k.stokKartId, miktar: 1, birim: k.birim || "Adet", birimFiyat: fiyat, kdvOrani: Number(k.kdvOrani) || 0, ek: { stokKartId: k.stokKartId } },
+      satir: kampanyaIsle({ anahtar: satirAnahtari(), ad: b.ozelAd || k.ad, kod: k.kod, tur: "stok", urunId: k.stokKartId, miktar: 1, birim: k.birim || "Adet", birimFiyat: fiyat, kdvOrani: Number(k.kdvOrani) || 0, ek: { stokKartId: k.stokKartId } }, v),
       gramGerekli: false,
       fiyatGerekli: !(fiyat > 0),
     };
@@ -165,6 +175,21 @@ export function satiriYenidenFiyatla(s: SepetSatiri, v: ModulVerisi, tip: 0 | 1,
   return { ...s, birimFiyat: s.fiyatElle ? s.birimFiyat : t.birimFiyat, ek: { ...s.ek, ...t.ek } };
 }
 
+/** Stok kartından satır taslağı (barkod okutma, Ara penceresi, olmayan barkoddan açılan kart); kart yerel listeye de eklenir */
+export function karttanSatir(k: StokKart, v: ModulVerisi, tip: 0 | 1, istatistik: StatisticItem | null): SatirTaslagi | string {
+  if (!v.kartlar.has(k.stokKartId)) v.kartlar.set(k.stokKartId, k);
+  return butondanSatir({ butonId: 0, sira: 0, urunTuru: URUN_TURU.STOK, urunId: k.stokKartId, ad: k.ad, ozelAd: null, urunKodu: k.kod, urunAdi: k.ad, urunTipi: null, birim: k.birim, renk: null, fiyat: null, ozelFiyat: null, kdvOrani: k.kdvOrani, gecersiz: false, resimVar: false }, v, tip, istatistik);
+}
+
+/** Satıra yürürlükteki kampanyayı işler (İş 11, G12): en yüksek indirim; kapsayan yoksa kampanya kaldırılır */
+export function kampanyaIsle(s: SepetSatiri, v: ModulVerisi): SepetSatiri {
+  if (s.tur !== "stok" || !s.urunId) return s;
+  const k = v.kartlar.get(Number(s.urunId));
+  const sec = kampanyaSec(v.kampanyalar || [], { stokKartId: Number(s.urunId), stokGrupId: k?.stokGrupId ?? null }, s.birimFiyat);
+  const kampanya = sec ? { kampanyaId: sec.kampanya.kampanyaId, ad: sec.kampanya.ad, turu: sec.kampanya.tur, deger: sec.kampanya.deger } : null;
+  return { ...s, ek: { ...s.ek, kampanya } };
+}
+
 /** "3*8690001" → { adet: 3, kod: "8690001" } */
 export const barkodCoz = (girdi: string): { adet: number; kod: string } => {
   const m = /^\s*(\d+(?:[.,]\d+)?)\s*\*\s*(.+)$/.exec(girdi);
@@ -186,11 +211,11 @@ export async function barkoddanSatir(girdi: string, v: ModulVerisi, tip: 0 | 1, 
   const para = v.paralar.find((p) => String(p.kod).trim().toLocaleUpperCase("tr-TR") === kodBuyuk);
 
   if (v.modul === "ticari") {
-    const k = [...v.kartlar.values()].find((x) => x.kod.toLocaleUpperCase("tr-TR") === kodBuyuk || x.barkodlar.includes(kod)) || (await TicariService.kartBul(kod));
+    // Liste seçiliyse yerel kopya kullanılmaz: fiyat o listeden sunucudan alınır
+    const k = (!v.fiyatListesiId ? [...v.kartlar.values()].find((x) => x.aktif && (x.kod.toLocaleUpperCase("tr-TR") === kodBuyuk || x.barkodlar.includes(kod))) : undefined) || (await TicariService.kartBul(kod, v.fiyatListesiId));
     if (!k) return `"${kod}" barkodlu ya da kodlu stok kartı bulunamadı.`;
     if (!k.aktif) return `"${k.ad}" stok kartı pasif.`;
-    if (!v.kartlar.has(k.stokKartId)) v.kartlar.set(k.stokKartId, k);
-    const t = butondanSatir({ butonId: 0, sira: 0, urunTuru: URUN_TURU.STOK, urunId: k.stokKartId, ad: k.ad, ozelAd: null, urunKodu: k.kod, urunAdi: k.ad, urunTipi: null, birim: k.birim, renk: null, fiyat: null, ozelFiyat: null, kdvOrani: k.kdvOrani, gecersiz: false, resimVar: false }, v, tip, istatistik);
+    const t = karttanSatir(k, v, tip, istatistik);
     if (typeof t !== "string") t.satir.miktar = adet;
     return t;
   }

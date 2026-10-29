@@ -73,6 +73,8 @@ interface UrunSecenegi {
   resimVar?: boolean;
 }
 
+const kartSecenegi = (x: StokKart): UrunSecenegi => ({ urunTuru: URUN_TURU.STOK, urunId: x.stokKartId, kod: x.kod, ad: x.ad, fiyat: x.satisFiyati, kdvOrani: x.kdvOrani, resimVar: x.resimVar });
+
 const sayiYaz = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 const sayiOku = (s: string): number | null => {
   const t = s.trim();
@@ -157,8 +159,7 @@ export const HizliSatisDuzeniPage: React.FC = () => {
       const [d, u] = await Promise.all([
         HizliSatisService.duzen(m),
         m === "ticari"
-          ? TicariService.kartlar({ aktif: true }).then((k: StokKart[]) =>
-              k.map((x) => ({ urunTuru: URUN_TURU.STOK, urunId: x.stokKartId, kod: x.kod, ad: x.ad, fiyat: x.satisFiyati, kdvOrani: x.kdvOrani, resimVar: x.resimVar })))
+          ? Promise.resolve([] as UrunSecenegi[]) // Ticari listesi arama etkisiyle (sunucu araması) gelir
           : SarrafFisService.getUrunler().then((p) =>
               p.filter((x) => paraUygunMu(m, x)).map((x) => ({ urunTuru: URUN_TURU.PARA, urunId: x.paraId, kod: x.kod, ad: x.ad }))),
       ]);
@@ -329,10 +330,23 @@ export const HizliSatisDuzeniPage: React.FC = () => {
   };
 
   const kullanilan = useMemo(() => new Set(aktifSekme?.butonlar.filter((b) => b.urunId).map((b) => `${b.urunTuru}:${b.urunId}`) || []), [aktifSekme]);
+  // Ticari'de arama sunucuda (G2): 300 ms bekleyip kod / ad / barkodla en çok 200 kart; diğer modüllerde yerel süzme
+  const aramaIstegi = useRef(0);
+  useEffect(() => {
+    if (sekme !== "ticari") return;
+    const no = ++aramaIstegi.current;
+    const t = setTimeout(() => {
+      TicariService.kartlar({ aktif: true, arama: arama.trim() || undefined, limit: 200 })
+        .then((k: StokKart[]) => { if (no === aramaIstegi.current) setUrunler(k.map(kartSecenegi)); })
+        .catch(() => undefined);
+    }, arama.trim() ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [arama, sekme]);
   const aranan = useMemo(() => {
+    if (sekme === "ticari") return urunler;
     const q = arama.trim().toLocaleLowerCase("tr-TR");
     return urunler.filter((u) => !q || u.ad.toLocaleLowerCase("tr-TR").includes(q) || u.kod.toLocaleLowerCase("tr-TR").includes(q)).slice(0, 200);
-  }, [urunler, arama]);
+  }, [urunler, arama, sekme]);
 
   const modulSekmesi = sekme !== "yetki" ? sekme : null;
   const serbestVar = modulSekmesi ? MODUL_URUN_TURLERI[modulSekmesi].includes(URUN_TURU.SERBEST) : false;
@@ -477,6 +491,14 @@ export const HizliSatisDuzeniPage: React.FC = () => {
                   <div className="text-muted">Düzenlemek için bir buton seçin.</div>
                 ) : (
                   <fieldset disabled={!yonetici}>
+                    {/* Önizleme: satış ekranındaki kutunun birebir görünümü (resim sığdırılmış, zemin rengi, ad, fiyat) */}
+                    <div className="mb-2">
+                      <div className="text-muted mb-1">Önizleme (satış ekranındaki görünüm)</div>
+                      <div style={{ width: 140 }}>
+                        <HizliSatisKutusu ad={aktifButon.ozelAd.trim() || aktifButon.urunAdi || aktifButon.urunKodu} kod={aktifButon.urunKodu} renk={aktifButon.renk} resim={aktifButon.resim}
+                          altYazi={aktifButon.fiyat.trim() ? `${aktifButon.fiyat.trim()} TL` : null} uyari={aktifButon.gecersiz ? "Ürün bulunamadı / pasif" : undefined} />
+                      </div>
+                    </div>
                     <div className="mb-2">
                       <div className="text-muted">{aktifButon.urunTuru === URUN_TURU.SERBEST ? "Serbest ürün" : aktifButon.urunTuru === URUN_TURU.STOK ? "Stok kartı" : "Ürün tanımı"}</div>
                       {aktifButon.urunTuru !== URUN_TURU.SERBEST && <div className="fw-semibold">{aktifButon.urunKodu} — {aktifButon.urunAdi || "(bulunamadı)"}</div>}
@@ -503,7 +525,7 @@ export const HizliSatisDuzeniPage: React.FC = () => {
                       </Row>
                     )}
                     <Form.Group className="mb-2">
-                      <Form.Label className="mb-0">Renk</Form.Label>
+                      <Form.Label className="mb-0">Zemin rengi (resimli butonda resmin arkası)</Form.Label>
                       <div className="d-flex align-items-center gap-2">
                         <Form.Control type="color" size="sm" style={{ width: 48 }} value={aktifButon.renk || "#e9ecef"} onChange={(e) => butonGuncelle({ renk: e.target.value })} />
                         <Button size="sm" variant="link" className="p-0" onClick={() => butonGuncelle({ renk: null })}>Renksiz</Button>
@@ -521,7 +543,7 @@ export const HizliSatisDuzeniPage: React.FC = () => {
                           <Button size="sm" variant="outline-danger" onClick={() => butonGuncelle({ resim: null, yeniResim: null })}><IconPhotoOff size={14} className="me-1" />Kaldır</Button>
                         )}
                       </div>
-                      <div className="text-muted mt-1">Resim kaydederken ~300 piksele küçültülür.</div>
+                      <div className="text-muted mt-1">Resim kırpılmadan sığdırılır, kaydederken ~300 piksele küçültülür; saydam PNG'de arkada zemin rengi görünür.</div>
                     </Form.Group>
                     {duzen.length > 1 && (
                       <Form.Group className="mb-2">

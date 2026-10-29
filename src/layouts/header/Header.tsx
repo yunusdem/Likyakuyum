@@ -7,6 +7,7 @@ import {
   IconMinimize,
   IconChartLine,
   IconScan,
+  IconTag,
   IconDiamond,
   IconReceipt2,
   IconShoppingCart,
@@ -86,6 +87,12 @@ const quickActions = [
     title: "Satış Fişi",
     to: "/ticari/satis-fisi",
     icon: <IconShoppingBag size={16} strokeWidth={2.4} style={{ color: "#c2410c" }} />,
+  },
+  {
+    // Ticari Fiyat Gör (docs/TICARI_GERI_BILDIRIM_YOL_HARITASI.md İş 2, G4); yalnız Ticari İşlemler açık firmada
+    title: "T. Fiyat",
+    to: "/ticari/fiyat-gor",
+    icon: <IconTag size={16} strokeWidth={2.4} style={{ color: "#047857" }} />,
   },
   {
     // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H3): en son kullanılan açık modülün dokunmatik satış ekranı

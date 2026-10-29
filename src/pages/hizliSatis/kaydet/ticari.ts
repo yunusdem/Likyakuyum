@@ -30,9 +30,10 @@ export function ticariYuku(b: KaydetBaglami, eksiStokOnay = false, kartlar: Reco
     iskontoKodu: isk ? b.indirim?.kod ?? null : null,
     iskontoTuru: isk ? isk.turu : 0,
     iskontoDegeri: isk ? isk.deger : null,
+    fiyatListesiId: b.veri.fiyatListesiId ?? null,
     satirlar: b.sepet.map((s) =>
       s.tur === "stok"
-        ? { stokKartId: Number(s.urunId), miktar: s.miktar, kdvDahilFiyat: s.birimFiyat }
+        ? { stokKartId: Number(s.urunId), miktar: s.miktar, kdvDahilFiyat: s.birimFiyat, iskontoTuru: s.ek?.kampanya?.turu ?? 0, iskontoDegeri: s.ek?.kampanya?.deger ?? null, kampanyaId: s.ek?.kampanya?.kampanyaId ?? null }
         : { stokKartId: null, urunAdi: s.ad, birim: s.birim || "Adet", kdvOrani: s.kdvOrani, miktar: s.miktar, kdvDahilFiyat: s.birimFiyat }
     ),
     odemeler: odemeVeyaNakit(b).map((o, i) => {

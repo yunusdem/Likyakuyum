@@ -56,7 +56,6 @@ export const StokGirisFisiPage: React.FC = () => {
   const [aciklama, setAciklama] = useState("");
   const [satirlar, setSatirlar] = useState<Satir[]>([]);
   const [okut, setOkut] = useState("");
-  const [kartlar, setKartlar] = useState<StokKart[]>([]);
   const [cariler, setCariler] = useState<CariKartItem[]>([]);
   const [secici, setSecici] = useState<{ acik: boolean; arama: string }>({ acik: false, arama: "" });
   const [cariSecici, setCariSecici] = useState(false);
@@ -65,8 +64,6 @@ export const StokGirisFisiPage: React.FC = () => {
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const okutRef = useRef<HTMLInputElement | null>(null);
 
-  const kartlariYukle = useCallback(() => TicariService.kartlar().then(setKartlar).catch(() => setKartlar([])), []);
-
   const temizle = useCallback(async () => {
     setCari(null); setBelgeNo(""); setAciklama(""); setSatirlar([]); setOkut("");
     setTarih(yerelTarih()); setSaat(yerelSaat());
@@ -74,10 +71,10 @@ export const StokGirisFisiPage: React.FC = () => {
     setTimeout(() => okutRef.current?.focus(), 100);
   }, []);
 
+  // Tam kart listesi çekilmez (G2): barkod tek ürün ucuyla, seçim penceresi sunucu aramasıyla
   useEffect(() => {
-    void kartlariYukle();
     CariService.getCariKartlar().then(setCariler).catch(() => setCariler([]));
-  }, [kartlariYukle]);
+  }, []);
 
   useEffect(() => {
     if (!id) { void temizle(); return; }
@@ -111,7 +108,7 @@ export const StokGirisFisiPage: React.FC = () => {
     const m = d.match(/^(\d+(?:[.,]\d+)?)\s*\*\s*(.+)$/);
     const adet = m ? sayi(m[1]) : 1;
     const deger = m ? m[2].trim() : d;
-    const k = kartlar.find((x) => x.kod === deger.toLocaleUpperCase("tr-TR") || x.barkodlar.includes(deger)) || (await TicariService.kartBul(deger));
+    const k = await TicariService.kartBul(deger);
     if (k) { kartEkle(k, adet); setOkut(""); return; }
     if (yetki.yonetebilir && window.confirm(`"${deger}" barkodlu ya da kodlu ürün yok. Yeni stok kartı açılsın mı?`)) setYeniKart({ acik: true, barkod: deger });
     else setSecici({ acik: true, arama: deger });
@@ -138,7 +135,6 @@ export const StokGirisFisiPage: React.FC = () => {
       });
       if (r.uyari) showWarning(r.uyari);
       showSuccess(`${r.fis.fisNo} numaralı stok giriş fişi kaydedildi.${r.fis.cariHareketId ? " Tedarikçiye alacak yazıldı." : ""}`);
-      void kartlariYukle();
       if (id) navigate(`/ticari/stok-giris-fisi?id=${r.fis.stokGirisId}`, { replace: true });
       else await temizle();
     } catch (e: any) {
@@ -280,11 +276,11 @@ export const StokGirisFisiPage: React.FC = () => {
         </>
       )}
 
-      <StokKartSecici show={secici.acik} kartlar={kartlar} aramaMetni={secici.arama} onHide={() => setSecici({ acik: false, arama: "" })}
+      <StokKartSecici show={secici.acik} aramaMetni={secici.arama} onHide={() => setSecici({ acik: false, arama: "" })}
         onSelect={(k) => { kartEkle(k); setSecici({ acik: false, arama: "" }); setOkut(""); setTimeout(() => okutRef.current?.focus(), 50); }}
         onYeni={() => { setSecici({ acik: false, arama: "" }); setYeniKart({ acik: true, barkod: /^\d{6,}$/.test(okut.trim()) ? okut.trim() : undefined }); }} />
       <StokKartModal show={yeniKart.acik} onBarkod={yeniKart.barkod} onHide={() => setYeniKart({ acik: false })}
-        onSaved={(k) => { setYeniKart({ acik: false }); setOkut(""); void kartlariYukle(); kartEkle(k); }} />
+        onSaved={(k) => { setYeniKart({ acik: false }); setOkut(""); kartEkle(k); }} />
       <LookupModal<CariKartItem>
         show={cariSecici} onHide={() => setCariSecici(false)} title="Tedarikçi Cari Seç" items={cariler}
         searchPlaceholder="Kod, ünvan ya da vergi no..."

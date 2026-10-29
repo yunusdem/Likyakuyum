@@ -96,11 +96,13 @@ export class UrunResimSqlRepository {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await this.ensureTables(pool);
 
-    // Strip base64 header if present
+    // Strip base64 header if present; dosya türü data URL'deki mime'dan (PNG saydamlığı korunur), yoksa addan
+    const mimeEsi = /^data:image\/(png|jpe?g|webp|gif);base64,/i.exec(base64Data);
     const base64Clean = base64Data.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Clean, "base64");
 
-    const ext = (path.extname(originalName) || ".jpg").replace(/[^.A-Za-z0-9]/g, "").slice(0, 10) || ".jpg";
+    const mimeUzanti = mimeEsi ? `.${mimeEsi[1].toLowerCase().replace("jpeg", "jpg")}` : null;
+    const ext = mimeUzanti || (path.extname(originalName) || ".jpg").replace(/[^.A-Za-z0-9]/g, "").slice(0, 10) || ".jpg";
     const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
     const publicUrl = `${FIRMA_RESIM_ONEKI}${uniqueName}`;
 
@@ -112,7 +114,7 @@ export class UrunResimSqlRepository {
       logger.warn(`[UrunResimSqlRepository.saveResimFile] Resim firma klasörüne yazılamadı: ${err?.message || err}`);
     }
 
-    const fullDataUrl = `data:image/jpeg;base64,${base64Clean}`;
+    const fullDataUrl = `data:image/${ext === ".jpg" ? "jpeg" : ext.slice(1)};base64,${base64Clean}`;
 
     const req = pool.request();
     req.input("TIP", sql.TinyInt, tip);

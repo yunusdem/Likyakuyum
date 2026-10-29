@@ -90,6 +90,11 @@ import UrunGruplariPage from "./pages/ticari/UrunGruplariPage";
 import StokDurumListesiPage from "./pages/ticari/StokDurumListesiPage";
 import UrunHareketListesiPage from "./pages/ticari/UrunHareketListesiPage";
 import StokAyarlariPage from "./pages/ticari/StokAyarlariPage";
+import TicariFiyatGorPage from "./pages/ticari/TicariFiyatGorPage";
+import TicariEtiketPage from "./pages/ticari/TicariEtiketPage";
+import FiyatListeleriPage from "./pages/ticari/FiyatListeleriPage";
+import FiyatIslemleriPage from "./pages/ticari/FiyatIslemleriPage";
+import KampanyalarPage from "./pages/ticari/KampanyalarPage";
 import EBelgeMustahsilPage from "./pages/ebelge/EBelgeMustahsilPage";
 import EBelgeSettingsPage from "./pages/settings/EBelgeSettingsPage";
 import GibHesapSettingsPage from "./pages/settings/GibHesapSettingsPage";
@@ -468,6 +473,11 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="ticari/stok-durum-listesi" element={<StokDurumListesiPage />} />
               <Route path="ticari/urun-hareket-listesi" element={<UrunHareketListesiPage />} />
               <Route path="ticari/stok-ayarlari" element={<StokAyarlariPage />} />
+              <Route path="ticari/fiyat-gor" element={<TicariFiyatGorPage />} />
+              <Route path="ticari/etiket" element={<TicariEtiketPage />} />
+              <Route path="ticari/fiyat-listeleri" element={<FiyatListeleriPage />} />
+              <Route path="ticari/fiyat-islemleri" element={<FiyatIslemleriPage />} />
+              <Route path="ticari/kampanyalar" element={<KampanyalarPage />} />
               <Route path="kur/anlik-fiyat-listesi" element={<KurFiyatListesiPage pageType="anlik" />} />
               <Route path="kur/gunluk-fiyat-listesi" element={<Navigate to="/kur/anlik-fiyat-listesi" replace />} />
               <Route path="kur/saklanan-fiyat-listesi" element={<KurFiyatListesiPage pageType="saklanan" />} />

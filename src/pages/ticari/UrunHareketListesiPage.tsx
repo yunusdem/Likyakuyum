@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Badge, Button, Card, Col, Form, InputGroup, Row, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Col, Form, InputGroup, Row, Spinner, Table } from "react-bootstrap";
 import { IconArrowsExchange, IconBinoculars, IconX } from "@tabler/icons-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -18,7 +18,6 @@ export const UrunHareketListesiPage: React.FC = () => {
   const { showError } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
-  const [kartlar, setKartlar] = useState<StokKart[]>([]);
   const [gruplar, setGruplar] = useState<StokGrup[]>([]);
   const [kart, setKart] = useState<StokKart | null>(null);
   const [secici, setSecici] = useState(false);
@@ -31,11 +30,9 @@ export const UrunHareketListesiPage: React.FC = () => {
 
   useEffect(() => {
     TicariService.gruplar().then(setGruplar).catch(() => setGruplar([]));
-    TicariService.kartlar().then((l) => {
-      setKartlar(l);
-      const id = Number(new URLSearchParams(location.search).get("kart"));
-      if (id) { const k = l.find((x) => x.stokKartId === id); if (k) { setKart(k); setBas(""); } }
-    }).catch(() => setKartlar([]));
+    // Tam kart listesi çekilmez (G2): adresteki kart kimlikle alınır, seçim penceresi sunucuda arar
+    const id = Number(new URLSearchParams(location.search).get("kart"));
+    if (id) TicariService.kart(id).then((k) => { if (k) { setKart(k); setBas(""); } }).catch(() => undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const istek = React.useRef(0);
@@ -104,6 +101,11 @@ export const UrunHareketListesiPage: React.FC = () => {
           </Row>
         </Card.Body>
       </Card>
+      {veri?.kesildi && (
+        <Alert variant="warning" className="py-2 small mb-2">
+          Süzgece uyan {(veri.toplamSatir || 0).toLocaleString("tr-TR")} hareketten ilk {(veri.sinir || veri.satirlar.length).toLocaleString("tr-TR")} satır gösteriliyor; toplam giriş / çıkış bütün hareketler üzerinden hesaplandı. Ürün, tarih ya da grup ile daraltın.
+        </Alert>
+      )}
       <Card className="border shadow-xs">
         <div className="table-responsive" style={{ maxHeight: "calc(100vh - 280px)", minHeight: 300 }}>
           <Table bordered size="sm" className="align-middle mb-0 text-nowrap">
@@ -136,7 +138,7 @@ export const UrunHareketListesiPage: React.FC = () => {
           </Table>
         </div>
       </Card>
-      <StokKartSecici show={secici} kartlar={kartlar} onHide={() => setSecici(false)} onSelect={(k) => { setKart(k); setSecici(false); }} />
+      <StokKartSecici show={secici} onHide={() => setSecici(false)} onSelect={(k) => { setKart(k); setSecici(false); }} />
     </div>
   );
 };

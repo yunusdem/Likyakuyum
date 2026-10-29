@@ -28,7 +28,14 @@ const dosyaOku = (dosya: File): Promise<string> =>
     r.readAsDataURL(dosya);
   });
 
-/** File ya da data URL → küçültülmüş JPEG data URL */
+/** Sunucunun kabul ettiği en büyük buton resmi (hizliSatisKural BUTON_RESIM_AZAMI ile aynı) */
+const BUTON_RESIM_BAYT = 400_000;
+const saydamMi = (girdi: File | string) => (girdi instanceof File ? /png|webp|gif/i.test(girdi.type) : /^data:image\/(png|webp|gif)/i.test(girdi));
+
+/**
+ * File ya da data URL → küçültülmüş data URL. PNG / WEBP / GIF kaynakta saydamlık korunur (PNG; arkada butonun zemin rengi görünür),
+ * sonuç sınırı aşarsa ya da kaynak JPEG ise beyaz zeminli JPEG.
+ */
 export async function resimKucult(girdi: File | string, azami = BUTON_RESIM_PIKSEL, kalite = 0.85): Promise<string> {
   if (girdi instanceof File && !/^image\/(png|jpe?g|webp|gif|bmp)$/i.test(girdi.type)) throw new Error("Yalnız resim dosyası seçilebilir (PNG, JPEG, WEBP).");
   const kaynak = typeof girdi === "string" ? girdi : await dosyaOku(girdi);
@@ -40,9 +47,15 @@ export async function resimKucult(girdi: File | string, azami = BUTON_RESIM_PIKS
   tuval.height = h;
   const c = tuval.getContext("2d");
   if (!c) throw new Error("Tarayıcı resmi küçültemedi.");
+  c.imageSmoothingQuality = "high";
+  if (saydamMi(girdi)) {
+    c.drawImage(img, 0, 0, w, h);
+    const png = tuval.toDataURL("image/png");
+    if (png.length <= BUTON_RESIM_BAYT) return png;
+    c.clearRect(0, 0, w, h);
+  }
   c.fillStyle = "#ffffff";
   c.fillRect(0, 0, w, h);
-  c.imageSmoothingQuality = "high";
   c.drawImage(img, 0, 0, w, h);
   return tuval.toDataURL("image/jpeg", kalite);
 }

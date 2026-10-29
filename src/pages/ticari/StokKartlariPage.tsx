@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Col, Form, InputGroup, Row, Spinner, Table } from "react-bootstrap";
 import { IconEdit, IconFileSpreadsheet, IconPackages, IconPhoto, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -9,41 +9,78 @@ import { StokKartModal } from "./StokKartModal";
 import { ExcelYukleModal } from "./ExcelYukleModal";
 import { YETKI_YOK_MESAJI, useTicariYetki } from "./useTicariYetki";
 
-/** F- Stok Kartları (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T5, T20) */
+/** Bir seferde gelen satır (G2: liste sayfa sayfa, arama sunucuda) */
+const SAYFA = 200;
+
+/** F- Stok Kartları (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T5, T20; sayfalama docs/TICARI_GERI_BILDIRIM_YOL_HARITASI.md İş 1) */
 export const StokKartlariPage: React.FC = () => {
   const { showSuccess, showError } = useToast();
   const yetki = useTicariYetki();
   const [kartlar, setKartlar] = useState<StokKart[]>([]);
+  const [toplam, setToplam] = useState(0);
   const [gruplar, setGruplar] = useState<StokGrup[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
+  const [devamYukleniyor, setDevamYukleniyor] = useState(false);
   const [arama, setArama] = useState("");
   const [grupId, setGrupId] = useState<string>("");
   const [durum, setDurum] = useState<"hepsi" | "aktif" | "pasif">("aktif");
   const [secili, setSecili] = useState<number | null>(null);
   const [modal, setModal] = useState<{ acik: boolean; id: number | null }>({ acik: false, id: null });
   const [excel, setExcel] = useState(false);
+  const istek = useRef(0);
+  const kaydirma = useRef<HTMLDivElement | null>(null);
 
-  const yukle = async () => {
+  const suzgec = useCallback(() => ({
+    arama: arama.trim() || undefined,
+    grupId: grupId ? Number(grupId) : null,
+    aktif: durum === "hepsi" ? null : durum === "aktif",
+  }), [arama, grupId, durum]);
+
+  /** İlk sayfayı (yeniden) yükler; süzgeç değişince ve kayıt sonrası */
+  const yukle = useCallback(async () => {
+    const no = ++istek.current;
     setYukleniyor(true);
     try {
-      const [k, g] = await Promise.all([TicariService.kartlar(), TicariService.gruplar()]);
-      setKartlar(k);
-      setGruplar(g);
+      const r = await TicariService.kartlarSayfali({ ...suzgec(), sayfa: 1, adet: SAYFA });
+      if (no !== istek.current) return;
+      setKartlar(r.kartlar);
+      setToplam(r.toplam);
+      kaydirma.current?.scrollTo({ top: 0 });
     } catch (e: any) {
-      showError(e?.message || "Stok kartları alınamadı.");
+      if (no === istek.current) showError(e?.message || "Stok kartları alınamadı.");
     } finally {
-      setYukleniyor(false);
+      if (no === istek.current) setYukleniyor(false);
+    }
+  }, [suzgec, showError]);
+
+  /** Sonraki sayfayı altına ekler */
+  const devam = async () => {
+    if (devamYukleniyor || yukleniyor || kartlar.length >= toplam) return;
+    const no = istek.current;
+    setDevamYukleniyor(true);
+    try {
+      const r = await TicariService.kartlarSayfali({ ...suzgec(), sayfa: Math.floor(kartlar.length / SAYFA) + 1, adet: SAYFA });
+      if (no !== istek.current) return;
+      setKartlar((p) => { const var_ = new Set(p.map((k) => k.stokKartId)); return [...p, ...r.kartlar.filter((k) => !var_.has(k.stokKartId))]; });
+      setToplam(r.toplam);
+    } catch (e: any) {
+      showError(e?.message || "Devamı alınamadı.");
+    } finally {
+      setDevamYukleniyor(false);
     }
   };
-  useEffect(() => { void yukle(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const gorunen = useMemo(() => {
-    const t = arama.trim().toLocaleLowerCase("tr-TR");
-    return kartlar.filter((k) =>
-      (durum === "hepsi" || (durum === "aktif" ? k.aktif : !k.aktif)) &&
-      (!grupId || String(k.stokGrupId) === grupId) &&
-      (!t || k.kod.toLocaleLowerCase("tr-TR").includes(t) || k.ad.toLocaleLowerCase("tr-TR").includes(t) || k.barkodlar.some((b) => b.includes(t))));
-  }, [kartlar, arama, grupId, durum]);
+  useEffect(() => { TicariService.gruplar().then(setGruplar).catch(() => setGruplar([])); }, []);
+  // Arama yazılırken 300 ms beklenir; grup / durum hemen
+  useEffect(() => {
+    const t = setTimeout(() => { void yukle(); }, arama.trim() ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [yukle, arama]);
+
+  const kaydirildi = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120) void devam();
+  };
 
   const yonetebilir = yetki.yonetebilir;
   const yeni = () => { if (yonetebilir) setModal({ acik: true, id: null }); };
@@ -55,22 +92,31 @@ export const StokKartlariPage: React.FC = () => {
     try {
       await TicariService.kartSil(hedef.stokKartId);
       showSuccess("Kart silindi.");
-      await yukle();
+      setKartlar((p) => p.filter((x) => x.stokKartId !== hedef.stokKartId));
+      setToplam((t) => Math.max(0, t - 1));
+      if (secili === hedef.stokKartId) setSecili(null);
     } catch (e: any) {
       showError(e?.message || "Kart silinemedi.");
     }
   };
+  /** Kayıt sonrası liste baştan yüklenmez: satır yerinde güncellenir, yeni kart en üste konur */
+  const kaydedildi = (k: StokKart) => {
+    setModal({ acik: false, id: null });
+    setSecili(k.stokKartId);
+    setKartlar((p) => (p.some((x) => x.stokKartId === k.stokKartId) ? p.map((x) => (x.stokKartId === k.stokKartId ? { ...k, resim: undefined } : x)) : [{ ...k, resim: undefined }, ...p]));
+    if (!kartlar.some((x) => x.stokKartId === k.stokKartId)) setToplam((t) => t + 1);
+  };
 
   const yazdir = () => printReportTable({
     title: "Stok Kartları",
-    subtitle: `${gorunen.length} kart`,
+    subtitle: `${kartlar.length} kart${toplam > kartlar.length ? ` (toplam ${toplam}; yalnız yüklenenler)` : ""}`,
     columns: [
       { header: "Kod", key: "kod" }, { header: "Ürün Adı", key: "ad" }, { header: "Barkod", render: (k: StokKart) => k.barkodlar.join(", ") },
       { header: "Grup", render: (k: StokKart) => k.grupAdi || "" }, { header: "Birim", key: "birim" }, { header: "KDV %", render: (k: StokKart) => String(k.kdvOrani) },
       { header: "Satış Fiyatı", render: (k: StokKart) => `${para(k.satisFiyati)} ${k.paraKodu || "TL"} ${k.fiyatKdvDahil ? "(dahil)" : "(hariç)"}` },
       { header: "Stok", render: (k: StokKart) => `${miktarYaz(k.bakiye)} ${k.birim}` },
     ] as any,
-    data: gorunen,
+    data: kartlar,
   });
 
   return (
@@ -113,7 +159,7 @@ export const StokKartlariPage: React.FC = () => {
       </Card>
 
       <Card className="border shadow-xs">
-        <div className="table-responsive" style={{ maxHeight: "calc(100vh - 300px)", minHeight: 300 }}>
+        <div className="table-responsive" ref={kaydirma} onScroll={kaydirildi} style={{ maxHeight: "calc(100vh - 300px)", minHeight: 300 }}>
           <Table hover striped bordered size="sm" className="align-middle mb-0 text-nowrap">
             <thead className="table-light sticky-top">
               <tr className="small text-secondary">
@@ -126,9 +172,9 @@ export const StokKartlariPage: React.FC = () => {
             <tbody>
               {yukleniyor ? (
                 <tr><td colSpan={12} className="text-center py-5"><Spinner size="sm" className="me-2" />Yükleniyor...</td></tr>
-              ) : gorunen.length === 0 ? (
+              ) : kartlar.length === 0 ? (
                 <tr><td colSpan={12} className="text-center py-5 text-muted">Kart bulunamadı.{yonetebilir && " Yeni Kart ya da Excel'den Yükle ile ekleyebilirsiniz."}</td></tr>
-              ) : gorunen.map((k, i) => (
+              ) : kartlar.map((k, i) => (
                 <tr key={k.stokKartId} onClick={() => setSecili(k.stokKartId)} onDoubleClick={() => duzelt(k)}
                   style={{ cursor: "pointer", ...(secili === k.stokKartId ? ({ "--bs-table-bg": "#dbeafe", "--bs-table-accent-bg": "#dbeafe", "--bs-table-striped-bg": "#dbeafe", "--bs-table-hover-bg": "#cfe2ff" } as any) : {}) }}>
                   <td className="text-center text-muted small">{i + 1}</td>
@@ -150,16 +196,22 @@ export const StokKartlariPage: React.FC = () => {
                   </td>
                 </tr>
               ))}
+              {!yukleniyor && kartlar.length < toplam && (
+                <tr><td colSpan={12} className="text-center py-2">
+                  <Button size="sm" variant="outline-secondary" disabled={devamYukleniyor} onClick={() => void devam()}>
+                    {devamYukleniyor && <Spinner size="sm" className="me-1" />}Devamını yükle ({toplam - kartlar.length} kart daha)
+                  </Button>
+                </td></tr>
+              )}
             </tbody>
           </Table>
         </div>
         <Card.Footer className="bg-light py-1 px-3 small text-muted d-flex justify-content-between">
-          <span>{gorunen.length} kart</span><span>Çift tıklayarak düzeltin · Hareket görmüş kart silinemez, pasif yapılır</span>
+          <span>{toplam > kartlar.length ? `${kartlar.length} / ${toplam} kart` : `${toplam} kart`}</span><span>Çift tıklayarak düzeltin · Hareket görmüş kart silinemez, pasif yapılır</span>
         </Card.Footer>
       </Card>
 
-      <StokKartModal show={modal.acik} stokKartId={modal.id} onHide={() => setModal({ acik: false, id: null })}
-        onSaved={(k) => { setModal({ acik: false, id: null }); setSecili(k.stokKartId); void yukle(); }} />
+      <StokKartModal show={modal.acik} stokKartId={modal.id} onHide={() => setModal({ acik: false, id: null })} onSaved={kaydedildi} />
       <ExcelYukleModal show={excel} onHide={() => setExcel(false)} onYuklendi={yukle} />
     </div>
   );

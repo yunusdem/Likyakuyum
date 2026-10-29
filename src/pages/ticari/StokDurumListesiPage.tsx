@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Badge, Button, Card, Col, Form, InputGroup, Row, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Col, Form, InputGroup, Row, Spinner, Table } from "react-bootstrap";
 import { IconListNumbers, IconSearch } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
@@ -11,7 +11,7 @@ import { StokDurumSatiri, StokGrup, TicariService, miktarYaz, para, tarihYaz } f
 export const StokDurumListesiPage: React.FC = () => {
   const { showError } = useToast();
   const navigate = useNavigate();
-  const [veri, setVeri] = useState<{ satirlar: StokDurumSatiri[]; toplam: { kart: number; deger: number; eksik: number; eksiBakiye: number } } | null>(null);
+  const [veri, setVeri] = useState<Awaited<ReturnType<typeof TicariService.stokDurum>> | null>(null);
   const [gruplar, setGruplar] = useState<StokGrup[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [tarih, setTarih] = useState("");
@@ -76,9 +76,14 @@ export const StokDurumListesiPage: React.FC = () => {
           </Row>
         </Card.Body>
       </Card>
+      {veri?.kesildi && (
+        <Alert variant="warning" className="py-2 small mb-2">
+          Süzgece uyan {veri.toplam.kart.toLocaleString("tr-TR")} üründen ilk {(veri.sinir || satirlar.length).toLocaleString("tr-TR")} satır gösteriliyor; toplamlar bütün ürünler üzerinden hesaplandı. Grup ya da arama ile daraltın.
+        </Alert>
+      )}
       <Row className="g-2 mb-2 small">
-        <Col xs={6} md={3}><Card className="border-0 bg-primary bg-opacity-10"><Card.Body className="p-2"><div className="text-muted">Ürün</div><div className="fs-5 fw-bold text-primary">{satirlar.length}</div></Card.Body></Card></Col>
-        <Col xs={6} md={3}><Card className="border-0 bg-dark bg-opacity-10"><Card.Body className="p-2"><div className="text-muted">Stok değeri (son alış)</div><div className="fs-5 fw-bold">{para(deger)} TL</div></Card.Body></Card></Col>
+        <Col xs={6} md={3}><Card className="border-0 bg-primary bg-opacity-10"><Card.Body className="p-2"><div className="text-muted">Ürün</div><div className="fs-5 fw-bold text-primary">{veri?.kesildi ? veri.toplam.kart : satirlar.length}</div></Card.Body></Card></Col>
+        <Col xs={6} md={3}><Card className="border-0 bg-dark bg-opacity-10"><Card.Body className="p-2"><div className="text-muted">Stok değeri (son alış)</div><div className="fs-5 fw-bold">{para(veri?.kesildi ? veri.toplam.deger : deger)} TL</div></Card.Body></Card></Col>
         <Col xs={6} md={3}><Card className="border-0 bg-warning bg-opacity-10"><Card.Body className="p-2"><div className="text-muted">En az stoğun altında</div><div className="fs-5 fw-bold text-warning">{veri?.toplam.eksik ?? 0}</div></Card.Body></Card></Col>
         <Col xs={6} md={3}><Card className="border-0 bg-danger bg-opacity-10"><Card.Body className="p-2"><div className="text-muted">Eksi stok</div><div className="fs-5 fw-bold text-danger">{veri?.toplam.eksiBakiye ?? 0}</div></Card.Body></Card></Col>
       </Row>

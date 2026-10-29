@@ -3,7 +3,9 @@ import { Alert, Badge, Button, Col, Form, InputGroup, Modal, Row, Spinner } from
 import { IconBarcode, IconDeviceFloppy, IconPhoto, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { useToast } from "../../context/ToastContext";
 import { ProductDefinitionService, ProductItem } from "../../services/productDefinitionService";
-import { BIRIM_SECENEKLERI, KDV_SECENEKLERI, StokGrup, StokKart, StokKartGirdi, TicariService, dosyaOku, miktarYaz } from "../../services/ticariService";
+import { BIRIM_SECENEKLERI, KDV_SECENEKLERI, STOK_KONTROL_SECENEKLERI, StokGrup, StokKart, StokKartGirdi, TicariService, dosyaOku, miktarYaz } from "../../services/ticariService";
+import { CariKartItem, CariService } from "../../services/cariService";
+import { LookupModal } from "../../components/common/LookupModal";
 
 interface Props {
   show: boolean;
@@ -16,7 +18,7 @@ interface Props {
   onSaved: (kart: StokKart) => void;
 }
 
-const bos: StokKartGirdi = { ad: "", kod: "", birim: "Adet", kdvOrani: 20, satisFiyati: "", fiyatKdvDahil: true, paraId: null, alisFiyati: "", enAzStok: "", aktif: true, aciklama: "", barkodlar: [], stokGrupId: null };
+const bos: StokKartGirdi = { ad: "", kod: "", birim: "Adet", kdvOrani: 20, satisFiyati: "", fiyatKdvDahil: true, paraId: null, alisFiyati: "", enAzStok: "", aktif: true, aciklama: "", barkodlar: [], stokGrupId: null, stokKontrol: "" };
 
 const metin = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v).replace(".", ","));
 
@@ -34,21 +36,30 @@ export const StokKartModal: React.FC<Props> = ({ show, stokKartId, onBarkod, onA
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
   const adRef = useRef<HTMLInputElement | null>(null);
+  // İş 11: tanımlı fiyat listelerindeki fiyatlar (metin) ve tedarikçi
+  const [listeFiyatlari, setListeFiyatlari] = useState<{ fiyatListesiId: number; ad: string; fiyat: string }[]>([]);
+  const [tedarikci, setTedarikci] = useState<{ id: number; ad: string } | null>(null);
+  const [cariSecici, setCariSecici] = useState(false);
+  const [cariler, setCariler] = useState<CariKartItem[] | null>(null);
 
   useEffect(() => {
     if (!show) return;
     setHata(null); setBarkod(""); setYeniGrup(null); setResim(undefined);
     TicariService.gruplar().then(setGruplar).catch(() => setGruplar([]));
     ProductDefinitionService.getProducts().then((l) => setParalar((l || []).filter((p) => Number(p.urunTipi) === 0))).catch(() => setParalar([]));
+    setTedarikci(null);
+    setListeFiyatlari([]);
     if (stokKartId) {
       setYukleniyor(true);
       TicariService.kart(stokKartId)
         .then((k) => {
           setKart(k);
+          setTedarikci(k.tedarikciCariId ? { id: k.tedarikciCariId, ad: k.tedarikciAd || String(k.tedarikciCariId) } : null);
+          setListeFiyatlari((k.listeFiyatlari || []).map((l) => ({ fiyatListesiId: l.fiyatListesiId, ad: l.ad, fiyat: metin(l.fiyat) })));
           setG({
             stokKartId: k.stokKartId, kod: k.kod, ad: k.ad, stokGrupId: k.stokGrupId, birim: k.birim, kdvOrani: k.kdvOrani,
             satisFiyati: metin(k.satisFiyati), fiyatKdvDahil: k.fiyatKdvDahil, paraId: k.paraId, alisFiyati: metin(k.alisFiyati),
-            enAzStok: metin(k.enAzStok), aktif: k.aktif, aciklama: k.aciklama || "", barkodlar: k.barkodlar,
+            enAzStok: metin(k.enAzStok), aktif: k.aktif, aciklama: k.aciklama || "", barkodlar: k.barkodlar, stokKontrol: k.stokKontrol || "",
           });
           setResim(k.resim ?? null);
         })
@@ -58,6 +69,7 @@ export const StokKartModal: React.FC<Props> = ({ show, stokKartId, onBarkod, onA
       setKart(null);
       setG({ ...bos, ad: onAd || "", barkodlar: onBarkod ? [onBarkod.trim()] : [] });
       setResim(null);
+      TicariService.fiyatListeleri(true).then((l) => setListeFiyatlari(l.map((x) => ({ fiyatListesiId: x.fiyatListesiId, ad: x.ad, fiyat: "" })))).catch(() => undefined);
     }
     setTimeout(() => adRef.current?.focus(), 150);
   }, [show, stokKartId, onBarkod, onAd]);
@@ -98,7 +110,11 @@ export const StokKartModal: React.FC<Props> = ({ show, stokKartId, onBarkod, onA
     setKaydediliyor(true);
     setHata(null);
     try {
-      const girdi: StokKartGirdi = { ...g, barkodlar: [...(g.barkodlar || []), ...(barkod.trim() ? [barkod.trim()] : [])] };
+      const girdi: StokKartGirdi = {
+        ...g, barkodlar: [...(g.barkodlar || []), ...(barkod.trim() ? [barkod.trim()] : [])],
+        tedarikciCariId: tedarikci?.id ?? null,
+        listeFiyatlari: listeFiyatlari.map((l) => ({ fiyatListesiId: l.fiyatListesiId, fiyat: l.fiyat.trim() === "" ? null : l.fiyat })),
+      };
       // Resim değişmediyse gönderilmez (sunucu dokunmaz)
       if (resim !== undefined && resim !== (kart?.resim ?? null)) girdi.resim = resim;
       const k = await TicariService.kartKaydet(girdi);
@@ -191,6 +207,12 @@ export const StokKartModal: React.FC<Props> = ({ show, stokKartId, onBarkod, onA
                 <Col md={4} className="d-flex align-items-end">
                   <Form.Check type="switch" id="aktif" className="mb-1" label="Aktif (satışta seçilebilir)" checked={!!g.aktif} onChange={(e) => alan("aktif", e.target.checked)} />
                 </Col>
+                <Col md={6}>
+                  <Form.Label className="small fw-bold mb-1">Stok kontrol (eksiye düşünce)</Form.Label>
+                  <Form.Select size="sm" value={g.stokKontrol || ""} onChange={(e) => alan("stokKontrol", e.target.value || "")}>
+                    {STOK_KONTROL_SECENEKLERI.map((s) => <option key={s.kod} value={s.kod}>{s.ad}</option>)}
+                  </Form.Select>
+                </Col>
                 <Col md={12}>
                   <Form.Label className="small fw-bold mb-1">Barkodlar</Form.Label>
                   <InputGroup size="sm">
@@ -208,6 +230,29 @@ export const StokKartModal: React.FC<Props> = ({ show, stokKartId, onBarkod, onA
                     ))}
                   </div>
                 </Col>
+                <Col md={12}>
+                  <Form.Label className="small fw-bold mb-1">Tedarikçi</Form.Label>
+                  <InputGroup size="sm">
+                    <Form.Control readOnly value={tedarikci ? tedarikci.ad : ""} placeholder="Seçilmedi (son stok girişindeki cari olur)" style={{ cursor: "pointer" }}
+                      onClick={async () => { if (!cariler) { try { setCariler(await CariService.getCariKartlar()); } catch { setCariler([]); } } setCariSecici(true); }} />
+                    {tedarikci && <Button variant="outline-secondary" title="Kaldır" onClick={() => setTedarikci(null)}><IconX size={14} /></Button>}
+                    <Button variant="outline-primary" title="Cari seç" onClick={async () => { if (!cariler) { try { setCariler(await CariService.getCariKartlar()); } catch { setCariler([]); } } setCariSecici(true); }}>Seç</Button>
+                  </InputGroup>
+                </Col>
+                {listeFiyatlari.length > 0 && (
+                  <Col md={12}>
+                    <Form.Label className="small fw-bold mb-1">Fiyat listeleri <span className="text-muted fw-normal">(boş: ana satış fiyatı geçerli; kartın para birimi ve KDV dahil işaretiyle)</span></Form.Label>
+                    <div className="d-flex flex-wrap gap-2">
+                      {listeFiyatlari.map((l) => (
+                        <InputGroup size="sm" key={l.fiyatListesiId} style={{ width: 200 }}>
+                          <InputGroup.Text className="bg-light small">{l.ad}</InputGroup.Text>
+                          <Form.Control className="text-end" inputMode="decimal" placeholder="ana fiyat" value={l.fiyat} aria-label={`${l.ad} fiyatı`}
+                            onChange={(e) => setListeFiyatlari((p) => p.map((x) => (x.fiyatListesiId === l.fiyatListesiId ? { ...x, fiyat: e.target.value.replace(/[^0-9.,]/g, "") } : x)))} />
+                        </InputGroup>
+                      ))}
+                    </div>
+                  </Col>
+                )}
                 <Col md={12}>
                   <Form.Label className="small fw-bold mb-1">Açıklama</Form.Label>
                   <Form.Control size="sm" as="textarea" rows={2} maxLength={500} value={g.aciklama || ""} onChange={(e) => alan("aciklama", e.target.value)} />
@@ -236,6 +281,16 @@ export const StokKartModal: React.FC<Props> = ({ show, stokKartId, onBarkod, onA
           </Row>
         )}
       </Modal.Body>
+      <LookupModal<CariKartItem>
+        show={cariSecici} onHide={() => setCariSecici(false)} title="Tedarikçi Cari Seç" items={cariler || []} isLoading={!cariler}
+        searchPlaceholder="Kod, ünvan ya da vergi no..."
+        columns={[
+          { header: "Kod", width: "110px", render: (c) => <span className="font-monospace">{c.kod}</span>, highlight: true },
+          { header: "Ünvan", render: (c) => c.ad, highlight: true },
+          { header: "Vergi / TC No", width: "130px", render: (c) => c.vergiKimlikNo || "" },
+        ]}
+        filterFn={(c, t) => { const a = t.toLocaleLowerCase("tr-TR"); return String(c.kod || "").toLocaleLowerCase("tr-TR").includes(a) || String(c.ad || "").toLocaleLowerCase("tr-TR").includes(a) || String(c.vergiKimlikNo || "").includes(t); }}
+        onSelect={(c) => { setTedarikci({ id: c.id, ad: c.ad }); setCariSecici(false); }} selectOnDoubleClick />
       <Modal.Footer className="bg-light py-2">
         <span className="me-auto small text-muted">F1: Kaydet · Yalnız ürün adı zorunlu</span>
         <Button variant="outline-secondary" size="sm" onClick={onHide}>Vazgeç</Button>

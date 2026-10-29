@@ -6,6 +6,7 @@ import { ticariFisHesapla, IskontoTuru, GECERLI_KDV_ORANLARI, birimAdiDuzelt } f
 import { PerakendeSqlRepository } from "./perakendeSql.repository.js";
 import { DbBaglam, STOK_BELGE, TicariStokSqlRepository } from "./ticariStokSql.repository.js";
 import { bakiyeler, eksiStokDenetle } from "./ticariGirisSql.repository.js";
+import { TicariKampanyaSqlRepository } from "./ticariKampanyaSql.repository.js";
 
 /**
  * Ticari Satış Fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T12–T16). Perakende fişinin tablolarına (TODVZ_FATURA*)
@@ -30,6 +31,8 @@ export interface TicariSatisSatirGirdi {
   kdvDahilFiyat?: number | string | null;
   iskontoTuru?: number | null;
   iskontoDegeri?: number | string | null;
+  /** Satıra uygulanan kampanya (İş 11, G12); satır iskontosu kampanyanınki olmalı */
+  kampanyaId?: number | null;
 }
 
 export interface TicariSatisOdemeGirdi {
@@ -71,6 +74,8 @@ export interface TicariSatisGirdi {
   satirlar: TicariSatisSatirGirdi[];
   odemeler?: TicariSatisOdemeGirdi[];
   eksiStokOnay?: boolean;
+  /** Kullanılan fiyat listesi (İş 11, G7); fiyatı verilmeyen satır bu listedeki fiyattan, yoksa ana fiyattan */
+  fiyatListesiId?: number | null;
 }
 
 const temiz = (v: unknown): string => String(v ?? "").trim();
@@ -197,8 +202,16 @@ export class TicariSatisSqlRepository {
 
     // Kartlar: ad, birim, KDV karttan; fiyat girilmemişse karttan (KDV dahile çevrilerek)
     const kartIdler = [...new Set(satirGirdi.filter((s) => !serbestMi(s)).map((s) => Number(s.stokKartId)))];
+    const fiyatListesiId = Number(girdi.fiyatListesiId) || null;
+    if (fiyatListesiId) {
+      const l = await pool.request().input("L", sql.Int, fiyatListesiId).query(`SELECT 1 AS V FROM dbo.TODVZ_STOK_FIYAT_LISTESI WHERE FIYAT_LISTESI_ID = @L`);
+      if (!l.recordset.length) throw ApiError.badRequest("Seçilen fiyat listesi bulunamadı.");
+    }
     const kr = kartIdler.length
-      ? await pool.request().query(`SELECT STOK_KART_ID, RTRIM(KOD) AS KOD, AD, BIRIM, KDV_ORANI, SATIS_FIYATI, FIYAT_KDV_DAHIL, AKTIF FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${kartIdler.join(",")})`)
+      ? await pool.request().input("LISTE", sql.Int, fiyatListesiId).query(`
+          SELECT K.STOK_KART_ID, RTRIM(K.KOD) AS KOD, K.AD, K.BIRIM, K.KDV_ORANI, COALESCE(LF.FIYAT, K.SATIS_FIYATI) AS SATIS_FIYATI, K.FIYAT_KDV_DAHIL, K.AKTIF, K.STOK_GRUP_ID
+          FROM dbo.TODVZ_STOK_KART K LEFT JOIN dbo.TODVZ_STOK_KART_FIYAT LF ON LF.STOK_KART_ID = K.STOK_KART_ID AND LF.FIYAT_LISTESI_ID = @LISTE
+          WHERE K.STOK_KART_ID IN (${kartIdler.join(",")})`)
       : { recordset: [] as any[] };
     const kartlar = new Map<number, any>(kr.recordset.map((x: any) => [x.STOK_KART_ID, x]));
     const hesapGirdisi = satirGirdi.map((s, i) => {
@@ -282,22 +295,23 @@ export class TicariSatisSqlRepository {
         .input("ISK_TUTAR", sql.Float, hesap.baslikIskontoDahil)
         .input("GENEL", sql.Float, hesap.genelToplam)
         .input("KUL", sql.Int, kullaniciId || null)
-        .input("KAYNAK", sql.TinyInt, FIS_KAYNAGI_TICARI);
+        .input("KAYNAK", sql.TinyInt, FIS_KAYNAGI_TICARI)
+        .input("LISTE", sql.Int, fiyatListesiId);
       if (id0) {
         await bas.query(`UPDATE dbo.TODVZ_FATURA SET VEZNE_ID = @VEZNE_ID, FATURA_NO = @FATURA_NO, TARIH = @TARIH, FATURA_TIPI = 1, SENARYO = @SENARYO,
           CARI_KART_ID = @CARI_KART_ID, ALICI_VKN_TCKN = @VKN, ALICI_UNVAN = @UNVAN, ADRES = @ADRES, ILCE = @ILCE, IL = @IL, VERGI_DAIRESI = @VD,
           EPOSTA = @EPOSTA, TELEFON = @TELEFON, PARA_ID = ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID), 1),
           KUR = 1, ARA_TOPLAM = @ARA, TOPLAM_KDV = @KDV, ISKONTO_ID = @ISK_ID, ISKONTO_KODU = @ISK_KOD, ISKONTO_ORANI = @ISK_ORAN, ISKONTO_TUTARI = @ISK_TUTAR,
-          GENEL_TOPLAM = @GENEL, FIS_KAYNAGI = @KAYNAK, GUNCELLEYEN_ID = @KUL, GUNCELLEME_ZAMANI = GETDATE()
+          GENEL_TOPLAM = @GENEL, FIS_KAYNAGI = @KAYNAK, FIYAT_LISTESI_ID = @LISTE, GUNCELLEYEN_ID = @KUL, GUNCELLEME_ZAMANI = GETDATE()
           WHERE FATURA_ID = @ID`);
       } else {
         const r = await bas.query(`INSERT INTO dbo.TODVZ_FATURA (VEZNE_ID, FATURA_NO, ETTN, TARIH, FATURA_TIPI, SENARYO, CARI_KART_ID, ALICI_VKN_TCKN, ALICI_UNVAN,
             ADRES, ILCE, IL, VERGI_DAIRESI, EPOSTA, TELEFON, PARA_ID, KUR, ARA_TOPLAM, TOPLAM_KDV, ISKONTO_ID, ISKONTO_KODU, ISKONTO_ORANI, ISKONTO_TUTARI,
-            GENEL_TOPLAM, E_BELGE_DURUMU, EKLEYEN_ID, EKLEME_ZAMANI, FIS_KAYNAGI)
+            GENEL_TOPLAM, E_BELGE_DURUMU, EKLEYEN_ID, EKLEME_ZAMANI, FIS_KAYNAGI, FIYAT_LISTESI_ID)
           OUTPUT INSERTED.FATURA_ID
           VALUES (@VEZNE_ID, @FATURA_NO, NEWID(), @TARIH, 1, @SENARYO, @CARI_KART_ID, @VKN, @UNVAN, @ADRES, @ILCE, @IL, @VD, @EPOSTA, @TELEFON,
             ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID), 1), 1, @ARA, @KDV,
-            @ISK_ID, @ISK_KOD, @ISK_ORAN, @ISK_TUTAR, @GENEL, 0, @KUL, GETDATE(), @KAYNAK)`);
+            @ISK_ID, @ISK_KOD, @ISK_ORAN, @ISK_TUTAR, @GENEL, 0, @KUL, GETDATE(), @KAYNAK, @LISTE)`);
         faturaId = r.recordset[0].FATURA_ID;
       }
 
@@ -307,16 +321,23 @@ export class TicariSatisSqlRepository {
         const k = serbest ? null : kartlar.get(Number(satirGirdi[i].stokKartId));
         const ad = serbest ? temiz(satirGirdi[i].urunAdi) : temiz(k.AD);
         const birim = (serbest ? birimAdiDuzelt(satirGirdi[i].birim) : temiz(k.BIRIM)) || "Adet";
+        // Kampanya (İş 11, G12): yürürlükte ve kartı kapsıyor olmalı; satır iskontosu kampanyanınkiyle aynı olmalı
+        const kampanyaId = Number(satirGirdi[i].kampanyaId) || null;
+        if (kampanyaId) {
+          if (!k) throw ApiError.badRequest(`${i + 1}. satır: serbest ürüne kampanya uygulanmaz.`);
+          const kmp = await TicariKampanyaSqlRepository.satirKampanyasiniDogrula(tx, kampanyaId, Number(k.STOK_KART_ID), k.STOK_GRUP_ID ?? null);
+          if (Number(h.iskontoTuru) !== kmp.turu || Math.abs(Number(h.iskontoDegeri) - kmp.degeri) > 0.000001) throw ApiError.badRequest(`${i + 1}. satırdaki kampanya indirimi güncel değil; fişi yeniden fiyatlayın.`);
+        }
         await new sql.Request(tx)
-          .input("FID", sql.Int, faturaId).input("NO", sql.Int, i + 1).input("KART", sql.Int, k ? k.STOK_KART_ID : null)
+          .input("FID", sql.Int, faturaId).input("NO", sql.Int, i + 1).input("KART", sql.Int, k ? k.STOK_KART_ID : null).input("KMP", sql.Int, kampanyaId)
           .input("AD", sql.VarChar(200), ad.slice(0, 200)).input("M", sql.Float, h.miktar).input("BIRIM", sql.VarChar(20), birim)
           .input("BF", sql.Float, h.birimFiyat).input("T", sql.Float, h.tutar).input("KO", sql.Float, h.kdvOrani).input("KT", sql.Float, h.kdvTutari)
           .input("TT", sql.Float, h.toplamTutar).input("DF", sql.Float, h.kdvDahilFiyat)
           .input("IT", sql.TinyInt, h.iskontoTuru || null).input("ID", sql.Float, h.iskontoTuru ? h.iskontoDegeri : null).input("IST", sql.Float, h.iskontoTutari)
           .input("TARIH", sql.DateTime, tarih).input("TUR", sql.TinyInt, STOK_BELGE.SATIS).input("KUL", sql.Int, kullaniciId || null)
           .query(`INSERT INTO dbo.TODVZ_FATURA_SATIRI (FATURA_ID, SATIR_NO, ALTIN_URUN_ID, BARKOD, URUN_ADI, AYAR, MIKTAR, BIRIM, GRAM, HAS_GRAM, BIRIM_FIYAT, TUTAR,
-              KDV_ORANI, KDV_TUTARI, TOPLAM_TUTAR, STOK_KART_ID, KDV_DAHIL_FIYAT, SATIR_ISKONTO_TURU, SATIR_ISKONTO_DEGERI, SATIR_ISKONTO_TUTARI)
-            VALUES (@FID, @NO, NULL, NULL, @AD, NULL, @M, @BIRIM, 0, 0, @BF, @T, @KO, @KT, @TT, @KART, @DF, @IT, @ID, @IST);
+              KDV_ORANI, KDV_TUTARI, TOPLAM_TUTAR, STOK_KART_ID, KDV_DAHIL_FIYAT, SATIR_ISKONTO_TURU, SATIR_ISKONTO_DEGERI, SATIR_ISKONTO_TUTARI, KAMPANYA_ID)
+            VALUES (@FID, @NO, NULL, NULL, @AD, NULL, @M, @BIRIM, 0, 0, @BF, @T, @KO, @KT, @TT, @KART, @DF, @IT, @ID, @IST, @KMP);
             IF @KART IS NOT NULL
               INSERT INTO dbo.TODVZ_STOK_HAREKET (STOK_KART_ID, TARIH, BELGE_TURU, BELGE_ID, SATIR_NO, GIRIS, CIKIS, BIRIM_FIYAT, EKLEYEN_ID)
               VALUES (@KART, @TARIH, @TUR, @FID, @NO, 0, @M, @BF, @KUL);`);
@@ -437,6 +458,7 @@ export class TicariSatisSqlRepository {
       telefon: f.TELEFON ? temiz(f.TELEFON) : null,
       paraId: f.PARA_ID,
       paraKodu: f.PARA_KODU ? temiz(f.PARA_KODU) : "TL",
+      fiyatListesiId: f.FIYAT_LISTESI_ID ?? null,
       kur: Number(f.KUR) || 1,
       araToplam: Number(f.ARA_TOPLAM) || 0,
       toplamKdv: Number(f.TOPLAM_KDV) || 0,
@@ -467,7 +489,7 @@ export class TicariSatisSqlRepository {
       })),
     };
     const s = await pool.request().input("ID", sql.Int, id).query(`
-      SELECT S.SATIR_NO, S.STOK_KART_ID, RTRIM(K.KOD) AS KOD, S.URUN_ADI, S.MIKTAR, S.BIRIM, S.BIRIM_FIYAT, S.TUTAR, S.KDV_ORANI, S.KDV_TUTARI, S.TOPLAM_TUTAR,
+      SELECT S.SATIR_NO, S.STOK_KART_ID, RTRIM(K.KOD) AS KOD, S.URUN_ADI, S.MIKTAR, S.BIRIM, S.BIRIM_FIYAT, S.TUTAR, S.KDV_ORANI, S.KDV_TUTARI, S.TOPLAM_TUTAR, S.KAMPANYA_ID,
         S.KDV_DAHIL_FIYAT, S.SATIR_ISKONTO_TURU, S.SATIR_ISKONTO_DEGERI, S.SATIR_ISKONTO_TUTARI,
         (SELECT TOP 1 B.BARKOD FROM dbo.TODVZ_STOK_BARKOD B WHERE B.STOK_KART_ID = S.STOK_KART_ID ORDER BY B.STOK_BARKOD_ID) AS BARKOD
       FROM dbo.TODVZ_FATURA_SATIRI S LEFT JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = S.STOK_KART_ID
@@ -495,6 +517,7 @@ export class TicariSatisSqlRepository {
         kdvTutari: Number(x.KDV_TUTARI) || 0,
         toplamTutar: Number(x.TOPLAM_TUTAR) || 0,
         brutDahil: brut,
+        kampanyaId: x.KAMPANYA_ID ?? null,
       };
     });
     const iskontoTuru = Number(fis.iskontoOrani) > 0 ? 1 : Number(fis.iskontoTutari) > 0 ? 2 : 0;

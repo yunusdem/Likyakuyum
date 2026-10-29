@@ -175,6 +175,51 @@ export function ticariFisHesapla(girdiler: TicariSatirGirdi[], baslik?: { turu?:
 }
 
 /** Kart fiyatı → KDV dahil satış fiyatı (kart KDV hariçse oran eklenir) */
+// ── Kampanya (İş 11, G12): saf seçim ──
+export interface AktifKampanya {
+  kampanyaId: number;
+  ad: string;
+  /** 1 yüzde, 2 tutar (birim fiyattan, KDV dahil) */
+  tur: 1 | 2;
+  deger: number;
+  /** 1 gruplar, 2 kartlar, 3 tümü */
+  hedefTuru: 1 | 2 | 3;
+  grupIdler: number[];
+  kartIdler: number[];
+}
+/** Kartı kapsayan kampanyalar arasından (birim fiyata göre) en yüksek indirimi vereni seçer; yoksa null */
+export function kampanyaSec(kampanyalar: AktifKampanya[], kart: { stokKartId: number; stokGrupId?: number | null }, birimFiyat: number): { kampanya: AktifKampanya; indirim: number } | null {
+  let enIyi: { kampanya: AktifKampanya; indirim: number } | null = null;
+  for (const k of kampanyalar) {
+    const kapsar = k.hedefTuru === 3 || (k.hedefTuru === 1 && !!kart.stokGrupId && k.grupIdler.includes(kart.stokGrupId)) || (k.hedefTuru === 2 && k.kartIdler.includes(kart.stokKartId));
+    if (!kapsar) continue;
+    const indirim = yuvarla2(Math.min(birimFiyat, k.tur === 1 ? (birimFiyat * k.deger) / 100 : k.deger));
+    if (indirim <= 0) continue;
+    if (!enIyi || indirim > enIyi.indirim) enIyi = { kampanya: k, indirim };
+  }
+  return enIyi;
+}
+
+// ── Toplu fiyat işlemi (İş 11, G11, G14): saf hesap ──
+export type FiyatIslemi = { tur: "yuzde" | "tutar" | "alisKar"; deger: number };
+/** kurus: 2 hane · tl: tam sayı · 99: en yakın tam sayının 0,01 altı (12,3 → 11,99; 12,6 → 12,99; en az 0,99) */
+export type Yuvarlama = "kurus" | "tl" | "99";
+export const fiyatYuvarla = (x: number, y: Yuvarlama): number => {
+  if (!Number.isFinite(x)) return 0;
+  if (y === "tl") return Math.max(0, Math.round(x));
+  if (y === "99") { const r = Math.round(x); return r <= 1 ? 0.99 : yuvarla2(r - 0.01); }
+  return Math.max(0, yuvarla2(x));
+};
+/** Yeni fiyat; alisKar'da alış yoksa null. Sonuç eksiye düşerse 0. */
+export function yeniFiyatHesapla(eski: number | null, alis: number | null, islem: FiyatIslemi, yuvarlama: Yuvarlama): number | null {
+  const d = Number(islem.deger) || 0;
+  let x: number;
+  if (islem.tur === "alisKar") { if (alis === null || alis === undefined) return null; x = alis * (1 + d / 100); }
+  else { if (eski === null || eski === undefined) return null; x = islem.tur === "yuzde" ? eski * (1 + d / 100) : eski + d; }
+  if (x < 0) x = 0;
+  return fiyatYuvarla(x, yuvarlama);
+}
+
 export const kartDahilFiyat = (satisFiyati: number | null | undefined, kdvOrani: number, fiyatKdvDahil: boolean): number => {
   const f = sayi(satisFiyati);
   return fiyatKdvDahil ? f : yuvarla(f * (1 + sayi(kdvOrani) / 100), 4);

@@ -155,7 +155,7 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
   [["etiket", "perakende"], [K]],
 
   // Ticari İşlemler (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T2): Kuyum ve Ticari'de açık; satış fişi vezne ve iskonto tanımlarını kullanır
-  [["ticari", "ust:ticari"], [K, T]],
+  [["ticari", "ust:ticari", "ust:ticari-fiyat"], [K, T]],
   [["ayarlar:ayarlar/vezne-tanimlari", "ayarlar:ayarlar/iskonto-tanimlari"], [T]],
 
   // K- Ayarlar

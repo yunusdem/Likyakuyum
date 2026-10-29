@@ -9,6 +9,9 @@ import {
   IconCreditCard,
   IconLayoutGrid,
   IconListDetails,
+  IconPencil,
+  IconSearch,
+  IconCoins,
   IconClockPause,
   IconClockPlay,
   IconRefresh,
@@ -25,6 +28,7 @@ import { useSayfaErisimi } from "../../hooks/useSayfaErisimi";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { kurDegistirilebilir, kurDenetle } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { HizliSatisService, HizliSatisSekme, HizliSatisYetki } from "../../services/hizliSatisService";
+import { StokKart, TicariService } from "../../services/ticariService";
 import { PosCihaziItem, PosCihaziService } from "../../services/posCihaziService";
 import { BankaHesapItem, BankaService } from "../../services/bankaService";
 import { CariService } from "../../services/cariService";
@@ -54,8 +58,12 @@ import {
 } from "../../../Backend/src/services/hizliSatis/hizliSatisHesap";
 import { HizliSatisKutusu } from "./HizliSatisKutusu";
 import { TusKomutu, TusTakimi, girisSayi } from "./TusTakimi";
-import { SayiSorModal, SayiSorusu, SecimModal, SecimSorusu, SerbestUrunModal } from "./HizliSatisModallari";
-import { ModulVerisi, SatirTaslagi, barkoddanSatir, butondanSatir, gayriResmiMi, kurlariGetir, modulVerisiYukle, satirAnahtari, satiriYenidenFiyatla, varsayilanIstatistik } from "./modulVerisi";
+import { SatirDuzenleModal, SayiSorModal, SayiSorusu, SecimModal, SecimSorusu, SerbestUrunModal } from "./HizliSatisModallari";
+import { UrunAramaModal } from "./UrunAramaModal";
+import { OdemeSecenegi, ParcaliTahsilatModal } from "./ParcaliTahsilatModal";
+import { StokKartModal } from "../ticari/StokKartModal";
+import { TicariService as TicariYetkiService } from "../../services/ticariService";
+import { ModulVerisi, SatirTaslagi, barkodCoz, barkoddanSatir, butondanSatir, gayriResmiMi, kampanyaIsle, karttanSatir, kurlariGetir, modulVerisiYukle, satirAnahtari, satiriYenidenFiyatla, varsayilanIstatistik } from "./modulVerisi";
 import { KAYDEDICILER } from "./kaydet";
 import { ANONIM_MUSTERI, HizliMusteri } from "./kaydet/tipler";
 
@@ -112,6 +120,13 @@ export const HizliSatisPage: React.FC = () => {
   const [posCihazlari, setPosCihazlari] = useState<PosCihaziItem[] | null>(null);
   const [bankalar, setBankalar] = useState<BankaHesapItem[] | null>(null);
   const barkodRef = useRef<HTMLInputElement>(null);
+  /** Barkod kutusuna odak (G21): açılışta, fiş kesilince, pencereler kapanınca, butona basınca — okuyucu hep hazır */
+  const odakla = useCallback(() => {
+    setTimeout(() => {
+      if (document.querySelector(".modal")) return; // açık pencere (fiyat / gram sorusu, kart, seçim) odağı korur
+      barkodRef.current?.focus();
+    }, 80);
+  }, []);
   const [sonFislerAcik, setSonFislerAcik] = useState(false);
   // Bekleyen sepetler (H25–H28)
   const [bekletAcik, setBekletAcik] = useState(false);
@@ -119,6 +134,22 @@ export const HizliSatisPage: React.FC = () => {
   const [bekleyenSayisi, setBekleyenSayisi] = useState(0);
   const [bekletiliyor, setBekletiliyor] = useState(false);
   const [iskontoAcik, setIskontoAcik] = useState(false);
+  /** Çift tık / kalem ikonuyla düzenlenen satır (İş 5, G19) */
+  const [duzenlenen, setDuzenlenen] = useState<string | null>(null);
+  /** "Ara" penceresi (İş 6, G18) */
+  const [arama, setArama] = useState<{ acik: boolean; metin: string }>({ acik: false, metin: "" });
+  /** Parçalı tahsilat penceresi (İş 8, G16) */
+  const [parcaliAcik, setParcaliAcik] = useState(false);
+  const [parcaliSecenekler, setParcaliSecenekler] = useState<{ pos: OdemeSecenegi[]; banka: OdemeSecenegi[] } | null>(null);
+  /** Olmayan barkod → stok kartı penceresi (İş 7, G17; yalnız Ticari, stok yönetim yetkisiyle) */
+  const [yeniKart, setYeniKart] = useState<{ acik: boolean; barkod?: string; ad?: string }>({ acik: false });
+  const [stokYonetimi, setStokYonetimi] = useState(false);
+  useEffect(() => {
+    if (modul !== "ticari") { setStokYonetimi(false); return; }
+    let iptal = false;
+    TicariYetkiService.yetki().then((y) => !iptal && setStokYonetimi(!!y.yonetebilir)).catch(() => !iptal && setStokYonetimi(false));
+    return () => { iptal = true; };
+  }, [modul]);
   /** Alıcı penceresi: zorunlu ise (fatura sınırı / MASAK) onaydan sonra satış kaldığı yerden sürer */
   const [aliciSorusu, setAliciSorusu] = useState<{ zorunlu: AliciZorunlulugu | null; kayitliGerekli?: boolean; sonra?: (m: HizliMusteri) => void } | null>(null);
 
@@ -144,11 +175,10 @@ export const HizliSatisPage: React.FC = () => {
     setYukleniyor(true);
     setHata(null);
     try {
-      const [y, d, v] = await Promise.all([
-        HizliSatisService.yetki(),
-        HizliSatisService.duzen(modul),
-        modulVerisiYukle(modul, { id: Number(user?.id) || undefined, cashierCode: (user as any)?.cashierCode }),
-      ]);
+      const [y, d] = await Promise.all([HizliSatisService.yetki(), HizliSatisService.duzen(modul)]);
+      // Ticari: yalnız butonlardaki kartlar (G2)
+      const kartIdler = modul === "ticari" ? d.flatMap((s) => s.butonlar.filter((b) => b.urunTuru === URUN_TURU.STOK && b.urunId).map((b) => Number(b.urunId))) : [];
+      const v = await modulVerisiYukle(modul, { id: Number(user?.id) || undefined, cashierCode: (user as any)?.cashierCode }, kartIdler);
       setYetki(y);
       setDuzen(d);
       setAktifSekme(d[0]?.sekmeId ?? null);
@@ -158,8 +188,9 @@ export const HizliSatisPage: React.FC = () => {
       setHata(e?.message || "Hızlı satış verileri alınamadı.");
     } finally {
       setYukleniyor(false);
+      odakla();
     }
-  }, [modul, user]);
+  }, [modul, user, odakla]);
 
   useEffect(() => {
     setSepet([]);
@@ -248,20 +279,62 @@ export const HizliSatisPage: React.FC = () => {
     const n = girisSayi(giris);
     setGiris("");
     taslakIsle(butondanSatir(b, veri, tip, istatistik), n);
+    odakla();
+  };
+
+  /**
+   * Ticari fiyat listesi (İş 11, G7): kayıtlı müşterinin varsayılan listesi; müşteri değişince stok kartı satırları
+   * (elle fiyat verilmemişse) yeni listeden yeniden fiyatlanır.
+   */
+  const fiyatListesiUygula = async (m: HizliMusteri) => {
+    if (modul !== "ticari" || !veri) return;
+    const liste = m.tur === "kayitli" && m.cariKartId ? await TicariService.cariFiyatListesi(m.cariKartId).catch(() => null) : null;
+    const id = liste?.fiyatListesiId ?? null;
+    if ((veri.fiyatListesiId ?? null) === id) return;
+    const guncel = { ...veri, fiyatListesiId: id };
+    const idler = [...new Set(sepet.filter((s) => s.tur === "stok" && s.urunId && !s.fiyatElle).map((s) => Number(s.urunId)))];
+    if (idler.length) {
+      const kartlar = await TicariService.kartlar({ idler, aktif: null, liste: id }).catch(() => [] as StokKart[]);
+      for (const k of kartlar) guncel.kartlar.set(k.stokKartId, k);
+      setSepet((p) => p.map((s) => {
+        if (s.tur !== "stok" || s.fiyatElle) return s;
+        const k = kartlar.find((x) => x.stokKartId === Number(s.urunId));
+        if (!k) return s;
+        const t = karttanSatir(k, guncel, tip, istatistik);
+        return typeof t === "string" ? s : { ...s, birimFiyat: t.satir.birimFiyat, fiyatDegisti: t.satir.birimFiyat !== s.birimFiyat };
+      }));
+      setOdemeler([]);
+    }
+    setVeri(guncel);
+    if (liste) showWarning(`Fiyat listesi: ${liste.ad}`, 4000);
   };
 
   const barkodOkut = async () => {
     if (!veri || !barkod.trim()) return;
     const g = barkod;
     setBarkod("");
-    taslakIsle(await barkoddanSatir(g, veri, tip, istatistik), null);
+    const t = await barkoddanSatir(g, veri, tip, istatistik);
+    // Ticari'de bulunamayan barkod: yetkili kullanıcıda stok kartı penceresi açılır, kaydedince sepete girer (İş 7, G17)
+    if (typeof t === "string" && modul === "ticari" && /bulunamadı/.test(t)) {
+      const { kod } = barkodCoz(g);
+      if (stokYonetimi) {
+        showWarning(`"${kod}" barkodlu ya da kodlu ürün yok; yeni stok kartı açılıyor.`, 4000);
+        setYeniKart({ acik: true, barkod: /^\S+$/.test(kod) ? kod : undefined, ad: /\s/.test(kod) ? kod : undefined });
+        return;
+      }
+      showError(`${t} Stok kartını stok yönetim yetkisi olan kullanıcı açabilir.`);
+      odakla();
+      return;
+    }
+    taslakIsle(t, null);
     barkodRef.current?.focus();
   };
 
   // ───── Tuş takımı komutları ─────
   const seciliSatir = sepet.find((s) => s.anahtar === secili) || null;
   const satirGuncelle = (anahtar: string, alan: Partial<SepetSatiri>) => {
-    setSepet((s) => s.map((x) => (x.anahtar === anahtar ? { ...x, ...alan, ...("birimFiyat" in alan ? { fiyatDegisti: false } : {}) } : x)));
+    // Fiyat değişince kampanya tutarı yeni fiyata göre yeniden seçilir (İş 11, G12)
+    setSepet((s) => s.map((x) => (x.anahtar === anahtar ? (veri ? kampanyaIsle({ ...x, ...alan, ...("birimFiyat" in alan ? { fiyatDegisti: false } : {}) }, veri) : { ...x, ...alan }) : x)));
     setOdemeler([]);
   };
 
@@ -302,22 +375,43 @@ export const HizliSatisPage: React.FC = () => {
     }
     if (k === "fiyat") {
       if (!fiyatDegistirilebilir) return showError(fiyatYetkisi ? "Kur değiştirme yetkiniz yok." : "Hızlı Satış – Fiyat/İndirim yetkiniz yok.");
-      const uygula = (d: number) => {
-        // Sarraf/Döviz'de fiyat kurdur: kur yetkisi, gişe kuru aralığı ve sapma uyarısı
-        if (veri && (modul === "sarraf" || modul === "doviz")) {
-          const u = { paraId: seciliSatir.urunId, urunTipi: seciliSatir.urunTipi };
-          const kur = urunKuru(veri.kurlar, u, tip);
-          const den = kurDenetle(kullaniciYetkisi, kur > 0 ? { kur, alis: urunKuru(veri.kurlar, u, 0) || null, satis: urunKuru(veri.kurlar, u, 1) || null } : null, d);
-          if (den.hata) return showError(den.hata);
-          if (den.uyari && !window.confirm(`${den.uyari}\n\nYine de uygulansın mı?`)) return;
-        }
-        satirGuncelle(seciliSatir.anahtar, { birimFiyat: d, fiyatElle: true });
-      };
+      const uygula = (d: number) => { fiyatUygula(seciliSatir, d); };
       if (n !== null && n > 0) {
         uygula(n);
         setGiris("");
       } else setSayiSorusu({ baslik: `${seciliSatir.ad} — ${modul === "sarraf" || modul === "doviz" ? "kur" : "birim fiyat"}`, birim: "TL", ilk: seciliSatir.birimFiyat, onay: uygula });
     }
+  };
+
+  /** Satıra elle fiyat / kur (Fiyat Değiştir tuşu ve satır düzenleme penceresi). Sarraf/Döviz'de kur yetkisi, gişe aralığı ve sapma uyarısı. */
+  const fiyatUygula = (satir: SepetSatiri, d: number): boolean => {
+    if (veri && (modul === "sarraf" || modul === "doviz")) {
+      const u = { paraId: satir.urunId, urunTipi: satir.urunTipi };
+      const kur = urunKuru(veri.kurlar, u, tip);
+      const den = kurDenetle(kullaniciYetkisi, kur > 0 ? { kur, alis: urunKuru(veri.kurlar, u, 0) || null, satis: urunKuru(veri.kurlar, u, 1) || null } : null, d);
+      if (den.hata) { showError(den.hata); return false; }
+      if (den.uyari && !window.confirm(`${den.uyari}\n\nYine de uygulansın mı?`)) return false;
+    }
+    satirGuncelle(satir.anahtar, { birimFiyat: d, fiyatElle: true });
+    return true;
+  };
+
+  /** Satır düzenleme penceresinden (İş 5): miktar ve isteğe bağlı fiyat */
+  const duzenlenenSatir = sepet.find((s) => s.anahtar === duzenlenen) || null;
+  const satirDuzenleOnay = (miktar: number, fiyat: number | null) => {
+    if (!duzenlenenSatir) return;
+    if (fiyat !== null && !fiyatUygula(duzenlenenSatir, fiyat)) return;
+    if (duzenlenenSatir.tur !== "barkod" && miktar > 0) satirGuncelle(duzenlenenSatir.anahtar, { miktar: Math.round(miktar * 10000) / 10000 });
+    setDuzenlenen(null);
+    odakla();
+  };
+  const satirDuzenleSil = () => {
+    if (!duzenlenenSatir) return;
+    setSepet((s) => s.filter((x) => x.anahtar !== duzenlenenSatir.anahtar));
+    setSecili((x) => (x === duzenlenenSatir.anahtar ? null : x));
+    setOdemeler([]);
+    setDuzenlenen(null);
+    odakla();
   };
 
   // ───── Ödeme ─────
@@ -337,7 +431,7 @@ export const HizliSatisPage: React.FC = () => {
     };
     if (tur === 1) {
       if (musteri.tur !== "kayitli" || !musteri.cariKartId) {
-        setAliciSorusu({ zorunlu: null, kayitliGerekli: true, sonra: (m) => { setMusteri(m); if (m.tur === "kayitli" && m.cariKartId) ekle({}, m); } });
+        setAliciSorusu({ zorunlu: null, kayitliGerekli: true, sonra: (m) => { setMusteri(m); void fiyatListesiUygula(m); if (m.tur === "kayitli" && m.cariKartId) ekle({}, m); } });
         return;
       }
       return ekle({});
@@ -369,6 +463,30 @@ export const HizliSatisPage: React.FC = () => {
       return setSecimSorusu({ baslik: "Banka hesabı seçin", secenekler: liste.map((b) => ({ anahtar: String(b.bankaId), ad: b.hesapAdi, alt: [b.bankaAdi, b.hesapNo].filter(Boolean).join(" · "), deger: b })), onay: sec });
     }
     ekle({});
+  };
+
+  /** Parçalı tahsilat penceresini açar: POS cihazları ve banka hesapları (modüle göre) tek seferde yüklenir */
+  const parcaliAc = async () => {
+    if (!sepet.length) return showError("Sepet boş.");
+    if (toplam.genelToplam <= 0) return showError("Fiş toplamı sıfır.");
+    const posListe = odemeTurleri.includes(2) ? (posCihazlari ?? (await PosCihaziService.getPosCihazlari().catch(() => [] as PosCihaziItem[])).filter((p) => p.aktif !== false)) : [];
+    if (odemeTurleri.includes(2)) setPosCihazlari(posListe);
+    let bankaListe: OdemeSecenegi[] = [];
+    if (odemeTurleri.includes(3)) {
+      if (modul === "doviz") {
+        const lk: any = await CariService.getLookups().catch(() => null);
+        bankaListe = ((lk?.bankaList || []) as any[]).map((b) => ({ anahtar: String(b.id), ad: b.ad || b.unvan, alt: [b.bankaAdi, b.iban || b.hesapNo].filter(Boolean).join(" · "), alanlar: { bankaId: Number(b.id), bankaHesapNo: b.iban || b.hesapNo || b.kod || null, bankaAdi: b.ad || b.unvan || null } }));
+      } else {
+        const liste = bankalar ?? (await BankaService.getBankalar({ aktif: true }).catch(() => [] as BankaHesapItem[]));
+        setBankalar(liste);
+        bankaListe = liste.map((b) => ({ anahtar: String(b.bankaId), ad: b.hesapAdi, alt: [b.bankaAdi, b.hesapNo].filter(Boolean).join(" · "), alanlar: { bankaId: b.bankaId, bankaHesapNo: b.hesapNo, bankaAdi: b.hesapAdi } }));
+      }
+    }
+    setParcaliSecenekler({
+      pos: posListe.map((p) => ({ anahtar: String(p.posCihaziId), ad: p.ad, alt: p.kod, alanlar: { posCihaziId: p.posCihaziId, posAdi: p.ad, posKod: p.kod } })),
+      banka: bankaListe,
+    });
+    setParcaliAcik(true);
   };
 
   // ───── Kaydet ─────
@@ -417,6 +535,11 @@ export const HizliSatisPage: React.FC = () => {
       const { PerakendeService } = await import("../../services/perakendeService");
       // Kurlar beklerken değişmiş olabilir: sunucudan tazelenir (H26)
       const guncel = { ...veri, kurlar: modul === "ticari" ? veri.kurlar : await kurlariGetir(true).catch(() => veri.kurlar) };
+      // Ticari: sepetteki stok kartları yerelde yoksa kimlikle çekilir (G2)
+      if (modul === "ticari") {
+        const eksik = [...new Set((k.icerik?.sepet || []).filter((s: any) => s.tur === "stok" && s.urunId && !guncel.kartlar.has(Number(s.urunId))).map((s: any) => Number(s.urunId)))] as number[];
+        if (eksik.length) for (const kart of await TicariService.kartlar({ idler: eksik, aktif: null }).catch(() => [] as StokKart[])) guncel.kartlar.set(kart.stokKartId, kart);
+      }
       setVeri(guncel);
       const r = await geriCagir(
         k.icerik,
@@ -469,6 +592,7 @@ export const HizliSatisPage: React.FC = () => {
     setMusteri(ANONIM_MUSTERI);
     setSecili(null);
     setGiris("");
+    if (veri?.fiyatListesiId) setVeri({ ...veri, fiyatListesiId: null });
   };
 
   const tamamla = async (odemeListesi: SepetOdemesi[] = odemeler, m: HizliMusteri = musteri) => {
@@ -533,7 +657,18 @@ export const HizliSatisPage: React.FC = () => {
       showError(e?.message || "Satış kaydedilemedi.");
     } finally {
       setKaydediliyor(false);
+      odakla();
     }
+  };
+
+  // ── İş 4 (G20): Satıştan Vazgeç — sepet, ödemeler, müşteri, iskonto ve tuş girişi temizlenir ──
+  const vazgecilebilir = sepet.length > 0 || odemeler.length > 0 || !!giris || !!indirim || musteri.tur !== "anonim";
+  const vazgec = () => {
+    if (kaydediliyor) return;
+    if ((sepet.length || odemeler.length) && !window.confirm("Satıştan vazgeçilsin mi? Sepet, ödemeler, müşteri ve iskonto silinir.")) return;
+    temizle();
+    setSonFis(null);
+    odakla();
   };
 
   // ───── Çizim ─────
@@ -566,7 +701,7 @@ export const HizliSatisPage: React.FC = () => {
           </ButtonGroup>
         )}
         <Button variant={musteri.tur === "anonim" ? "outline-secondary" : "outline-primary"} className="d-flex align-items-center gap-1" disabled={kaydediliyor}
-          onClick={() => setAliciSorusu({ zorunlu: null, sonra: (m) => { setMusteri(m); if (m.tur !== "kayitli") setOdemeler((o) => o.filter((x) => x.tur !== 1)); } })}>
+          onClick={() => setAliciSorusu({ zorunlu: null, sonra: (m) => { setMusteri(m); if (m.tur !== "kayitli") setOdemeler((o) => o.filter((x) => x.tur !== 1)); void fiyatListesiUygula(m); } })}>
           <IconUser size={16} />{musteri.tur === "anonim" ? "Müşteri: Nihai tüketici" : musteri.unvan}
         </Button>
         {veri?.vezne && <Badge bg="light" text="dark" className="border">Vezne: {veri.vezne.ad}</Badge>}
@@ -600,29 +735,38 @@ export const HizliSatisPage: React.FC = () => {
             <InputGroup size="sm" className="p-2 pb-1">
               <InputGroup.Text><IconBarcode size={16} /></InputGroup.Text>
               <Form.Control ref={barkodRef} placeholder={modul === "perakende" ? "Barkod ya da ürün kodu (3*kod)" : modul === "ticari" ? "Barkod ya da stok kodu (3*barkod)" : "Ürün kodu"}
-                value={barkod} onChange={(e) => setBarkod(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void barkodOkut(); } }} />
+                value={barkod} onChange={(e) => setBarkod(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void barkodOkut(); } else if (e.key === "F4") { e.preventDefault(); setArama({ acik: true, metin: barkod.trim() }); } }} />
+              <Button variant="outline-secondary" title="Ürün ara (F4)" disabled={kaydediliyor || !veri} onClick={() => setArama({ acik: true, metin: barkod.trim() })}><IconSearch size={16} className="me-1" />Ara</Button>
             </InputGroup>
             <div className="flex-grow-1 overflow-auto px-2" style={{ minHeight: 0 }}>
               <table className="table table-sm table-hover align-middle mb-0" style={{ fontSize: 14 }}>
                 <thead className="table-light sticky-top">
-                  <tr className="small text-secondary"><th>Ürün</th><th className="text-end">Miktar</th><th className="text-end">{kurlu ? "Kur" : "Fiyat"}</th><th className="text-end">Tutar</th></tr>
+                  <tr className="small text-secondary"><th>Ürün</th><th className="text-end">Miktar</th><th className="text-end">{kurlu ? "Kur" : "Fiyat"}</th><th className="text-end">Tutar</th><th style={{ width: 36 }}></th></tr>
                 </thead>
                 <tbody>
                   {sepet.map((s, i) => (
-                    <tr key={s.anahtar} data-row-id={s.anahtar} data-table-type="hizli-sepet" onClick={() => setSecili(s.anahtar)} className={s.anahtar === secili ? "table-primary" : ""} style={{ cursor: "pointer", height: 40 }}>
+                    <tr key={s.anahtar} data-row-id={s.anahtar} data-table-type="hizli-sepet" onClick={() => setSecili(s.anahtar)}
+                      onDoubleClick={() => { if (!kaydediliyor) { setSecili(s.anahtar); setDuzenlenen(s.anahtar); } }} title="Çift tık: miktar / fiyat düzenle"
+                      className={s.anahtar === secili ? "table-primary" : ""} style={{ cursor: "pointer", height: 40 }}>
                       <td className="fw-semibold">
                         {s.ad}
                         {s.fiyatElle && <Badge bg="warning" text="dark" className="ms-1" title="Fiyat elle değiştirildi">E</Badge>}
                         {s.fiyatDegisti && <Badge bg="info" className="ms-1" title="Bekleyen sepetten açılınca güncel kurdan yenilendi">Kur</Badge>}
+                        {s.ek?.kampanya && <Badge bg="danger" className="ms-1" title={`Kampanya: ${s.ek.kampanya.ad} (${s.ek.kampanya.turu === 1 ? `%${s.ek.kampanya.deger}` : `${para(s.ek.kampanya.deger)} TL`} satır iskontosu)`}>Kampanya</Badge>}
                         {s.kdvOrani > 0 && !kurlu && <span className="text-muted small ms-1">%{s.kdvOrani}</span>}
                       </td>
                       <td className="text-end text-nowrap">{miktarYaz(s.miktar)} <span className="text-muted small">{s.birim}</span></td>
                       <td className="text-end text-nowrap">{para(s.birimFiyat)}</td>
                       <td className="text-end text-nowrap fw-semibold">{para(toplam.satirTutarlari[i] ?? 0)}</td>
+                      <td className="text-center p-0">
+                        <button type="button" className="btn btn-link btn-sm p-1 text-secondary" title="Miktar / fiyat düzenle" disabled={kaydediliyor} aria-label={`${s.ad} satırını düzenle`}
+                          onClick={(e) => { e.stopPropagation(); setSecili(s.anahtar); setDuzenlenen(s.anahtar); }}><IconPencil size={16} /></button>
+                      </td>
                     </tr>
                   ))}
                   {!sepet.length && (
-                    <tr><td colSpan={4} className="text-center text-muted py-4">
+                    <tr><td colSpan={5} className="text-center text-muted py-4">
                       {sonFis ? (
                         <div>
                           <div className="text-success fw-bold mb-1"><IconCheck size={18} /> Fiş {sonFis.no} kaydedildi — {para(sonFis.toplam)} TL</div>
@@ -666,6 +810,10 @@ export const HizliSatisPage: React.FC = () => {
 
           {/* ───── Tuş takımı + ödeme ───── */}
           <div className="card border shadow-xs p-2 d-flex flex-column gap-2" style={{ flex: "0 0 300px", minHeight: 0, overflowY: "auto" }}>
+            <Button variant="outline-dark" className="fw-bold d-flex align-items-center justify-content-center" style={{ height: 44, touchAction: "manipulation" }}
+              disabled={kaydediliyor || !sepet.length} title="Nakit / POS / Cari / Banka tutarlarını tek pencerede girin" onClick={() => void parcaliAc()}>
+              <IconCoins size={20} className="me-1" />Parçalı Tahsilat
+            </Button>
             <div className="d-grid gap-1" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
               {(odemeTurleri as OdemeTuru[]).map((t) => (
                 <Button key={t} variant={ODEME_RENK[t]} className="d-flex flex-column align-items-center justify-content-center fw-bold" style={{ height: 64, touchAction: "manipulation" }}
@@ -676,8 +824,8 @@ export const HizliSatisPage: React.FC = () => {
             </div>
             <TusTakimi giris={giris} setGiris={setGiris} onKomut={komut} fiyatYetkisi={fiyatDegistirilebilir} indirimVar={indirimVar} serbestVar={serbestVar} disabled={kaydediliyor} />
             <div className="d-flex gap-1 mt-auto">
-              <Button variant="outline-danger" className="flex-grow-0" style={{ height: 52 }} disabled={kaydediliyor || (!sepet.length && !odemeler.length)} title="Sepeti boşalt"
-                onClick={() => { if (window.confirm("Sepet boşaltılsın mı?")) temizle(); }}><IconTrash size={18} /></Button>
+              <Button variant="danger" className="flex-grow-0 fw-bold d-flex align-items-center" style={{ height: 52, fontSize: 13, lineHeight: 1.1 }} disabled={kaydediliyor || !vazgecilebilir}
+                title="Satıştan vazgeç: sepet, ödemeler, müşteri ve iskonto silinir" onClick={vazgec}><IconTrash size={18} className="me-1" />Satıştan<br />Vazgeç</Button>
               <Button variant="dark" className="flex-grow-1 fw-bold" style={{ height: 52, fontSize: 17 }} disabled={kaydediliyor || !sepet.length} onClick={() => void tamamla()}>
                 {kaydediliyor ? <Spinner size="sm" className="me-2" /> : <IconCheck size={20} className="me-1" />}
                 {odemeler.length ? "Satışı Tamamla" : "Nakit Tamamla"}
@@ -711,23 +859,36 @@ export const HizliSatisPage: React.FC = () => {
         </div>
       )}
 
-      <SayiSorModal soru={sayiSorusu} kapat={() => setSayiSorusu(null)} />
-      <SerbestUrunModal acik={serbestAcik} kapat={() => setSerbestAcik(false)}
+      <SayiSorModal soru={sayiSorusu} kapat={() => { setSayiSorusu(null); odakla(); }} />
+      <ParcaliTahsilatModal acik={parcaliAcik} genelToplam={toplam.genelToplam} odemeTurleri={odemeTurleri as OdemeTuru[]} mevcut={odemeler} musteri={musteri}
+        posSecenekleri={parcaliSecenekler?.pos || []} bankaSecenekleri={parcaliSecenekler?.banka || []} bankaTamami={modul === "doviz"}
+        kapat={() => { setParcaliAcik(false); odakla(); }}
+        musteriSec={() => setAliciSorusu({ zorunlu: null, kayitliGerekli: true, sonra: (m) => { setMusteri(m); void fiyatListesiUygula(m); } })}
+        onay={(liste) => { setParcaliAcik(false); setOdemeler(liste); setGiris(""); void tamamla(liste, musteri); }} />
+      <UrunAramaModal acik={arama.acik} modul={modul} veri={veri} tip={tip} istatistik={istatistik} aramaMetni={arama.metin}
+        kapat={() => { setArama({ acik: false, metin: "" }); odakla(); }}
+        sec={(t) => { const n = girisSayi(giris); setGiris(""); setBarkod(""); taslakIsle(t, n); }} />
+      <StokKartModal show={yeniKart.acik} onBarkod={yeniKart.barkod} onAd={yeniKart.ad} onHide={() => { setYeniKart({ acik: false }); odakla(); }}
+        onSaved={(k) => { setYeniKart({ acik: false }); if (veri) taslakIsle(karttanSatir(k, veri, tip, istatistik), null); odakla(); }} />
+      <SatirDuzenleModal satir={duzenlenenSatir} kurlu={kurlu} fiyatDegistirilebilir={fiyatDegistirilebilir}
+        fiyatKapaliNedeni={fiyatYetkisi ? "Kur değiştirme yetkiniz yok." : "Hızlı Satış – Fiyat/İndirim yetkiniz yok."}
+        kapat={() => { setDuzenlenen(null); odakla(); }} onay={satirDuzenleOnay} sil={satirDuzenleSil} />
+      <SerbestUrunModal acik={serbestAcik} kapat={() => { setSerbestAcik(false); odakla(); }}
         onay={(ad, fiyat, kdv) => sepeteEkle({ anahtar: satirAnahtari(), ad, tur: "serbest", miktar: girisSayi(giris) || 1, birim: "Adet", birimFiyat: fiyat, kdvOrani: kdv })} />
-      <SecimModal soru={secimSorusu} kapat={() => setSecimSorusu(null)} />
+      <SecimModal soru={secimSorusu} kapat={() => { setSecimSorusu(null); odakla(); }} />
       <CikisUyarisiModal acik={!!cikis.bekleyenGecis} bekletiliyor={bekletiliyor}
         ozet={`${sepet.length} kalem · ${para(toplam.genelToplam)} TL${odemeler.length ? ` · ${odemeler.length} ödeme satırı` : ""}`}
         kal={cikis.vazgec} cik={cikis.devam} beklet={() => { void sepetiBeklet("").then((ok) => (ok ? cikis.devam() : cikis.vazgec())); }} />
-      <SonFislerModal modul={modul} acik={sonFislerAcik} kapat={() => setSonFislerAcik(false)} />
+      <SonFislerModal modul={modul} acik={sonFislerAcik} kapat={() => { setSonFislerAcik(false); odakla(); }} />
       <BekletModal acik={bekletAcik} bekliyor={bekletiliyor} ozet={`${sepet.length} kalem · ${para(toplam.genelToplam)} TL${musteri.tur !== "anonim" && musteri.unvan ? ` · ${musteri.unvan}` : ""}${odemeler.length ? ` · ${odemeler.length} ödeme satırı da saklanır` : ""}`}
-        kapat={() => setBekletAcik(false)} onay={(n) => { void sepetiBeklet(n).then((ok) => ok && setBekletAcik(false)); }} />
+        kapat={() => { setBekletAcik(false); odakla(); }} onay={(n) => { void sepetiBeklet(n).then((ok) => { if (ok) setBekletAcik(false); odakla(); }); }} />
       <BekleyenlerModal acik={bekleyenlerAcik} modul={modul} vezneId={veri?.vezne?.id ?? null} yonetici={yetki.sistemYoneticisi}
-        kapat={() => setBekleyenlerAcik(false)} ac={(b) => void bekleyeniAc(b)} degisti={sayaciTazele} />
+        kapat={() => { setBekleyenlerAcik(false); odakla(); }} ac={(b) => void bekleyeniAc(b).then(odakla)} degisti={sayaciTazele} />
       <IskontoModal acik={iskontoAcik} brut={yuvarla2(toplam.genelToplam + toplam.indirim)} hasKuru={veri ? urunKuru(veri.kurlar, { kod: "HAS", urunTipi: 1 }, 1) : 0}
-        fiyatYetkisi={fiyatYetkisi} elleVar mevcut={indirim} kapat={() => setIskontoAcik(false)}
-        onay={(i) => { setIndirim(i); setOdemeler([]); setIskontoAcik(false); }} />
+        fiyatYetkisi={fiyatYetkisi} elleVar mevcut={indirim} kapat={() => { setIskontoAcik(false); odakla(); }}
+        onay={(i) => { setIndirim(i); setOdemeler([]); setIskontoAcik(false); odakla(); }} />
       <AliciModal acik={!!aliciSorusu} musteri={musteri} zorunlu={aliciSorusu?.zorunlu ?? null} kayitliGerekli={aliciSorusu?.kayitliGerekli}
-        kapat={() => setAliciSorusu(null)} onay={(m) => { const f = aliciSorusu?.sonra; setAliciSorusu(null); if (f) f(m); else setMusteri(m); }} />
+        kapat={() => { setAliciSorusu(null); odakla(); }} onay={(m) => { const f = aliciSorusu?.sonra; setAliciSorusu(null); if (f) f(m); else setMusteri(m); odakla(); }} />
     </div>
   );
 };

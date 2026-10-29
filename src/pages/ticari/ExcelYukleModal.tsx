@@ -20,10 +20,13 @@ const SUTUNLAR: { baslik: string; zorunlu?: boolean; ornek: string; not: string 
   { baslik: "En Az Stok", ornek: "10", not: "Uyarı sınırı" },
   { baslik: "Açılış Miktarı", ornek: "100", not: "Stoğa girer" },
   { baslik: "Aktif", ornek: "E", not: "E / H" },
+  { baslik: "Stok Kontrol", ornek: "Ayar", not: "Ayar / Uyar / Engelle / Sessiz" },
+  { baslik: "Tedarikçi", ornek: "", not: "Cari kodu" },
   { baslik: "Açıklama", ornek: "", not: "Serbest" },
 ];
 
 interface Props { show: boolean; onHide: () => void; onYuklendi: () => void; }
+// Ayrıca "Fiyat: <liste adı>" sütunları (İş 11, G8): tanımlı fiyat listesindeki kart fiyatı; hataları hata sütununda listelenir.
 
 /** Excel'den stok kartı yükleme (T20): örnek dosya + sütun görseli, önizlemede hatalı hücreler kırmızı, hata varken yükleme kapalı */
 export const ExcelYukleModal: React.FC<Props> = ({ show, onHide, onYuklendi }) => {
@@ -72,7 +75,7 @@ export const ExcelYukleModal: React.FC<Props> = ({ show, onHide, onYuklendi }) =
 
   const hucreHatasi = (s: ExcelOnizleme["satirlar"][number], baslik: string) => s.hatalar.filter((h) => h.sutun === baslik).map((h) => h.mesaj).join(" ");
   const ANAHTAR: Record<string, string> = { "Kod": "kod", "Ürün Adı": "ad", "Barkod": "barkod", "Grup": "grup", "Birim": "birim", "KDV %": "kdvOrani", "Satış Fiyatı": "satisFiyati",
-    "Fiyat KDV Dahil": "fiyatKdvDahil", "Para Birimi": "paraBirimi", "Alış Fiyatı": "alisFiyati", "En Az Stok": "enAzStok", "Açılış Miktarı": "acilisMiktari", "Aktif": "aktif", "Açıklama": "aciklama" };
+    "Fiyat KDV Dahil": "fiyatKdvDahil", "Para Birimi": "paraBirimi", "Alış Fiyatı": "alisFiyati", "En Az Stok": "enAzStok", "Açılış Miktarı": "acilisMiktari", "Aktif": "aktif", "Stok Kontrol": "stokKontrol", "Tedarikçi": "tedarikci", "Açıklama": "aciklama" };
   const satirlar = onizleme ? [...onizleme.satirlar].sort((a, b) => (b.hatalar.length ? 1 : 0) - (a.hatalar.length ? 1 : 0) || a.satir - b.satir) : [];
 
   return (

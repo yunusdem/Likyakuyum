@@ -34,6 +34,8 @@ export const UST_KISAYOLLAR: { key: string; baslik: string; to?: string }[] = [
   { key: "ust:perakende", baslik: "Perakende", to: "/vezne/perakende-fisi-kayit" },
   // Ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T18)
   { key: "ust:ticari", baslik: "Satış Fişi", to: "/ticari/satis-fisi" },
+  // Ticari Fiyat Gör (docs/TICARI_GERI_BILDIRIM_YOL_HARITASI.md İş 2, G4): Kuyum'un "Fiyat" düğmesinden ayrı
+  { key: "ust:ticari-fiyat", baslik: "T. Fiyat", to: "/ticari/fiyat-gor" },
   { key: "ust:banka", baslik: "Banka", to: "/banka/hareketler" },
   { key: "ust:vezne-transfer", baslik: "V. Transfer", to: "/vezne/transfer-kayit" },
   { key: "ust:c-hareket", baslik: "C. Hareket", to: "/cari/hareket-kayit" },

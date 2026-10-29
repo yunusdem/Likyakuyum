@@ -34,6 +34,8 @@ export interface LookupModalProps<T> {
   selectOnDoubleClick?: boolean;
   getRowClassName?: (item: T) => string;
   getRowStyle?: (item: T) => React.CSSProperties | undefined;
+  /** Arama metni değişince (sunucu araması yapan çağıran için; pencere açılırken ilk metinle de çağrılır) */
+  onSearchTermChange?: (term: string) => void;
 }
 
 const MAX_DISPLAY_COUNT = 150;
@@ -60,6 +62,7 @@ function LookupModalContent<T extends Record<string, any>>({
   selectOnDoubleClick = false,
   getRowClassName,
   getRowStyle,
+  onSearchTermChange,
 }: LookupModalProps<T>) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
@@ -76,8 +79,9 @@ function LookupModalContent<T extends Record<string, any>>({
     if (show) {
       setSearchTerm(initialSearchTerm || "");
       setContextMenu(null);
+      onSearchTermChange?.(initialSearchTerm || "");
     }
-  }, [show, initialSearchTerm]);
+  }, [show, initialSearchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -308,6 +312,7 @@ function LookupModalContent<T extends Record<string, any>>({
             onChange={(e) => {
               setSearchTerm(e.target.value);
               setSelectedIndex(0);
+              onSearchTermChange?.(e.target.value);
             }}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {

@@ -1,6 +1,9 @@
 import React from "react";
 
-/** Hızlı satış ürün kutusu: resim varsa resim + ad, yoksa renkli zemin + ad (düzen ve satış ekranı ortak) */
+/**
+ * Hızlı satış ürün kutusu: resim varsa resim + ad, yoksa renkli zemin + ad (düzen ve satış ekranı ortak).
+ * Resim kırpılmadan sığdırılır (contain); boş kalan alan ve saydam PNG arkası butonun zemin rengidir (renksizse beyaz).
+ */
 export interface HizliSatisKutusuProps {
   ad: string;
   kod?: string | null;
@@ -26,7 +29,7 @@ export const HizliSatisKutusu: React.FC<HizliSatisKutusuProps> = ({ ad, kod, ren
     style={{ height: 118, borderRadius: 10, background: renk || "var(--bs-tertiary-bg)", color: yaziRengi(renk), opacity: pasif ? 0.5 : 1,
       outline: uyari ? "2px dashed var(--bs-danger)" : undefined, cursor: pasif ? "not-allowed" : "pointer", touchAction: "manipulation" }}>
     {resim ? (
-      <div className="flex-grow-1 w-100" style={{ background: `#fff url("${resim}") center/cover no-repeat`, minHeight: 0 }} />
+      <div className="flex-grow-1 w-100" style={{ background: `${renk || "#ffffff"} url("${resim}") center/contain no-repeat`, minHeight: 0 }} />
     ) : (
       <div className="flex-grow-1 w-100 d-flex align-items-center justify-content-center px-2 fw-bold" style={{ fontSize: 15, lineHeight: 1.15, minHeight: 0 }}>
         {ad}

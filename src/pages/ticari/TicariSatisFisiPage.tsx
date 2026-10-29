@@ -21,7 +21,8 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { ticariFisHtml } from "../../utils/belgeSablon/fisCikti";
-import { StokKart, TicariOdeme, TicariSatisFisi, TicariSatisListeSatiri, TicariService, eksiStokUyarisiMi, miktarYaz, para } from "../../services/ticariService";
+import { AktifKampanya, FiyatListesi, StokKart, TicariOdeme, TicariSatisFisi, TicariSatisListeSatiri, TicariService, eksiStokUyarisiMi, kartSatisFiyati, miktarYaz, para } from "../../services/ticariService";
+import { kampanyaSec } from "../../../Backend/src/services/ticari/ticariHesap";
 import { ticariFisHesapla, kartDahilFiyat, yuvarla2 } from "../../../Backend/src/services/ticari/ticariHesap";
 import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "../vezne/MusteriSecimModal";
 import { DEFAULT_CUSTOMER_NAME, detectScenario, isAnonymousCustomerName } from "../vezne/PerakendeFisiPage";
@@ -51,6 +52,8 @@ interface Satir {
   stok: number | null;
   /** Hızlı Satış'tan gelen serbest ürün satırı: stok kartı yok, stoktan düşmez (docs/HIZLI_SATIS_YOL_HARITASI.md, H9) */
   serbest?: boolean;
+  /** Satıra uygulanan kampanya (İş 11, G12): satır iskontosu kampanyanındır */
+  kampanya?: { kampanyaId: number; ad: string } | null;
 }
 
 interface Odeme {
@@ -117,6 +120,14 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
   const [cariKod, setCariKod] = useState("");
   const [unvan, setUnvan] = useState(DEFAULT_CUSTOMER_NAME);
   const [cariKartId, setCariKartId] = useState<number | null>(null);
+  // Fiyat listesi (İş 11, G7): cari seçilince carinin varsayılan listesi, yoksa ana; elle değiştirilebilir
+  const [fiyatListeleri, setFiyatListeleri] = useState<FiyatListesi[]>([]);
+  const [kampanyalar, setKampanyalar] = useState<AktifKampanya[]>([]);
+  const kampanyalarRef = useRef<AktifKampanya[]>([]);
+  kampanyalarRef.current = kampanyalar;
+  const [fiyatListesiId, setFiyatListesiId] = useState<number | null>(null);
+  const fiyatListesiRef = useRef<number | null>(null);
+  fiyatListesiRef.current = fiyatListesiId;
   const [vergiDairesi, setVergiDairesi] = useState("");
   const [il, setIl] = useState("");
   const [ilce, setIlce] = useState("");
@@ -156,15 +167,16 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
   const kilitli = eBelgeDurumu === 1 || eBelgeDurumu === 2;
 
   // ── Tanımları yükle ──
-  const kartlariYukle = useCallback(() => TicariService.kartlar({ aktif: null }).then(setKartlar).catch(() => setKartlar([])), []);
+  // Tam kart listesi çekilmez (G2): açılan fişin satırları için yalnız o kartlar kimlikle alınır, barkod tek ürün ucuyla bulunur
   useEffect(() => {
-    void kartlariYukle();
     CariService.getCariKartlar().then(setCariler).catch(() => setCariler([]));
     PosCihaziService.getPosCihazlari().then(setPosCihazlari).catch(() => setPosCihazlari([]));
     BankaService.getBankalar().then(setBankaHesaplari).catch(() => setBankaHesaplari([]));
     IskontoService.getIskontolar({ aktif: true }, true).then((l) => setIskontolar((l || []).filter((i) => i.iskontoTipi === 1 || i.iskontoTipi === 2))).catch(() => setIskontolar([]));
     ProductDefinitionService.getProducts().then((l) => setParalar((l || []).filter((p) => Number(p.urunTipi) === 0 && !TL(p.kod)))).catch(() => setParalar([]));
     PrinterService.getYazicilar().then(setYazicilar).catch(() => setYazicilar([]));
+    TicariService.fiyatListeleri(true).then(setFiyatListeleri).catch(() => setFiyatListeleri([]));
+    TicariService.aktifKampanyalar().then(setKampanyalar).catch(() => setKampanyalar([]));
     KurService.getKurTablosu({ tur: 0 }).then((t) => {
       const m = new Map<number, { alis: number; satis: number }>();
       for (const k of t?.satirlar || []) m.set(k.paraId, { alis: Number(k.efektifAlis ?? k.dovizAlis ?? 0) || 0, satis: Number(k.efektifSatis ?? k.dovizSatis ?? 0) || 0 });
@@ -175,9 +187,16 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       // Vezne kullanıcının kasası (değiştirilemez); açık bir fiş varsa onun veznesi korunur
       setVezne((v) => v ?? kullaniciVeznesi(list, user as any));
     }).catch(() => setVezneler([]));
-  }, [kartlariYukle]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Açılan fişin satırlarında stok sütunu kart listesinden dolar
+  // Açılan fişin satırlarında stok sütunu: eksik kartlar kimlikle çekilir (G2)
+  useEffect(() => {
+    const eksik = [...new Set(satirlar.filter((s) => s.stokKartId && s.stok === null && !kartlar.some((k) => k.stokKartId === s.stokKartId)).map((s) => s.stokKartId as number))];
+    if (!eksik.length) return;
+    let iptal = false;
+    TicariService.kartlar({ idler: eksik, aktif: null }).then((l) => { if (!iptal && l.length) setKartlar((p) => [...p, ...l.filter((k) => !p.some((x) => x.stokKartId === k.stokKartId))]); }).catch(() => undefined);
+    return () => { iptal = true; };
+  }, [satirlar]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!kartlar.length) return;
     setSatirlar((p) => {
@@ -223,6 +242,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     setFaturaId(null); setEBelgeDurumu(0);
     setVkn(""); setCariKod(""); setUnvan(DEFAULT_CUSTOMER_NAME); setCariKartId(null);
     setVergiDairesi(""); setIl(""); setIlce(""); setTelefon(""); setEposta(""); setAdres("");
+    setFiyatListesiId(null); fiyatListesiRef.current = null;
     const ilk = bosSatir();
     setSatirlar([ilk]); setFisIskTur(0); setFisIskDeger(""); setIskontoId(null); setOdemeler([bosOdeme()]);
     setSenaryo(s); setTarih(yerelTarih()); setSaat(yerelSaat());
@@ -240,9 +260,11 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       // Düzeltmede fişin kendi veznesi (sunucu da kaydın veznesini korur)
       setVezne(f.vezneId ? ({ id: f.vezneId, kod: f.vezneKod || String(f.vezneId), ad: f.vezneAd || "" } as VezneItem) : null);
       setVkn(f.aliciVknTckn || ""); setCariKod(f.cariKod || ""); setUnvan(f.aliciUnvan || DEFAULT_CUSTOMER_NAME); setCariKartId(f.cariKartId ?? null);
+      setFiyatListesiId(f.fiyatListesiId ?? null); fiyatListesiRef.current = f.fiyatListesiId ?? null;
       setVergiDairesi(f.vergiDairesi || ""); setIl(f.il || ""); setIlce(f.ilce || ""); setTelefon(f.telefon || ""); setEposta(f.eposta || ""); setAdres(f.adres || "");
       setSatirlar([...f.satirlar.map((s) => ({
         anahtar: anahtar(), stokKartId: s.stokKartId, serbest: !s.stokKartId, kod: s.kod, barkod: s.barkod, ad: s.urunAdi, birim: s.birim, kdvOrani: s.kdvOrani,
+        kampanya: s.kampanyaId ? { kampanyaId: s.kampanyaId, ad: "Kampanya" } : null,
         miktar: metin(s.miktar, 4), fiyat: metin(s.kdvDahilFiyat, 4), iskTur: (s.iskontoTuru || 0) as 0 | 1 | 2, iskDeger: s.iskontoTuru ? metin(s.iskontoDegeri, 2) : "", stok: null,
       })), bosSatir()]);
       setFisIskTur((f.iskontoTuru || 0) as 0 | 1 | 2); setFisIskDeger(f.iskontoTuru ? metin(f.iskontoDegeri) : ""); setIskontoId(f.iskontoId ?? null);
@@ -273,7 +295,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
   // ── Ürün satırları ──
   const dovizKuru = (paraId: number | null) => (paraId ? kurlar.get(paraId)?.satis || 0 : 1);
   const kartFiyati = (k: StokKart) => {
-    const dahil = kartDahilFiyat(k.satisFiyati, k.kdvOrani, k.fiyatKdvDahil);
+    const dahil = kartDahilFiyat(kartSatisFiyati(k), k.kdvOrani, k.fiyatKdvDahil);
     if (!k.paraId || TL(k.paraKodu || "")) return dahil;
     const kur = dovizKuru(k.paraId);
     if (!kur) { showWarning(`${k.paraKodu} kuru bulunamadı; "${k.ad}" fiyatını elle girin.`); return 0; }
@@ -289,7 +311,11 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       if (var_ && (!satirAnahtari || !((x?: Satir) => !!x && doluMu(x))(p.find((s) => s.anahtar === satirAnahtari)))) {
         yeni = p.map((s) => (s === var_ ? { ...s, miktar: metin(sayi(s.miktar) + adet, 4) } : s.anahtar === satirAnahtari ? { ...s, barkod: "", ad: "" } : s));
       } else {
-        const dolum: Partial<Satir> = { stokKartId: k.stokKartId, kod: k.kod, barkod: k.barkodlar[0] || "", ad: k.ad, birim: k.birim, kdvOrani: k.kdvOrani, miktar: metin(adet, 4), fiyat: metin(kartFiyati(k), 4), iskTur: 0, iskDeger: "", stok: k.bakiye };
+        // Kampanya (İş 11, G12): kapsayan kampanya varsa satır iskontosu kendiliğinden
+        const fiyat = kartFiyati(k);
+        const kmp = kampanyaSec(kampanyalarRef.current, { stokKartId: k.stokKartId, stokGrupId: k.stokGrupId }, fiyat);
+        const dolum: Partial<Satir> = { stokKartId: k.stokKartId, kod: k.kod, barkod: k.barkodlar[0] || "", ad: k.ad, birim: k.birim, kdvOrani: k.kdvOrani, miktar: metin(adet, 4), fiyat: metin(fiyat, 4),
+          iskTur: kmp ? kmp.kampanya.tur : 0, iskDeger: kmp ? metin(kmp.kampanya.deger, 4) : "", stok: k.bakiye, kampanya: kmp ? { kampanyaId: kmp.kampanya.kampanyaId, ad: kmp.kampanya.ad } : null };
         const hedef = satirAnahtari ? p.find((s) => s.anahtar === satirAnahtari) : p.find((s) => !doluMu(s));
         yeni = hedef ? p.map((s) => (s === hedef ? { ...s, ...dolum } : s)) : [...p, { ...bosSatir(), ...dolum }];
       }
@@ -307,7 +333,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     const m = d.match(/^(\d+(?:[.,]\d+)?)\s*\*\s*(.+)$/);
     const adet = m ? sayi(m[1]) || 1 : 1;
     const aranan = m ? m[2].trim() : d;
-    const k = kartlar.find((x) => x.barkodlar.includes(aranan) || x.kod === aranan.toLocaleUpperCase("tr-TR")) || (await TicariService.kartBul(aranan).catch(() => null));
+    const k = await TicariService.kartBul(aranan, fiyatListesiRef.current).catch(() => null);
     if (k) { kartiSatiraKoy(k, s.anahtar, adet); return; }
     if (yetki.yonetebilir && window.confirm(`"${aranan}" barkodlu ya da kodlu ürün bulunamadı. Yeni stok kartı açılsın mı?`)) {
       setYeniKart({ acik: true, barkod: /^\S+$/.test(aranan) ? aranan : undefined, ad: /\s/.test(aranan) ? aranan : undefined, satir: s.anahtar });
@@ -367,6 +393,25 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     }
     // Ödemedeki cari satırları yeni cariye
     if (r.type === "registered" && r.id) setOdemeler((p) => p.map((o) => (o.tur === 1 && !o.cariKartId ? { ...o, cariKartId: r.id, cariKod: kod, cariUnvan: r.unvan } : o)));
+    // Carinin varsayılan fiyat listesi (İş 11, G7); kayıtlı değilse ana liste
+    if (!isDuzeltme || !kilitli) {
+      const liste = r.type === "registered" && r.id ? await TicariService.cariFiyatListesi(r.id).catch(() => null) : null;
+      void fiyatListesiDegis(liste?.fiyatListesiId ?? null, liste ? `Fiyat listesi: ${liste.ad}` : null);
+    }
+  };
+  /** Liste değişince stok kartlı satırlar yeni listeden yeniden fiyatlanır (elle yazılmış fiyat da listeyle değişir) */
+  const fiyatListesiDegis = async (id: number | null, bilgi?: string | null) => {
+    setFiyatListesiId(id);
+    fiyatListesiRef.current = id;
+    const idler = [...new Set(satirlar.filter((s) => s.stokKartId).map((s) => s.stokKartId as number))];
+    if (idler.length) {
+      try {
+        const liste = await TicariService.kartlar({ idler, aktif: null, liste: id });
+        const m = new Map(liste.map((k) => [k.stokKartId, k]));
+        setSatirlar((p) => p.map((s) => { const k = s.stokKartId ? m.get(s.stokKartId) : undefined; return k ? { ...s, fiyat: metin(kartFiyati(k), 4) } : s; }));
+      } catch { /* fiyatlar yeniden alınamadı; satırlar olduğu gibi kalır */ }
+    }
+    if (bilgi) showWarning(bilgi);
   };
   const senaryoDegis = (s: string) => {
     setSenaryo(s);
@@ -445,7 +490,6 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       }
       if (yazdir) await yazdirFis(f);
       showSuccess(`${f.faturaNo} numaralı satış fişi kaydedildi.`);
-      void kartlariYukle();
       if (isDuzeltme) { await kimlikleriYukle(); await fisiAc(f.faturaId); }
       else await temizle(senaryo === "TICARIFATURA" ? "EARSIVFATURA" : senaryo);
     } catch (e: any) {
@@ -475,7 +519,8 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     const g = girdi(false);
     setOnizleme({
       ...g, faturaNo: faturaNo || "(kayıtta verilecek)", vezneKod: vezne?.kod,
-      satirlar: dolu.map((s, i) => ({ satirNo: i + 1, kod: s.kod, barkod: s.barkod, urunAdi: s.ad, birim: s.birim, miktar: sayi(s.miktar), kdvDahilFiyat: sayi(s.fiyat), kdvOrani: s.kdvOrani, iskontoTuru: s.iskTur, iskontoDegeri: sayi(s.iskDeger) })),
+      satirlar: dolu.map((s, i) => ({ satirNo: i + 1, kod: s.kod, barkod: s.barkod, urunAdi: s.ad, birim: s.birim, miktar: sayi(s.miktar), kdvDahilFiyat: sayi(s.fiyat), kdvOrani: s.kdvOrani, iskontoTuru: s.iskTur, iskontoDegeri: sayi(s.iskDeger), kampanyaId: s.kampanya?.kampanyaId ?? null })),
+      fiyatListesiId,
       odemeler: g.odemeler,
     });
   };
@@ -589,6 +634,16 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
           <span className="fw-bold text-secondary">FATURA NO</span>
           <Form.Control size="sm" className="font-monospace fw-bold text-primary" value={faturaNo} readOnly={isDuzeltme || !kYetki.fisNoDegistirme} title={!kYetki.fisNoDegistirme ? "Fiş numarası değiştirme yetkiniz yok" : undefined} onChange={(e) => setFaturaNo(e.target.value.toUpperCase())} placeholder="Otomatik" style={{ width: 170, fontSize: 11.5 }} />
         </div>
+        {fiyatListeleri.length > 0 && (
+          <div className="d-flex align-items-center gap-1">
+            <span className="fw-bold text-secondary">FİYAT LİSTESİ</span>
+            <Form.Select size="sm" value={fiyatListesiId ?? ""} disabled={kilitli} style={{ width: 150, fontSize: 12, fontWeight: 600 }} title="Satırlar seçilen listeden fiyatlanır; cari seçilince carinin varsayılan listesi gelir"
+              onChange={(e) => void fiyatListesiDegis(e.target.value ? Number(e.target.value) : null)}>
+              <option value="">Ana liste</option>
+              {fiyatListeleri.map((l) => <option key={l.fiyatListesiId} value={l.fiyatListesiId}>{l.ad}</option>)}
+            </Form.Select>
+          </div>
+        )}
         <div className="d-flex align-items-center gap-1">
           <span className="fw-bold text-secondary">SENARYO</span>
           <Form.Select size="sm" value={senaryo} onChange={(e) => senaryoDegis(e.target.value)} style={{ width: 140, fontSize: 12, fontWeight: 600 }}>
@@ -674,7 +729,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
                         )}
                       </td>
                       <td style={{ padding: "2px 4px" }}>
-                        {doluMu(s) ? <span className="fw-semibold">{s.ad} <span className="text-muted small font-monospace">{s.kod}</span></span> : (
+                        {doluMu(s) ? <span className="fw-semibold">{s.ad} <span className="text-muted small font-monospace">{s.kod}</span>{s.kampanya && <Badge bg="danger" className="ms-1" title={`Kampanya: ${s.kampanya.ad} — satır iskontosu kampanyadan`}>Kampanya</Badge>}</span> : (
                           <Form.Control size="sm" value={s.ad} placeholder="Ürün adı yazıp Enter" disabled={kilitli} style={{ fontSize: 11.5 }}
                             onChange={(e) => satirDegis(s.anahtar, "ad", e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === "F4") { e.preventDefault(); setSecici({ acik: true, satir: s.anahtar, arama: s.ad }); } }} />
@@ -835,12 +890,12 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       </Card>
 
       {/* Pencereler */}
-      <StokKartSecici show={secici.acik} kartlar={kartlar} aramaMetni={secici.arama} pasifSecilemez
+      <StokKartSecici show={secici.acik} aramaMetni={secici.arama} pasifSecilemez
         onHide={() => setSecici({ acik: false, satir: null, arama: "" })}
-        onSelect={(k) => { const a = secici.satir; setSecici({ acik: false, satir: null, arama: "" }); kartiSatiraKoy(k, a, 1); }}
+        onSelect={async (k) => { const a = secici.satir; setSecici({ acik: false, satir: null, arama: "" }); const kk = fiyatListesiRef.current ? await TicariService.kart(k.stokKartId, fiyatListesiRef.current).catch(() => k) : k; kartiSatiraKoy(kk, a, 1); }}
         onYeni={yetki.yonetebilir ? () => { const a = secici.satir; const t = secici.arama.trim(); setSecici({ acik: false, satir: null, arama: "" }); setYeniKart({ acik: true, barkod: /^\d{6,}$/.test(t) ? t : undefined, ad: /^\d{6,}$/.test(t) ? undefined : t || undefined, satir: a }); } : undefined} />
       <StokKartModal show={yeniKart.acik} onBarkod={yeniKart.barkod} onAd={yeniKart.ad} onHide={() => setYeniKart({ acik: false, satir: null })}
-        onSaved={(k) => { const a = yeniKart.satir; setYeniKart({ acik: false, satir: null }); void kartlariYukle(); kartiSatiraKoy(k, a, 1); }} />
+        onSaved={(k) => { const a = yeniKart.satir; setYeniKart({ acik: false, satir: null }); kartiSatiraKoy(k, a, 1); }} />
       {musteri.acik && (
         <MusteriSecimModal show={musteri.acik} cariler={cariler} kayitsizMusteriler={[]} initialSearchTerm={musteri.arama} initialSearchField={musteri.alan}
           onClose={() => setMusteri({ acik: false, arama: "", alan: "all", odemeSatiri: null })} onSelectCustomer={(r) => void musteriSecildi(r)} />
