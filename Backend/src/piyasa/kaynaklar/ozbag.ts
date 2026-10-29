@@ -1,5 +1,6 @@
-import { TabanKaynak, SocketIoBaglanti, sayi, haricMi } from "../yardimci.js";
+import { TabanKaynak, SocketIoBaglanti, getir, sayi, haricMi } from "../yardimci.js";
 import { gruplariKur, type GrupTanimi } from "./ortak.js";
+import type { FiyatGrubu, FiyatSatiri } from "../tipler.js";
 
 /**
  * Özbağ Kuyumculuk — ozbag.com/fiyat-ekrani
@@ -9,6 +10,9 @@ import { gruplariKur, type GrupTanimi } from "./ortak.js";
  * - Category ZIYNET: sarrafiye; fiyat = HAS × BaseBid + GapBuy (küsuratlı gelir, sayfa tam sayı gösterir).
  *   Hamit/Reşat/Ata çeyrek vb. satırlar BaseBid=1 ile HAS'ın kopyası (gerçek fiyat değil) → alınmaz.
  * - "Change" yalnız "up"/"down"; yüzde yok. SEK/NOK/DKK sitede 0 → kendiliğinden atılır.
+ * - Sayfadaki "Gram Altın" tablosu (1/5/10/20/50/100 Gr 995) sokette yok: katsayılar
+ *   GET backend.ozbag.com/api/prices/new-products → [{code, description, gram, baseBid, baseAsk}], fiyat = HAS × gram × katsayı
+ *   (sayfayla kuruşuna kadar tutuyor). Katsayılar seyrek değişir → 30 dk'da bir çekilir, HAS her geldiğinde yeniden hesaplanır.
  * Sitenin herkese açık ekranı döviz satırlarını gizler (IsVisible=false) ama soket gerçek değerleriyle gönderir; pano ve
  * Kur Kaynağı için alınır (kullanıcı kararı: her sitede ne varsa).
  */
@@ -20,6 +24,19 @@ interface OzbagHam {
   Ask?: number;
   Time?: string;
 }
+
+interface OzbagGramUrun {
+  code: string;
+  description: string;
+  gram: number;
+  baseBid: number;
+  baseAsk: number;
+}
+
+const GRAM_URUN_ADRESI = "https://backend.ozbag.com/api/prices/new-products";
+const GRAM_URUN_ARALIK_MS = 30 * 60_000;
+/** Katsayı listesi alınamazsa bu kadar sonra yeniden denenir */
+const GRAM_URUN_YENIDEN_MS = 60_000;
 
 const TANIMLAR: GrupTanimi[] = [
   {
@@ -85,10 +102,13 @@ export class OzbagKaynak extends TabanKaynak {
 
   private ham = new Map<string, OzbagHam>();
   private socket: SocketIoBaglanti | null = null;
+  private gramUrunler: OzbagGramUrun[] = [];
+  private gramZamanlayici: NodeJS.Timeout | null = null;
 
   baslat(): void {
     if (this.calisiyor) return;
     this.calisiyor = true;
+    void this.gramUrunCek();
     this.socket = new SocketIoBaglanti(
       "wss://veri.ozbag.com/socket.io/?status=false",
       { Origin: "https://ozbag.com" },
@@ -109,11 +129,50 @@ export class OzbagKaynak extends TabanKaynak {
     this.calisiyor = false;
     this.socket?.durdur();
     this.socket = null;
+    if (this.gramZamanlayici) clearTimeout(this.gramZamanlayici);
+    this.gramZamanlayici = null;
+  }
+
+  private async gramUrunCek(): Promise<void> {
+    let bekle = GRAM_URUN_ARALIK_MS;
+    try {
+      const liste = (await (await getir(GRAM_URUN_ADRESI, { headers: { Origin: "https://ozbag.com", Referer: "https://ozbag.com/" } })).json()) as unknown;
+      const temiz = (Array.isArray(liste) ? (liste as OzbagGramUrun[]) : []).filter(
+        (u) => u && typeof u.code === "string" && Number(u.gram) > 0 && Number(u.baseBid) > 0 && Number(u.baseAsk) > 0,
+      );
+      if (!temiz.length) throw new Error("Liste boş");
+      this.gramUrunler = temiz;
+      if (this.ham.size) this.yenidenKur();
+    } catch (e: any) {
+      bekle = GRAM_URUN_YENIDEN_MS;
+      this.hataOldu(`Gram altın katsayıları alınamadı: ${e?.message ?? e}`);
+    }
+    if (!this.calisiyor) return;
+    this.gramZamanlayici = setTimeout(() => void this.gramUrunCek(), bekle);
+  }
+
+  /** Sayfadaki "Gram Altın" tablosu: HAS × gram × katsayı (1 Gr 995 ortak kod GRAM — diğer kaynakların gram külçesiyle aynı kalem) */
+  private gramGrubu(): FiyatGrubu | null {
+    const has = this.ham.get("HAS");
+    const hasAlis = sayi(has?.Bid);
+    const hasSatis = sayi(has?.Ask);
+    if (!this.gramUrunler.length || hasAlis === null || hasSatis === null) return null;
+    const zaman = has?.Time && !has.Time.startsWith("0001") ? has.Time.slice(11, 16) : null;
+    const satirlar: FiyatSatiri[] = this.gramUrunler.map((u) => ({
+      kod: u.code,
+      ad: u.description || `${u.gram} Gr`,
+      alis: Math.round(hasAlis * u.gram * u.baseBid * 100) / 100,
+      satis: Math.round(hasSatis * u.gram * u.baseAsk * 100) / 100,
+      ondalik: 2,
+      degisim: null,
+      zaman,
+      ...(u.gram === 1 ? { ortakKod: "GRAM" } : {}),
+    }));
+    return { kod: "kulce", baslik: "Gram Altın", tur: "alis-satis", satirlar };
   }
 
   private yenidenKur(): void {
-    this.veriGeldi(
-      gruplariKur(TANIMLAR, (kod) => {
+    const gruplar = gruplariKur(TANIMLAR, (kod) => {
         const h = this.ham.get(kod);
         if (!h) return null;
         const c = CARPAN[kod] ?? 1;
@@ -136,7 +195,10 @@ export class OzbagKaynak extends TabanKaynak {
           degisim: null,
           zaman,
         };
-      }),
-    );
+      });
+    const gram = this.gramGrubu();
+    // Sitedeki sıra: Has/Ons … Sarrafiye, Gram Altın; sonra gümüş, döviz
+    if (gram) gruplar.splice(2, 0, gram);
+    this.veriGeldi(gruplar);
   }
 }
