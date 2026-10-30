@@ -687,7 +687,8 @@ export class EbelgeService {
           kullanici,
           istekOzet: `vkn=${vknTckn}`,
           cevapOzet: `${sonuc.kullanicilar.length} etiket`
-            + (sonuc.silinenler.length ? `, ${sonuc.silinenler.length} silinmiş etiket` : ""),
+            + (sonuc.silinenler.length ? `, ${sonuc.silinenler.length} silinmiş etiket` : "")
+            + (sonuc.duzListeden ? " (Detail boş, düz listeden)" : ""),
         },
         dbContext
       );

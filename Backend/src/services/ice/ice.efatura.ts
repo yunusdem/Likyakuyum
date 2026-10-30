@@ -268,22 +268,14 @@ const etiketSilinmisMi = (deger: unknown, simdi: number): boolean => {
   return Number.isFinite(zaman) && new Date(zaman).getFullYear() > 1900 && zaman <= simdi;
 };
 
-/**
- * `getUserList_EFatura_Detail` — VKN/TCKN'nin e-Fatura mükellefi olup olmadığını,
- * mükellefse GİB posta kutusu etiketlerini (alias) döndürür.
- *
- * Detail sürümü silinme tarihini (DeletionTime) de verir; GİB listesinden silinmiş
- * etiketler `kullanicilar`a alınmaz, `silinenler`de ayrıca döner. Etiketlerin hepsi
- * silinmişse alıcı artık e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
- *
- * Sonuç boşsa alıcı e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
- */
-export const getUserListEFatura = async (
+/** `getUserList_EFatura` / `_Detail` — aynı istek gövdesi, ham kullanıcı listesi */
+const getUserListHam = async (
   config: IceConnectionConfig,
-  vknTckn: string
-): Promise<{ basarili: boolean; mesaj: string; kullanicilar: IceGibUser[]; silinenler: IceGibUser[] }> => {
+  vknTckn: string,
+  method: "getUserList_EFatura_Detail" | "getUserList_EFatura"
+): Promise<{ data: any; tumu: IceGibUser[] }> => {
   const { data } = await callWithSession<any>(config, {
-    method: "getUserList_EFatura_Detail",
+    method,
     buildInnerXml: (loginHeaderXml) =>
       `<_getUserList_request>` +
       loginHeaderXml +
@@ -291,10 +283,49 @@ export const getUserListEFatura = async (
       `</_getUserList_request>`,
     authHatasindaTekrarla: true,
   });
-
-  // Detail yanıtında eleman adı `GIBUser` (WSDL: ArrayOfGIBUser); eski adı da kabul et
+  // Detail yanıtında eleman adı `GIBUser` (WSDL: ArrayOfGIBUser), düz listede `GIB_User`.
+  // Boş liste `<GIB_User_List/>` → "" olarak ayrıştırılır; o da kayıtsız sayılır.
   const liste = data?.GIB_User_List;
-  const tumu = toArray<IceGibUser>(liste?.GIBUser ?? liste?.GIB_User);
+  const tumu = liste && typeof liste === "object" ? toArray<IceGibUser>(liste.GIBUser ?? liste.GIB_User) : [];
+  return { data, tumu };
+};
+
+/**
+ * VKN/TCKN'nin e-Fatura mükellefi olup olmadığını, mükellefse GİB posta kutusu
+ * etiketlerini (alias) döndürür.
+ *
+ * Önce `getUserList_EFatura_Detail` sorulur: silinme tarihini (DeletionTime) de verir;
+ * GİB listesinden silinmiş etiketler `kullanicilar`a alınmaz, `silinenler`de ayrıca döner.
+ * Etiketlerin hepsi silinmişse alıcı artık e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
+ *
+ * ICE canlıda Detail listesi yeni kayıtları geç alıyor (30.10.2026: 14.10.2026'da GİB'e kaydolan
+ * firma Detail'de yok, düz `getUserList_EFatura` listesinde var). Detail boş dönerse düz liste
+ * sorulur; düz listede DeletionTime olmadığından oradaki kayıtlar aktif sayılır (`duzListeden`).
+ *
+ * İki liste de boşsa alıcı e-Fatura mükellefi değildir → e-Arşiv kesilmelidir.
+ */
+export const getUserListEFatura = async (
+  config: IceConnectionConfig,
+  vknTckn: string
+): Promise<{
+  basarili: boolean;
+  mesaj: string;
+  kullanicilar: IceGibUser[];
+  silinenler: IceGibUser[];
+  duzListeden: boolean;
+}> => {
+  let { data, tumu } = await getUserListHam(config, vknTckn, "getUserList_EFatura_Detail");
+  let duzListeden = false;
+
+  if (String(data?.success).toLowerCase() === "true" && tumu.length === 0) {
+    const duz = await getUserListHam(config, vknTckn, "getUserList_EFatura");
+    if (String(duz.data?.success).toLowerCase() === "true" && duz.tumu.length > 0) {
+      data = duz.data;
+      tumu = duz.tumu;
+      duzListeden = true;
+    }
+  }
+
   const simdi = Date.now();
 
   return {
@@ -302,6 +333,7 @@ export const getUserListEFatura = async (
     mesaj: data?.response_message ? String(data.response_message) : "",
     kullanicilar: tumu.filter((k) => !etiketSilinmisMi(k.DeletionTime, simdi)),
     silinenler: tumu.filter((k) => etiketSilinmisMi(k.DeletionTime, simdi)),
+    duzListeden,
   };
 };
 
