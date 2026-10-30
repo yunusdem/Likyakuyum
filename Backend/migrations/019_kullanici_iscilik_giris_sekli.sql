@@ -1,16 +1,23 @@
 -- ============================================================================
--- Migration: 018_kullanici_kur_yetkisi.sql
--- Tanım: Kur yetkisi 4 seçenek (0: Var, 1: Yok, 2: Esnek, 3: Yüzde)
--- Tekrar çalıştırılabilir (Idempotent), veri koruyucu göç dosyası.
+-- Migration: 019_kullanici_iscilik_giris_sekli.sql
+-- Tanım: Kullanıcı tanımlarına İşçilik Giriş Şekli (0: Sayı, 1: Milyem) desteği
+-- Tekrar çalıştırılabilir (Idempotent), veri silmeyen göç dosyası.
 -- ============================================================================
 
--- 1. Mevcut kayıtlarda eski 'Limitli' (2) olanlar yüzde tolerans oranı girilmiş kayıtlar olduğu için yeni kodlamada 3 (Yüzde) olarak güncellenir.
-UPDATE dbo.TODVZ_KULLANICI
-SET [KUR_YETKISI] = 3
-WHERE [KUR_YETKISI] = 2;
+-- 1. TODVZ_KULLANICI tablosuna ISCILIK_GIRIS_SEKLI kolonu ekleme
+IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'ISCILIK_GIRIS_SEKLI') IS NULL
+BEGIN
+    ALTER TABLE dbo.TODVZ_KULLANICI ADD [ISCILIK_GIRIS_SEKLI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_ISCILIK_GIRIS_SEKLI DEFAULT 0;
+END;
 GO
 
--- 2. SODVZ_KULLANICI_KAYDET saklı yordamını (stored procedure) güncelleme
+-- 2. Varsa NULL değerleri 0 (Sayı) varsayılanına çek
+UPDATE dbo.TODVZ_KULLANICI
+SET [ISCILIK_GIRIS_SEKLI] = 0
+WHERE [ISCILIK_GIRIS_SEKLI] IS NULL;
+GO
+
+-- 3. SODVZ_KULLANICI_KAYDET saklı yordamını (stored procedure) güncelleme
 CREATE OR ALTER PROCEDURE [dbo].[SODVZ_KULLANICI_KAYDET]
 	@KULLANICI_ID INT OUTPUT,
 	@AD VARCHAR(200),
@@ -74,10 +81,6 @@ CREATE OR ALTER PROCEDURE [dbo].[SODVZ_KULLANICI_KAYDET]
 AS
 BEGIN
 	SET NOCOUNT ON;
-
-	-- Kur yetkisi 3 (Yüzde) değilse tolerans oranını 0 olarak sıfırla
-	IF @KUR_YETKISI <> 3
-		SET @KUR_TOLERANS_ORANI = 0;
 
 	IF @KULLANICI_ID IS NULL OR @KULLANICI_ID <= 0
 	BEGIN
