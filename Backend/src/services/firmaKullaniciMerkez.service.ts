@@ -20,7 +20,12 @@ type DbContext = { dbServer?: string; dbName?: string };
 export class FirmaKullaniciMerkezService {
   public static baglam(oturum: JwtPayload | undefined): Promise<MerkezBaglam | null> {
     if (!oturum) return Promise.resolve(null);
-    return MerkezGirisService.baglam({ dbServer: oturum.dbServer, dbName: oturum.dbName, username: oturum.username });
+    return MerkezGirisService.baglam({
+      dbServer: oturum.dbServer,
+      dbName: oturum.dbName,
+      username: oturum.username,
+      firmaId: oturum.firmaId,
+    });
   }
 
   public static limitMesaji(b: MerkezBaglam): string {

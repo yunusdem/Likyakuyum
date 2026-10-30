@@ -275,8 +275,14 @@ export class MerkezGirisService {
     static async baglam(oturum) {
         if (!this.aktifMi())
             return null;
-        const { anahtar } = firmaDbAnahtari(oturum.dbServer || "", oturum.dbName || "");
-        const firma = await FirmaSqlRepository.anahtarIleBul(anahtar);
+        let firma = null;
+        if (oturum.firmaId) {
+            firma = await FirmaSqlRepository.idIleBul(oturum.firmaId);
+        }
+        if (!firma && (oturum.dbServer || oturum.dbName)) {
+            const { anahtar } = firmaDbAnahtari(oturum.dbServer || "", oturum.dbName || "");
+            firma = await FirmaSqlRepository.anahtarIleBul(anahtar);
+        }
         if (!firma || firmaEngeli(firma)) {
             throw ApiError.unauthorized(firma ? RED_MESAJI[firmaEngeli(firma)] : RED_MESAJI.FIRMA_KAYITSIZ);
         }

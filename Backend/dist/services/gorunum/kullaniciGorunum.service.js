@@ -11,10 +11,15 @@ export const MODUL_KODU_DESENI = /^[a-z0-9-]+(:[a-z0-9#/._-]+)?$/;
 export const gecerliKodMu = (kod) => typeof kod === "string" && kod.length > 0 && kod.length <= MODUL_KODU_SINIRI && MODUL_KODU_DESENI.test(kod);
 /** Görünüm ayarını yöneten / görünümden muaf kullanıcı mı (G5) */
 export const gorunumYoneticisiMi = async (req) => {
-    const merkez = await FirmaKullaniciMerkezService.baglam(req.user);
-    if (merkez)
-        return !!merkez.kullanici.firmaYoneticisi;
-    return (await kullaniciYetkisi(req)).yonetici;
+    try {
+        const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
+        if (merkez)
+            return !!merkez.kullanici.firmaYoneticisi;
+        return (await kullaniciYetkisi(req)).yonetici;
+    }
+    catch {
+        return req.user?.role === "admin";
+    }
 };
 const baglam = (req) => ({ dbServer: req.user?.dbServer, dbName: req.user?.dbName });
 const ONBELLEK = Symbol("oturumKapalilari");

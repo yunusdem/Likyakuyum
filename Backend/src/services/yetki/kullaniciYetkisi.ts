@@ -68,12 +68,21 @@ export async function kullaniciYetkisi(req: Request): Promise<KullaniciYetkisi> 
     secilen = { zaman: Date.now(), kolonlar };
     kolonOnbellegi.set(anahtar, secilen);
   }
+  const username = String(req.user?.username || "").trim();
   const sonuc = await pool
     .request()
     .input("K", sql.Int, id)
-    .query(`SELECT ${secilen.kolonlar.map((k) => `[${k}]`).join(", ")} FROM dbo.TODVZ_KULLANICI WHERE KULLANICI_ID = @K`);
+    .input("UN", sql.NVarChar(100), username)
+    .query(`SELECT ${secilen.kolonlar.map((k) => `[${k}]`).join(", ")} FROM dbo.TODVZ_KULLANICI WHERE KULLANICI_ID = @K OR (ISNULL(@UN, '') <> '' AND LOWER(RTRIM(LTRIM([AD]))) = LOWER(@UN))`);
   const satir = sonuc.recordset[0];
-  if (!satir) throw ApiError.unauthorized("Kullanıcı kartı bulunamadı.");
+  if (!satir) {
+    if (req.user?.role === "admin") {
+      const y = yetkiSatirdan({ SISTEM_YONETICISI: 1 });
+      r[ONBELLEK] = y;
+      return y;
+    }
+    throw ApiError.unauthorized("Kullanıcı kartı bulunamadı.");
+  }
   const y = yetkiSatirdan(satir);
   r[ONBELLEK] = y;
   return y;

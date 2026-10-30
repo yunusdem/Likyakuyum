@@ -17,9 +17,13 @@ export const gecerliKodMu = (kod: unknown): kod is string =>
 
 /** Görünüm ayarını yöneten / görünümden muaf kullanıcı mı (G5) */
 export const gorunumYoneticisiMi = async (req: Request): Promise<boolean> => {
-  const merkez = await FirmaKullaniciMerkezService.baglam(req.user);
-  if (merkez) return !!merkez.kullanici.firmaYoneticisi;
-  return (await kullaniciYetkisi(req)).yonetici;
+  try {
+    const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
+    if (merkez) return !!merkez.kullanici.firmaYoneticisi;
+    return (await kullaniciYetkisi(req)).yonetici;
+  } catch {
+    return req.user?.role === "admin";
+  }
 };
 
 const baglam = (req: Request) => ({ dbServer: req.user?.dbServer, dbName: req.user?.dbName });

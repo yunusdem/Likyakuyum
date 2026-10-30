@@ -23,8 +23,14 @@ import { AuthService } from "../services/auth.service.js";
  * Sistem yöneticiliği jetondaki rolden değil kullanıcı kartından okunur (fiş yetkileriyle aynı kaynak): yöneticiliği
  * kaldırılan kullanıcı jetonu geçerli kaldıkça kartları yönetebiliyor, kendini yeniden yönetici yapabiliyordu.
  */
-const kartYoneticisiMi = async (req: Request, merkez: MerkezBaglam | null): Promise<boolean> =>
-  merkez ? !!merkez.kullanici.firmaYoneticisi : (await kullaniciYetkisi(req)).yonetici;
+const kartYoneticisiMi = async (req: Request, merkez: MerkezBaglam | null): Promise<boolean> => {
+  if (merkez) return !!merkez.kullanici.firmaYoneticisi;
+  try {
+    return (await kullaniciYetkisi(req)).yonetici;
+  } catch {
+    return req.user?.role === "admin";
+  }
+};
 const kendisiMi = (req: Request, id: string): boolean => !!req.user?.userId && String(req.user.userId) === String(id);
 const YONETICI_GEREKLI = "Kullanıcı tanımlarını yalnız sistem yöneticisi değiştirebilir.";
 /** Yönetici olmayanın kendi kartında değiştirebildiği alanlar */
@@ -36,7 +42,8 @@ export class UserController {
   public static listUsers = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
     const sonuc = await UserService.listUsers(req.query as any, dbContext);
-    const yonetici = await kartYoneticisiMi(req, await FirmaKullaniciMerkezService.baglam(req.user));
+    const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
+    const yonetici = await kartYoneticisiMi(req, merkez);
     const users = yonetici ? sonuc.users : sonuc.users.filter((u) => kendisiMi(req, String(u.id)));
     const total = yonetici ? sonuc.total : users.length;
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
@@ -52,7 +59,8 @@ export class UserController {
 
   public static getUserById = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
-    if (!kendisiMi(req, req.params.id) && !(await kartYoneticisiMi(req, await FirmaKullaniciMerkezService.baglam(req.user)))) {
+    const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
+    if (!kendisiMi(req, req.params.id) && !(await kartYoneticisiMi(req, merkez))) {
       throw ApiError.forbidden(YONETICI_GEREKLI);
     }
     const user = await UserService.getUserById(req.params.id, dbContext);
