@@ -483,6 +483,7 @@ export const DovizFisiPage: React.FC = () => {
   const isOpeningIstatistikModalRef = useRef<boolean>(false);
   const hasEditedIstatistikSinceConfirmRef = useRef<boolean>(false);
   const hasUserTypedIstatistikRef = useRef<boolean>(false);
+  const warnedKurRowMapRef = useRef<Record<string, string>>({});
 
   // Common Search Lookup Modal State for Detay fields
   type DetayLookupType =
@@ -2121,6 +2122,7 @@ export const DovizFisiPage: React.FC = () => {
   const handleAddRow = () => {
     if (isLocked) return;
     if (!isCokluSatirIzinli && lines.length >= 1) {
+      focusGelisNedeni();
       return;
     }
     const lastRow = lines[lines.length - 1];
@@ -3287,7 +3289,15 @@ export const DovizFisiPage: React.FC = () => {
     })();
 
     const activeLimitParaRate = limitPara ? resolveCurrencyRate(limitPara, tip, kurTuru) : usdRate;
-    const activeAltinParaRate = altinPara ? resolveCurrencyRate(altinPara, tip, kurTuru) : 0;
+    const activeAltinParaRate = (() => {
+      if (altinParaKodu === "TL" || altinParaKodu === "TRY") return 1;
+      const rate = altinPara ? resolveCurrencyRate(altinPara, tip, kurTuru) : 0;
+      if (rate > 0) return rate;
+      if (altinParaKodu === "USD" || altinParaKodu === "$") return usdRate;
+      if (altinParaKodu === "EUR" || altinParaKodu === "€") return (activeLimitParaRate > 0 && limitParaKodu === "EUR" ? activeLimitParaRate : 38);
+      const hasRatio = (altinPara as any)?.hasOrani ? Number((altinPara as any).hasOrani) : (altinParaKodu === "22" ? 0.916 : (altinParaKodu === "14" ? 0.585 : (altinParaKodu === "18" ? 0.75 : 1)));
+      return 3200 * hasRatio;
+    })();
 
     const isGoldItem = (paraId?: number, kod?: string, ad?: string, uTipi?: number) => {
       const upperKod = (kod || "").toUpperCase().trim();
@@ -3361,35 +3371,19 @@ export const DovizFisiPage: React.FC = () => {
     });
 
     // 1) Altın kontrolü:
-    let isAltinExceeded = false;
-    if (hasGold) {
-      const isAltinParaCurrency = !altinPara || altinPara.urunTipi === 0 || ["USD", "EUR", "TL", "TRY", "$", "€"].includes(altinParaKodu);
-      if (altinParaKodu === "TL" || altinParaKodu === "TRY") {
-        isAltinExceeded = totalGoldTl >= altinLimit;
-      } else if (isAltinParaCurrency) {
-        const rate = (activeLimitParaRate > 0 && limitParaKodu === altinParaKodu)
-          ? activeLimitParaRate
-          : (activeAltinParaRate > 0 && activeAltinParaRate < 500 ? activeAltinParaRate : usdRate);
-        const goldCurrencyVal = rate > 0 ? totalGoldTl / rate : 0;
-        isAltinExceeded = goldCurrencyVal >= altinLimit || (altinLimit >= 1000 && totalGoldTl >= altinLimit);
-      } else {
-        const goldGramRate = activeAltinParaRate > 0 ? activeAltinParaRate : (3200 * 0.916);
-        const goldGrams = goldGramRate > 0 ? totalGoldTl / goldGramRate : totalGoldGram;
-        if (altinLimit < 500) {
-          isAltinExceeded = goldGrams >= altinLimit || (totalGoldGram > 0 && totalGoldGram >= altinLimit);
-        } else {
-          const goldUsd = usdRate > 0 ? totalGoldTl / usdRate : 0;
-          isAltinExceeded = goldGrams >= altinLimit || goldUsd >= altinLimit || totalGoldTl >= altinLimit;
-        }
-      }
-    }
+    // Firma Tanımları Limit sekmesindeki Altın Vergi Sınırı (örn. 5.000) ve Altın Sınır Para (örn. USD, 22 Ayar vb.) baz alınır.
+    // Altın Sınır Para ne seçilmişse o para biriminin kuruna göre sınır hesaplanır (Miktar * Kur).
+    const altinLimitInTl = altinLimit * (activeAltinParaRate > 0 ? activeAltinParaRate : 1);
+    const altinValInPara = activeAltinParaRate > 0 ? totalGoldTl / activeAltinParaRate : totalGoldTl;
+    const isAltinExceeded = hasGold && (totalGoldTl >= altinLimitInTl || altinValInPara >= altinLimit);
 
     // 2) Döviz kontrolü:
     const isDovizExceeded = hasDoviz && (hasDovizLimitDirect || totalDovizEquivalent >= dovizLimit);
 
-    // 3) TL kontrolü:
-    const tlTotal = Math.max(Math.abs(sonToplam), Math.abs(totalTutar), totalTlAmount);
-    const isTlExceeded = tlTotal >= tlLimit;
+    // 3) TL kontrolü: Saf TL işlemi (altın ve döviz harici saf TL tutarı) TL Vergi Sınırını aştığında tetiklenir
+    // Altın veya döviz içeren işlemlerde genel tutar TL sınırına sokulmaz!
+    const isPureTl = !hasGold && !hasDoviz;
+    const isTlExceeded = (isPureTl ? Math.max(Math.abs(sonToplam), Math.abs(totalTutar)) >= tlLimit : false) || totalTlAmount >= tlLimit;
 
     if (isAltinExceeded) {
       return {
@@ -3869,10 +3863,88 @@ export const DovizFisiPage: React.FC = () => {
         return;
       }
 
+      if (field === "kur") {
+        const row = lines[rowIndex];
+        if (row && !isRowTL && kurAcik) {
+          const inputElem = document.getElementById(`grid-input-${rowIndex}-kur`) as HTMLInputElement | null;
+          const rawVal = inputElem ? inputElem.value : String(row.kur || "");
+          const val = rawVal.trim();
+          let num = parseFloat(val.replace(/,/g, "."));
+          if (val === "" || isNaN(num) || num <= 0) {
+            setNotification({ type: "warning", message: "Lütfen geçerli bir kur oranı giriniz." });
+            const refocusKur = () => focusCell(rowIndex, "kur", "select");
+            refocusKur();
+            requestAnimationFrame(refocusKur);
+            setTimeout(refocusKur, 50);
+            return;
+          }
+
+          const p = paraList.find((x) =>
+            (row.paraId && x.id === row.paraId) ||
+            (x.kod && row.paraKodu && x.kod.toUpperCase().trim() === String(row.paraKodu).toUpperCase().trim())
+          );
+          let hasWarning = false;
+          let hasError = false;
+          if (p) {
+            const alis = resolveCurrencyRate(p, 0, kurTuru);
+            const satis = resolveCurrencyRate(p, 1, kurTuru);
+            const ref = resolveCurrencyRate(p, tip, kurTuru);
+            const gise = { kur: ref || alis || satis, alis: alis || null, satis: satis || null };
+            const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
+            if (res.degisti) {
+              num = res.kur;
+              hasWarning = true;
+              if (res.mesaj) {
+                setNotification({ type: "warning", message: res.mesaj });
+              } else {
+                setNotification({ type: "warning", message: "Kur yetki sınırına göre güncellendi." });
+              }
+            }
+            const denetim = kurDenetle(kYetki, gise, num, `${rowIndex + 1}. satır kuru`);
+            if (denetim.hata) {
+              setNotification({ type: "danger", message: denetim.hata });
+              hasError = true;
+            } else if (denetim.uyari) {
+              setNotification({ type: "warning", message: denetim.uyari });
+              hasWarning = true;
+            }
+          }
+          const formattedKur = num.toFixed(kurKurusSayisi);
+          if (inputElem) inputElem.value = formattedKur;
+          handleLineFieldChange(row.id, "kur", formattedKur);
+
+          if (hasError) {
+            focusCell(rowIndex, "kur", "select");
+            return;
+          }
+
+          if (hasWarning) {
+            if (warnedKurRowMapRef.current[row.id] !== formattedKur) {
+              // İlk uyarı anında: kur sınırlandı veya sapma uyarısı var.
+              // Kur hücresinde kal ve değeri bir kez seç
+              warnedKurRowMapRef.current[row.id] = formattedKur;
+              focusCell(rowIndex, "kur", "select");
+              return;
+            }
+          }
+          // İkinci kez entera basıldığında (uyarı onaylanıp) devam edilir
+          delete warnedKurRowMapRef.current[row.id];
+        }
+      }
+
       if (isLastVisibleCol) {
         // Satırın son alanında Enter'a basıldı:
         if (rowIndex >= lines.length - 1) {
-          handleAddRow();
+          if (!isCokluSatirIzinli) {
+            focusGelisNedeni();
+            return;
+          }
+          setLines((prev) => [...prev, createEmptyRow(prev.length + 1)]);
+          const nextIdx = rowIndex + 1;
+          setActiveRowIndex(nextIdx);
+          requestAnimationFrame(() => {
+            focusCell(nextIdx, "kod", "select");
+          });
         } else {
           // Altında zaten satır varsa bir alt satırın kod alanına geç
           const targetIdx = rowIndex + 1;
@@ -3882,36 +3954,6 @@ export const DovizFisiPage: React.FC = () => {
         }
         return;
       } else {
-        if (field === "kur") {
-          const row = lines[rowIndex];
-          if (row && !isRowTL && kurAcik) {
-            const val = String(row.kur || "").trim();
-            if (val !== "") {
-              let num = parseFloat(val.replace(/,/g, "."));
-              if (!isNaN(num) && num > 0) {
-                const p = paraList.find((x) =>
-                  (row.paraId && x.id === row.paraId) ||
-                  (x.kod && row.paraKodu && x.kod.toUpperCase().trim() === String(row.paraKodu).toUpperCase().trim())
-                );
-                if (p) {
-                  const alis = resolveCurrencyRate(p, 0, kurTuru);
-                  const satis = resolveCurrencyRate(p, 1, kurTuru);
-                  const ref = resolveCurrencyRate(p, tip, kurTuru);
-                  const gise = { kur: ref || alis || satis, alis: alis || null, satis: satis || null };
-                  const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
-                  if (res.degisti) {
-                    num = res.kur;
-                    if (res.mesaj) {
-                      setNotification({ type: "warning", message: res.mesaj });
-                    }
-                  }
-                }
-                const formattedKur = num.toFixed(kurKurusSayisi);
-                handleLineFieldChange(row.id, "kur", formattedKur);
-              }
-            }
-          }
-        }
         // Sıradaki görünür sütuna geç (örn: kod -> miktar -> kur)
         const nextCol = visibleCols[currentVisIdx + 1];
         if (nextCol) {
@@ -3922,23 +3964,102 @@ export const DovizFisiPage: React.FC = () => {
     }
 
     // Tab Tuşu: Son görünür sütunda basıldığında satır doluysa yeni satır açıp kod hücresine geçsin
-    if (e.key === "Tab" && !e.shiftKey && isLastVisibleCol) {
-      e.preventDefault();
-      if (rowIndex >= lines.length - 1) {
-        handleAddRow();
-      } else {
-        const targetIdx = rowIndex + 1;
-        cleanupEmptyRows(targetIdx);
-        setActiveRowIndex(targetIdx);
-        focusCell(targetIdx, "kod", "select");
+    if (e.key === "Tab" && !e.shiftKey) {
+      if (field === "kur") {
+        const row = lines[rowIndex];
+        if (row && !isRowTL && kurAcik) {
+          const inputElem = document.getElementById(`grid-input-${rowIndex}-kur`) as HTMLInputElement | null;
+          const rawVal = inputElem ? inputElem.value : String(row.kur || "");
+          const val = rawVal.trim();
+          let num = parseFloat(val.replace(/,/g, "."));
+          if (val === "" || isNaN(num) || num <= 0) {
+            e.preventDefault();
+            setNotification({ type: "warning", message: "Lütfen geçerli bir kur oranı giriniz." });
+            const refocusKur = () => focusCell(rowIndex, "kur", "select");
+            refocusKur();
+            requestAnimationFrame(refocusKur);
+            setTimeout(refocusKur, 50);
+            return;
+          }
+          const p = paraList.find((x) =>
+            (row.paraId && x.id === row.paraId) ||
+            (x.kod && row.paraKodu && x.kod.toUpperCase().trim() === String(row.paraKodu).toUpperCase().trim())
+          );
+          let hasWarning = false;
+          let hasError = false;
+          if (p) {
+            const alis = resolveCurrencyRate(p, 0, kurTuru);
+            const satis = resolveCurrencyRate(p, 1, kurTuru);
+            const ref = resolveCurrencyRate(p, tip, kurTuru);
+            const gise = { kur: ref || alis || satis, alis: alis || null, satis: satis || null };
+            const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
+            if (res.degisti) {
+              num = res.kur;
+              hasWarning = true;
+              if (res.mesaj) {
+                setNotification({ type: "warning", message: res.mesaj });
+              } else {
+                setNotification({ type: "warning", message: "Kur yetki sınırına göre güncellendi." });
+              }
+            }
+            const denetim = kurDenetle(kYetki, gise, num, `${rowIndex + 1}. satır kuru`);
+            if (denetim.hata) {
+              setNotification({ type: "danger", message: denetim.hata });
+              hasError = true;
+            } else if (denetim.uyari) {
+              setNotification({ type: "warning", message: denetim.uyari });
+              hasWarning = true;
+            }
+          }
+          const formattedKur = num.toFixed(kurKurusSayisi);
+          if (inputElem) inputElem.value = formattedKur;
+          handleLineFieldChange(row.id, "kur", formattedKur);
+          if (hasError) {
+            e.preventDefault();
+            focusCell(rowIndex, "kur", "select");
+            return;
+          }
+          if (hasWarning) {
+            if (warnedKurRowMapRef.current[row.id] !== formattedKur) {
+              warnedKurRowMapRef.current[row.id] = formattedKur;
+              e.preventDefault();
+              focusCell(rowIndex, "kur", "select");
+              return;
+            }
+          }
+          delete warnedKurRowMapRef.current[row.id];
+        }
       }
-      return;
+
+      if (isLastVisibleCol) {
+        e.preventDefault();
+        if (rowIndex >= lines.length - 1) {
+          if (!isCokluSatirIzinli) {
+            focusGelisNedeni();
+            return;
+          }
+          setLines((prev) => [...prev, createEmptyRow(prev.length + 1)]);
+          const nextIdx = rowIndex + 1;
+          setActiveRowIndex(nextIdx);
+          requestAnimationFrame(() => {
+            focusCell(nextIdx, "kod", "select");
+          });
+        } else {
+          const targetIdx = rowIndex + 1;
+          cleanupEmptyRows(targetIdx);
+          setActiveRowIndex(targetIdx);
+          focusCell(targetIdx, "kod", "select");
+        }
+        return;
+      }
     }
 
     // 2. Sağ Yön Oku: Yazı varsa sonuna kadar ilerler, sonundaysa bir sonraki sütuna / satıra kayar
     if (e.key === "ArrowRight") {
+      delete warnedKurRowMapRef.current[lines[rowIndex]?.id];
       const len = el.value ? el.value.length : 0;
-      const isAtEnd = el.selectionStart === len && el.selectionEnd === len;
+      const isAllSelected = len > 0 && el.selectionStart === 0 && el.selectionEnd === len;
+      const isAtEnd = (el.selectionStart === len && el.selectionEnd === len) || isAllSelected;
       if (!isAtEnd) {
         return;
       }
@@ -3964,7 +4085,10 @@ export const DovizFisiPage: React.FC = () => {
 
     // 3. Sol Yön Oku: Yazı varsa başına kadar geriler, başındaysa bir önceki sütuna / satıra kayar
     if (e.key === "ArrowLeft") {
-      const isAtStart = el.selectionStart === 0 && el.selectionEnd === 0;
+      delete warnedKurRowMapRef.current[lines[rowIndex]?.id];
+      const len = el.value ? el.value.length : 0;
+      const isAllSelected = len > 0 && el.selectionStart === 0 && el.selectionEnd === len;
+      const isAtStart = (el.selectionStart === 0 && el.selectionEnd === 0) || isAllSelected;
       if (!isAtStart) {
         return;
       }
@@ -4137,6 +4261,7 @@ export const DovizFisiPage: React.FC = () => {
             message: `${i + 1}. satırdaki (${row.paraKodu || row.paraAdi || "Döviz"}) için kur 0 veya boş olamaz. Lütfen geçerli bir kur oranı giriniz.`,
           });
           window.scrollTo({ top: 0, behavior: "smooth" });
+          setTimeout(() => focusCell(i, "kur", "select"), 60);
           return;
         }
       }
@@ -4155,9 +4280,43 @@ export const DovizFisiPage: React.FC = () => {
                 kurTuru
               )
             : null;
-          return { etiket: `${i + 1}. satırın kuru`, gise, kur: parseKur(l.kur) };
+          return { etiket: `${i + 1}. satırın kuru`, gise, kur: parseKur(l.kur), rowId: l.id };
         });
-      if (!kurOnayi(kYetki, kurSatirlari, (m) => setNotification({ type: "danger", message: m }))) return;
+
+      let errRowId: string | null = null;
+      let errMsg: string | null = null;
+      for (const s of kurSatirlari) {
+        const d = kurDenetle(kYetki, s.gise, s.kur, s.etiket);
+        if (d.hata) {
+          errRowId = s.rowId;
+          errMsg = d.hata;
+          break;
+        }
+      }
+      if (errRowId && errMsg) {
+        setNotification({ type: "danger", message: errMsg });
+        const rIdx = lines.findIndex((l) => l.id === errRowId);
+        if (rIdx >= 0) {
+          setTimeout(() => focusCell(rIdx, "kur", "select"), 60);
+        }
+        return;
+      }
+
+      const uyarilar: { satir: (typeof kurSatirlari)[0]; uyari: string }[] = [];
+      for (const s of kurSatirlari) {
+        const d = kurDenetle(kYetki, s.gise, s.kur, s.etiket);
+        if (d.uyari) uyarilar.push({ satir: s, uyari: d.uyari });
+      }
+      if (uyarilar.length > 0) {
+        const onay = window.confirm(`${uyarilar.map((u) => u.uyari).join("\n")}\n\nYine de kaydedilsin mi?`);
+        if (!onay) {
+          const rIdx = lines.findIndex((l) => l.id === uyarilar[0].satir.rowId);
+          if (rIdx >= 0) {
+            setTimeout(() => focusCell(rIdx, "kur", "select"), 60);
+          }
+          return;
+        }
+      }
     }
 
     // MASAK Yasal Sınır Kontrolleri (Kaydetmede Kontrol)
@@ -6428,6 +6587,26 @@ export const DovizFisiPage: React.FC = () => {
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           onClick={() => {
                             const val = cariKod.trim();
+                            if (val) {
+                              const { cariler, totalCount } = findMatchingCustomers("kod", val);
+                              if (totalCount === 1 && cariler.length === 1) {
+                                const single = cariler[0];
+                                handleSelectCustomer({
+                                  type: "registered",
+                                  id: single.id,
+                                  kod: single.kod,
+                                  unvan: single.ad || (single as any).unvan || "",
+                                  vergiKimlikNo: single.vergiKimlikNo || "",
+                                  adres: single.adres || "",
+                                  telefon: single.telefon || "",
+                                  raw: single,
+                                });
+                                lastFocusedCariKodRef.current = single.kod || "";
+                                unvanRef.current?.focus();
+                                unvanRef.current?.select();
+                                return;
+                              }
+                            }
                             lastModalCallerRef.current = "cariKod";
                             setCariSearchTerm(val);
                             setCariSearchField("kod");
@@ -6536,6 +6715,38 @@ export const DovizFisiPage: React.FC = () => {
                           onClick={() => {
                             const raw = unvan.trim();
                             const term = isAnonymousCustomerName(raw) ? "" : raw;
+                            if (term) {
+                              const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("unvan", term);
+                              if (totalCount === 1) {
+                                if (cariler.length === 1) {
+                                  const single = cariler[0];
+                                  handleSelectCustomer({
+                                    type: "registered",
+                                    id: single.id,
+                                    kod: single.kod,
+                                    unvan: single.ad || (single as any).unvan || "",
+                                    vergiKimlikNo: single.vergiKimlikNo || "",
+                                    adres: single.adres || "",
+                                    telefon: single.telefon || "",
+                                    raw: single,
+                                  });
+                                } else if (kayitsizlar.length === 1) {
+                                  const singleK = kayitsizlar[0];
+                                  handleSelectCustomer({
+                                    type: "unregistered",
+                                    id: null,
+                                    kod: "",
+                                    unvan: singleK.ad || singleK.unvan || "",
+                                    vergiKimlikNo: singleK.vergiKimlikNo || "",
+                                    adres: singleK.adres || "",
+                                    telefon: singleK.telefon || "",
+                                    raw: singleK,
+                                  });
+                                }
+                                tipSelectRef.current?.focus();
+                                return;
+                              }
+                            }
                             lastModalCallerRef.current = "unvan";
                             setCariSearchTerm(term);
                             setCariSearchField("unvan");
@@ -6861,25 +7072,30 @@ export const DovizFisiPage: React.FC = () => {
                               const isUnchanged = wasFilledBefore && val.toLowerCase() === prevVal.toLowerCase() && !hasUserTypedIstatistikRef.current;
 
                               const valLower = val.toLowerCase();
-                              const exactMatch = statisticList.find((s) => {
+                              const matched = statisticList.filter((s) => {
                                 const fType = Number(s.fisTipi);
                                 const isTypeAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
                                 if (!isTypeAllowed) return false;
                                 const kod = (s.kod || "").trim().toLowerCase();
                                 const idStr = String(s.id);
-                                return kod === valLower || idStr === valLower;
+                                const aciklama = (s.aciklama || (s as any).ad || "").trim().toLowerCase();
+                                return kod.includes(valLower) || idStr === valLower || aciklama.includes(valLower);
                               });
 
-                              if (!val || isUnchanged || exactMatch) {
-                                if (exactMatch && !isUnchanged) {
-                                  handleSelectIstatistik(exactMatch);
-                                }
+                              if (!val || isUnchanged) {
                                 isOpeningIstatistikModalRef.current = false;
                                 focusCell(0, "kod", "select");
                                 return;
                               }
 
-                              // Bunun dışındaki tüm durumlarda (değiştirildiyse, 90 vb. yazıldıysa veya öncesinde boş idiyse) modal açılacak:
+                              if (matched.length === 1) {
+                                handleSelectIstatistik(matched[0]);
+                                isOpeningIstatistikModalRef.current = false;
+                                focusCell(0, "kod", "select");
+                                return;
+                              }
+
+                              // Bunun dışındaki tüm durumlarda modal açılacak:
                               isOpeningIstatistikModalRef.current = true;
                               openIstatistikModalWithTerm(val);
                             } else if (e.key === "Tab") {
@@ -6939,9 +7155,27 @@ export const DovizFisiPage: React.FC = () => {
                             isOpeningIstatistikModalRef.current = true;
                           }}
                           onClick={() => {
-                            isOpeningIstatistikModalRef.current = true;
                             const rawVal = istatistikRef.current?.value ?? "";
                             const val = (rawVal || istatistikKodu || "").trim();
+                            const valLower = val.toLowerCase();
+                            if (val) {
+                              const matched = statisticList.filter((s) => {
+                                const fType = Number(s.fisTipi);
+                                const isTypeAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                                if (!isTypeAllowed) return false;
+                                const kod = (s.kod || "").trim().toLowerCase();
+                                const idStr = String(s.id);
+                                const aciklama = (s.aciklama || (s as any).ad || "").trim().toLowerCase();
+                                return kod.includes(valLower) || idStr === valLower || aciklama.includes(valLower);
+                              });
+                              if (matched.length === 1) {
+                                handleSelectIstatistik(matched[0]);
+                                isOpeningIstatistikModalRef.current = false;
+                                focusCell(0, "kod", "select");
+                                return;
+                              }
+                            }
+                            isOpeningIstatistikModalRef.current = true;
                             openIstatistikModalWithTerm(val);
                           }}
                           title="F3) İstatistik Kodu Seçimi"
@@ -7122,6 +7356,20 @@ export const DovizFisiPage: React.FC = () => {
                             className="p-0 px-1 text-secondary text-decoration-none"
                             onClick={() => {
                               const term = (row.paraKodu || "").trim();
+                              if (term) {
+                                const matched = paraList.filter((p) => {
+                                  const k = (p.kod || "").toUpperCase().trim();
+                                  if (k === "TL" || k === "TRY" || k === "TRL") return false;
+                                  return (p.kod || "").toLowerCase().includes(term.toLowerCase()) || (p.ad || "").toLowerCase().includes(term.toLowerCase());
+                                });
+                                if (matched.length === 1) {
+                                  lastModalCallerRef.current = null;
+                                  lastParaModalRowIndexRef.current = null;
+                                  handleSelectCurrency(row.id, matched[0]);
+                                  focusCell(idx, "miktar", "select");
+                                  return;
+                                }
+                              }
                               lastModalCallerRef.current = "paraGrid";
                               lastParaModalRowIndexRef.current = idx;
                               setParaModalRowId(row.id);
@@ -7220,7 +7468,12 @@ export const DovizFisiPage: React.FC = () => {
                             setActiveRowIndex(idx);
                             cleanupEmptyRows(idx);
                           }}
-                          onChange={(e) => !isTL && kurAcik && handleLineFieldChange(row.id, "kur", e.target.value)}
+                          onChange={(e) => {
+                            if (!isTL && kurAcik) {
+                              delete warnedKurRowMapRef.current[row.id];
+                              handleLineFieldChange(row.id, "kur", e.target.value);
+                            }
+                          }}
                           onBlur={(e) => {
                             if (isTL || !kurAcik) return;
                             const val = e.target.value.trim();
@@ -7231,6 +7484,8 @@ export const DovizFisiPage: React.FC = () => {
                                   (row.paraId && x.id === row.paraId) ||
                                   (x.kod && row.paraKodu && x.kod.toUpperCase().trim() === String(row.paraKodu).toUpperCase().trim())
                                 );
+                                let hasWarning = false;
+                                let hasError = false;
                                 if (p) {
                                   const alis = resolveCurrencyRate(p, 0, kurTuru);
                                   const satis = resolveCurrencyRate(p, 1, kurTuru);
@@ -7239,9 +7494,20 @@ export const DovizFisiPage: React.FC = () => {
                                   const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
                                   if (res.degisti) {
                                     num = res.kur;
+                                    hasWarning = true;
                                     if (res.mesaj) {
                                       setNotification({ type: "warning", message: res.mesaj });
+                                    } else {
+                                      setNotification({ type: "warning", message: "Kur yetki sınırına göre güncellendi." });
                                     }
+                                  }
+                                  const denetim = kurDenetle(kYetki, gise, num, `${idx + 1}. satır kuru`);
+                                  if (denetim.hata) {
+                                    setNotification({ type: "danger", message: denetim.hata });
+                                    hasError = true;
+                                  } else if (denetim.uyari) {
+                                    setNotification({ type: "warning", message: denetim.uyari });
+                                    hasWarning = true;
                                   }
                                 }
                                 const formattedKur = num.toFixed(kurKurusSayisi);

@@ -1731,6 +1731,29 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const openProductLookup = (rowId: string, initialTerm?: string) => {
     const row = items.find((r) => r.id === rowId);
     const search = initialTerm !== undefined ? initialTerm.trim() : (String(row?.barkod || "")).trim();
+    if (search && combinedLookupItems.length > 0) {
+      const t = search.toLowerCase();
+      const matches = combinedLookupItems.filter((it) => {
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          return (p.kod || "").toLowerCase().includes(t) || (p.ad || "").toLowerCase().includes(t);
+        }
+        const raw = it.item as AltinUrunItem | OzelUrunItem;
+        const barkod = (raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`).toLowerCase();
+        const model = ((it.tip === "altin" ? (raw as AltinUrunItem).model : (raw as OzelUrunItem).mamulTipi) || "").toLowerCase();
+        const ayar = (raw.ayar || "").toLowerCase();
+        const grupKodu = (raw.grupKodu || "").toLowerCase();
+        return barkod.includes(t) || model.includes(t) || ayar.includes(t) || grupKodu.includes(t);
+      });
+      if (matches.length === 1) {
+        lastModalCallerRef.current = null;
+        lastProductRowIdRef.current = null;
+        activeProductRowIdRef.current = rowId;
+        setActiveProductRowId(rowId);
+        handleSelectFromProductLookup(matches[0]);
+        return;
+      }
+    }
     lastModalCallerRef.current = "productLookup";
     lastProductRowIdRef.current = rowId;
     activeProductRowIdRef.current = rowId;
@@ -2157,11 +2180,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     })();
 
     const activeAltinParaRate = (() => {
-      const kurItem = kurMap.get(altinParaKodu) || kurMap.get(String(altinParaId));
-      const directRate = Number(kurItem?.efektifAlis || kurItem?.alisFiyati) || 0;
+      if (altinParaKodu === "TL" || altinParaKodu === "TRY") return 1;
+      const kurItem = kurMap.get(altinParaKodu) || (altinParaId ? kurMap.get(String(altinParaId)) : null);
+      const directRate = Number(kurItem?.efektifAlis || kurItem?.dovizAlis || kurItem?.alisFiyati) || 0;
       if (directRate > 0) return directRate;
+      if (altinParaKodu === "USD" || altinParaKodu === "$") return usdRate;
+      if (altinParaKodu === "EUR" || altinParaKodu === "€") return (activeLimitParaRate > 0 && limitParaKodu === "EUR" ? activeLimitParaRate : 38);
       const hasRate = Number(altinHasKuru) || 3200;
-      const hasRatio = (altinPara as any)?.hasOrani ? Number((altinPara as any).hasOrani) : (altinParaKodu === "22" ? 0.916 : 1);
+      const hasRatio = (altinPara as any)?.hasOrani ? Number((altinPara as any).hasOrani) : (altinParaKodu === "22" ? 0.916 : (altinParaKodu === "14" ? 0.585 : (altinParaKodu === "18" ? 0.75 : 1)));
       return hasRate * hasRatio;
     })();
 
@@ -2319,35 +2345,19 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     });
 
     // 1) Altın kontrolü:
-    let isAltinExceeded = false;
-    if (hasGold) {
-      const isAltinParaCurrency = !altinPara || altinPara.urunTipi === 0 || ["USD", "EUR", "TL", "TRY", "$", "€"].includes(altinParaKodu);
-      if (altinParaKodu === "TL" || altinParaKodu === "TRY") {
-        isAltinExceeded = totalGoldTl >= altinLimit;
-      } else if (isAltinParaCurrency) {
-        const rate = (activeLimitParaRate > 0 && limitParaKodu === altinParaKodu)
-          ? activeLimitParaRate
-          : (activeAltinParaRate > 0 && activeAltinParaRate < 500 ? activeAltinParaRate : usdRate);
-        const goldCurrencyVal = rate > 0 ? totalGoldTl / rate : 0;
-        isAltinExceeded = goldCurrencyVal >= altinLimit || (altinLimit >= 1000 && totalGoldTl >= altinLimit);
-      } else {
-        const goldGramRate = activeAltinParaRate > 0 ? activeAltinParaRate : (3200 * 0.916);
-        const goldGrams = goldGramRate > 0 ? totalGoldTl / goldGramRate : totalGoldGram;
-        if (altinLimit < 500) {
-          isAltinExceeded = goldGrams >= altinLimit || (totalGoldGram > 0 && totalGoldGram >= altinLimit);
-        } else {
-          const goldUsd = usdRate > 0 ? totalGoldTl / usdRate : 0;
-          isAltinExceeded = goldGrams >= altinLimit || goldUsd >= altinLimit || totalGoldTl >= altinLimit;
-        }
-      }
-    }
+    // Firma Tanımları Limit sekmesindeki Altın Vergi Sınırı (örn. 5.000) ve Altın Sınır Para (örn. USD, 22 Ayar vb.) baz alınır.
+    // Altın Sınır Para ne seçilmişse o para biriminin kuruna göre sınır hesaplanır (Miktar * Kur).
+    const altinLimitInTl = altinLimit * (activeAltinParaRate > 0 ? activeAltinParaRate : 1);
+    const altinValInPara = activeAltinParaRate > 0 ? totalGoldTl / activeAltinParaRate : totalGoldTl;
+    const isAltinExceeded = hasGold && (totalGoldTl >= altinLimitInTl || altinValInPara >= altinLimit);
 
     // 2) Döviz kontrolü:
     const isDovizExceeded = hasDoviz && (hasDovizLimitDirect || totalDovizEquivalent >= dovizLimit);
 
-    // 3) TL kontrolü:
-    const tlTotal = Math.max(Math.abs(genelToplam), Math.abs(totalOdemeTutar), totalTlAmount);
-    const isTlExceeded = tlTotal >= tlLimit;
+    // 3) TL kontrolü: Saf TL işlemi (altın ve döviz harici saf TL tutarı) TL Vergi Sınırını aştığında tetiklenir
+    // Altın veya döviz içeren işlemlerde genel tutar TL sınırına sokulmaz!
+    const isPureTl = !hasGold && !hasDoviz;
+    const isTlExceeded = (isPureTl ? Math.max(Math.abs(genelToplam), Math.abs(totalOdemeTutar)) >= tlLimit : false) || totalTlAmount >= tlLimit;
 
     if (isAltinExceeded) {
       return {
@@ -6468,12 +6478,23 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     e.preventDefault();
                     const val = (istatistikKodu || "").trim();
                     if (val) {
-                      const match = statisticList.find((s) => s.kod?.toLowerCase() === val.toLowerCase() || String(s.id) === val);
-                      if (match) {
-                        setIstatistikId(match.id);
-                        setSelectedStatistic(match);
-                        setIstatistikKodu(match.kod);
+                      const q = val.toLowerCase();
+                      const matched = statisticList.filter((s) => {
+                        const fType = Number(s.fisTipi);
+                        const isTypeAllowed = Number(faturaTipi) === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                        return isTypeAllowed && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || (s as any).ad || "").toLowerCase().includes(q) || String(s.id) === q);
+                      });
+                      if (matched.length === 1) {
+                        const single = matched[0];
+                        setIstatistikId(single.id);
+                        setIstatistikKodu(single.kod);
+                        setSelectedStatistic(single);
+                        faturaTipiRef.current?.focus();
+                        return;
                       }
+                      setIstatistikSearchTerm(val);
+                      setShowIstatistikModal(true);
+                      return;
                     }
                     faturaTipiRef.current?.focus();
                     return;
@@ -6481,7 +6502,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   if (e.key === "F3") {
                     e.preventDefault();
                     e.stopPropagation();
-                    setIstatistikSearchTerm((istatistikKodu || "").trim());
+                    const val = (istatistikKodu || "").trim();
+                    if (val) {
+                      const q = val.toLowerCase();
+                      const matched = statisticList.filter((s) => {
+                        const fType = Number(s.fisTipi);
+                        const isTypeAllowed = Number(faturaTipi) === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                        return isTypeAllowed && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || (s as any).ad || "").toLowerCase().includes(q) || String(s.id) === q);
+                      });
+                      if (matched.length === 1) {
+                        const single = matched[0];
+                        setIstatistikId(single.id);
+                        setIstatistikKodu(single.kod);
+                        setSelectedStatistic(single);
+                        faturaTipiRef.current?.focus();
+                        return;
+                      }
+                    }
+                    setIstatistikSearchTerm(val);
                     setShowIstatistikModal(true);
                   }
                 }}
@@ -6496,7 +6534,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 variant="outline-secondary"
                 className="px-2 py-0 d-flex align-items-center justify-content-center"
                 onClick={() => {
-                  setIstatistikSearchTerm((istatistikKodu || "").trim());
+                  const val = (istatistikKodu || "").trim();
+                  if (val) {
+                    const q = val.toLowerCase();
+                    const matched = statisticList.filter((s) => {
+                      const fType = Number(s.fisTipi);
+                      const isTypeAllowed = Number(faturaTipi) === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                      return isTypeAllowed && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || (s as any).ad || "").toLowerCase().includes(q) || String(s.id) === q);
+                    });
+                    if (matched.length === 1) {
+                      const single = matched[0];
+                      setIstatistikId(single.id);
+                      setIstatistikKodu(single.kod);
+                      setSelectedStatistic(single);
+                      faturaTipiRef.current?.focus();
+                      return;
+                    }
+                  }
+                  setIstatistikSearchTerm(val);
                   setShowIstatistikModal(true);
                 }}
                 title="F3) İstatistik Kodu Seçimi"
@@ -6591,6 +6646,37 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   className="px-1.5 py-0 d-flex align-items-center"
                   onClick={() => {
                     const val = (aliciVknTckn && aliciVknTckn !== "11111111111" ? aliciVknTckn : "").trim();
+                    if (val) {
+                      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("vkn", val);
+                      if (totalCount === 1) {
+                        if (mc.length === 1) {
+                          void handleSelectCustomer({
+                            type: "registered",
+                            id: mc[0].id,
+                            kod: mc[0].kod,
+                            unvan: mc[0].ad || (mc[0] as any).unvan || "",
+                            vergiKimlikNo: mc[0].vergiKimlikNo || "",
+                            adres: mc[0].adres || "",
+                            telefon: mc[0].telefon || "",
+                            raw: mc[0],
+                          });
+                        } else if (mk.length === 1) {
+                          void handleSelectCustomer({
+                            type: "unregistered",
+                            id: null,
+                            kod: "",
+                            unvan: mk[0].ad || mk[0].unvan || "",
+                            vergiKimlikNo: mk[0].vergiKimlikNo || "",
+                            adres: mk[0].adres || "",
+                            telefon: mk[0].telefon || "",
+                            raw: mk[0],
+                          });
+                        }
+                        cariKodRef.current?.focus();
+                        cariKodRef.current?.select();
+                        return;
+                      }
+                    }
                     lastModalCallerRef.current = "vkn";
                     setMusteriSearchTerm(val);
                     setCariSearchField("vkn");
@@ -6649,6 +6735,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   className="px-1.5 py-0 d-flex align-items-center"
                   onClick={() => {
                     const val = (cariKod || "").trim();
+                    if (val) {
+                      const { cariler: mc, totalCount } = findMatchingCustomers("kod", val);
+                      if (totalCount === 1 && mc.length === 1) {
+                        void handleSelectCustomer({
+                          type: "registered",
+                          id: mc[0].id,
+                          kod: mc[0].kod,
+                          unvan: mc[0].ad || (mc[0] as any).unvan || "",
+                          vergiKimlikNo: mc[0].vergiKimlikNo || "",
+                          adres: mc[0].adres || "",
+                          telefon: mc[0].telefon || "",
+                          raw: mc[0],
+                        });
+                        aliciUnvanRef.current?.focus();
+                        aliciUnvanRef.current?.select();
+                        return;
+                      }
+                    }
                     lastModalCallerRef.current = "cariKod";
                     setMusteriSearchTerm(val);
                     setCariSearchField("kod");
@@ -6707,19 +6811,32 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         return;
                       }
 
-                      // Cariler listesinde tam eşleşme varsa doğrudan seç ve sonraki alana geç
-                      const exactMatch = cariler.find((c) => (c.ad || "").trim().toLowerCase() === raw.toLowerCase());
-                      if (exactMatch) {
-                        void handleSelectCustomer({
-                          type: "registered",
-                          id: exactMatch.id,
-                          kod: exactMatch.kod,
-                          unvan: exactMatch.ad || "",
-                          vergiKimlikNo: exactMatch.vergiKimlikNo || "",
-                          adres: exactMatch.adres || "",
-                          telefon: exactMatch.telefon || "",
-                          raw: exactMatch,
-                        });
+                      // Cariler listesinde tek eşleşme varsa doğrudan seç ve sonraki alana geç
+                      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("unvan", raw);
+                      if (totalCount === 1) {
+                        if (mc.length === 1) {
+                          void handleSelectCustomer({
+                            type: "registered",
+                            id: mc[0].id,
+                            kod: mc[0].kod,
+                            unvan: mc[0].ad || (mc[0] as any).unvan || "",
+                            vergiKimlikNo: mc[0].vergiKimlikNo || "",
+                            adres: mc[0].adres || "",
+                            telefon: mc[0].telefon || "",
+                            raw: mc[0],
+                          });
+                        } else if (mk.length === 1) {
+                          void handleSelectCustomer({
+                            type: "unregistered",
+                            id: null,
+                            kod: "",
+                            unvan: mk[0].ad || mk[0].unvan || "",
+                            vergiKimlikNo: mk[0].vergiKimlikNo || "",
+                            adres: mk[0].adres || "",
+                            telefon: mk[0].telefon || "",
+                            raw: mk[0],
+                          });
+                        }
                         altinHasKuruRef.current?.focus();
                         altinHasKuruRef.current?.select();
                         return;
@@ -6738,6 +6855,37 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   onClick={() => {
                     const raw = (aliciUnvan || "").trim();
                     const val = isAnonymousCustomerName(raw) ? "" : raw;
+                    if (val) {
+                      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("unvan", val);
+                      if (totalCount === 1) {
+                        if (mc.length === 1) {
+                          void handleSelectCustomer({
+                            type: "registered",
+                            id: mc[0].id,
+                            kod: mc[0].kod,
+                            unvan: mc[0].ad || (mc[0] as any).unvan || "",
+                            vergiKimlikNo: mc[0].vergiKimlikNo || "",
+                            adres: mc[0].adres || "",
+                            telefon: mc[0].telefon || "",
+                            raw: mc[0],
+                          });
+                        } else if (mk.length === 1) {
+                          void handleSelectCustomer({
+                            type: "unregistered",
+                            id: null,
+                            kod: "",
+                            unvan: mk[0].ad || mk[0].unvan || "",
+                            vergiKimlikNo: mk[0].vergiKimlikNo || "",
+                            adres: mk[0].adres || "",
+                            telefon: mk[0].telefon || "",
+                            raw: mk[0],
+                          });
+                        }
+                        altinHasKuruRef.current?.focus();
+                        altinHasKuruRef.current?.select();
+                        return;
+                      }
+                    }
                     lastModalCallerRef.current = "unvan";
                     setMusteriSearchTerm(val);
                     setCariSearchField("unvan");

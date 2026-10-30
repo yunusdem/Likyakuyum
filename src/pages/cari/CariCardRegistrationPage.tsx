@@ -290,8 +290,8 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
         next.ad = extracted.ad;
       }
 
-      // 4. Kimlik Seri No
-      if (extracted.kimlikSeriNo) {
+      // 4. Kimlik Seri No (Sadece Kimlik Kartı için doldurulur, Ehliyette doldurulmaz)
+      if (extracted.kimlikSeriNo && extracted.belgeTuru !== 2) {
         next.kimlikSeriNo = extracted.kimlikSeriNo;
       }
 
@@ -333,7 +333,8 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
         extracted.ulke === "Türkiye" ||
         extracted.uyruk === "TUR" ||
         extracted.belgeTuru === 0 ||
-        extracted.belgeTuru === 2
+        extracted.belgeTuru === 2 ||
+        extracted.belgeTuru === 3
       ) {
         const matchTr = lookups.ulkeList.find((u) => {
           const n = normalizeTr(u.ad);
@@ -429,13 +430,16 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       }
 
       // 15. Vergi Levhası ve Kişilik Tipi
-      if (extracted.belgeTuru === 2) {
+      if (extracted.belgeTuru === 3) {
         next.vergiLevhasiAlindi = true;
         if (extracted.tcKimlikNo && extracted.tcKimlikNo.length === 11) {
           next.kisilikTipi = 1; // Gerçek Kişi
         } else if (extracted.vergiKimlikNo && extracted.vergiKimlikNo.length === 10) {
           next.kisilikTipi = 2; // Tüzel Kişi
         }
+      } else if (extracted.belgeTuru === 0 || extracted.belgeTuru === 2) {
+        // T.C. Kimlik ve Ehliyet her zaman Gerçek Kişidir
+        next.kisilikTipi = 1;
       }
 
       return next;
@@ -1236,6 +1240,8 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                 selectedBelgeTuru === 1
                   ? `pasaport_${i + 1}.jpg`
                   : selectedBelgeTuru === 2
+                  ? `ehliyet_${i === 0 ? "on" : "arka"}.jpg`
+                  : selectedBelgeTuru === 3
                   ? `vergi_levhasi_${i + 1}.jpg`
                   : `kimlik_${i === 0 ? "on" : "arka"}.jpg`,
               mimeTipi: "image/jpeg",
@@ -2004,12 +2010,17 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                       <Col>
                         <Form.Select
                           value={formData.kimlikBelgeTuru ?? ""}
-                          onChange={(e) => handleInputChange("kimlikBelgeTuru", e.target.value !== "" ? parseInt(e.target.value, 10) : null)}
+                          onChange={(e) => {
+                            const val = e.target.value !== "" ? parseInt(e.target.value, 10) : null;
+                            handleInputChange("kimlikBelgeTuru", val);
+                            if (val !== null) setSelectedBelgeTuru(val);
+                          }}
                         >
                           <option value="">Seçilmedi</option>
                           <option value={0}>T.C. Kimlik</option>
                           <option value={1}>Pasaport</option>
                           <option value={2}>Ehliyet</option>
+                          <option value={3}>Vergi Levhası</option>
                         </Form.Select>
                       </Col>
                     </Form.Group>

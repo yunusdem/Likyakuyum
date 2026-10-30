@@ -1264,12 +1264,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     })();
 
     const activeAltinParaRate = (() => {
-      const kurItem = kurSatirlar.find((k) => (k.kod || "").toUpperCase().trim() === altinParaKodu || Number(k.paraId) === altinParaId);
-      const directRate = Number(tip === 0 ? kurItem?.efektifAlis : kurItem?.efektifSatis) || 0;
+      if (altinParaKodu === "TL" || altinParaKodu === "TRY") return 1;
+      const kurItem = kurSatirlar.find((k) => (k.kod || "").toUpperCase().trim() === altinParaKodu || (altinParaId && Number(k.paraId) === altinParaId));
+      const directRate = Number(tip === 0 ? (kurItem?.efektifAlis || kurItem?.dovizAlis) : (kurItem?.efektifSatis || kurItem?.dovizSatis)) || 0;
       if (directRate > 0) return directRate;
+      if (altinParaKodu === "USD" || altinParaKodu === "$") return usdRate;
+      if (altinParaKodu === "EUR" || altinParaKodu === "€") return (activeLimitParaRate > 0 && limitParaKodu === "EUR" ? activeLimitParaRate : 38);
       const hasKurItem = kurSatirlar.find((k) => ["HAS", "ALTIN", "HAS ALTIN"].includes((k.kod || "").toUpperCase().trim()));
-      const hasRate = Number(tip === 0 ? hasKurItem?.efektifAlis : hasKurItem?.efektifSatis) || Number(altinHasKuru) || 3200;
-      const hasRatio = (altinPara as any)?.hasOrani ? Number((altinPara as any).hasOrani) : (altinParaKodu === "22" ? 0.916 : 1);
+      const hasRate = Number(tip === 0 ? (hasKurItem?.efektifAlis || hasKurItem?.dovizAlis) : (hasKurItem?.efektifSatis || hasKurItem?.dovizSatis)) || Number(altinHasKuru) || 3200;
+      const hasRatio = (altinPara as any)?.hasOrani ? Number((altinPara as any).hasOrani) : (altinParaKodu === "22" ? 0.916 : (altinParaKodu === "14" ? 0.585 : (altinParaKodu === "18" ? 0.75 : 1)));
       return hasRate * hasRatio;
     })();
 
@@ -1424,35 +1427,19 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     });
 
     // 1) Altın kontrolü:
-    let isAltinExceeded = false;
-    if (hasGold) {
-      const isAltinParaCurrency = !altinPara || altinPara.urunTipi === 0 || ["USD", "EUR", "TL", "TRY", "$", "€"].includes(altinParaKodu);
-      if (altinParaKodu === "TL" || altinParaKodu === "TRY") {
-        isAltinExceeded = totalGoldTl >= altinLimit;
-      } else if (isAltinParaCurrency) {
-        const rate = (activeLimitParaRate > 0 && limitParaKodu === altinParaKodu)
-          ? activeLimitParaRate
-          : (activeAltinParaRate > 0 && activeAltinParaRate < 500 ? activeAltinParaRate : usdRate);
-        const goldCurrencyVal = rate > 0 ? totalGoldTl / rate : 0;
-        isAltinExceeded = goldCurrencyVal >= altinLimit || (altinLimit >= 1000 && totalGoldTl >= altinLimit);
-      } else {
-        const goldGramRate = activeAltinParaRate > 0 ? activeAltinParaRate : (3200 * 0.916);
-        const goldGrams = goldGramRate > 0 ? totalGoldTl / goldGramRate : totalGoldGram;
-        if (altinLimit < 500) {
-          isAltinExceeded = goldGrams >= altinLimit || (totalGoldGram > 0 && totalGoldGram >= altinLimit);
-        } else {
-          const goldUsd = usdRate > 0 ? totalGoldTl / usdRate : 0;
-          isAltinExceeded = goldGrams >= altinLimit || goldUsd >= altinLimit || totalGoldTl >= altinLimit;
-        }
-      }
-    }
+    // Firma Tanımları Limit sekmesindeki Altın Vergi Sınırı (örn. 5.000) ve Altın Sınır Para (örn. USD, 22 Ayar vb.) baz alınır.
+    // Altın Sınır Para ne seçilmişse o para biriminin kuruna göre sınır hesaplanır (Miktar * Kur).
+    const altinLimitInTl = altinLimit * (activeAltinParaRate > 0 ? activeAltinParaRate : 1);
+    const altinValInPara = activeAltinParaRate > 0 ? totalGoldTl / activeAltinParaRate : totalGoldTl;
+    const isAltinExceeded = hasGold && (totalGoldTl >= altinLimitInTl || altinValInPara >= altinLimit);
 
     // 2) Döviz kontrolü:
     const isDovizExceeded = hasDoviz && (hasDovizLimitDirect || totalDovizEquivalent >= dovizLimit);
 
-    // 3) TL kontrolü: Saf TL işlemi veya toplam TL tutarı TL Vergi Sınırını aştığında tetiklenir
-    const tlTotal = Math.max(Math.abs(totalTutar), totalTlAmount);
-    const isTlExceeded = tlTotal >= tlLimit;
+    // 3) TL kontrolü: Saf TL işlemi (altın ve döviz harici saf TL tutarı) TL Vergi Sınırını aştığında tetiklenir
+    // Altın veya döviz içeren işlemlerde genel fiş tutarı TL sınırına sokulmaz!
+    const isPureTl = !hasGold && !hasDoviz;
+    const isTlExceeded = (isPureTl ? Math.abs(totalTutar) >= tlLimit : false) || totalTlAmount >= tlLimit;
 
     if (isAltinExceeded) {
       return {
@@ -4125,6 +4112,35 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const openUrunModal = useCallback(async (rowId: string, initialSearch?: string) => {
     const row = lines.find((r) => r.id === rowId);
     const search = initialSearch !== undefined ? initialSearch.trim() : (row?.urunKodu || "").trim();
+    if (search && urunList.length > 0) {
+      const t = search.toLowerCase();
+      const matches = urunList.filter((u) => {
+        const k = (u.kod || "").trim().toUpperCase();
+        if (k === "TL" || k === "TRY") return false;
+        return (
+          (u.kod || "").toLowerCase().includes(t) ||
+          (u.ad || "").toLowerCase().includes(t) ||
+          ((u as any).barkod || "").toLowerCase().includes(t) ||
+          ((u as any).model || "").toLowerCase().includes(t) ||
+          ((u as any).ayar || "").toLowerCase().includes(t) ||
+          ((u as any).grupKodu || "").toLowerCase().includes(t) ||
+          ((u as any).aciklama || "").toLowerCase().includes(t) ||
+          ((u as any).mamulTipi || "").toLowerCase().includes(t)
+        );
+      });
+      if (matches.length === 1) {
+        lastModalCallerRef.current = null;
+        lastKalemModalRowIdRef.current = null;
+        applyProductToRow(rowId, matches[0]);
+        const isZiynet = matches[0].urunTipi === 3 || isZiynetProduct(matches[0]);
+        const isPara = matches[0].urunTipi === 0;
+        const isParaOrZiynet = isPara || isZiynet;
+        setTimeout(() => {
+          focusGridCell(rowId, isParaOrZiynet ? "adet" : "miktar", "select");
+        }, 30);
+        return;
+      }
+    }
     activeRowIdForUrunRef.current = rowId;
     activeOdemeRowIdForUrunRef.current = null;
     setActiveRowIdForUrun(rowId);
@@ -4150,11 +4166,30 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
       }).catch(() => {});
     }
-  }, [lines, urunList.length]);
+  }, [lines, urunList, applyProductToRow, focusGridCell]);
 
   const openOdemeUrunModal = useCallback(async (rowId: string, initialSearch?: string) => {
     const row = odemeRows.find((r) => r.id === rowId);
     const search = initialSearch !== undefined ? initialSearch.trim() : (row?.paraKodu || "").trim();
+    if (search && urunList.length > 0) {
+      const t = search.toLowerCase();
+      const matches = urunList.filter((u) =>
+        (u.kod || "").toLowerCase().includes(t) ||
+        (u.ad || "").toLowerCase().includes(t)
+      );
+      if (matches.length === 1) {
+        lastModalCallerRef.current = null;
+        lastOdemeModalRowIdRef.current = null;
+        applyProductToOdemeRow(rowId, matches[0]);
+        const isZiynet = matches[0].urunTipi === 3 || isZiynetProduct(matches[0]);
+        const isPara = matches[0].urunTipi === 0 || matches[0].kod?.toUpperCase() === "TL" || matches[0].kod?.toUpperCase() === "TRY";
+        const isParaOrZiynet = isPara || isZiynet;
+        setTimeout(() => {
+          focusOdemeGridCell(rowId, isParaOrZiynet ? "adet" : "miktar", "select");
+        }, 30);
+        return;
+      }
+    }
     activeOdemeRowIdForUrunRef.current = rowId;
     activeRowIdForUrunRef.current = null;
     setActiveOdemeRowIdForUrun(rowId);
@@ -6061,6 +6096,38 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         e.preventDefault();
                         e.stopPropagation();
                         const term = (detayKimlikBelgeTuru === 1 ? detayPasaportNo : detayVergiKimlikNo).trim();
+                        if (term) {
+                          const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("vkn", term);
+                          if (totalCount === 1) {
+                            if (cariler.length === 1) {
+                              const single = cariler[0];
+                              handleSelectCustomer({
+                                type: "registered",
+                                id: single.id,
+                                kod: single.kod,
+                                unvan: single.ad || (single as any).unvan || "",
+                                vergiKimlikNo: single.vergiKimlikNo || "",
+                                adres: single.adres || "",
+                                telefon: single.telefon || "",
+                                raw: single,
+                              });
+                            } else if (kayitsizlar.length === 1) {
+                              const singleK = kayitsizlar[0];
+                              handleSelectCustomer({
+                                type: "unregistered",
+                                id: null,
+                                kod: "",
+                                unvan: singleK.ad || singleK.unvan || "",
+                                vergiKimlikNo: singleK.vergiKimlikNo || "",
+                                adres: singleK.adres || "",
+                                telefon: singleK.telefon || "",
+                                raw: singleK,
+                              });
+                            }
+                            cariKodRef.current?.focus();
+                            return;
+                          }
+                        }
                         lastModalCallerRef.current = "vkn";
                         setCariSearchField("vkn");
                         setCariSearchTerm(term);
@@ -6074,6 +6141,38 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         e.preventDefault();
                         e.stopPropagation();
                         const term = (detayKimlikBelgeTuru === 1 ? detayPasaportNo : detayVergiKimlikNo).trim();
+                        if (term) {
+                          const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("vkn", term);
+                          if (totalCount === 1) {
+                            if (cariler.length === 1) {
+                              const single = cariler[0];
+                              handleSelectCustomer({
+                                type: "registered",
+                                id: single.id,
+                                kod: single.kod,
+                                unvan: single.ad || (single as any).unvan || "",
+                                vergiKimlikNo: single.vergiKimlikNo || "",
+                                adres: single.adres || "",
+                                telefon: single.telefon || "",
+                                raw: single,
+                              });
+                            } else if (kayitsizlar.length === 1) {
+                              const singleK = kayitsizlar[0];
+                              handleSelectCustomer({
+                                type: "unregistered",
+                                id: null,
+                                kod: "",
+                                unvan: singleK.ad || singleK.unvan || "",
+                                vergiKimlikNo: singleK.vergiKimlikNo || "",
+                                adres: singleK.adres || "",
+                                telefon: singleK.telefon || "",
+                                raw: singleK,
+                              });
+                            }
+                            cariKodRef.current?.focus();
+                            return;
+                          }
+                        }
                         lastModalCallerRef.current = "vkn";
                         setCariSearchField("vkn");
                         setCariSearchTerm(term);
@@ -6124,6 +6223,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         e.preventDefault();
                         e.stopPropagation();
                         const term = (cariKod || "").trim();
+                        if (term) {
+                          const { cariler, totalCount } = findMatchingCustomers("kod", term);
+                          if (totalCount === 1 && cariler.length === 1) {
+                            const single = cariler[0];
+                            handleSelectCustomer({
+                              type: "registered",
+                              id: single.id,
+                              kod: single.kod,
+                              unvan: single.ad || (single as any).unvan || "",
+                              vergiKimlikNo: single.vergiKimlikNo || "",
+                              adres: single.adres || "",
+                              telefon: single.telefon || "",
+                              raw: single,
+                            });
+                            lastFocusedCariKodRef.current = single.kod || "";
+                            adRef.current?.focus();
+                            adRef.current?.select();
+                            return;
+                          }
+                        }
                         lastModalCallerRef.current = "cariKod";
                         setCariSearchField("kod");
                         setCariSearchTerm(term);
@@ -6137,6 +6256,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         e.preventDefault();
                         e.stopPropagation();
                         const term = (cariKod || "").trim();
+                        if (term) {
+                          const { cariler, totalCount } = findMatchingCustomers("kod", term);
+                          if (totalCount === 1 && cariler.length === 1) {
+                            const single = cariler[0];
+                            handleSelectCustomer({
+                              type: "registered",
+                              id: single.id,
+                              kod: single.kod,
+                              unvan: single.ad || (single as any).unvan || "",
+                              vergiKimlikNo: single.vergiKimlikNo || "",
+                              adres: single.adres || "",
+                              telefon: single.telefon || "",
+                              raw: single,
+                            });
+                            lastFocusedCariKodRef.current = single.kod || "";
+                            adRef.current?.focus();
+                            adRef.current?.select();
+                            return;
+                          }
+                        }
                         lastModalCallerRef.current = "cariKod";
                         setCariSearchField("kod");
                         setCariSearchTerm(term);
@@ -6181,6 +6320,38 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         e.stopPropagation();
                         const raw = (unvan || "").trim();
                         const term = isAnonymousCustomerName(raw) ? "" : raw;
+                        if (term) {
+                          const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("unvan", term);
+                          if (totalCount === 1) {
+                            if (cariler.length === 1) {
+                              const single = cariler[0];
+                              handleSelectCustomer({
+                                type: "registered",
+                                id: single.id,
+                                kod: single.kod,
+                                unvan: single.ad || (single as any).unvan || "",
+                                vergiKimlikNo: single.vergiKimlikNo || "",
+                                adres: single.adres || "",
+                                telefon: single.telefon || "",
+                                raw: single,
+                              });
+                            } else if (kayitsizlar.length === 1) {
+                              const singleK = kayitsizlar[0];
+                              handleSelectCustomer({
+                                type: "unregistered",
+                                id: null,
+                                kod: "",
+                                unvan: singleK.ad || singleK.unvan || "",
+                                vergiKimlikNo: singleK.vergiKimlikNo || "",
+                                adres: singleK.adres || "",
+                                telefon: singleK.telefon || "",
+                                raw: singleK,
+                              });
+                            }
+                            seriNoRef.current?.focus();
+                            return;
+                          }
+                        }
                         lastModalCallerRef.current = "unvan";
                         setCariSearchField("unvan");
                         setCariSearchTerm(term);
@@ -6195,6 +6366,38 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         e.stopPropagation();
                         const raw = (unvan || "").trim();
                         const term = isAnonymousCustomerName(raw) ? "" : raw;
+                        if (term) {
+                          const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("unvan", term);
+                          if (totalCount === 1) {
+                            if (cariler.length === 1) {
+                              const single = cariler[0];
+                              handleSelectCustomer({
+                                type: "registered",
+                                id: single.id,
+                                kod: single.kod,
+                                unvan: single.ad || (single as any).unvan || "",
+                                vergiKimlikNo: single.vergiKimlikNo || "",
+                                adres: single.adres || "",
+                                telefon: single.telefon || "",
+                                raw: single,
+                              });
+                            } else if (kayitsizlar.length === 1) {
+                              const singleK = kayitsizlar[0];
+                              handleSelectCustomer({
+                                type: "unregistered",
+                                id: null,
+                                kod: "",
+                                unvan: singleK.ad || singleK.unvan || "",
+                                vergiKimlikNo: singleK.vergiKimlikNo || "",
+                                adres: singleK.adres || "",
+                                telefon: singleK.telefon || "",
+                                raw: singleK,
+                              });
+                            }
+                            seriNoRef.current?.focus();
+                            return;
+                          }
+                        }
                         lastModalCallerRef.current = "unvan";
                         setCariSearchField("unvan");
                         setCariSearchTerm(term);
@@ -6281,6 +6484,25 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           e.preventDefault();
                           e.stopPropagation();
                           const term = (istatistikKodu || "").trim();
+                          const q = term.toLowerCase();
+                          if (term) {
+                            const matched = statisticList.filter((s) => {
+                              const fType = Number(s.fisTipi);
+                              const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                              return typeMatch && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || "").toLowerCase().includes(q));
+                            });
+                            if (matched.length === 1) {
+                              const single = matched[0];
+                              setIstatistikId(single.id);
+                              setIstatistikKodu(single.kod);
+                              setSelectedStatistic(single);
+                              setIstatistikFisDizaynTipi(Number(single.fisDizaynTipi));
+                              lastFocusedIstatistikKodRef.current = single.kod;
+                              hasKuruRef.current?.focus();
+                              hasKuruRef.current?.select();
+                              return;
+                            }
+                          }
                           setIstatistikSearchTerm(term);
                           setShowIstatistikModal(true);
                         } else {
@@ -6299,6 +6521,25 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         e.preventDefault();
                         e.stopPropagation();
                         const term = (istatistikKodu || "").trim();
+                        const q = term.toLowerCase();
+                        if (term) {
+                          const matched = statisticList.filter((s) => {
+                            const fType = Number(s.fisTipi);
+                            const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                            return typeMatch && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || "").toLowerCase().includes(q));
+                          });
+                          if (matched.length === 1) {
+                            const single = matched[0];
+                            setIstatistikId(single.id);
+                            setIstatistikKodu(single.kod);
+                            setSelectedStatistic(single);
+                            setIstatistikFisDizaynTipi(Number(single.fisDizaynTipi));
+                            lastFocusedIstatistikKodRef.current = single.kod;
+                            hasKuruRef.current?.focus();
+                            hasKuruRef.current?.select();
+                            return;
+                          }
+                        }
                         lastModalCallerRef.current = "istatistik";
                         setIstatistikSearchTerm(term);
                         setShowIstatistikModal(true);
@@ -6307,6 +6548,25 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         e.preventDefault();
                         e.stopPropagation();
                         const term = (istatistikKodu || "").trim();
+                        const q = term.toLowerCase();
+                        if (term) {
+                          const matched = statisticList.filter((s) => {
+                            const fType = Number(s.fisTipi);
+                            const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                            return typeMatch && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || "").toLowerCase().includes(q));
+                          });
+                          if (matched.length === 1) {
+                            const single = matched[0];
+                            setIstatistikId(single.id);
+                            setIstatistikKodu(single.kod);
+                            setSelectedStatistic(single);
+                            setIstatistikFisDizaynTipi(Number(single.fisDizaynTipi));
+                            lastFocusedIstatistikKodRef.current = single.kod;
+                            hasKuruRef.current?.focus();
+                            hasKuruRef.current?.select();
+                            return;
+                          }
+                        }
                         lastModalCallerRef.current = "istatistik";
                         setIstatistikSearchTerm(term);
                         setShowIstatistikModal(true);
