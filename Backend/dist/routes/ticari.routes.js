@@ -10,12 +10,36 @@ router.get("/yetki", C.yetki);
 router.get("/ayarlar", ticariSistemYoneticisi, C.ayarlar);
 router.put("/ayarlar", ticariSistemYoneticisi, C.ayarKaydet);
 // Ürün grupları (okuma herkese; satış ekranı ve raporlar süzgeçte kullanır)
+// Ticari etiket düzeni (docs/TICARI_GERI_BILDIRIM_YOL_HARITASI.md İş 2)
+router.get("/etiket-duzeni", C.etiketDuzeni);
+router.put("/etiket-duzeni", ticariYonetim, C.etiketDuzeniKaydet);
+// Fiyat listeleri + cari ataması (docs/TICARI_GERI_BILDIRIM_YOL_HARITASI.md İş 11)
+router.get("/fiyat-listeleri", C.fiyatListeleri);
+router.post("/fiyat-listeleri", ticariYonetim, C.fiyatListesiKaydet);
+router.put("/fiyat-listeleri/:id", ticariYonetim, C.fiyatListesiKaydet);
+router.delete("/fiyat-listeleri/:id", ticariYonetim, C.fiyatListesiSil);
+router.get("/fiyat-listeleri/:id/cariler", C.fiyatListesiCarileri);
+router.get("/cari-fiyat-listesi/:id", C.cariFiyatListesi);
+router.put("/cari-fiyat-listesi/:id", ticariYonetim, C.cariFiyatListesiKaydet);
+// Toplu fiyat işlemleri (İş 11): stok yönetim yetkisi
+router.post("/fiyat-islemi/onizle", ticariYonetim, C.fiyatIslemiOnizle);
+router.post("/fiyat-islemi/uygula", ticariYonetim, C.fiyatIslemiUygula);
+router.post("/fiyat-islemi/geri-al", ticariYonetim, C.fiyatIslemiGeriAl);
+router.get("/fiyat-islemi/gecmis", ticariYonetim, C.fiyatIslemiGecmis);
+// Kampanyalar (İş 11, G12): okuma herkese (satış ekranları), yazma stok yönetim yetkisine
+router.get("/kampanyalar", C.kampanyalar);
+router.get("/kampanyalar/aktif", C.aktifKampanyalar);
+router.post("/kampanyalar", ticariYonetim, C.kampanyaKaydet);
+router.put("/kampanyalar/:id", ticariYonetim, C.kampanyaKaydet);
+router.delete("/kampanyalar/:id", ticariYonetim, C.kampanyaSil);
 router.get("/gruplar", C.gruplar);
 router.post("/gruplar", ticariYonetim, C.grupKaydet);
 router.put("/gruplar/:id", ticariYonetim, C.grupKaydet);
 router.delete("/gruplar/:id", ticariYonetim, C.grupSil);
+router.put("/gruplar/:id/kartlar", ticariYonetim, C.grupKartlari);
 // Stok kartları
 router.get("/kartlar", C.kartlar);
+router.get("/kartlar/sayfali", C.kartlarSayfali);
 router.get("/kartlar/:id", C.kart);
 router.get("/kart-bul/:deger", C.kartBul);
 router.post("/kartlar", ticariYonetim, C.kartKaydet);

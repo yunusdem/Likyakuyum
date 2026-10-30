@@ -81,6 +81,7 @@ export interface UserModel {
   commissionRate: number | string;
   ratePermType: string;
   ratePermValue: number | string;
+  iscilikGirisSekli?: number;
 
   menuPerms: UserMenuPermissions;
 
@@ -181,5 +182,6 @@ export interface TodvzKullaniciEntity {
   GISE_KURU_DISINDA_OLABILIR?: number | boolean | null;
   CAPRAZ_KUR_KONTROLU_YOK?: number | boolean | null;
   SIDEBAR_GORUNUM?: string | null;
+  ISCILIK_GIRIS_SEKLI?: number | null;
 }
 

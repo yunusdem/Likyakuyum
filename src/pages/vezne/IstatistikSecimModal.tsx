@@ -169,6 +169,23 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
   }, [items, searchTerm]);
 
   const initialSelectedDoneRef = useRef(false);
+  const autoSelectedRef = useRef(false);
+
+  // Tek kayıt varsa ekran açılmasın, doğrudan seçsin
+  useEffect(() => {
+    if (!show) {
+      autoSelectedRef.current = false;
+      return;
+    }
+
+    if (show && !loading && (initialSearchTerm ?? "").trim()) {
+      if (!autoSelectedRef.current && filteredItems.length === 1) {
+        autoSelectedRef.current = true;
+        onSelect(filteredItems[0]);
+        onClose();
+      }
+    }
+  }, [show, loading, initialSearchTerm, filteredItems, onSelect, onClose]);
 
   // İlk açılışta mevcut koda göre veya ilk satırı seç
   useEffect(() => {
@@ -283,7 +300,7 @@ export const IstatistikSecimModal: React.FC<IstatistikSecimModalProps> = ({
   return (
     <>
       <Modal
-        show={show}
+        show={show && !autoSelectedRef.current}
         onHide={onClose}
         size="lg"
         centered

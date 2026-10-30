@@ -16,7 +16,12 @@ export class FirmaKullaniciMerkezService {
     static baglam(oturum) {
         if (!oturum)
             return Promise.resolve(null);
-        return MerkezGirisService.baglam({ dbServer: oturum.dbServer, dbName: oturum.dbName, username: oturum.username });
+        return MerkezGirisService.baglam({
+            dbServer: oturum.dbServer,
+            dbName: oturum.dbName,
+            username: oturum.username,
+            firmaId: oturum.firmaId,
+        });
     }
     static limitMesaji(b) {
         const limit = b.firma.aktifLisans?.kullaniciLimiti;

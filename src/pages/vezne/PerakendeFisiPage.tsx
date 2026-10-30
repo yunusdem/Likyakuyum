@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
-import { kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { GiseKuru, kurDegistirilebilir, kurDenetle, kurDegeriniSinirla } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Table,
@@ -103,6 +104,9 @@ import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { formatMiktar, parseDecimal, onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
+import { apiClient } from "../../services/apiClient";
+import { FastLookupCache } from "../../services/fastLookupCache";
+import { ParaItem } from "./DovizFisiPage";
 
 interface CartLineItem {
   id: string;
@@ -565,7 +569,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const [bankaSearchTerm, setBankaSearchTerm] = useState<string>("");
 
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
-  const [companyDefinitions, setCompanyDefinitions] = useState<any>(null);
+  const [companyDefinitions, setCompanyDefinitions] = useState<any>(() => CompanyService.cachedDefinitions);
+  const companyDefinitionsRef = useRef(companyDefinitions);
+  companyDefinitionsRef.current = companyDefinitions;
+  const [paraList, setParaList] = useState<ParaItem[]>(() => FastLookupCache.getSync<ParaItem[]>("paralar") || []);
 
   const isCokluSatirIzinli = useMemo(() => {
     return (
@@ -696,11 +703,50 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   }, [faturaTipi, user?.appearance?.buyHeaderTextColor, user?.appearance?.sellHeaderTextColor]);
 
   useEffect(() => {
+    const cachedParalar = FastLookupCache.getSync<ParaItem[]>("paralar");
+    if (cachedParalar && cachedParalar.length > 0) setParaList(cachedParalar);
+    FastLookupCache.get("paralar", () => apiClient.get<ParaItem[]>("/para").then((r) => r.data || []))
+      .then((p) => {
+        if (p && p.length > 0) setParaList(p);
+      })
+      .catch(() => {});
+
     PrinterService.getYazicilar().then(setPrinters).catch(() => { });
-    CompanyService.getDefinitions().then(setCompanyDefinitions).catch(() => { });
+    CompanyService.getDefinitions(true).then((defs) => {
+      companyDefinitionsRef.current = defs;
+      setCompanyDefinitions(defs);
+    }).catch(() => { });
     StatisticService.getStatistics().then(setStatisticList).catch(() => { });
     PosCihaziService.getPosCihazlari().then(setPosCihazlari).catch(() => { });
     BankaService.getBankalar().then(setBankaHesaplari).catch(() => { });
+  }, []);
+
+  // Sekmeler arası veya pencere odağında güncel firma limit tanımlarını otomatik tazele
+  useEffect(() => {
+    const refreshCompanyDefs = async () => {
+      try {
+        const freshDef = await CompanyService.getDefinitions(true);
+        if (freshDef) {
+          companyDefinitionsRef.current = freshDef;
+          setCompanyDefinitions(freshDef);
+        }
+      } catch {}
+    };
+
+    window.addEventListener("company_definitions_updated", refreshCompanyDefs);
+    const storageHandler = (e: StorageEvent) => {
+      if (e.key === "company_definitions_version") {
+        refreshCompanyDefs();
+      }
+    };
+    window.addEventListener("storage", storageHandler);
+    window.addEventListener("focus", refreshCompanyDefs);
+
+    return () => {
+      window.removeEventListener("company_definitions_updated", refreshCompanyDefs);
+      window.removeEventListener("storage", storageHandler);
+      window.removeEventListener("focus", refreshCompanyDefs);
+    };
   }, []);
 
   // İlk açılışta veya kullanıcı/firma/istatistik listesi hazır olduğunda varsayılan istatistiği uygula
@@ -1685,6 +1731,29 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const openProductLookup = (rowId: string, initialTerm?: string) => {
     const row = items.find((r) => r.id === rowId);
     const search = initialTerm !== undefined ? initialTerm.trim() : (String(row?.barkod || "")).trim();
+    if (search && combinedLookupItems.length > 0) {
+      const t = search.toLowerCase();
+      const matches = combinedLookupItems.filter((it) => {
+        if (it.tip === "para") {
+          const p = it.item as UrunItem;
+          return (p.kod || "").toLowerCase().includes(t) || (p.ad || "").toLowerCase().includes(t);
+        }
+        const raw = it.item as AltinUrunItem | OzelUrunItem;
+        const barkod = (raw.barkod || `${raw.grupKodu || ""}${raw.urunNo || ""}`).toLowerCase();
+        const model = ((it.tip === "altin" ? (raw as AltinUrunItem).model : (raw as OzelUrunItem).mamulTipi) || "").toLowerCase();
+        const ayar = (raw.ayar || "").toLowerCase();
+        const grupKodu = (raw.grupKodu || "").toLowerCase();
+        return barkod.includes(t) || model.includes(t) || ayar.includes(t) || grupKodu.includes(t);
+      });
+      if (matches.length === 1) {
+        lastModalCallerRef.current = null;
+        lastProductRowIdRef.current = null;
+        activeProductRowIdRef.current = rowId;
+        setActiveProductRowId(rowId);
+        handleSelectFromProductLookup(matches[0]);
+        return;
+      }
+    }
     lastModalCallerRef.current = "productLookup";
     lastProductRowIdRef.current = rowId;
     activeProductRowIdRef.current = rowId;
@@ -2071,6 +2140,273 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     if (Math.abs(diff) < 0.0001) return 0;
     return parseFloat(diff.toFixed(4));
   }, [farkTL, alisHas, odemeHas]);
+
+  const masakStatus = useMemo(() => {
+    const compDef = companyDefinitionsRef.current || companyDefinitions || CompanyService.cachedDefinitions;
+    const tlLimit = Number(compDef?.TL_VERGI_SINIRI) > 0 ? Number(compDef.TL_VERGI_SINIRI) : 100000;
+    const dovizLimit = Number(compDef?.DOVIZ_VERGI_SINIRI) > 0 ? Number(compDef.DOVIZ_VERGI_SINIRI) : 5000;
+    const dovizParaId = compDef?.DOVIZ_VERGI_SINIRI_PARA_ID ? Number(compDef.DOVIZ_VERGI_SINIRI_PARA_ID) : 2;
+    const limitPara =
+      paraList.find((p) => Number(p.id) === dovizParaId) ||
+      paraList.find((p) => p.kod?.toUpperCase() === (dovizParaId === 3 ? "EUR" : "USD")) ||
+      paraList.find((p) => p.kod?.toUpperCase() === "USD");
+    const limitParaKodu = (limitPara?.kod || (dovizParaId === 3 ? "EUR" : "USD")).toUpperCase().trim();
+
+    const altinLimit = Number(compDef?.ALTIN_VERGI_SINIRI) > 0 ? Number(compDef.ALTIN_VERGI_SINIRI) : 5000;
+    const altinParaId = compDef?.ALTIN_VERGI_SINIRI_PARA_ID ? Number(compDef.ALTIN_VERGI_SINIRI_PARA_ID) : 2;
+    const altinPara =
+      paraList.find((p) => Number(p.id) === altinParaId) ||
+      paraList.find((p) => p.kod?.toUpperCase() === "USD") ||
+      paraList.find((p) => p.kod?.toUpperCase() === "22");
+    const altinParaKodu = (altinPara?.kod || "USD").toUpperCase().trim();
+
+    const fallback = {
+      isExceeded: false,
+      type: null as null | "altin" | "doviz" | "tl",
+      limitLabel: `TL: ${tlLimit.toLocaleString("tr-TR")} ₺ | Döviz: ${dovizLimit.toLocaleString("tr-TR")} ${limitParaKodu} | Altın: ${altinLimit.toLocaleString("tr-TR")} ${altinParaKodu}`,
+      limitTitle: "MASAK Yasal Bildirim Sınırı Uyarısı",
+    };
+
+    const usdRate = (() => {
+      const kurItem = kurMap.get("USD") || kurMap.get("2");
+      const r = Number(kurItem?.efektifAlis || kurItem?.dovizAlis || kurItem?.alisFiyati) || 0;
+      return r > 0 ? r : 35;
+    })();
+
+    const activeLimitParaRate = (() => {
+      const kurItem = kurMap.get(limitParaKodu) || kurMap.get(String(dovizParaId));
+      const r = Number(kurItem?.efektifAlis || kurItem?.dovizAlis || kurItem?.alisFiyati) || 0;
+      return r > 0 ? r : (limitParaKodu === "USD" ? usdRate : 38);
+    })();
+
+    const activeAltinParaRate = (() => {
+      if (altinParaKodu === "TL" || altinParaKodu === "TRY") return 1;
+      const kurItem = kurMap.get(altinParaKodu) || (altinParaId ? kurMap.get(String(altinParaId)) : null);
+      const directRate = Number(kurItem?.efektifAlis || kurItem?.dovizAlis || kurItem?.alisFiyati) || 0;
+      if (directRate > 0) return directRate;
+      if (altinParaKodu === "USD" || altinParaKodu === "$") return usdRate;
+      if (altinParaKodu === "EUR" || altinParaKodu === "€") return (activeLimitParaRate > 0 && limitParaKodu === "EUR" ? activeLimitParaRate : 38);
+      const hasRate = Number(altinHasKuru) || 3200;
+      const hasRatio = (altinPara as any)?.hasOrani ? Number((altinPara as any).hasOrani) : (altinParaKodu === "22" ? 0.916 : (altinParaKodu === "14" ? 0.585 : (altinParaKodu === "18" ? 0.75 : 1)));
+      return hasRate * hasRatio;
+    })();
+
+    const isGoldItem = (paraId?: number | null, kod?: string, ad?: string, uTipi?: number | null, isOdeme?: boolean) => {
+      const upperKod = (kod || "").toUpperCase().trim();
+      const upperAd = (ad || "").toUpperCase().trim();
+      // Döviz birimleri kesinlikle altın sayılmaz
+      if (["USD", "EUR", "GBP", "CHF", "CAD", "AUD", "JPY", "SAR", "AED", "RUB", "KWD", "$", "€", "£"].includes(upperKod)) {
+        return false;
+      }
+      if (isTlItem(kod)) return false;
+      if (altinParaId && paraId && Number(paraId) === Number(altinParaId)) return true;
+      if (uTipi === 1 || uTipi === 2 || uTipi === 3) return true;
+      // Satış sepetindeki perakende kuyum ürünleri (döviz veya TL olmayanlar) altındır
+      if (!isOdeme) return true;
+
+      const matched = odemeUrunList.find((x) => (paraId && Number(x.id) === Number(paraId)) || (x.kod && kod && x.kod.toUpperCase().trim() === upperKod));
+      if (matched && (matched.urunTipi === 1 || matched.urunTipi === 2 || matched.urunTipi === 3)) return true;
+      const matchedPara = paraList.find((x) => (paraId && Number(x.id) === Number(paraId)) || (x.kod && kod && x.kod.toUpperCase().trim() === upperKod));
+      if (matchedPara && (matchedPara.urunTipi === 1 || matchedPara.urunTipi === 2 || matchedPara.urunTipi === 3 || ["HAS", "22", "14", "18", "24", "GA", "ATA", "CEYREK", "YARIM", "TAM", "GREMSE", "ZIYNET"].includes((matchedPara.kod || "").toUpperCase().trim()))) return true;
+      return (
+        ["HAS", "GA", "ATA", "CEYREK", "YARIM", "TAM", "GREMSE", "ZIYNET", "22", "14", "18", "24", "22AYAR", "14AYAR", "18AYAR", "24AYAR"].includes(upperKod) ||
+        upperKod.includes("ALTIN") || upperKod.includes("GUMUS") || upperKod.endsWith("AYAR") ||
+        upperAd.includes("ALTIN") || upperAd.includes("AYAR") || upperAd.includes("ZIYNET") || upperAd.includes("BİLEZİK") || upperAd.includes("BILEZIK") || upperAd.includes("ÇEYREK") || upperAd.includes("CEYREK") || upperAd.includes("YARIM") || upperAd.includes("ATA") || upperAd.includes("HAS") || upperAd.includes("GÜMÜŞ") || upperAd.includes("GUMUS")
+      );
+    };
+
+    const isTlItem = (kod?: string) => {
+      const upper = (kod || "").toUpperCase().trim();
+      return upper === "TL" || upper === "TRY" || upper === "TRL" || upper === "POS" || upper === "HAVALE" || upper === "";
+    };
+
+    const rawItems: {
+      paraId?: number | null;
+      kod: string;
+      ad: string;
+      uTipi?: number;
+      miktar: number;
+      kur: number;
+      tutar: number;
+      hasGram: number;
+      isOdeme: boolean;
+    }[] = [];
+
+    validItems.forEach((i: any) => {
+      const kod = (i.barkod || "").trim().toUpperCase();
+      const ad = (i.urunAdi || "").trim();
+      const m = parseDecimal(i.miktar);
+      const a = parseDecimal(i.adet);
+      const g = parseDecimal(i.gram);
+      const h = parseDecimal(i.hasGram);
+      const k = parseDecimal(i.birimFiyat);
+      const t = parseDecimal(i.tutar);
+      const qty = m > 0 ? m : (g > 0 ? g : (h > 0 ? h : a));
+      if ((kod !== "" || ad !== "") && (qty > 0 || t > 0)) {
+        rawItems.push({
+          paraId: (i as any).urunId || (i as any).paraId,
+          kod,
+          ad,
+          uTipi: (i as any).urunTipi !== undefined ? (i as any).urunTipi : (i.altinUrunId || i.ayar || g > 0 || h > 0 ? 1 : undefined),
+          miktar: qty,
+          kur: k,
+          tutar: t > 0 ? t : (qty * (k > 0 ? k : 1)),
+          hasGram: h,
+          isOdeme: false,
+        });
+      }
+    });
+
+    odemeRows.forEach((o) => {
+      const kod = (o.paraKodu || "").trim().toUpperCase();
+      const ad = (o.paraAdi || "").trim();
+      const m = parseDecimal(o.miktar);
+      const a = parseDecimal(o.adet);
+      const h = parseDecimal(o.hasGram);
+      const k = parseDecimal(o.kur);
+      const t = parseDecimal(o.tutar);
+      const qty = m > 0 ? m : (h > 0 ? h : a);
+      if ((kod !== "" || ad !== "" || (o.paraId && o.paraId > 0)) && (qty > 0 || t > 0)) {
+        rawItems.push({
+          paraId: o.paraId,
+          kod,
+          ad,
+          uTipi: o.urunTipi,
+          miktar: qty,
+          kur: k,
+          tutar: t > 0 ? t : (qty * (k > 0 ? k : 1)),
+          hasGram: h,
+          isOdeme: true,
+        });
+      }
+    });
+
+    if (rawItems.length === 0) {
+      if (Math.max(Math.abs(genelToplam), Math.abs(totalOdemeTutar)) >= tlLimit) {
+        return {
+          isExceeded: true,
+          type: "tl" as const,
+          limitLabel: `TL Vergi Sınırını (${tlLimit.toLocaleString("tr-TR")} ₺)`,
+          limitTitle: "MASAK TL Bildirim Sınırı Uyarısı",
+        };
+      }
+      return fallback;
+    }
+
+    let totalDovizEquivalent = 0;
+    let hasDovizLimitDirect = false;
+    let hasDoviz = false;
+
+    let totalGoldTl = 0;
+    let totalGoldGram = 0;
+    let hasGold = false;
+
+    let totalTlAmount = 0;
+
+    rawItems.forEach((item) => {
+      const m = item.miktar;
+      const k = item.kur;
+      const t = item.tutar;
+      const kod = item.kod;
+      const ad = item.ad;
+      const paraId = item.paraId;
+      const uTipi = item.uTipi;
+      const isOdeme = item.isOdeme;
+
+      if (isGoldItem(paraId, kod, ad, uTipi, isOdeme)) {
+        hasGold = true;
+        const lineTl = t > 0 ? t : m * (k > 0 ? k : (activeAltinParaRate > 0 ? activeAltinParaRate : 3000));
+        totalGoldTl += lineTl;
+        totalGoldGram += (item.hasGram > 0 ? item.hasGram : m);
+      } else if (!isTlItem(kod)) {
+        // Döviz satırı (USD, EUR, GBP, vb.)
+        hasDoviz = true;
+        const isTargetLimitCurrency =
+          kod === limitParaKodu ||
+          (dovizParaId && Number(paraId) === Number(dovizParaId)) ||
+          (limitParaKodu === "USD" && (kod === "$" || kod === "USD" || kod.includes("DOLAR") || ad.toUpperCase().includes("DOLAR"))) ||
+          (limitParaKodu === "EUR" && (kod === "€" || kod === "EUR" || kod.includes("EURO") || ad.toUpperCase().includes("EURO")));
+
+        if (isTargetLimitCurrency) {
+          totalDovizEquivalent += m;
+          if (m >= dovizLimit) hasDovizLimitDirect = true;
+        } else {
+          const lineTl = t > 0 ? t : m * (k > 0 ? k : 1);
+          const activeRate = activeLimitParaRate > 0 ? activeLimitParaRate : usdRate;
+          const eq = activeRate > 0 ? lineTl / activeRate : m;
+          totalDovizEquivalent += eq;
+          if (eq >= dovizLimit) hasDovizLimitDirect = true;
+        }
+      } else {
+        // TL satırı veya ödemesi
+        const lineTl = t > 0 ? t : m;
+        totalTlAmount += lineTl;
+      }
+    });
+
+    // 1) Altın kontrolü:
+    // Firma Tanımları Limit sekmesindeki Altın Vergi Sınırı (örn. 5.000) ve Altın Sınır Para (örn. USD, 22 Ayar vb.) baz alınır.
+    // Altın Sınır Para ne seçilmişse o para biriminin kuruna göre sınır hesaplanır (Miktar * Kur).
+    const altinLimitInTl = altinLimit * (activeAltinParaRate > 0 ? activeAltinParaRate : 1);
+    const altinValInPara = activeAltinParaRate > 0 ? totalGoldTl / activeAltinParaRate : totalGoldTl;
+    const isAltinExceeded = hasGold && (totalGoldTl >= altinLimitInTl || altinValInPara >= altinLimit);
+
+    // 2) Döviz kontrolü:
+    const isDovizExceeded = hasDoviz && (hasDovizLimitDirect || totalDovizEquivalent >= dovizLimit);
+
+    // 3) TL kontrolü: Saf TL işlemi (altın ve döviz harici saf TL tutarı) TL Vergi Sınırını aştığında tetiklenir
+    // Altın veya döviz içeren işlemlerde genel tutar TL sınırına sokulmaz!
+    const isPureTl = !hasGold && !hasDoviz;
+    const isTlExceeded = (isPureTl ? Math.max(Math.abs(genelToplam), Math.abs(totalOdemeTutar)) >= tlLimit : false) || totalTlAmount >= tlLimit;
+
+    if (isAltinExceeded) {
+      return {
+        isExceeded: true,
+        type: "altin" as const,
+        limitLabel: `Altın Vergi Sınırını (${altinLimit.toLocaleString("tr-TR")} ${altinParaKodu})`,
+        limitTitle: "MASAK Altın Bildirim Sınırı Uyarısı",
+      };
+    }
+    if (isDovizExceeded) {
+      return {
+        isExceeded: true,
+        type: "doviz" as const,
+        limitLabel: `Döviz Vergi Sınırını (${dovizLimit.toLocaleString("tr-TR")} ${limitParaKodu})`,
+        limitTitle: "MASAK Döviz Bildirim Sınırı Uyarısı",
+      };
+    }
+    if (isTlExceeded) {
+      return {
+        isExceeded: true,
+        type: "tl" as const,
+        limitLabel: `TL Vergi Sınırını (${tlLimit.toLocaleString("tr-TR")} ₺)`,
+        limitTitle: "MASAK TL Bildirim Sınırı Uyarısı",
+      };
+    }
+
+    return fallback;
+  }, [
+    isMasakKontroluVar,
+    companyDefinitions,
+    selectedStatistic,
+    statisticList,
+    istatistikId,
+    istatistikKodu,
+    faturaTipi,
+    getDefaultStatistic,
+    validItems,
+    odemeRows,
+    genelToplam,
+    totalOdemeTutar,
+    altinHasKuru,
+    odemeUrunList,
+    kurMap,
+    paraList,
+  ]);
+
+  const isMasakLimitExceeded = masakStatus.isExceeded;
+  const masakLimitLabel = masakStatus.limitLabel;
+  const masakLimitTitle = masakStatus.limitTitle;
 
   // Dinamik sütun genişlikleri
   const odemeAdetColWidth = useMemo(() => {
@@ -2614,7 +2950,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         let sanitizedValue = value;
         if (field === "adet") {
           sanitizedValue = value.replace(/\D/g, "");
-        } else if (field === "miktar") {
+        } else if (field === "miktar" || field === "kur") {
           sanitizedValue = onlyDecimal(String(value));
         }
         const updated = { ...r, [field]: sanitizedValue };
@@ -2735,6 +3071,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
     return 1;
   }, [kurMap, odemeUrunList, altinHasKuru]);
+
+  // Helper: Ödeme satırı için gişe kurunu ({ kur, alis, satis }) hesaplar
+  const getGiseForOdemeRow = useCallback((r: OdemeRow): GiseKuru | null => {
+    const isTL =
+      r.paraKodu?.trim().toUpperCase() === "TL" ||
+      r.paraKodu?.trim().toUpperCase() === "TRY" ||
+      r.paraKodu?.trim().toUpperCase() === "TRL" ||
+      r.odemeAraciTuru === 2;
+    if (isTL) return null;
+
+    const u = { paraId: r.paraId, kod: r.paraKodu, ad: r.paraAdi, urunTipi: r.urunTipi };
+    const islemTip: 0 | 1 = faturaTipi === 1 ? 1 : 0;
+    const alis = getKurForProduct(u, 0);
+    const satis = getKurForProduct(u, 1);
+    const kur = getKurForProduct(u, islemTip) || (Number(altinHasKuru) > 0 ? Number(altinHasKuru) : 0);
+    return {
+      kur: kur > 0 ? kur : (alis > 0 ? alis : satis),
+      alis: alis > 0 ? alis : (satis > 0 ? satis : null),
+      satis: satis > 0 ? satis : (alis > 0 ? alis : null),
+    };
+  }, [faturaTipi, getKurForProduct, altinHasKuru]);
 
   // Apply selected Currency / Product / Iskonto to Payment Row
   const applyProductToOdemeRow = useCallback((rowId: string, item: UrunItem) => {
@@ -3120,13 +3477,22 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const isForeignDoviz = !isTL && isDovizRowOrProduct(row);
     if (isZiynet || isForeignDoviz || row?.odemeAraciTuru === 2) {
       cols.push("adet");
+      if (!isTL && kurDegistirilebilir(kYetkiRef.current)) {
+        cols.push("kur");
+      }
       return cols;
     }
     if (isAltinOrGumusRow(row, odemeUrunList)) {
       cols.push("miktar", "milyem");
+      if (!isTL && kurDegistirilebilir(kYetkiRef.current)) {
+        cols.push("kur");
+      }
       return cols;
     }
     cols.push("miktar");
+    if (!isTL && kurDegistirilebilir(kYetkiRef.current)) {
+      cols.push("kur");
+    }
     return cols;
   }, [odemeUrunList]);
 
@@ -3416,6 +3782,23 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         lastOdemeRowIdRef.current = rowId;
         openOdemeUrunModal(rowId, cleanTyped);
         return;
+      }
+    }
+
+    if (colKey === "kur" && (e.key === "Enter" || e.key === "Tab" || e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      const val = currentRow?.kur;
+      if (val !== "" && val !== null && val !== undefined) {
+        const num = parseDecimal(val);
+        if (num > 0) {
+          const gise = getGiseForOdemeRow(currentRow);
+          if (gise) {
+            const res = kurDegeriniSinirla(kYetki, gise, num, 4);
+            if (res.degisti) {
+              updateOdemeRow(rowId, "kur", res.kur);
+              if (res.mesaj) showWarning(res.mesaj);
+            }
+          }
+        }
       }
     }
 
@@ -4154,7 +4537,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       setMasakResult({ matches: [], searched: false });
     }
 
-    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && genelToplam >= 185000 && !isGayriResmi) {
+    if (isMasakLimitExceeded) {
       const cleanVkn = (res.vergiKimlikNo || "").trim();
       const isMissingInfo =
         !cleanVkn ||
@@ -4176,7 +4559,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     } else {
       setMasakResult({ matches: [], searched: false });
     }
-    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && genelToplam >= 185000 && !isGayriResmi && !adres.trim()) {
+    if (isMasakLimitExceeded && !adres.trim()) {
       setShowMasakLimitWarningModal(true);
     }
   };
@@ -4740,20 +5123,22 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const activeStat = selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (istatistikKodu && s.kod === istatistikKodu)) || getDefaultStatistic(faturaTipi as 0 | 1);
     const isGayriResmi = activeStat && Number(activeStat.fisDizaynTipi) === 1;
 
-    const MASAK_LIMIT = 185000;
-    if (isMasakKontroluVar && genelToplam >= MASAK_LIMIT && !bypassMasakWarning && !isGayriResmi) {
-      const isMissingInfo =
-        cleanVkn === "11111111111" ||
-        aliciUnvan.trim().toUpperCase() === "NİHAİ TÜKETİCİ" ||
-        !adres.trim();
+    if (isMasakLimitExceeded) {
+      if (!bypassMasakWarning) {
+        const isMissingInfo =
+          !cleanVkn ||
+          cleanVkn === "11111111111" ||
+          isAnonymousCustomerName(aliciUnvan) ||
+          !adres.trim();
 
-      setPendingSaveWithPrint(withPrint);
-      if (isMissingInfo) {
-        setShowMasakLimitWarningModal(true);
-        return;
-      } else {
-        setShowMasakConfirmModal(true);
-        return;
+        setPendingSaveWithPrint(withPrint);
+        if (isMissingInfo) {
+          setShowMasakLimitWarningModal(true);
+          return;
+        } else {
+          setShowMasakConfirmModal(true);
+          return;
+        }
       }
     }
 
@@ -4785,6 +5170,26 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               return { ad: [item.urunAdi || "Ürün", item.ayar ? `${item.ayar} ayar` : ""].filter(Boolean).join(" "), miktar, tutar: Math.round((tutar + tutar * kdvOrani / 100) * 100) / 100, kdvOrani };
             }),
     });
+
+    // Ödeme tablosu satır kurlarının kur yetkisine (Var, Yok, Esnek, Yüzde) göre denetimi
+    const kurSatirlari = odemeRows
+      .filter((r) => {
+        const isTL = (r.paraKodu || "").trim().toUpperCase() === "TL" || (r.paraKodu || "").trim().toUpperCase() === "TRY" || r.odemeAraciTuru === 2;
+        return !isTL && (parseDecimal(r.tutar) > 0 || parseDecimal(r.miktar) > 0 || parseDecimal(r.adet) > 0);
+      })
+      .map((r, i) => {
+        const gise = getGiseForOdemeRow(r);
+        return {
+          etiket: `Ödeme ${i + 1}. satır (${r.paraKodu || "Döviz"}) kuru`,
+          gise,
+          kur: parseDecimal(r.kur) || (gise?.kur ?? 1),
+        };
+      });
+
+    if (kurSatirlari.length > 0) {
+      const devam = kurOnayi(kYetkiRef.current, kurSatirlari, (m) => showError(m));
+      if (!devam) return;
+    }
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
@@ -6073,12 +6478,23 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                     e.preventDefault();
                     const val = (istatistikKodu || "").trim();
                     if (val) {
-                      const match = statisticList.find((s) => s.kod?.toLowerCase() === val.toLowerCase() || String(s.id) === val);
-                      if (match) {
-                        setIstatistikId(match.id);
-                        setSelectedStatistic(match);
-                        setIstatistikKodu(match.kod);
+                      const q = val.toLowerCase();
+                      const matched = statisticList.filter((s) => {
+                        const fType = Number(s.fisTipi);
+                        const isTypeAllowed = Number(faturaTipi) === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                        return isTypeAllowed && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || (s as any).ad || "").toLowerCase().includes(q) || String(s.id) === q);
+                      });
+                      if (matched.length === 1) {
+                        const single = matched[0];
+                        setIstatistikId(single.id);
+                        setIstatistikKodu(single.kod);
+                        setSelectedStatistic(single);
+                        faturaTipiRef.current?.focus();
+                        return;
                       }
+                      setIstatistikSearchTerm(val);
+                      setShowIstatistikModal(true);
+                      return;
                     }
                     faturaTipiRef.current?.focus();
                     return;
@@ -6086,7 +6502,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   if (e.key === "F3") {
                     e.preventDefault();
                     e.stopPropagation();
-                    setIstatistikSearchTerm((istatistikKodu || "").trim());
+                    const val = (istatistikKodu || "").trim();
+                    if (val) {
+                      const q = val.toLowerCase();
+                      const matched = statisticList.filter((s) => {
+                        const fType = Number(s.fisTipi);
+                        const isTypeAllowed = Number(faturaTipi) === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                        return isTypeAllowed && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || (s as any).ad || "").toLowerCase().includes(q) || String(s.id) === q);
+                      });
+                      if (matched.length === 1) {
+                        const single = matched[0];
+                        setIstatistikId(single.id);
+                        setIstatistikKodu(single.kod);
+                        setSelectedStatistic(single);
+                        faturaTipiRef.current?.focus();
+                        return;
+                      }
+                    }
+                    setIstatistikSearchTerm(val);
                     setShowIstatistikModal(true);
                   }
                 }}
@@ -6101,7 +6534,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 variant="outline-secondary"
                 className="px-2 py-0 d-flex align-items-center justify-content-center"
                 onClick={() => {
-                  setIstatistikSearchTerm((istatistikKodu || "").trim());
+                  const val = (istatistikKodu || "").trim();
+                  if (val) {
+                    const q = val.toLowerCase();
+                    const matched = statisticList.filter((s) => {
+                      const fType = Number(s.fisTipi);
+                      const isTypeAllowed = Number(faturaTipi) === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
+                      return isTypeAllowed && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || (s as any).ad || "").toLowerCase().includes(q) || String(s.id) === q);
+                    });
+                    if (matched.length === 1) {
+                      const single = matched[0];
+                      setIstatistikId(single.id);
+                      setIstatistikKodu(single.kod);
+                      setSelectedStatistic(single);
+                      faturaTipiRef.current?.focus();
+                      return;
+                    }
+                  }
+                  setIstatistikSearchTerm(val);
                   setShowIstatistikModal(true);
                 }}
                 title="F3) İstatistik Kodu Seçimi"
@@ -6196,6 +6646,37 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   className="px-1.5 py-0 d-flex align-items-center"
                   onClick={() => {
                     const val = (aliciVknTckn && aliciVknTckn !== "11111111111" ? aliciVknTckn : "").trim();
+                    if (val) {
+                      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("vkn", val);
+                      if (totalCount === 1) {
+                        if (mc.length === 1) {
+                          void handleSelectCustomer({
+                            type: "registered",
+                            id: mc[0].id,
+                            kod: mc[0].kod,
+                            unvan: mc[0].ad || (mc[0] as any).unvan || "",
+                            vergiKimlikNo: mc[0].vergiKimlikNo || "",
+                            adres: mc[0].adres || "",
+                            telefon: mc[0].telefon || "",
+                            raw: mc[0],
+                          });
+                        } else if (mk.length === 1) {
+                          void handleSelectCustomer({
+                            type: "unregistered",
+                            id: null,
+                            kod: "",
+                            unvan: mk[0].ad || mk[0].unvan || "",
+                            vergiKimlikNo: mk[0].vergiKimlikNo || "",
+                            adres: mk[0].adres || "",
+                            telefon: mk[0].telefon || "",
+                            raw: mk[0],
+                          });
+                        }
+                        cariKodRef.current?.focus();
+                        cariKodRef.current?.select();
+                        return;
+                      }
+                    }
                     lastModalCallerRef.current = "vkn";
                     setMusteriSearchTerm(val);
                     setCariSearchField("vkn");
@@ -6254,6 +6735,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   className="px-1.5 py-0 d-flex align-items-center"
                   onClick={() => {
                     const val = (cariKod || "").trim();
+                    if (val) {
+                      const { cariler: mc, totalCount } = findMatchingCustomers("kod", val);
+                      if (totalCount === 1 && mc.length === 1) {
+                        void handleSelectCustomer({
+                          type: "registered",
+                          id: mc[0].id,
+                          kod: mc[0].kod,
+                          unvan: mc[0].ad || (mc[0] as any).unvan || "",
+                          vergiKimlikNo: mc[0].vergiKimlikNo || "",
+                          adres: mc[0].adres || "",
+                          telefon: mc[0].telefon || "",
+                          raw: mc[0],
+                        });
+                        aliciUnvanRef.current?.focus();
+                        aliciUnvanRef.current?.select();
+                        return;
+                      }
+                    }
                     lastModalCallerRef.current = "cariKod";
                     setMusteriSearchTerm(val);
                     setCariSearchField("kod");
@@ -6312,19 +6811,32 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                         return;
                       }
 
-                      // Cariler listesinde tam eşleşme varsa doğrudan seç ve sonraki alana geç
-                      const exactMatch = cariler.find((c) => (c.ad || "").trim().toLowerCase() === raw.toLowerCase());
-                      if (exactMatch) {
-                        void handleSelectCustomer({
-                          type: "registered",
-                          id: exactMatch.id,
-                          kod: exactMatch.kod,
-                          unvan: exactMatch.ad || "",
-                          vergiKimlikNo: exactMatch.vergiKimlikNo || "",
-                          adres: exactMatch.adres || "",
-                          telefon: exactMatch.telefon || "",
-                          raw: exactMatch,
-                        });
+                      // Cariler listesinde tek eşleşme varsa doğrudan seç ve sonraki alana geç
+                      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("unvan", raw);
+                      if (totalCount === 1) {
+                        if (mc.length === 1) {
+                          void handleSelectCustomer({
+                            type: "registered",
+                            id: mc[0].id,
+                            kod: mc[0].kod,
+                            unvan: mc[0].ad || (mc[0] as any).unvan || "",
+                            vergiKimlikNo: mc[0].vergiKimlikNo || "",
+                            adres: mc[0].adres || "",
+                            telefon: mc[0].telefon || "",
+                            raw: mc[0],
+                          });
+                        } else if (mk.length === 1) {
+                          void handleSelectCustomer({
+                            type: "unregistered",
+                            id: null,
+                            kod: "",
+                            unvan: mk[0].ad || mk[0].unvan || "",
+                            vergiKimlikNo: mk[0].vergiKimlikNo || "",
+                            adres: mk[0].adres || "",
+                            telefon: mk[0].telefon || "",
+                            raw: mk[0],
+                          });
+                        }
                         altinHasKuruRef.current?.focus();
                         altinHasKuruRef.current?.select();
                         return;
@@ -6343,6 +6855,37 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   onClick={() => {
                     const raw = (aliciUnvan || "").trim();
                     const val = isAnonymousCustomerName(raw) ? "" : raw;
+                    if (val) {
+                      const { cariler: mc, kayitsizlar: mk, totalCount } = findMatchingCustomers("unvan", val);
+                      if (totalCount === 1) {
+                        if (mc.length === 1) {
+                          void handleSelectCustomer({
+                            type: "registered",
+                            id: mc[0].id,
+                            kod: mc[0].kod,
+                            unvan: mc[0].ad || (mc[0] as any).unvan || "",
+                            vergiKimlikNo: mc[0].vergiKimlikNo || "",
+                            adres: mc[0].adres || "",
+                            telefon: mc[0].telefon || "",
+                            raw: mc[0],
+                          });
+                        } else if (mk.length === 1) {
+                          void handleSelectCustomer({
+                            type: "unregistered",
+                            id: null,
+                            kod: "",
+                            unvan: mk[0].ad || mk[0].unvan || "",
+                            vergiKimlikNo: mk[0].vergiKimlikNo || "",
+                            adres: mk[0].adres || "",
+                            telefon: mk[0].telefon || "",
+                            raw: mk[0],
+                          });
+                        }
+                        altinHasKuruRef.current?.focus();
+                        altinHasKuruRef.current?.select();
+                        return;
+                      }
+                    }
                     lastModalCallerRef.current = "unvan";
                     setMusteriSearchTerm(val);
                     setCariSearchField("unvan");
@@ -7723,24 +8266,49 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                           />
                         </td>
 
-                        {/* Kur - Kesinlikle Değiştirilemez / Salt Okunur */}
-                        <td style={{ padding: "2px 4px", backgroundColor: isOdemeRowTL ? "#e9ecef" : "#f8fafc", borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                        {/* Kur */}
+                        <td style={{ padding: "2px 4px", backgroundColor: isOdemeRowTL || !kurDegistirilebilir(kYetki) ? "#e9ecef" : "#ffffff", borderColor: rowBorderColor, verticalAlign: "middle" }}>
                           <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_kur`] = el; }}
                             size="sm"
-                            readOnly
-                            disabled
-                            tabIndex={-1}
+                            readOnly={isOdemeRowTL || !kurDegistirilebilir(kYetki)}
+                            disabled={isOdemeRowTL || !kurDegistirilebilir(kYetki)}
+                            tabIndex={isOdemeRowTL || !kurDegistirilebilir(kYetki) ? -1 : undefined}
                             className={`text-end font-monospace ${isOdemeRowTL ? "text-muted" : "fw-bold text-dark"}`}
-                            value={isOdemeRowTL ? "" : (oRow.kur !== "" && oRow.kur !== null && oRow.kur !== undefined && Number(oRow.kur) > 0 ? oRow.kur : (getKurForProduct({ paraId: oRow.paraId, kod: oRow.paraKodu, ad: oRow.paraAdi, urunTipi: oRow.urunTipi }, faturaTipi === 1 ? 0 : 1) || (Number(altinHasKuru) > 0 ? altinHasKuru : "")))}
+                            value={isOdemeRowTL ? "" : (oRow.kur !== "" && oRow.kur !== null && oRow.kur !== undefined ? oRow.kur : (getKurForProduct({ paraId: oRow.paraId, kod: oRow.paraKodu, ad: oRow.paraAdi, urunTipi: oRow.urunTipi }, faturaTipi === 1 ? 0 : 1) || (Number(altinHasKuru) > 0 ? altinHasKuru : "")))}
                             placeholder={isOdemeRowTL ? "-" : "Kur"}
+                            onChange={(e) => !isOdemeRowTL && updateOdemeRow(oRow.id, "kur", e.target.value)}
+                            onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "kur", oRow.id)}
+                            onBlur={() => {
+                              if (isOdemeRowTL || !kurDegistirilebilir(kYetki)) return;
+                              const val = oRow.kur;
+                              if (val !== "" && val !== null && val !== undefined) {
+                                const num = parseDecimal(val);
+                                if (num > 0) {
+                                  const gise = getGiseForOdemeRow(oRow);
+                                  if (gise) {
+                                    const res = kurDegeriniSinirla(kYetki, gise, num, 4);
+                                    if (res.degisti) {
+                                      updateOdemeRow(oRow.id, "kur", res.kur);
+                                      if (res.mesaj) showWarning(res.mesaj);
+                                    }
+                                  }
+                                }
+                              }
+                            }}
+                            onFocus={() => {
+                              setActiveOdemeRowIndex(rowIndex);
+                              cleanupEmptyOdemeRows(rowIndex);
+                              cleanupEmptyRows(null);
+                            }}
                             style={{
                               fontSize: "11px",
                               padding: "1px 4px",
-                              backgroundColor: isOdemeRowTL ? "#e9ecef" : "#f8fafc",
-                              cursor: "not-allowed",
+                              backgroundColor: isOdemeRowTL || !kurDegistirilebilir(kYetki) ? "#e9ecef" : "#ffffff",
+                              cursor: isOdemeRowTL || !kurDegistirilebilir(kYetki) ? "not-allowed" : undefined,
                               borderColor: rowBorderColor,
                             }}
-                            title="Ödeme kur değeri (Değiştirilemez)"
+                            title={isOdemeRowTL ? "TL için kur girilmez" : (!kurDegistirilebilir(kYetki) ? "Kur değiştirme yetkiniz yok" : undefined)}
                           />
                         </td>
 
@@ -7949,6 +8517,21 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             <kbd className="bg-success text-white px-1.5 py-0.5 rounded me-1 fw-bold">Ctrl+N</kbd>
             <strong className="text-dark">Yeni Kayıt</strong>
           </span>
+
+          {isMasakLimitExceeded && (
+            <>
+              <span className="text-secondary">•</span>
+              <span
+                className="user-select-none badge bg-danger text-white px-2 py-1 d-inline-flex align-items-center gap-1 fw-bold"
+                onClick={() => setShowMasakConfirmModal(true)}
+                style={{ cursor: "pointer", fontSize: "11px" }}
+                title={`MASAK Bildirim Sınırı Aşıldı: ${masakLimitLabel}`}
+              >
+                <IconAlertTriangle size={13} />
+                <span>MASAK Sınırı Aşıldı ({masakStatus.type === "altin" ? "Altın" : masakStatus.type === "doviz" ? "Döviz" : "TL"})</span>
+              </span>
+            </>
+          )}
         </div>
         <div className="text-muted small d-none d-lg-block">
           Likya Kuyumculuk ERP
@@ -8301,7 +8884,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         <Modal.Header closeButton className="py-2 bg-warning text-dark">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2 fw-bold">
             <IconAlertTriangle size={20} />
-            MASAK Yasal Bildirim Sınırı Uyarısı (≥185.000 TL)
+            {masakLimitTitle}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="py-3">
@@ -8311,10 +8894,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             </div>
             <div>
               <p className="mb-2 fw-semibold">
-                İşlem tutarı <strong>185.000 TL</strong> yasal kimlik tespit limitini aşmaktadır.
+                İşlem tutarı <strong>MASAK {masakLimitLabel}</strong> aşmaktadır.
               </p>
               <p className="small text-muted mb-2">
-                5549 sayılı Kanun uyarınca 185.000 TL ve üzeri işlemlerde müşterinin gerçek <strong>İsim/Ünvan, T.C. Kimlik No / VKN ve Adres</strong> bilgilerinin eksiksiz girilmesi yasal zorunluluktur.
+                5549 sayılı Kanun uyarınca bildirim sınırını aşan işlemlerde müşterinin gerçek <strong>İsim/Ünvan, T.C. Kimlik No / VKN ve Adres</strong> bilgilerinin eksiksiz girilmesi yasal zorunluluktur.
               </p>
               <div className="alert alert-warning py-1.5 px-2.5 small mb-0">
                 Lütfen <strong>Detaya Git</strong> butonuna tıklayarak müşterinin kimlik ve adres bilgilerini doldurunuz.
@@ -8332,17 +8915,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </Button>
           <Button
             size="sm"
-            variant="outline-warning"
-            className="fw-bold"
-            onClick={() => {
-              setShowMasakLimitWarningModal(false);
-              void handleCompleteSale(pendingSaveWithPrint, true, true);
-            }}
-          >
-            Yine de Kaydet
-          </Button>
-          <Button
-            size="sm"
             variant="warning"
             className="fw-bold d-flex align-items-center gap-1 text-dark"
             onClick={() => {
@@ -8351,7 +8923,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             }}
           >
             <IconEdit size={16} />
-            <span>Detaya Git (F8)</span>
+            <span>Detay Bilgilerini Doldur (F8)</span>
           </Button>
         </Modal.Footer>
       </Modal>
@@ -8374,7 +8946,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             <IconAlertTriangle size={48} className="text-warning" />
           </div>
           <h6 className="fw-bold mb-2">
-            İşlem MASAK Yasal Sınırını (≥185.000 TL) Aşmaktadır!
+            İşlem MASAK {masakLimitLabel} Aşmaktadır!
           </h6>
           <p className="small text-muted mb-3">
             Müşteri kimlik ve adres bilgileri mevzuat gereğince işlemle birlikte kayıt altına alınacaktır.

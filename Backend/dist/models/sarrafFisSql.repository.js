@@ -448,7 +448,7 @@ export class SarrafFisSqlRepository {
             req.input(`${p}_mil`, sql.Float, parseNum(s.milyem));
             req.input(`${p}_hg`, sql.Float, parseNum(s.hasGram));
             req.input(`${p}_ad`, sql.Int, Math.round(parseNum(s.adet)));
-            req.input(`${p}_im`, sql.Int, Math.round(parseNum(s.iscilikiMiktari)));
+            req.input(`${p}_im`, sql.Float, parseNum(s.iscilikiMiktari));
             req.input(`${p}_ihg`, sql.Float, parseNum(s.iscilikHasGram));
             req.input(`${p}_ac`, sql.VarChar(100), s.aciklama || null);
             req.input(`${p}_ihs`, sql.TinyInt, parseNum(s.iscilikHesaplamaSekli));
@@ -539,7 +539,7 @@ export class SarrafFisSqlRepository {
         SATIR_ID INT NULL, SATIR_NO INT NOT NULL, URUN_ID INT NULL,
         MIKTAR FLOAT NOT NULL DEFAULT 0, MILYEM FLOAT NOT NULL DEFAULT 0,
         HAS_GRAM FLOAT NOT NULL DEFAULT 0, ADET INT NOT NULL DEFAULT 0,
-        ISCILIK_MIKTARI INT NOT NULL DEFAULT 0, ISCILIK_HAS_GRAM FLOAT NOT NULL DEFAULT 0,
+        ISCILIK_MIKTARI FLOAT NOT NULL DEFAULT 0, ISCILIK_HAS_GRAM FLOAT NOT NULL DEFAULT 0,
         ACIKLAMA VARCHAR(100) NULL, ISCILIK_HESAPLAMA_SEKLI TINYINT NOT NULL DEFAULT 0,
         KUR FLOAT NOT NULL DEFAULT 1, TUTAR FLOAT NOT NULL DEFAULT 0,
         URUN_TIPI TINYINT NOT NULL DEFAULT 0, URUN_OGESI_PARA_ID INT NULL, KARAT FLOAT NULL

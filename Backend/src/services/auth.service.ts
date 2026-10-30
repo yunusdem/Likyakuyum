@@ -16,6 +16,7 @@ import { kurulumBaglantisiniKaydet, kurulumDbContext, kurulumHavuzu } from "./ku
 import { KurulumLisansService } from "./kurulum/kurulumLisans.service.js";
 import { kurulumKartOnbelleginiTemizle, sifreDamgasi } from "./kurulum/kurulumKart.js";
 import { kullaniciKapalilari } from "./gorunum/kullaniciGorunum.service.js";
+import { logger } from "../utils/logger.js";
 
 export class AuthService {
   /**
@@ -318,15 +319,19 @@ export class AuthService {
     await OturumService.bitir(sid);
   }
 
-  public static async getProfile(userId: string, dbContext?: { dbServer?: string; dbName?: string }): Promise<UserResponseDto> {
+  public static async getProfile(userId: string, dbContext?: { dbServer?: string; dbName?: string; firmaId?: number }): Promise<UserResponseDto> {
     const user = await UserSqlRepository.findById(userId, dbContext);
     if (!user) {
       throw ApiError.notFound(ResponseMessages.USER_NOT_FOUND);
     }
     const merkez = env.KURULUM_MODU
       ? await this.kurulumOturumBilgisi(user)
-      : // Merkez açıksa: firma dondurulmuş/pasif/lisansı bitmiş ya da kullanıcı kapatılmışsa 401 → istemci girişe döner
-        await MerkezGirisService.baglam({ ...dbContext, username: user.username }).then((b) => (b ? MerkezGirisService.oturumBilgisi(b) : undefined));
+      : await MerkezGirisService.baglam({ ...dbContext, username: user.username, firmaId: dbContext?.firmaId })
+          .then((b) => (b ? MerkezGirisService.oturumBilgisi(b) : undefined))
+          .catch((err) => {
+            logger.warn(`Merkez oturum bilgisi alınamadı (${user.username}):`, err?.message);
+            return undefined;
+          });
     // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G2/G5)
     const gorunumKapali = await kullaniciKapalilari(user.id, AuthService.gorunumYoneticisi(user, merkez), dbContext).catch(() => []);
     return { ...UserSqlRepository.toDto(user), ...(merkez && { merkez }), gorunumKapali } as any;

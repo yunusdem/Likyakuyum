@@ -50,6 +50,7 @@ import { lisansKapisi } from "../middlewares/lisans.middleware.js";
 import { KurulumController } from "../controllers/kurulum.controller.js";
 import merkezRoutes from "./merkez.routes.js";
 import destekRoutes from "./destek.routes.js";
+import destekPanelRoutes from "./destekPanel.routes.js";
 import iletisimRoutes from "./iletisim.routes.js";
 import menuRoutes from "./menu.routes.js";
 import xmlDosyaRoutes from "./xmlDosya.routes.js";
@@ -72,6 +73,8 @@ apiRouter.use("/merkez", merkezRoutes);
 apiRouter.use("/health", healthRoutes);
 apiRouter.use("/admin", adminRoutes);
 apiRouter.use("/destek", destekRoutes);
+// Destek ekibi paneli (destek.likyakuyum.com; docs/DESTEK_PANELI_YOL_HARITASI.md)
+apiRouter.use("/destek-panel", destekPanelRoutes);
 // Tanıtım sitesi iletişim formu (giriş yok; docs/ILETISIM_FORMU_YOL_HARITASI.md)
 apiRouter.use("/iletisim", iletisimRoutes);
 // Pano Entegrasyonu açık uçları (docs/PANO_API_YOL_HARITASI.md): oturumsuz, anahtar adreste; HTML sayfası app.ts'te

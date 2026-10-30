@@ -46,6 +46,7 @@ import {
   IconChevronDown,
   IconBinoculars,
   IconLayoutSidebar,
+  IconTools,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "components/common/ERPToolbar";
@@ -237,9 +238,8 @@ export const FontSelectDropdown: React.FC<{
                   key={f.value}
                   active={isSelected}
                   onClick={() => onChange(f.value)}
-                  className={`d-flex align-items-center justify-content-between p-2 rounded-2 ${
-                    isSelected ? "bg-primary text-white" : "hover-bg-light"
-                  }`}
+                  className={`d-flex align-items-center justify-content-between p-2 rounded-2 ${isSelected ? "bg-primary text-white" : "hover-bg-light"
+                    }`}
                   style={{ cursor: "pointer" }}
                 >
                   <div className="d-flex flex-column me-2 text-truncate" style={{ maxWidth: "160px" }}>
@@ -254,9 +254,8 @@ export const FontSelectDropdown: React.FC<{
 
                   {/* Yanında Fontun Birebir Yazılmış Canlı Önizlemesi: Abc / ABC 123 ₺ */}
                   <div
-                    className={`px-2 py-1 rounded text-nowrap ms-auto border ${
-                      isSelected ? "bg-white text-dark border-white" : "bg-light text-dark"
-                    }`}
+                    className={`px-2 py-1 rounded text-nowrap ms-auto border ${isSelected ? "bg-white text-dark border-white" : "bg-light text-dark"
+                      }`}
                     style={{
                       fontFamily: f.value,
                       fontSize: "13px",
@@ -317,6 +316,7 @@ const defaultNewUserTemplate: UserProfile = {
   commissionRate: "0.00",
   ratePermType: "Var",
   ratePermValue: "0.00",
+  iscilikGirisSekli: 0,
 
   menuPerms: {
     mainMenu: "Tam Yetki",
@@ -384,8 +384,15 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
   const rawStyle = currentApp.sidebarStyle;
   const validStyles = ["hover", "classic", "flyout", "topbar", "dual", "megamenu"];
   const finalStyle = (rawStyle && validStyles.includes(rawStyle)) ? rawStyle : "classic";
+  const normalizedRateType = u.ratePermType === "Limitli" ? "Yüzde" : (u.ratePermType || "Var");
+  const normalizedRateValue = (u.ratePermValue !== undefined && u.ratePermValue !== null)
+    ? String(u.ratePermValue)
+    : "0.00";
+
   return {
     ...u,
+    ratePermType: normalizedRateType,
+    ratePermValue: normalizedRateValue,
     appearance: {
       ...defaultNewUserTemplate.appearance,
       ...currentApp,
@@ -465,7 +472,7 @@ const UserDefinitionsPage: React.FC = () => {
           }
 
           // C) Auth context profilini yenile
-          await refreshUser().catch(() => {});
+          await refreshUser().catch(() => { });
         } catch (err) {
           console.warn("Otomatik görünüm veritabanı kaydı hatası:", err);
         }
@@ -501,8 +508,9 @@ const UserDefinitionsPage: React.FC = () => {
   // Yönetim paneli (merkez) açıkken mevcut kullanıcının şifresi buradan yazılmaz; firma yöneticisi sıfırlar
   const merkez = authUser?.merkez;
   // Kullanıcı kartlarını yöneten (sunucudaki kuralla aynı): merkez açıkken firma yöneticisi, değilse sistem yöneticisi.
-  // Yönetici olmayan yalnız kendi kartını görür; yetki, vezne ve istatistik alanları onda salt okunurdur.
-  const kartYoneticisi = merkez ? !!merkez.firmaYoneticisi : !!authUser?.isSysAdmin || authUser?.role === "admin";
+  const kartYoneticisi = Boolean(
+    merkez?.firmaYoneticisi || authUser?.isSysAdmin || authUser?.role === "admin"
+  );
 
   const seciliKullaniciId = currentUser?.id ? String(currentUser.id) : "";
   React.useEffect(() => {
@@ -649,8 +657,8 @@ const UserDefinitionsPage: React.FC = () => {
             ad: item.name || `Vezne ${item.id}`,
           }));
         }),
-        StatisticService.getStatistics().then(setIstatistikList).catch(() => {}),
-        PrinterService.getYazicilar().then(setPrinterList).catch(() => {}),
+        StatisticService.getStatistics().then(setIstatistikList).catch(() => { }),
+        PrinterService.getYazicilar().then(setPrinterList).catch(() => { }),
       ]);
 
       const mappedCashiers = (cashiers || []).map((v: any) => ({
@@ -690,7 +698,7 @@ const UserDefinitionsPage: React.FC = () => {
             if (!selectedUser.appearance.sidebarStyle) {
               selectedUser.appearance.sidebarStyle = "classic";
             }
-          } catch {}
+          } catch { }
         }
 
         setCurrentUser(ensureUserSidebarStyle(selectedUser));
@@ -837,10 +845,18 @@ const UserDefinitionsPage: React.FC = () => {
           }
         }
 
-        const updated = await UserService.updateUser(currentUser.id, {
+        const toSaveUser = {
           ...currentUser,
           username: trimmedUsername.replace(/\s+/g, ""),
-        });
+          ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
+          ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
+            ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
+                ? String(currentUser.ratePermValue).replace(/,/g, ".")
+                : "0.00")
+            : "0.00",
+        };
+
+        const updated = await UserService.updateUser(currentUser.id, toSaveUser);
         await kisayollariKaydet(String(currentUser.id));
         setAlertSuccess(`"${updated?.username || trimmedUsername}" kullanıcısı başarıyla güncellendi.`);
         const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
@@ -852,8 +868,25 @@ const UserDefinitionsPage: React.FC = () => {
         } else if (updated) {
           setCurrentUser(ensureUserSidebarStyle(updated));
         }
-        if (authUser?.id && String(currentUser.id) === String(authUser.id)) {
-          await refreshUser().catch(() => {});
+        const isCurrentAuthUser =
+          (authUser?.id && String(currentUser.id) === String(authUser.id)) ||
+          (authUser?.username && currentUser.username && currentUser.username.toLowerCase().trim() === authUser.username.toLowerCase().trim());
+        if (isCurrentAuthUser) {
+          const storedUserStr = localStorage.getItem("kuyumcu_erp_user");
+          if (storedUserStr) {
+            try {
+              const parsed = JSON.parse(storedUserStr);
+              const merged = {
+                ...parsed,
+                ...currentUser,
+                ratePermType: currentUser.ratePermType,
+                ratePermValue: currentUser.ratePermValue,
+                iscilikGirisSekli: currentUser.iscilikGirisSekli,
+              };
+              localStorage.setItem("kuyumcu_erp_user", JSON.stringify(merged));
+            } catch { }
+          }
+          await refreshUser().catch(() => { });
         }
         setTimeout(() => setAlertSuccess(null), 4000);
       } else {
@@ -867,10 +900,17 @@ const UserDefinitionsPage: React.FC = () => {
         }
 
         const { id, ...newUserData } = currentUser;
-        const created = await UserService.createUser({
+        const toCreateUser = {
           ...newUserData,
           username: trimmedUsername.replace(/\s+/g, ""),
-        });
+          ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
+          ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
+            ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
+                ? String(currentUser.ratePermValue).replace(/,/g, ".")
+                : "0.00")
+            : "0.00",
+        };
+        const created = await UserService.createUser(toCreateUser);
         if (created?.id && kisayolKapali.length) await kisayollariKaydet(String(created.id));
         setAlertSuccess(`"${created?.username || trimmedUsername}" kullanıcısı başarıyla veritabanına eklendi.`);
 
@@ -1089,27 +1129,27 @@ const UserDefinitionsPage: React.FC = () => {
                       Şifre Sıfırla
                     </Button>
                   ) : (
-                  <InputGroup size="sm">
-                    <InputGroup.Text className="bg-light text-muted">
-                      <IconKey size={16} />
-                    </InputGroup.Text>
-                    <Form.Control
-                      type={showPassword ? "text" : "password"}
-                      value={currentUser.password || ""}
-                      disabled={isLoading}
-                      onFocus={(e) => handleInputFocusOrClick(e, "password")}
-                      onClick={(e) => handleInputFocusOrClick(e, "password")}
-                      onChange={(e) => updateField("password", e.target.value)}
-                      className="border"
-                    />
-                    <Button
-                      variant="outline-secondary"
-                      onClick={() => setShowPassword(!showPassword)}
-                      title={showPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
-                    >
-                      {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-                    </Button>
-                  </InputGroup>
+                    <InputGroup size="sm">
+                      <InputGroup.Text className="bg-light text-muted">
+                        <IconKey size={16} />
+                      </InputGroup.Text>
+                      <Form.Control
+                        type={showPassword ? "text" : "password"}
+                        value={currentUser.password || ""}
+                        disabled={isLoading}
+                        onFocus={(e) => handleInputFocusOrClick(e, "password")}
+                        onClick={(e) => handleInputFocusOrClick(e, "password")}
+                        onChange={(e) => updateField("password", e.target.value)}
+                        className="border"
+                      />
+                      <Button
+                        variant="outline-secondary"
+                        onClick={() => setShowPassword(!showPassword)}
+                        title={showPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
+                      >
+                        {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                      </Button>
+                    </InputGroup>
                   )}
                 </Col>
               </Form.Group>
@@ -1380,7 +1420,7 @@ const UserDefinitionsPage: React.FC = () => {
                                 onClick={(e) => handleInputFocusOrClick(e, "printerId")}
                                 onDoubleClick={() => {
                                   if (printerList.length === 0) {
-                                    PrinterService.getYazicilar().then(setPrinterList).catch(() => {});
+                                    PrinterService.getYazicilar().then(setPrinterList).catch(() => { });
                                   }
                                   setShowPrinterModal(true);
                                 }}
@@ -1388,7 +1428,7 @@ const UserDefinitionsPage: React.FC = () => {
                                   if (e.key === "F4" || e.key === "F3") {
                                     e.preventDefault();
                                     if (printerList.length === 0) {
-                                      PrinterService.getYazicilar().then(setPrinterList).catch(() => {});
+                                      PrinterService.getYazicilar().then(setPrinterList).catch(() => { });
                                     }
                                     setShowPrinterModal(true);
                                   }
@@ -1402,7 +1442,7 @@ const UserDefinitionsPage: React.FC = () => {
                                 variant="outline-secondary"
                                 onClick={() => {
                                   if (printerList.length === 0) {
-                                    PrinterService.getYazicilar().then(setPrinterList).catch(() => {});
+                                    PrinterService.getYazicilar().then(setPrinterList).catch(() => { });
                                   }
                                   setShowPrinterModal(true);
                                 }}
@@ -1463,69 +1503,133 @@ const UserDefinitionsPage: React.FC = () => {
 
                       {/* Komisyon Oranı ve Kur Yetkisi: yalnız yönetici değiştirir */}
                       <fieldset disabled={!kartYoneticisi} className="d-flex flex-column gap-3">
-                      <div className="p-2 bg-white rounded border">
-                        <div className="d-flex align-items-center justify-content-between mb-1">
-                          <Form.Check
-                            type="checkbox"
-                            id="hasCommissionRate"
-                            label={<span className="small fw-semibold text-secondary">Komisyon oranı</span>}
-                            checked={currentUser.hasCommissionRate}
-                            onChange={(e) =>
-                              updateField("hasCommissionRate", e.target.checked)
-                            }
-                          />
-                          <InputGroup size="sm" style={{ width: "110px" }}>
-                            <Form.Control
-                              type="text"
-                              inputMode="decimal"
-                              data-decimal="true"
-                              disabled={!currentUser.hasCommissionRate}
-                              value={currentUser.commissionRate || ""}
-                              onFocus={(e) => handleInputFocusOrClick(e, "commissionRate")}
-                              onClick={(e) => handleInputFocusOrClick(e, "commissionRate")}
+                        <div className="p-2 bg-white rounded border">
+                          <div className="d-flex align-items-center justify-content-between mb-1">
+                            <Form.Check
+                              type="checkbox"
+                              id="hasCommissionRate"
+                              label={<span className="small fw-semibold text-secondary">Komisyon oranı</span>}
+                              checked={currentUser.hasCommissionRate}
                               onChange={(e) =>
-                                updateField("commissionRate", onlyDecimal(e.target.value))
+                                updateField("hasCommissionRate", e.target.checked)
                               }
-                              className="bg-light border text-end"
                             />
-                            <InputGroup.Text className="bg-light small px-1">%</InputGroup.Text>
-                          </InputGroup>
+                            <InputGroup size="sm" style={{ width: "110px" }}>
+                              <Form.Control
+                                type="text"
+                                inputMode="decimal"
+                                data-decimal="true"
+                                disabled={!currentUser.hasCommissionRate}
+                                value={currentUser.commissionRate || ""}
+                                onFocus={(e) => handleInputFocusOrClick(e, "commissionRate")}
+                                onClick={(e) => handleInputFocusOrClick(e, "commissionRate")}
+                                onChange={(e) =>
+                                  updateField("commissionRate", onlyDecimal(e.target.value))
+                                }
+                                className="bg-light border text-end"
+                              />
+                              <InputGroup.Text className="bg-light small px-1">%</InputGroup.Text>
+                            </InputGroup>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Kur Yetkisi */}
-                      <div className="p-2 bg-white rounded border">
-                        <div className="d-flex align-items-center gap-1 flex-wrap">
-                          <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0 me-1">
-                            <IconExchange size={16} /> Kur yetkisi:
-                          </span>
-                          <Form.Select
-                            size="sm"
-                            value={currentUser.ratePermType || "Var"}
-                            onChange={(e) => updateField("ratePermType", e.target.value)}
-                            style={{ width: "78px", minWidth: "78px" }}
-                            className="bg-light border fw-medium flex-shrink-0"
-                          >
-                            <option value="Var">Var</option>
-                            <option value="Yok">Yok</option>
-                            <option value="Limitli">Limitli</option>
-                          </Form.Select>
-                          <Form.Control
-                            type="text"
-                            inputMode="decimal"
-                            data-decimal="true"
-                            size="sm"
-                            value={currentUser.ratePermValue || ""}
-                            onFocus={(e) => handleInputFocusOrClick(e, "ratePermValue")}
-                            onClick={(e) => handleInputFocusOrClick(e, "ratePermValue")}
-                            onChange={(e) =>
-                              updateField("ratePermValue", onlyDecimal(e.target.value))
-                            }
-                            className="bg-light border text-end flex-grow-1"
-                            style={{ minWidth: "50px" }}
-                          />
+                        {/* Kur Yetkisi */}
+                        <div className="p-2 bg-white rounded border">
+                          <div className="d-flex align-items-center gap-1 flex-wrap">
+                            <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0 me-1">
+                              <IconExchange size={16} /> Kur yetkisi:
+                            </span>
+                            <Form.Select
+                              size="sm"
+                              disabled={!kartYoneticisi}
+                              value={
+                                currentUser.ratePermType === "Limitli"
+                                  ? "Yüzde"
+                                  : currentUser.ratePermType || "Var"
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateField("ratePermType", val);
+                                if (val !== "Yüzde" && val !== "Limitli") {
+                                  updateField("ratePermValue", "0.00");
+                                }
+                              }}
+                              style={{ width: "95px", minWidth: "95px" }}
+                              className="bg-light border fw-medium flex-shrink-0"
+                            >
+                              <option value="Var">Var</option>
+                              <option value="Yok">Yok</option>
+                              <option value="Esnek">Esnek</option>
+                              <option value="Yüzde">Yüzde</option>
+                            </Form.Select>
+                            {(currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli") && (
+                              <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: "75px", maxWidth: "120px" }}>
+                                <span className="small text-secondary fw-bold">%</span>
+                                <Form.Control
+                                  type="text"
+                                  inputMode="decimal"
+                                  data-decimal="true"
+                                  size="sm"
+                                  placeholder="0.00"
+                                  disabled={!kartYoneticisi}
+                                  value={currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null ? String(currentUser.ratePermValue) : ""}
+                                  onFocus={(e) => handleInputFocusOrClick(e, "ratePermValue")}
+                                  onClick={(e) => handleInputFocusOrClick(e, "ratePermValue")}
+                                  onChange={(e) =>
+                                    updateField("ratePermValue", onlyDecimal(e.target.value))
+                                  }
+                                  className="bg-light border text-end flex-grow-1"
+                                  style={{ minWidth: "50px" }}
+                                  title="Kur tolerans yüzdesi (%)"
+                                />
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
+
+                        {/* İşçilik Giriş Şekli */}
+                        <div className="p-2 bg-white rounded border">
+                          <div className="d-flex align-items-center justify-content-between gap-2">
+                            <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
+                              <IconTools size={16} /> İşçilik giriş şekli:
+                            </span>
+                            <div
+                              className="btn-group p-0.5 bg-light rounded border flex-shrink-0"
+                              role="group"
+                              aria-label="İşçilik Giriş Şekli"
+                              style={{ padding: "2px" }}
+                            >
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                variant={Number(currentUser.iscilikGirisSekli || 0) === 0 ? "primary" : "light"}
+                                className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.iscilikGirisSekli || 0) === 0
+                                    ? "shadow-sm text-white"
+                                    : "text-secondary bg-transparent hover-bg-white"
+                                  }`}
+                                style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
+                                onClick={() => updateField("iscilikGirisSekli", 0)}
+                              >
+                                Tam Sayı
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                variant={Number(currentUser.iscilikGirisSekli || 0) === 1 ? "primary" : "light"}
+                                className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.iscilikGirisSekli || 0) === 1
+                                    ? "shadow-sm text-white"
+                                    : "text-secondary bg-transparent hover-bg-white"
+                                  }`}
+                                style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
+                                onClick={() => updateField("iscilikGirisSekli", 1)}
+                              >
+                                Milyem
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
                       </fieldset>
                     </div>
                   </Col>
@@ -2134,11 +2238,10 @@ const UserDefinitionsPage: React.FC = () => {
                         <Col key={styleItem.id} xs={12} md={6} lg={4}>
                           <div
                             onClick={() => updateAppearanceField("sidebarStyle", styleItem.id)}
-                            className={`p-3 rounded-3 border h-100 position-relative transition-all d-flex flex-column justify-content-between ${
-                              isSelected
+                            className={`p-3 rounded-3 border h-100 position-relative transition-all d-flex flex-column justify-content-between ${isSelected
                                 ? "border-primary bg-primary-subtle bg-opacity-25 shadow-sm"
                                 : "border-light-subtle bg-white hover-shadow"
-                            }`}
+                              }`}
                             style={{
                               borderWidth: isSelected ? "2px" : "1px",
                               cursor: "pointer",
@@ -2148,9 +2251,8 @@ const UserDefinitionsPage: React.FC = () => {
                             <div>
                               <div className="d-flex align-items-center justify-content-between mb-2">
                                 <span
-                                  className={`badge ${
-                                    isSelected ? "bg-primary text-white" : "bg-secondary-subtle text-secondary"
-                                  } rounded-pill px-2 py-0.5 small`}
+                                  className={`badge ${isSelected ? "bg-primary text-white" : "bg-secondary-subtle text-secondary"
+                                    } rounded-pill px-2 py-0.5 small`}
                                 >
                                   {styleItem.badge}
                                 </span>

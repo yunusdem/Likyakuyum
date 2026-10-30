@@ -2,7 +2,7 @@ import { createWorker } from "tesseract.js";
 
 export interface OcrExtractedData {
   rawText: string;
-  belgeTuru: number; // 0: Kimlik, 1: Pasaport, 2: Vergi Levhası
+  belgeTuru: number; // 0: Kimlik, 1: Pasaport, 2: Ehliyet, 3: Vergi Levhası
   tcKimlikNo?: string;
   ad?: string;
   soyad?: string;
@@ -23,6 +23,10 @@ export interface OcrExtractedData {
   ulke?: string;
   adres?: string;
   faaliyetKonusu?: string;
+  kanGrubu?: string;
+  surucuSinifi?: string;
+  verilisTarihi?: string;
+  verenMakam?: string;
 }
 
 /**
@@ -215,9 +219,37 @@ export function cleanSeri(s?: string): string | undefined {
  */
 export function isKimlikBackFace(data: OcrExtractedData): boolean {
   if (data.anneAdi || data.babaAdi) return true;
+  if (data.kanGrubu) return true;
   if (data.rawText) {
     const u = data.rawText.toLocaleUpperCase("tr-TR");
-    if (u.includes("I<TUR") || u.includes("ANNE ADI") || u.includes("BABA ADI") || u.includes("MOTHER") || u.includes("FATHER") || u.includes("VEREN MAKAM") || u.includes("İÇİŞLERİ")) {
+    // MRZ sadece kimlik/pasaport arka yüzünde olur
+    if (u.includes("I<TUR") || u.includes("ANNE ADI") || u.includes("BABA ADI") || u.includes("MOTHER") || u.includes("FATHER")) {
+      return true;
+    }
+    // Ehliyet Arka Yüz Belirteçleri:
+    if (
+      u.includes("KAN GRUBU") ||
+      u.includes("BLOOD GROUP") ||
+      u.includes("13.") ||
+      u.includes("C1E") ||
+      u.includes("D1E") ||
+      (u.includes("SÜRÜCÜ") && (u.includes("SINIF") || u.includes("KISIT") || u.includes("12.")))
+    ) {
+      return true;
+    }
+    // Ehliyet Ön Yüzünde "4c. İÇİŞLERİ BAKANLIĞI", "SÜRÜCÜ BELGESİ", "4D" yazar, bunları asla arka yüz sayma!
+    if (
+      u.includes("SÜRÜCÜ BELGESİ") ||
+      u.includes("SURUCU BELGESI") ||
+      u.includes("DRIVING LICENCE") ||
+      u.includes("PERMIS DE CONDUIRE") ||
+      u.includes("4D") ||
+      u.includes("4A") ||
+      u.includes("4B")
+    ) {
+      return false;
+    }
+    if (u.includes("VEREN MAKAM") || u.includes("CİLT NO") || u.includes("AİLE SIRA NO")) {
       return true;
     }
   }
@@ -228,9 +260,25 @@ export function isKimlikBackFace(data: OcrExtractedData): boolean {
  * Bir kimlik görselinin veya okunan verisinin Ön Yüz olup olmadığını tespit eder
  */
 export function isKimlikFrontFace(data: OcrExtractedData): boolean {
+  if (data.tcKimlikNo && isValidTcKimlikNo(data.tcKimlikNo)) return true;
+  if (data.ad || data.soyad) return true;
   if (data.rawText) {
     const u = data.rawText.toLocaleUpperCase("tr-TR");
-    if ((u.includes("KİMLİK NO") || u.includes("KIMLIK NO") || u.includes("IDENTITY NO") || u.includes("GIVEN") || u.includes("SURNAME") || u.includes("SOYADI")) && !u.includes("I<TUR") && !u.includes("ANNE ADI")) {
+    if (
+      u.includes("SÜRÜCÜ BELGESİ") ||
+      u.includes("SURUCU BELGESI") ||
+      u.includes("DRIVING LICENCE") ||
+      u.includes("PERMIS DE CONDUIRE") ||
+      u.includes("4D") ||
+      u.includes("4A") ||
+      u.includes("4B") ||
+      u.includes("KİMLİK NO") ||
+      u.includes("KIMLIK NO") ||
+      u.includes("IDENTITY NO") ||
+      u.includes("GIVEN") ||
+      u.includes("SURNAME") ||
+      u.includes("SOYADI")
+    ) {
       return true;
     }
   }
@@ -243,10 +291,12 @@ export function isKimlikFrontFace(data: OcrExtractedData): boolean {
  * - binarized: Adaptif eşikleme / siyah-beyaz binarize (parlama, hologram ve arka plan desenlerini yok eder)
  * - mrz_region: Alt %35 MRZ alanına odaklanma (arka yüz ve pasaport makine okuma bandı)
  * - tckn_region: Üst sol %58 genişlik, %8-%46 yükseklik alanına odaklanma (11 haneli TCKN alanı)
+ * - ehliyet_names_region: Ehliyet üst-sağ isim/soyisim alanı
+ * - ehliyet_details_region: Ehliyet orta-alt sağ TCKN, belge no, doğum/geçerlilik tarihi alanı
  */
 export async function preprocessForDeepOcr(
   imageSrc: string,
-  mode: "upscaled_contrast" | "binarized" | "mrz_region" | "tckn_region"
+  mode: "upscaled_contrast" | "binarized" | "mrz_region" | "tckn_region" | "ehliyet_names_region" | "ehliyet_details_region"
 ): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -274,6 +324,20 @@ export async function preprocessForDeepOcr(
           srcW = Math.round(origW * 0.58);
           srcH = Math.round(origH * 0.38);
           scale = 2.2;
+        } else if (mode === "ehliyet_names_region") {
+          // Ehliyet ön yüzünde sürücü fotoğrafı sol %25'tedir. İsim ve Soyisim üst-sağ alandadır.
+          srcX = Math.round(origW * 0.24);
+          srcY = Math.round(origH * 0.10);
+          srcW = Math.round(origW * 0.74);
+          srcH = Math.round(origH * 0.42);
+          scale = 2.2;
+        } else if (mode === "ehliyet_details_region") {
+          // Doğum tarihi, 4a, 4b, 4c, 4d TCKN ve 5 Belge No orta-alt sağ alandadır.
+          srcX = Math.round(origW * 0.24);
+          srcY = Math.round(origH * 0.44);
+          srcW = Math.round(origW * 0.74);
+          srcH = Math.round(origH * 0.54);
+          scale = 2.4;
         }
 
         let outW = Math.round(srcW * scale);
@@ -394,14 +458,20 @@ export function mergeExtractedData(
     merged.unvan = secondary.unvan;
   }
 
-  // 6. Seri No: 9 karakterli geçerli seri no (cleanSeri) öncelikli
+  // 6. Seri No: 9 karakterli geçerli seri no (cleanSeri) öncelikli (Ehliyet için serbest format)
   if (secondary.kimlikSeriNo) {
-    const cleanCur = cleanSeri(merged.kimlikSeriNo);
-    const cleanNew = cleanSeri(secondary.kimlikSeriNo);
-    if (!cleanCur && cleanNew) {
-      merged.kimlikSeriNo = cleanNew;
-    } else if (cleanCur && cleanNew && cleanCur.length !== 9 && cleanNew.length === 9) {
-      merged.kimlikSeriNo = cleanNew;
+    if (merged.belgeTuru === 2 || secondary.belgeTuru === 2) {
+      if (!merged.kimlikSeriNo || secondary.kimlikSeriNo.length >= (merged.kimlikSeriNo.length || 0)) {
+        merged.kimlikSeriNo = secondary.kimlikSeriNo;
+      }
+    } else {
+      const cleanCur = cleanSeri(merged.kimlikSeriNo);
+      const cleanNew = cleanSeri(secondary.kimlikSeriNo);
+      if (!cleanCur && cleanNew) {
+        merged.kimlikSeriNo = cleanNew;
+      } else if (cleanCur && cleanNew && cleanCur.length !== 9 && cleanNew.length === 9) {
+        merged.kimlikSeriNo = cleanNew;
+      }
     }
   }
 
@@ -431,7 +501,13 @@ export function mergeExtractedData(
     }
   }
 
-  // 9. Diğer alanlar
+  // 9. Ehliyet Özel Alanları
+  if (!merged.kanGrubu && secondary.kanGrubu) merged.kanGrubu = secondary.kanGrubu;
+  if (!merged.surucuSinifi && secondary.surucuSinifi) merged.surucuSinifi = secondary.surucuSinifi;
+  if (!merged.verilisTarihi && secondary.verilisTarihi) merged.verilisTarihi = secondary.verilisTarihi;
+  if (!merged.verenMakam && secondary.verenMakam) merged.verenMakam = secondary.verenMakam;
+
+  // 10. Diğer alanlar
   if (!merged.dogumYeri && secondary.dogumYeri) merged.dogumYeri = secondary.dogumYeri;
   if (!merged.il && secondary.il) merged.il = secondary.il;
   if (!merged.ilce && secondary.ilce) merged.ilce = secondary.ilce;
@@ -441,6 +517,10 @@ export function mergeExtractedData(
   if (!merged.ulke && secondary.ulke) merged.ulke = secondary.ulke;
   if (!merged.adres && secondary.adres) merged.adres = secondary.adres;
   if (!merged.faaliyetKonusu && secondary.faaliyetKonusu) merged.faaliyetKonusu = secondary.faaliyetKonusu;
+
+  if (secondary.belgeTuru !== undefined && merged.belgeTuru === undefined) {
+    merged.belgeTuru = secondary.belgeTuru;
+  }
 
   merged.rawText += "\n---\n" + (secondary.rawText || "");
   return merged;
@@ -473,17 +553,24 @@ export async function performOcrAndExtractData(
 
     const normUpper = rawText.toLocaleUpperCase("tr-TR");
     const hasValidContent =
-      normUpper.length >= 70 &&
+      normUpper.length >= 40 &&
       (normUpper.includes("TÜRKİYE") ||
         normUpper.includes("TURKIYE") ||
         normUpper.includes("TURKEY") ||
         normUpper.includes("KİMLİK") ||
         normUpper.includes("KIMLIK") ||
+        normUpper.includes("SÜRÜCÜ") ||
+        normUpper.includes("SURUCU") ||
+        normUpper.includes("DRIVING") ||
+        normUpper.includes("LICENCE") ||
+        normUpper.includes("EHLİYET") ||
+        normUpper.includes("EHLIYET") ||
         normUpper.includes("VERGİ") ||
         normUpper.includes("VERGI") ||
         normUpper.includes("PASAPORT") ||
         normUpper.includes("PASSPORT") ||
         normUpper.includes("I<TUR") ||
+        normUpper.includes("KAN GRUBU") ||
         normUpper.includes("ANNE") ||
         normUpper.includes("BABA") ||
         normUpper.includes("T.C") ||
@@ -547,43 +634,71 @@ export async function performOcrAndExtractData(
     console.warn("Derin analiz Aşama 3 hatası:", err);
   }
 
-  // Aşama 4: Bölgesel Odaklı Tarama (MRZ bandı ve TCKN alanı odaklaması)
-  onProgress?.(80, "4/4: Bölgesel MRZ bandı ve TCKN odaklı analiz yapılıyor...");
-  try {
-    // 4.A: MRZ Bölgesi (Arka yüz veya pasaport için alt %35)
-    const mrzImg = await preprocessForDeepOcr(imageBase64, "mrz_region");
-    if (mrzImg) {
-      await worker.setParameters({
-        tessedit_pageseg_mode: "6" as any,
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<",
-      });
-      const retMrz = await worker.recognize(mrzImg);
-      const mrzText = retMrz.data.text || "";
-      if (mrzText) {
-        const mrzData = parseOcrText(mrzText, targetBelgeTuru);
-        accumulatedData = mergeExtractedData(accumulatedData, mrzData);
+  // Aşama 4: Bölgesel Odaklı Tarama (Ehliyet veya MRZ/TCKN odaklaması)
+  if (targetBelgeTuru === 2 || accumulatedData.belgeTuru === 2) {
+    onProgress?.(80, "4/4: Ehliyet isim ve TCKN/tarih bölgelerine odaklanılıyor...");
+    try {
+      // 4.A: Ehliyet İsim Bölgesi (Soyadı ve Adı)
+      const namesImg = await preprocessForDeepOcr(imageBase64, "ehliyet_names_region");
+      await worker.setParameters({ tessedit_pageseg_mode: "6" as any });
+      const retNames = await worker.recognize(namesImg);
+      const namesText = retNames.data.text || "";
+      if (namesText) {
+        const namesData = parseOcrText(namesText, targetBelgeTuru);
+        accumulatedData = mergeExtractedData(accumulatedData, namesData);
       }
-    }
 
-    // 4.B: TCKN Bölgesi (Eğer hala geçerli bir TCKN bulunamadıysa)
-    if (!accumulatedData.tcKimlikNo || !isValidTcKimlikNo(accumulatedData.tcKimlikNo)) {
-      const tcknImg = await preprocessForDeepOcr(imageBase64, "tckn_region");
-      if (tcknImg) {
+      // 4.B: Ehliyet TCKN, Belge No, Doğum & Geçerlilik Tarihleri Bölgesi
+      const detailsImg = await preprocessForDeepOcr(imageBase64, "ehliyet_details_region");
+      await worker.setParameters({ tessedit_pageseg_mode: "6" as any });
+      const retDetails = await worker.recognize(detailsImg);
+      const detailsText = retDetails.data.text || "";
+      if (detailsText) {
+        const detailsData = parseOcrText(detailsText, targetBelgeTuru);
+        accumulatedData = mergeExtractedData(accumulatedData, detailsData);
+      }
+    } catch (err) {
+      console.warn("Ehliyet derin bölgesel analiz hatası:", err);
+    }
+  } else {
+    // Normal kimlik kartı & pasaport için MRZ ve TCKN
+    onProgress?.(80, "4/4: Bölgesel MRZ bandı ve TCKN odaklı analiz yapılıyor...");
+    try {
+      // 4.A: MRZ Bölgesi (Arka yüz veya pasaport için alt %35)
+      const mrzImg = await preprocessForDeepOcr(imageBase64, "mrz_region");
+      if (mrzImg) {
         await worker.setParameters({
           tessedit_pageseg_mode: "6" as any,
-          tessedit_char_whitelist: "0123456789",
+          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<",
         });
-        const retTckn = await worker.recognize(tcknImg);
-        const tcknText = retTckn.data.text || "";
-        const m11 = tcknText.match(/[1-9]\d{10}/);
-        if (m11 && isValidTcKimlikNo(m11[0])) {
-          accumulatedData.tcKimlikNo = m11[0];
-          accumulatedData.vergiKimlikNo = m11[0];
+        const retMrz = await worker.recognize(mrzImg);
+        const mrzText = retMrz.data.text || "";
+        if (mrzText) {
+          const mrzData = parseOcrText(mrzText, targetBelgeTuru);
+          accumulatedData = mergeExtractedData(accumulatedData, mrzData);
         }
       }
+
+      // 4.B: TCKN Bölgesi (Eğer hala geçerli bir TCKN bulunamadıysa)
+      if (!accumulatedData.tcKimlikNo || !isValidTcKimlikNo(accumulatedData.tcKimlikNo)) {
+        const tcknImg = await preprocessForDeepOcr(imageBase64, "tckn_region");
+        if (tcknImg) {
+          await worker.setParameters({
+            tessedit_pageseg_mode: "6" as any,
+            tessedit_char_whitelist: "0123456789",
+          });
+          const retTckn = await worker.recognize(tcknImg);
+          const tcknText = retTckn.data.text || "";
+          const m11 = tcknText.match(/[1-9]\d{10}/);
+          if (m11 && isValidTcKimlikNo(m11[0])) {
+            accumulatedData.tcKimlikNo = m11[0];
+            accumulatedData.vergiKimlikNo = m11[0];
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Derin analiz Aşama 4 hatası:", err);
     }
-  } catch (err) {
-    console.warn("Derin analiz Aşama 4 hatası:", err);
   }
 
   onProgress?.(95, "Tüm sonuçlar birleştiriliyor ve doğrulanıyor...");
@@ -1045,12 +1160,389 @@ export function isVergiLevhasiNoiseOrLabel(str: string): boolean {
 }
 
 /**
+ * Sürücü Belgesi (Ehliyet) Özel Ayrıştırıcısı
+ * Standart Türk / AB Sürücü Belgesi Numaralandırması:
+ * 1: Soyadı
+ * 2: Adı
+ * 3: Doğum Tarihi ve Yeri (örn: 12.05.1985 ANKARA)
+ * 4a: Belge Veriliş Tarihi
+ * 4b: Belge Geçerlilik Tarihi (YYYY-MM-DD)
+ * 4c: Veren Makam
+ * 4d: T.C. Kimlik Numarası (11 hane)
+ * 5: Belge / Seri Numarası (6 hane)
+ */
+export function parseEhliyet(rawText: string, lines: string[]): OcrExtractedData {
+  const result: OcrExtractedData = {
+    rawText,
+    belgeTuru: 2,
+    ulke: "Türkiye",
+    uyruk: "T.C. / TUR",
+  };
+
+  // Helper to test if a string is a label or noise on driving licenses
+  const isEhliyetNoise = (s: string) => {
+    if (!s) return true;
+    const n = normalizeTrText(s);
+    if (n.length < 2) return true;
+    const NOISE = [
+      "SURUCU", "BELGESI", "DRIVING", "LICENCE", "PERMIS", "CONDUIRE", "TURKIYE", "CUMHURIYETI",
+      "SOYADI", "SURNAME", "ADI", "GIVEN", "NAMES", "NAME", "DOGUM", "TARIHI", "YERI", "BIRTH", "DATE", "PLACE",
+      "VERILIS", "ISSUE", "GECERLILIK", "EXPIRY", "VEREN", "MAKAM", "AUTHORITY", "TCKN", "KIMLIK", "BELGE", "SINIF",
+      "KAN", "GRUBU", "BLOOD", "GROUP", "IMZA", "SIGNATURE", "MINISTRY", "INTERIOR", "ICISLERI", "BAKANLIGI"
+    ];
+    return NOISE.some((noise) => n === noise || n.startsWith(noise + " ") || n.endsWith(" " + noise));
+  };
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 1. TCKN (4d alanı, 11 haneli arama & boşluk/OCR toleransı)
+  // ──────────────────────────────────────────────────────────────────────────
+  // 1.A: 4d veya TCKN satırı ve civarı
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const upper = line.toLocaleUpperCase("tr-TR");
+    if (
+      upper.includes("4D") ||
+      upper.includes("4 D") ||
+      upper.includes("4.D") ||
+      upper.includes("4-D") ||
+      upper.includes("4CL") ||
+      upper.includes("40") ||
+      upper.includes("TCKN") ||
+      upper.includes("T.C.")
+    ) {
+      for (let j = i; j <= Math.min(i + 2, lines.length - 1); j++) {
+        const rawDigits = lines[j].replace(/[^0-9]/g, "");
+        if (rawDigits.length === 11 && isValidTcKimlikNo(rawDigits)) {
+          result.tcKimlikNo = rawDigits;
+          result.vergiKimlikNo = rawDigits;
+          break;
+        }
+        const sub11 = lines[j].match(/\b[1-9]\d{10}\b/g) || [];
+        for (const s of sub11) {
+          if (isValidTcKimlikNo(s)) {
+            result.tcKimlikNo = s;
+            result.vergiKimlikNo = s;
+            break;
+          }
+        }
+        if (result.tcKimlikNo) break;
+      }
+    }
+    if (result.tcKimlikNo) break;
+  }
+
+  // 1.B: Tüm metinde aralıklı veya temiz 11 hane
+  if (!result.tcKimlikNo) {
+    const spaced = rawText.match(/\b[1-9][0-9\s.-]{10,18}\b/g) || [];
+    for (const item of spaced) {
+      const clean = item.replace(/[^0-9]/g, "");
+      if (clean.length === 11 && isValidTcKimlikNo(clean)) {
+        result.tcKimlikNo = clean;
+        result.vergiKimlikNo = clean;
+        break;
+      }
+    }
+  }
+
+  // 1.C: Doğrudan 11 haneli regex
+  if (!result.tcKimlikNo) {
+    const direct11 = rawText.match(/\b[1-9]\d{10}\b/g) || [];
+    for (const num of direct11) {
+      if (isValidTcKimlikNo(num)) {
+        result.tcKimlikNo = num;
+        result.vergiKimlikNo = num;
+        break;
+      }
+    }
+  }
+
+  // 1.D: OCR Hata Düzeltme (Örn: O->0, I/l->1, B->8, S->5, Z->2)
+  if (!result.tcKimlikNo) {
+    const potentialTokens = rawText.split(/\s+/);
+    for (const tok of potentialTokens) {
+      if (tok.length >= 11 && tok.length <= 13) {
+        const repaired = tok
+          .toUpperCase()
+          .replace(/O/g, "0")
+          .replace(/[IL|]/g, "1")
+          .replace(/Z/g, "2")
+          .replace(/S/g, "5")
+          .replace(/B/g, "8")
+          .replace(/[^0-9]/g, "");
+        if (repaired.length === 11 && isValidTcKimlikNo(repaired)) {
+          result.tcKimlikNo = repaired;
+          result.vergiKimlikNo = repaired;
+          break;
+        }
+      }
+    }
+  }
+
+  // 1.E: Fallback: Herhangi bir 11 hane bulunduysa
+  if (!result.tcKimlikNo) {
+    const any11 = rawText.match(/\b[1-9]\d{10}\b/);
+    if (any11) {
+      result.tcKimlikNo = any11[0];
+      result.vergiKimlikNo = any11[0];
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 2. SOYADI (1. alanı)
+  // ──────────────────────────────────────────────────────────────────────────
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // "1. YILMAZ" veya "1 YILMAZ" veya "1: YILMAZ" veya "1- YILMAZ"
+    const match1 = line.match(/(?:^|\s)[1lI|!][.\s:/-]+([A-ZÇĞİÖŞÜa-zçğıöşü\s]{2,30})/);
+    if (match1) {
+      let cand = cleanTextString(match1[1]);
+      cand = cand.replace(/\b(?:SOYAD[Iİ]?|SURNAME|TUR|T\.C\.)\b/gi, "").trim();
+      if (cand && cand.length >= 2 && isValidNameOrSurname(cand) && !isEhliyetNoise(cand)) {
+        result.soyad = cand;
+        break;
+      }
+    }
+
+    const u = line.toLocaleUpperCase("tr-TR");
+    if (u.includes("SOYAD") || u.includes("SURNAME")) {
+      const sameLine = line.replace(/.*(?:SOYAD[Iİ]?|SURNAME)[.\s:/-]*/i, "");
+      let candSame = cleanTextString(sameLine);
+      candSame = candSame.replace(/\b(?:SOYAD[Iİ]?|SURNAME|TUR)\b/gi, "").trim();
+      if (candSame && candSame.length >= 2 && isValidNameOrSurname(candSame) && !isEhliyetNoise(candSame)) {
+        result.soyad = candSame;
+        break;
+      }
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        if (!nextLine.match(/^[23456789]/) && !nextLine.includes("ADI") && !nextLine.includes("GIVEN")) {
+          let candNext = cleanTextString(nextLine);
+          candNext = candNext.replace(/\b(?:SOYAD[Iİ]?|SURNAME|TUR)\b/gi, "").trim();
+          if (candNext && candNext.length >= 2 && isValidNameOrSurname(candNext) && !isEhliyetNoise(candNext)) {
+            result.soyad = candNext;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 3. ADI (2. alanı)
+  // ──────────────────────────────────────────────────────────────────────────
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // "2. AHMET" veya "2 AHMET" veya "2: AHMET" veya "2- AHMET"
+    const match2 = line.match(/(?:^|\s)[2Z][.\s:/-]+([A-ZÇĞİÖŞÜa-zçğıöşü\s]{2,35})/);
+    if (match2) {
+      let cand = cleanTextString(match2[1]);
+      cand = cand.replace(/\b(?:AD[Iİ]?|GIVEN|NAMES?|SURNAME)\b/gi, "").trim();
+      if (cand && cand.length >= 2 && isValidNameOrSurname(cand) && !isEhliyetNoise(cand)) {
+        result.ad = cand;
+        break;
+      }
+    }
+
+    const u = line.toLocaleUpperCase("tr-TR");
+    if (u.includes("ADI") || u.includes("GIVEN")) {
+      const sameLine = line.replace(/.*(?:AD[Iİ]?|GIVEN\s*NAMES?)[.\s:/-]*/i, "");
+      let candSame = cleanTextString(sameLine);
+      candSame = candSame.replace(/\b(?:AD[Iİ]?|GIVEN|NAMES?)\b/gi, "").trim();
+      if (candSame && candSame.length >= 2 && isValidNameOrSurname(candSame) && !isEhliyetNoise(candSame)) {
+        result.ad = candSame;
+        break;
+      }
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        if (!nextLine.match(/^[13456789]/) && !nextLine.includes("DOĞUM") && !nextLine.includes("BIRTH")) {
+          let candNext = cleanTextString(nextLine);
+          candNext = candNext.replace(/\b(?:AD[Iİ]?|GIVEN|NAMES?)\b/gi, "").trim();
+          if (candNext && candNext.length >= 2 && isValidNameOrSurname(candNext) && !isEhliyetNoise(candNext)) {
+            result.ad = candNext;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: Başlık satırı sonrası 1. ve 2. kelime blokları
+  if (!result.soyad || !result.ad) {
+    const cleanLines = lines
+      .map(cleanTextString)
+      .filter((l) => l.length >= 2 && !isEhliyetNoise(l));
+    if (!result.soyad && cleanLines.length > 0) {
+      result.soyad = cleanLines[0];
+    }
+    if (!result.ad && cleanLines.length > 1 && cleanLines[1] !== result.soyad) {
+      result.ad = cleanLines[1];
+    }
+  }
+
+  // Ünvan birleştir
+  if (result.ad && result.soyad) {
+    result.unvan = `${result.ad} ${result.soyad}`.trim();
+  } else if (result.ad) {
+    result.unvan = result.ad;
+  } else if (result.soyad) {
+    result.unvan = result.soyad;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 4. DOĞUM TARİHİ VE YERİ (3. alanı)
+  // ──────────────────────────────────────────────────────────────────────────
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const u = line.toLocaleUpperCase("tr-TR");
+    const isLine3 = line.match(/(?:^|\s)[3E][.\s:/-]+/) || u.includes("DOĞUM") || u.includes("DOGUM") || u.includes("BIRTH");
+
+    if (isLine3) {
+      const dateMatch = line.match(/(\d{1,2}[./-]\d{1,2}[./-]\d{4})/);
+      if (dateMatch) {
+        const pDate = parseDateToIso(dateMatch[1]);
+        if (pDate) result.dogumTarihi = pDate;
+
+        const afterDate = line.substring(line.indexOf(dateMatch[0]) + dateMatch[0].length);
+        const placeCand = cleanTextString(afterDate).replace(/[^A-ZÇĞİÖŞÜ\s]/g, "").trim();
+        if (placeCand.length >= 2 && !isEhliyetNoise(placeCand)) {
+          result.dogumYeri = placeCand;
+        }
+      } else if (i + 1 < lines.length) {
+        const nextDateMatch = lines[i + 1].match(/(\d{1,2}[./-]\d{1,2}[./-]\d{4})/);
+        if (nextDateMatch) {
+          const pDate = parseDateToIso(nextDateMatch[1]);
+          if (pDate) result.dogumTarihi = pDate;
+          const afterDate = lines[i + 1].substring(lines[i + 1].indexOf(nextDateMatch[0]) + nextDateMatch[0].length);
+          const placeCand = cleanTextString(afterDate).replace(/[^A-ZÇĞİÖŞÜ\s]/g, "").trim();
+          if (placeCand.length >= 2 && !isEhliyetNoise(placeCand)) {
+            result.dogumYeri = placeCand;
+          }
+        }
+      }
+      if (result.dogumTarihi) break;
+    }
+  }
+
+  // Doğum Yeri Türkiye Şehirleri Listesi ile Doğrulama / Arama
+  if (!result.dogumYeri) {
+    for (const city of TURKISH_CITIES) {
+      const cityRegex = new RegExp(`\\b${city}\\b`, "i");
+      if (cityRegex.test(rawText)) {
+        result.dogumYeri = city;
+        break;
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 5. VERİLİŞ (4a) ve GEÇERLİLİK TARİHİ (4b)
+  // ──────────────────────────────────────────────────────────────────────────
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // 4b Geçerlilik Tarihi
+    const match4b = line.match(/(?:4b|4\s*b|GEÇERL[Iİ]L[Iİ]K|EXPIRY)[.\s:/-]*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/i);
+    if (match4b) {
+      const pDate = parseDateToIso(match4b[1]);
+      if (pDate) result.kimlikGecerlilikTarihi = pDate;
+    }
+
+    // 4a Veriliş Tarihi
+    const match4a = line.match(/(?:4a|4\s*a|VER[Iİ]L[Iİ]Ş|ISSUE)[.\s:/-]*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/i);
+    if (match4a) {
+      const pDate = parseDateToIso(match4a[1]);
+      if (pDate) result.verilisTarihi = pDate;
+    }
+  }
+
+  // Eğer 4b veya doğum tarihi bulunamadıysa metindeki tüm tarihleri topla ve sırala
+  if (!result.kimlikGecerlilikTarihi || !result.dogumTarihi) {
+    const allDates = (rawText.match(/\b\d{1,2}[./-]\d{1,2}[./-]\d{4}\b/g) || [])
+      .map(parseDateToIso)
+      .filter(Boolean) as string[];
+    if (allDates.length >= 2) {
+      allDates.sort();
+      if (!result.dogumTarihi) result.dogumTarihi = allDates[0];
+      if (!result.kimlikGecerlilikTarihi) result.kimlikGecerlilikTarihi = allDates[allDates.length - 1];
+    } else if (allDates.length === 1 && !result.dogumTarihi) {
+      result.dogumTarihi = allDates[0];
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 6. BELGE / SERİ NO (5. alanı)
+  // ──────────────────────────────────────────────────────────────────────────
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match5 = line.match(/(?:^|\s)5[.\s:/-]+([A-Z0-9]{5,8})\b/i);
+    if (match5) {
+      result.kimlikSeriNo = match5[1].trim();
+      break;
+    }
+    const match5Label = line.match(/(?:BELGE\s*NO|LICENCE\s*NO)[.\s:]*([A-Z0-9]{5,8})/i);
+    if (match5Label) {
+      result.kimlikSeriNo = match5Label[1].trim();
+      break;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 7. VEREN MAKAM (4c. alanı)
+  // ──────────────────────────────────────────────────────────────────────────
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match4c = line.match(/(?:4c|4\s*c)[.\s:/-]+([A-ZÇĞİÖŞÜa-zçğıöşü\s/]+)/i);
+    if (match4c) {
+      const cand = cleanTextString(match4c[1]);
+      if (cand && cand.length >= 3 && !isEhliyetNoise(cand)) {
+        result.verenMakam = cand;
+        break;
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 8. SÜRÜCÜ SINIFI (9. alanı)
+  // ──────────────────────────────────────────────────────────────────────────
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match9 = line.match(/(?:^|\s)9[.\s:/-]+([A-Z0-9,\s/]{1,15})\b/i);
+    if (match9) {
+      const cand = match9[1].replace(/[^A-Z0-9,\s/]/g, "").trim();
+      if (cand && cand.length >= 1 && cand.length <= 15) {
+        result.surucuSinifi = cand;
+        break;
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 9. KAN GRUBU (13. alanı - Arka Yüz)
+  // ──────────────────────────────────────────────────────────────────────────
+  const bloodMatch = rawText.match(
+    /(?:13[.\s:/-]*)?(\b(?:A|B|AB|0)\s*Rh\s*[\(+-][\)]?|\b(?:A|B|AB|0)\s*RH\s*(?:POZ[Iİ]T[Iİ]F|NEGAT[Iİ]F|\+|\-)|\b(?:A|B|AB|0)\s*[\(+-]Rh[\)]?)/i
+  );
+  if (bloodMatch) {
+    let bg = bloodMatch[1].toUpperCase().replace(/\s+/g, " ");
+    bg = bg
+      .replace(/POZ[Iİ]T[Iİ]F/i, "(+)")
+      .replace(/NEGAT[Iİ]F/i, "(-)")
+      .replace(/\+/g, "(+)")
+      .replace(/-/g, "(-)")
+      .replace(/\(\(\+\)\)/g, "(+)")
+      .replace(/\(\(\-\)\)/g, "(-)");
+    result.kanGrubu = bg;
+  }
+
+  return result;
+}
+
+/**
  * Vergi Levhası (GİB Standart Şablonu) Özel Ayrıştırıcısı
  */
 export function parseVergiLevhasi(rawText: string, lines: string[]): OcrExtractedData {
   const result: OcrExtractedData = {
     rawText,
-    belgeTuru: 2,
+    belgeTuru: 3,
     ulke: "Türkiye",
     uyruk: "T.C. / TUR",
   };
@@ -1345,6 +1837,13 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
   // ─── 1. OTOMATİK BELGE TÜRÜ TESPİTİ ────────────────────────────────────────
   let belgeTuru = defaultBelgeTuru;
   if (
+    cleanUpperText.includes("SÜRÜCÜ BELGESİ") ||
+    cleanUpperText.includes("SURUCU BELGESI") ||
+    cleanUpperText.includes("DRIVING LICENCE") ||
+    cleanUpperText.includes("PERMIS DE CONDUIRE")
+  ) {
+    belgeTuru = 2; // Ehliyet (Sürücü Belgesi)
+  } else if (
     cleanUpperText.includes("VERGİ LEVHASI") ||
     cleanUpperText.includes("VERGI LEVHASI") ||
     cleanUpperText.includes("GELİR İDARESİ") ||
@@ -1354,7 +1853,7 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
     cleanUpperText.includes("BEYAN OLUNAN MATRAH") ||
     cleanUpperText.includes("TAHAKKUK EDEN VERGİ")
   ) {
-    belgeTuru = 2; // Vergi Levhası
+    belgeTuru = 3; // Vergi Levhası
   } else if (
     cleanUpperText.includes("PASSPORT") ||
     cleanUpperText.includes("PASAPORT") ||
@@ -1364,11 +1863,20 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
     belgeTuru = 1; // Pasaport
   } else if (defaultBelgeTuru === 0) {
     belgeTuru = 0; // T.C. Kimlik
+  } else if (defaultBelgeTuru === 2) {
+    belgeTuru = 2; // Ehliyet
+  } else if (defaultBelgeTuru === 3) {
+    belgeTuru = 3; // Vergi Levhası
   }
 
   // EĞER VERGİ LEVHASI İSE DOĞRUDAN ÖZELLEŞTİRİLMİŞ VERGİ LEVHASI PARSER'INI ÇALIŞTIR
-  if (belgeTuru === 2) {
+  if (belgeTuru === 3) {
     return parseVergiLevhasi(rawText, lines);
+  }
+
+  // EĞER EHLİYET İSE DOĞRUDAN ÖZELLEŞTİRİLMİŞ EHLİYET PARSER'INI ÇALIŞTIR
+  if (belgeTuru === 2) {
+    return parseEhliyet(rawText, lines);
   }
 
   const result: OcrExtractedData = {
@@ -1424,7 +1932,7 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
   }
 
   // 10 Haneli VKN varsa
-  if (result.belgeTuru === 2 || !result.tcKimlikNo) {
+  if (result.belgeTuru === 3 || !result.tcKimlikNo) {
     const tenDigitMatches = rawText.match(/\b\d{10}\b/g) || [];
     for (const vkn of tenDigitMatches) {
       if (!result.tcKimlikNo || !result.tcKimlikNo.includes(vkn)) {
@@ -2099,7 +2607,7 @@ export function parseOcrText(rawText: string, defaultBelgeTuru: number = 0): Ocr
   }
 
   // ─── 5. VERGİ LEVHASI ÖZEL ALANLARI ───────────────────────────────────────
-  if (result.belgeTuru === 2) {
+  if (result.belgeTuru === 3) {
     for (let i = 0; i < lines.length; i++) {
       const u = lines[i].toUpperCase();
       if (u.includes("VERGİ DAİRESİ") || u.includes("VERGI DAIRESI")) {

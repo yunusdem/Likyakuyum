@@ -7,7 +7,8 @@ const flexNumber = (defaultVal = 0) =>
     .optional()
     .transform((val) => {
       if (val === undefined || val === null || val === "") return defaultVal;
-      const num = parseFloat(String(val));
+      const clean = String(val).replace(/,/g, ".");
+      const num = parseFloat(clean);
       return isNaN(num) ? defaultVal : num;
     });
 
@@ -92,6 +93,7 @@ export const createUserSchema = z.object({
     commissionRate: flexNumber(0),
     ratePermType: z.string().optional().default("Var"),
     ratePermValue: flexNumber(0),
+    iscilikGirisSekli: flexNumber(0),
 
     menuPerms: menuPermissionsSchema.passthrough().optional(),
 
@@ -149,6 +151,7 @@ export const updateUserSchema = z.object({
     commissionRate: flexNumber(0),
     ratePermType: z.string().optional(),
     ratePermValue: flexNumber(0),
+    iscilikGirisSekli: flexNumber(0),
 
     menuPerms: menuPermissionsSchema.partial().passthrough().optional(),
 

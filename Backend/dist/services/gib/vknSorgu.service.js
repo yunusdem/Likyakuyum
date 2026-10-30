@@ -4,6 +4,7 @@ import { ApiError } from "../../utils/ApiError.js";
 import { isEncryptionConfigured } from "../../utils/crypto.utils.js";
 import { logger } from "../../utils/logger.js";
 import { noTemizle, noTuru } from "../../utils/vknKontrol.js";
+import { vergiDairesiIlIlce } from "../../utils/vergiDaireleri.js";
 import { EbelgeService } from "../ebelge.service.js";
 import { EarsivPortalClient, GibPortalHatasi } from "./earsivPortal.client.js";
 /**
@@ -25,6 +26,15 @@ const sifrelemeKontrol = () => {
 };
 export class VknSorguService {
     static async sorgula(girdi, ctx, kullanici) {
+        const ham = await this.hamSorgu(girdi, ctx, kullanici);
+        if (!ham.vergiDairesi)
+            return { ...ham, il: "", ilce: "", ilIlceUyari: null };
+        // Aynı adlı daire birden çok ilde varsa firmanın kendi ili seçilir
+        const firmaIli = await GibSqlRepository.firmaIli(ctx).catch(() => null);
+        const { il, ilce, uyari } = vergiDairesiIlIlce(ham.vergiDairesi, firmaIli);
+        return { ...ham, il, ilce, ilIlceUyari: uyari };
+    }
+    static async hamSorgu(girdi, ctx, kullanici) {
         const no = noTemizle(girdi);
         const tur = noTuru(no);
         if (!tur) {

@@ -132,6 +132,26 @@ function LookupModalContent<T extends Record<string, any>>({
 
   // Initial selection and focus on modal open
   const isFirstMountRef = useRef(true);
+  const autoSelectedRef = useRef(false);
+
+  // Tek kayıt varsa ekran açılmasın, doğrudan seçsin (örnek istatistik kodundaki gibi)
+  useEffect(() => {
+    if (!show) {
+      autoSelectedRef.current = false;
+      return;
+    }
+
+    if (show && !isLoading && initialSearchTerm && initialSearchTerm.trim()) {
+      if (!autoSelectedRef.current && filteredItems.length === 1) {
+        const single = filteredItems[0];
+        if (!isItemDisabled?.(single)) {
+          autoSelectedRef.current = true;
+          onSelect(single);
+          onHide();
+        }
+      }
+    }
+  }, [show, isLoading, initialSearchTerm, filteredItems, isItemDisabled, onSelect, onHide]);
 
   useEffect(() => {
     if (!show) {
@@ -281,7 +301,7 @@ function LookupModalContent<T extends Record<string, any>>({
 
   return (
     <Modal
-      show={show}
+      show={show && !autoSelectedRef.current}
       onHide={onHide}
       size="lg"
       centered

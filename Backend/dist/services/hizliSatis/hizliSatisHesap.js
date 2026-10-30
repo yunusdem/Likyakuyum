@@ -94,12 +94,13 @@ export function sepetHesapla(modul, satirlar, secenek = {}) {
         return { ...bos, satirTutarlari: r.map((x) => x.toplam), araToplam: ara, kdv, indirim, genelToplam: Math.max(0, yuvarla2(brut - indirim)) };
     }
     if (modul === "ticari") {
-        const girdi = satirlar.map((s) => ({ miktar: s.miktar, kdvDahilFiyat: s.birimFiyat, kdvOrani: s.kdvOrani }));
+        const girdi = satirlar.map((s) => ({ miktar: s.miktar, kdvDahilFiyat: s.birimFiyat, kdvOrani: s.kdvOrani, iskontoTuru: (s.ek?.kampanya?.turu ?? 0), iskontoDegeri: s.ek?.kampanya?.deger ?? null }));
         const brut = ticariFisHesapla(girdi, null).genelToplam;
         const h = ticariFisHesapla(girdi, etkinIndirim(brut, secenek.indirim));
         return {
             ...bos,
-            satirTutarlari: h.satirlar.map((x) => x.brutDahil),
+            // Satır tutarı Satış Fişi'ndeki gibi matrah + KDV (kampanya / satır iskontosu düşülmüş); satırların toplamı genel toplama eşittir
+            satirTutarlari: h.satirlar.map((x) => x.toplamTutar),
             araToplam: h.araToplam,
             kdv: h.toplamKdv,
             indirim: h.baslikIskontoDahil,
@@ -218,13 +219,15 @@ export const MASAK_USD_SINIRI = 5000;
 export function masakGerekli(modul, sepet, toplam, o = {}) {
     if (o.gayriResmi || modul === "ticari")
         return false;
-    const tlAsti = toplam.genelToplam >= MASAK_TL_SINIRI || toplam.araToplam >= MASAK_TL_SINIRI;
+    const tlLimit = o.tlSiniri && o.tlSiniri > 0 ? o.tlSiniri : MASAK_TL_SINIRI;
+    const dovizLimit = o.dovizSiniri && o.dovizSiniri > 0 ? o.dovizSiniri : MASAK_USD_SINIRI;
+    const tlAsti = toplam.genelToplam >= tlLimit || toplam.araToplam >= tlLimit;
     if (modul === "perakende")
-        return toplam.genelToplam >= MASAK_TL_SINIRI;
-    const usdSatir = sepet.some((s) => ["USD", "$"].includes(String(s.kod ?? "").trim().toUpperCase()) && Number(s.miktar) >= MASAK_USD_SINIRI);
+        return toplam.genelToplam >= tlLimit;
+    const usdSatir = sepet.some((s) => ["USD", "$"].includes(String(s.kod ?? "").trim().toUpperCase()) && Number(s.miktar) >= dovizLimit);
     if (modul === "sarraf")
-        return tlAsti || usdSatir || (toplam.hasToplam > 0 && (Number(o.hasKuru) || 0) * toplam.hasToplam >= MASAK_TL_SINIRI);
+        return tlAsti || usdSatir || (toplam.hasToplam > 0 && (Number(o.hasKuru) || 0) * toplam.hasToplam >= (o.altinSiniri && o.altinSiniri > 0 ? o.altinSiniri : tlLimit));
     const usdKuru = Number(o.usdKuru) || 0;
     const usdKarsiligi = usdKuru > 0 ? toplam.araToplam / usdKuru : 0;
-    return tlAsti || usdSatir || usdKarsiligi >= MASAK_USD_SINIRI;
+    return tlAsti || usdSatir || usdKarsiligi >= dovizLimit;
 }

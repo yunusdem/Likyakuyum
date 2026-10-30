@@ -1,5 +1,8 @@
 import { ApiError } from "../utils/ApiError.js";
 import { TicariStokSqlRepository } from "../models/ticariStokSql.repository.js";
+import { TicariFiyatSqlRepository } from "../models/ticariFiyatSql.repository.js";
+import { TicariFiyatIslemiSqlRepository } from "../models/ticariFiyatIslemiSql.repository.js";
+import { TicariKampanyaSqlRepository } from "../models/ticariKampanyaSql.repository.js";
 import { TicariGirisSqlRepository } from "../models/ticariGirisSql.repository.js";
 import { TicariSatisSqlRepository } from "../models/ticariSatisSql.repository.js";
 import { excelOnizle, excelYukle, ornekExcel } from "../services/ticari/ticariExcel.js";
@@ -54,23 +57,56 @@ export const TicariController = {
     }),
     ayarlar: sar(async (req) => TicariStokSqlRepository.ayarlar(baglam(req))),
     ayarKaydet: sar(async (req) => TicariStokSqlRepository.ayarKaydet(req.body || {}, kullanici(req), baglam(req))),
+    // Ticari etiket düzeni (İş 2, G5): okuma herkese, kaydetme stok yönetim yetkisine
+    etiketDuzeni: sar(async (req) => TicariStokSqlRepository.etiketDuzeni(baglam(req))),
+    etiketDuzeniKaydet: sar(async (req) => TicariStokSqlRepository.etiketDuzeniKaydet(req.body || {}, baglam(req))),
+    // Fiyat listeleri (İş 11, G6–G9)
+    fiyatListeleri: sar(async (req) => TicariFiyatSqlRepository.listeler(baglam(req), req.query.aktif === "1")),
+    fiyatListesiKaydet: sar(async (req) => TicariFiyatSqlRepository.listeKaydet({ ...(req.body || {}), fiyatListesiId: req.params.id ? kimlik(req) : null }, kullanici(req), baglam(req))),
+    fiyatListesiSil: sar(async (req) => TicariFiyatSqlRepository.listeSil(kimlik(req), baglam(req))),
+    fiyatListesiCarileri: sar(async (req) => TicariFiyatSqlRepository.listeCarileri(kimlik(req), baglam(req))),
+    cariFiyatListesi: sar(async (req) => TicariFiyatSqlRepository.cariListesi(kimlik(req), baglam(req))),
+    cariFiyatListesiKaydet: sar(async (req) => { await TicariFiyatSqlRepository.cariListesiKaydet(kimlik(req), sayiVeyaNull(req.body?.fiyatListesiId), kullanici(req), baglam(req)); return TicariFiyatSqlRepository.cariListesi(kimlik(req), baglam(req)); }),
+    // Toplu fiyat işlemleri (İş 11, G11, G13, G14)
+    fiyatIslemiOnizle: sar(async (req) => TicariFiyatIslemiSqlRepository.onizle(req.body || {}, baglam(req))),
+    fiyatIslemiUygula: sar(async (req) => TicariFiyatIslemiSqlRepository.uygula(req.body || {}, kullanici(req), baglam(req))),
+    fiyatIslemiGeriAl: sar(async (req) => TicariFiyatIslemiSqlRepository.geriAl(Number(req.body?.islemNo) || 0, kullanici(req), baglam(req))),
+    fiyatIslemiGecmis: sar(async (req) => TicariFiyatIslemiSqlRepository.gecmis(baglam(req), sayiVeyaNull(req.query.limit) ?? 100)),
+    // Kampanyalar (İş 11, G12)
+    kampanyalar: sar(async (req) => TicariKampanyaSqlRepository.liste(baglam(req))),
+    aktifKampanyalar: sar(async (req) => TicariKampanyaSqlRepository.aktifler(baglam(req))),
+    kampanyaKaydet: sar(async (req) => TicariKampanyaSqlRepository.kaydet({ ...(req.body || {}), kampanyaId: req.params.id ? kimlik(req) : null }, kullanici(req), baglam(req))),
+    kampanyaSil: sar(async (req) => TicariKampanyaSqlRepository.sil(kimlik(req), baglam(req))),
     gruplar: sar(async (req) => TicariStokSqlRepository.gruplar(baglam(req))),
     grupKaydet: sar(async (req) => TicariStokSqlRepository.grupKaydet({ ...(req.body || {}), stokGrupId: req.params.id ? kimlik(req) : null }, kullanici(req), baglam(req))),
     grupSil: sar(async (req) => TicariStokSqlRepository.grupSil(kimlik(req), baglam(req))),
+    /** Gruba kart ekleme / çıkarma (İş 10, G15): { ekle: [id], cikar: [id] } */
+    grupKartlari: sar(async (req) => TicariStokSqlRepository.grupKartlari(kimlik(req), req.body || {}, kullanici(req), baglam(req))),
     kartlar: sar(async (req) => TicariStokSqlRepository.kartlar({
         arama: metin(req.query.arama) ?? undefined,
         grupId: sayiVeyaNull(req.query.grupId),
         aktif: req.query.aktif === "1" ? true : req.query.aktif === "0" ? false : null,
+        idler: metin(req.query.idler) ? String(req.query.idler).split(",").map(Number) : null,
         limit: sayiVeyaNull(req.query.limit) ?? undefined,
+        fiyatListesiId: sayiVeyaNull(req.query.liste),
+    }, baglam(req))),
+    /** Sayfalı liste (G2): { kartlar, toplam, sayfa, adet } */
+    kartlarSayfali: sar(async (req) => TicariStokSqlRepository.kartlarSayfali({
+        arama: metin(req.query.arama),
+        grupId: sayiVeyaNull(req.query.grupId),
+        aktif: req.query.aktif === "1" ? true : req.query.aktif === "0" ? false : null,
+        sayfa: sayiVeyaNull(req.query.sayfa),
+        adet: sayiVeyaNull(req.query.adet),
+        fiyatListesiId: sayiVeyaNull(req.query.liste),
     }, baglam(req))),
     kart: sar(async (req) => {
-        const k = await TicariStokSqlRepository.kart(kimlik(req), baglam(req), true);
+        const k = await TicariStokSqlRepository.kart(kimlik(req), baglam(req), true, sayiVeyaNull(req.query.liste));
         if (!k)
             throw ApiError.notFound("Stok kartı bulunamadı.");
         return k;
     }),
     kartBul: sar(async (req) => {
-        const k = await TicariStokSqlRepository.kartBul(String(req.params.deger || ""), baglam(req));
+        const k = await TicariStokSqlRepository.kartBul(String(req.params.deger || ""), baglam(req), sayiVeyaNull(req.query.liste));
         if (!k)
             throw ApiError.notFound(`"${req.params.deger}" barkodlu ya da kodlu stok kartı bulunamadı.`);
         return k;

@@ -209,6 +209,23 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
     }
   }, [selectedIndex, show]);
 
+  // Tek kayıt varsa ekran açılmasın, doğrudan seçsin (örnek istatistik kodundaki gibi)
+  const autoSelectedRef = useRef(false);
+
+  useEffect(() => {
+    if (!show) {
+      autoSelectedRef.current = false;
+      return;
+    }
+
+    if (show && !isLoading && !isGibLoading && (initialSearchTerm ?? "").trim()) {
+      if (!autoSelectedRef.current && currentList.length === 1) {
+        autoSelectedRef.current = true;
+        void handleSelectRow(currentList[0]);
+      }
+    }
+  }, [show, isLoading, isGibLoading, initialSearchTerm, currentList]);
+
   const handleSelectRow = async (item: UnifiedItem) => {
     if (item._kind === "registered") {
       const c = item.data as CariKartItem;
@@ -387,7 +404,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
       `}</style>
 
       <Modal
-        show={show}
+        show={show && !autoSelectedRef.current}
         onHide={onClose}
         size="xl"
         centered

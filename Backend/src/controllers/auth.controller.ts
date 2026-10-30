@@ -64,7 +64,7 @@ export class AuthController {
   });
 
   public static getMe = asyncHandler(async (req: Request, res: Response) => {
-    const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
+    const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName, firmaId: req.user?.firmaId };
     const user = await AuthService.getProfile(req.user!.userId, dbContext);
     return ApiResponse.ok(res, "Profil bilgisi başarıyla getirildi.", user);
   });

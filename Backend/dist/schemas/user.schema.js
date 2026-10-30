@@ -6,7 +6,8 @@ const flexNumber = (defaultVal = 0) => z
     .transform((val) => {
     if (val === undefined || val === null || val === "")
         return defaultVal;
-    const num = parseFloat(String(val));
+    const clean = String(val).replace(/,/g, ".");
+    const num = parseFloat(clean);
     return isNaN(num) ? defaultVal : num;
 });
 const menuPermissionsSchema = z.object({
@@ -82,6 +83,7 @@ export const createUserSchema = z.object({
         commissionRate: flexNumber(0),
         ratePermType: z.string().optional().default("Var"),
         ratePermValue: flexNumber(0),
+        iscilikGirisSekli: flexNumber(0),
         menuPerms: menuPermissionsSchema.passthrough().optional(),
         buyStatCode: z.union([z.string(), z.number()]).optional().default("").transform((v) => String(v || "")),
         sellStatCode: z.union([z.string(), z.number()]).optional().default("").transform((v) => String(v || "")),
@@ -131,6 +133,7 @@ export const updateUserSchema = z.object({
         commissionRate: flexNumber(0),
         ratePermType: z.string().optional(),
         ratePermValue: flexNumber(0),
+        iscilikGirisSekli: flexNumber(0),
         menuPerms: menuPermissionsSchema.partial().passthrough().optional(),
         buyStatCode: z.union([z.string(), z.number()]).optional().transform((v) => (v !== undefined ? String(v || "") : undefined)),
         sellStatCode: z.union([z.string(), z.number()]).optional().transform((v) => (v !== undefined ? String(v || "") : undefined)),

@@ -48,6 +48,133 @@ import KurKaynakSecici, { type KurKaynakSeciciRef } from "../../components/kur/K
 import FaturaSiniriAlani, { type FaturaSiniriAlaniRef } from "../hizliSatis/FaturaSiniriAlani";
 import FisAktarmaModal from "../vezne/FisAktarmaModal";
 
+interface ThousandsInputProps {
+  value: number | null | undefined;
+  onChange: (val: number | null) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  disabled?: boolean;
+}
+
+const ThousandsInput: React.FC<ThousandsInputProps> = ({
+  value,
+  onChange,
+  className,
+  style,
+  disabled,
+}) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isFocusedRef = useRef(false);
+
+  const format = (v: number | null | undefined): string => {
+    if (v === null || v === undefined || isNaN(v)) return "";
+    const s = String(v).replace(/\D/g, "");
+    if (!s) return "";
+    return s.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  };
+
+  const [text, setText] = useState<string>(() => format(value));
+
+  useEffect(() => {
+    const formatted = format(value);
+    if (!isFocusedRef.current && formatted !== text) {
+      setText(formatted);
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    const selStart = e.target.selectionStart || 0;
+
+    let digitsBefore = 0;
+    for (let i = 0; i < selStart; i++) {
+      if (/\d/.test(raw[i])) digitsBefore++;
+    }
+
+    const clean = raw.replace(/\D/g, "");
+    if (!clean) {
+      setText("");
+      onChange(null);
+      return;
+    }
+
+    const num = Number(clean);
+    const newFormatted = clean.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    setText(newFormatted);
+    onChange(num);
+
+    let newCaret = 0;
+    let seen = 0;
+    for (let i = 0; i < newFormatted.length; i++) {
+      if (seen === digitsBefore) {
+        newCaret = i;
+        break;
+      }
+      if (/\d/.test(newFormatted[i])) {
+        seen++;
+      }
+      newCaret = i + 1;
+    }
+
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.setSelectionRange(newCaret, newCaret);
+      }
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace") {
+      const input = inputRef.current;
+      if (!input) return;
+      const start = input.selectionStart ?? 0;
+      const end = input.selectionEnd ?? 0;
+      if (start === end && start > 1 && text[start - 1] === ".") {
+        e.preventDefault();
+        const before = text.slice(0, start - 2);
+        const after = text.slice(start);
+        const clean = (before + after).replace(/\D/g, "");
+        if (!clean) {
+          setText("");
+          onChange(null);
+        } else {
+          const num = Number(clean);
+          const newFormatted = clean.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+          setText(newFormatted);
+          onChange(num);
+          const newCaret = Math.max(0, start - 2);
+          requestAnimationFrame(() => {
+            if (inputRef.current) {
+              inputRef.current.setSelectionRange(newCaret, newCaret);
+            }
+          });
+        }
+      }
+    }
+  };
+
+  return (
+    <Form.Control
+      ref={inputRef}
+      type="text"
+      inputMode="numeric"
+      value={text}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
+      onFocus={() => {
+        isFocusedRef.current = true;
+      }}
+      onBlur={() => {
+        isFocusedRef.current = false;
+        setText(format(value));
+      }}
+      disabled={disabled}
+      className={className || "bg-white border font-monospace text-end"}
+      style={style || { maxWidth: "120px" }}
+    />
+  );
+};
+
 export const CompanyDefinitionsPage: React.FC = () => {
   // Lisansta olmayan ürüne ait ayarlar (kuyum: işçilik, üretim, sarrafiye; döviz: e-Döviz fişi) gösterilmez, değerleri korunur
   const ozellik = useUrunOzellikleri();
@@ -1052,39 +1179,6 @@ export const CompanyDefinitionsPage: React.FC = () => {
   useEffect(() => {
     loadDefinitions(true);
     loadLookups();
-
-    // Inputa tıklanınca veya odaklanınca imleci en sağa / verinin sonuna taşı
-    const handleInputClickOrFocus = (e: MouseEvent | FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement
-      ) {
-        if (
-          target.type === "checkbox" ||
-          target.type === "radio" ||
-          target.type === "button" ||
-          target.type === "submit" ||
-          target.type === "file" ||
-          target.readOnly ||
-          target.disabled
-        ) {
-          return;
-        }
-
-        setTimeout(() => {
-          placeCursorAtEnd(target);
-        }, 0);
-      }
-    };
-
-    document.addEventListener("mouseup", handleInputClickOrFocus);
-    document.addEventListener("focusin", handleInputClickOrFocus);
-
-    return () => {
-      document.removeEventListener("mouseup", handleInputClickOrFocus);
-      document.removeEventListener("focusin", handleInputClickOrFocus);
-    };
   }, []);
 
   // Kayıtlı POSTA_KODU_ID → ekrandaki metin (kayıt ya da liste yüklenince)
@@ -2460,13 +2554,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">TL Vergi Sınırı:</Form.Label>
                               <Col>
-                                <Form.Control
-                                  type="number"
-                                  value={formData.TL_VERGI_SINIRI ?? ""}
-                                  onChange={(e) => handleNumericInput("TL_VERGI_SINIRI", e.target.value)}
-                                  onKeyDown={(e) => blockNonNumericKeys(e)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "100px" }}
+                                <ThousandsInput
+                                  value={formData.TL_VERGI_SINIRI}
+                                  onChange={(val) => handleChange("TL_VERGI_SINIRI", val)}
                                 />
                               </Col>
                             </Form.Group>
@@ -2476,13 +2566,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Döviz Vergi Sınırı:</Form.Label>
                               <Col>
-                                <Form.Control
-                                  type="number"
-                                  value={formData.DOVIZ_VERGI_SINIRI ?? ""}
-                                  onChange={(e) => handleNumericInput("DOVIZ_VERGI_SINIRI", e.target.value)}
-                                  onKeyDown={(e) => blockNonNumericKeys(e)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "100px" }}
+                                <ThousandsInput
+                                  value={formData.DOVIZ_VERGI_SINIRI}
+                                  onChange={(val) => handleChange("DOVIZ_VERGI_SINIRI", val)}
                                 />
                               </Col>
                             </Form.Group>
@@ -2492,13 +2578,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Altın Vergi Sınırı:</Form.Label>
                               <Col>
-                                <Form.Control
-                                  type="number"
-                                  value={formData.ALTIN_VERGI_SINIRI ?? ""}
-                                  onChange={(e) => handleNumericInput("ALTIN_VERGI_SINIRI", e.target.value)}
-                                  onKeyDown={(e) => blockNonNumericKeys(e)}
-                                  className="bg-white border font-monospace text-end"
-                                  style={{ maxWidth: "100px" }}
+                                <ThousandsInput
+                                  value={formData.ALTIN_VERGI_SINIRI}
+                                  onChange={(val) => handleChange("ALTIN_VERGI_SINIRI", val)}
                                 />
                               </Col>
                             </Form.Group>
@@ -2513,13 +2595,9 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Form.Group as={Row} className="mb-2 align-items-center g-2">
                                 <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Sarrafiye Kimlik Sınırı:</Form.Label>
                                 <Col>
-                                  <Form.Control
-                                    type="number"
-                                    value={formData.SAR_KIMLIK_KONTROL_SINIRI ?? ""}
-                                    onChange={(e) => handleNumericInput("SAR_KIMLIK_KONTROL_SINIRI", e.target.value)}
-                                    onKeyDown={(e) => blockNonNumericKeys(e)}
-                                    className="bg-white border font-monospace text-end"
-                                    style={{ maxWidth: "100px" }}
+                                  <ThousandsInput
+                                    value={formData.SAR_KIMLIK_KONTROL_SINIRI}
+                                    onChange={(val) => handleChange("SAR_KIMLIK_KONTROL_SINIRI", val)}
                                   />
                                 </Col>
                               </Form.Group>

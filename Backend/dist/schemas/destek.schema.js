@@ -43,6 +43,7 @@ export const adminKonuListeSchema = z.object({
         durum: z.string().max(20).optional(),
         firmaId: z.coerce.number().int().positive().optional(),
         atananAdminId: z.coerce.number().int().positive().optional(),
+        atananPersonelId: z.coerce.number().int().positive().optional(),
         kaynakKonuId: z.coerce.number().int().positive().optional(),
         arama: z.string().max(100).optional(),
         sayfa: z.coerce.number().int().positive().optional(),
@@ -59,8 +60,9 @@ export const adminKonuGuncelleSchema = z.object({
         .object({
         durum: z.enum(["KAPALI", "ACIK"]).optional(),
         atananAdminId: z.number().int().positive().nullable().optional(),
+        atananPersonelId: z.number().int().positive().nullable().optional(),
     })
-        .refine((b) => b.durum !== undefined || b.atananAdminId !== undefined, { message: "Değiştirilecek alan yok" }),
+        .refine((b) => b.durum !== undefined || b.atananAdminId !== undefined || b.atananPersonelId !== undefined, { message: "Değiştirilecek alan yok" }),
 });
 const bildirimGovde = z.object({
     baslik: z.string().trim().min(1, "Başlık girilmelidir").max(200),

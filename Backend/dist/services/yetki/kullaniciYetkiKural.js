@@ -29,43 +29,49 @@ const sayi = (v) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
 };
-/** KUR_YETKISI kodu (eski program: ekran sırası Var, Yok, Limitli → 0, 1, 2; K8) */
+/** KUR_YETKISI kodu (0: Var, 1: Yok, 2: Esnek, 3: Yüzde) */
 export const kurYetkisiKoddan = (v) => {
     const s = String(v ?? "").trim();
-    if (s === "Var" || s === "Yok" || s === "Limitli")
+    if (s === "Var" || s === "Yok" || s === "Esnek" || s === "Yüzde")
         return s;
+    if (s === "Limitli")
+        return "Yüzde";
     if (s === "1")
         return "Yok";
     if (s === "2")
-        return "Limitli";
+        return "Esnek";
+    if (s === "3")
+        return "Yüzde";
     return "Var";
 };
 export const kurYetkisiKoda = (v) => {
     const t = kurYetkisiKoddan(v);
-    return t === "Yok" ? 1 : t === "Limitli" ? 2 : 0;
+    return t === "Yok" ? 1 : t === "Esnek" ? 2 : (t === "Yüzde" || t === "Limitli") ? 3 : 0;
 };
 /** Oturum profilindeki kullanıcı (UserProfileDto) → yetki */
 export const yetkiProfilden = (u) => {
     if (!u)
         return { ...TAM_YETKI, yonetici: false };
-    if (u.isSysAdmin || u.role === "admin")
-        return TAM_YETKI;
+    const isAdmin = Boolean(u.isSysAdmin || u.role === "admin");
+    const base = isAdmin ? TAM_YETKI : null;
+    const kurYetkisi = kurYetkisiKoddan(u.ratePermType);
+    const kurTolerans = Math.max(0, sayi(u.ratePermValue));
     return {
-        yonetici: false,
-        menu: { ...(u.menuPerms || {}) },
-        gosterimGunu: Math.max(0, Math.trunc(sayi(u.displayDays))),
-        tarihDegistirme: evet(u.hasDateChangePerm),
-        fisNoDegistirme: evet(u.hasSlipNoChangePerm),
-        tutarDegistirme: evet(u.hasSlipAmountChangePerm),
-        bankaHesabiSecme: evet(u.hasSlipBankAccountPerm),
-        komisyonAlma: evet(u.hasCommissionPerm),
-        komisyonOrani: Math.max(0, sayi(u.commissionRate)),
-        cariBakiye: evet(u.canViewAccountBalance),
-        acikVadeli: evet(u.canViewOpenTermTrans),
-        supheliIslem: evet(u.isSuspiciousTransAuth),
-        caprazKurKontroluYok: evet(u.noCrossRateCheck),
-        kurYetkisi: kurYetkisiKoddan(u.ratePermType),
-        kurTolerans: Math.max(0, sayi(u.ratePermValue)),
+        yonetici: isAdmin,
+        menu: { ...(u.menuPerms || (base ? base.menu : {})) },
+        gosterimGunu: u.displayDays !== undefined ? Math.max(0, Math.trunc(sayi(u.displayDays))) : (base ? base.gosterimGunu : 0),
+        tarihDegistirme: u.hasDateChangePerm !== undefined ? evet(u.hasDateChangePerm) : (base ? base.tarihDegistirme : false),
+        fisNoDegistirme: u.hasSlipNoChangePerm !== undefined ? evet(u.hasSlipNoChangePerm) : (base ? base.fisNoDegistirme : false),
+        tutarDegistirme: u.hasSlipAmountChangePerm !== undefined ? evet(u.hasSlipAmountChangePerm) : (base ? base.tutarDegistirme : false),
+        bankaHesabiSecme: u.hasSlipBankAccountPerm !== undefined ? evet(u.hasSlipBankAccountPerm) : (base ? base.bankaHesabiSecme : false),
+        komisyonAlma: u.hasCommissionPerm !== undefined ? evet(u.hasCommissionPerm) : (base ? base.komisyonAlma : false),
+        komisyonOrani: u.commissionRate !== undefined ? Math.max(0, sayi(u.commissionRate)) : 0,
+        cariBakiye: u.canViewAccountBalance !== undefined ? evet(u.canViewAccountBalance) : (base ? base.cariBakiye : false),
+        acikVadeli: u.canViewOpenTermTrans !== undefined ? evet(u.canViewOpenTermTrans) : (base ? base.acikVadeli : false),
+        supheliIslem: u.isSuspiciousTransAuth !== undefined ? evet(u.isSuspiciousTransAuth) : (base ? base.supheliIslem : false),
+        caprazKurKontroluYok: u.noCrossRateCheck !== undefined ? evet(u.noCrossRateCheck) : (base ? base.caprazKurKontroluYok : false),
+        kurYetkisi,
+        kurTolerans,
         giseKuruDisinda: evet(u.canBeOutsideCounterRate),
         sapmaUyarisiYok: evet(u.noDeviationWarning),
         masakUyarisi: evet(u.hasMasakWarning),
@@ -76,39 +82,40 @@ export const yetkiProfilden = (u) => {
 export const yetkiSatirdan = (r) => {
     if (!r)
         return { ...TAM_YETKI, yonetici: false };
-    if (evet(r.SISTEM_YONETICISI))
-        return TAM_YETKI;
+    const yonetici = evet(r.SISTEM_YONETICISI);
+    const kurYetkisi = kurYetkisiKoddan(r.KUR_YETKISI);
+    const kurTolerans = Math.max(0, sayi(r.KUR_TOLERANS_ORANI));
     return {
-        yonetici: false,
+        yonetici,
         menu: {
-            mainMenu: r.ANA_MENU_YETKISI ?? null,
-            cashier: r.VEZNE_ISLEMLERI_YETKISI ?? null,
-            safe: r.KASA_ISLEMLERI_YETKISI ?? null,
-            exchange: r.KUR_ISLEMLERI_YETKISI ?? null,
-            accounts: r.CARI_ISLEMLER_YETKISI ?? null,
-            admin: r.YONETICI_ISLEMLERI_YETKISI ?? null,
-            accounting: r.MUHASEBE_YETKISI ?? null,
-            reports: r.RAPORLAR_YETKISI ?? null,
-            consolidatedReports: r.KONSOLIDE_RAPORLAR_YETKISI ?? null,
-            techOps: r.TEKNIK_ISLEMLER_YETKISI ?? null,
+            mainMenu: r.ANA_MENU_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            cashier: r.VEZNE_ISLEMLERI_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            safe: r.KASA_ISLEMLERI_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            exchange: r.KUR_ISLEMLERI_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            accounts: r.CARI_ISLEMLER_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            admin: r.YONETICI_ISLEMLERI_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            accounting: r.MUHASEBE_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            reports: r.RAPORLAR_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            consolidatedReports: r.KONSOLIDE_RAPORLAR_YETKISI ?? (yonetici ? "Tam Yetki" : null),
+            techOps: r.TEKNIK_ISLEMLER_YETKISI ?? (yonetici ? "Tam Yetki" : null),
         },
         gosterimGunu: Math.max(0, Math.trunc(sayi(r.FIS_GOSTERME_GUN_SAYISI))),
-        tarihDegistirme: evet(r.TARIH_DEGISTIRME_YETKISI),
-        fisNoDegistirme: evet(r.FIS_NO_DEGISTIRME_YETKISI),
-        tutarDegistirme: evet(r.FIS_TUTAR_DEGISTIRME_YETKISI),
-        bankaHesabiSecme: evet(r.FIS_BANKA_HESABI_SECME_YETKISI),
-        komisyonAlma: evet(r.KOMISYON_ALMA_YETKISI),
+        tarihDegistirme: evet(r.TARIH_DEGISTIRME_YETKISI) || yonetici,
+        fisNoDegistirme: evet(r.FIS_NO_DEGISTIRME_YETKISI) || yonetici,
+        tutarDegistirme: evet(r.FIS_TUTAR_DEGISTIRME_YETKISI) || yonetici,
+        bankaHesabiSecme: evet(r.FIS_BANKA_HESABI_SECME_YETKISI) || yonetici,
+        komisyonAlma: evet(r.KOMISYON_ALMA_YETKISI) || yonetici,
         komisyonOrani: Math.max(0, sayi(r.KOMISYON_ORANI)),
-        cariBakiye: evet(r.CARI_BAKIYE_GOREBILIR),
-        acikVadeli: evet(r.ACIK_VADELI_ISLEM_GOREBILIR),
-        supheliIslem: evet(r.SUPHELI_ISLEMLER_YETKILISI),
-        caprazKurKontroluYok: evet(r.CAPRAZ_KUR_KONTROLU_YOK),
-        kurYetkisi: kurYetkisiKoddan(r.KUR_YETKISI),
-        kurTolerans: Math.max(0, sayi(r.KUR_TOLERANS_ORANI)),
-        giseKuruDisinda: evet(r.GISE_KURU_DISINDA_OLABILIR),
-        sapmaUyarisiYok: evet(r.SAPMA_UYARISI_VERILMESIN),
+        cariBakiye: evet(r.CARI_BAKIYE_GOREBILIR) || yonetici,
+        acikVadeli: evet(r.ACIK_VADELI_ISLEM_GOREBILIR) || yonetici,
+        supheliIslem: evet(r.SUPHELI_ISLEMLER_YETKILISI) || yonetici,
+        caprazKurKontroluYok: evet(r.CAPRAZ_KUR_KONTROLU_YOK) || yonetici,
+        kurYetkisi,
+        kurTolerans,
+        giseKuruDisinda: evet(r.GISE_KURU_DISINDA_OLABILIR) || yonetici,
+        sapmaUyarisiYok: evet(r.SAPMA_UYARISI_VERILMESIN) || yonetici,
         masakUyarisi: evet(r.MASAK_UYARISI_VERSIN),
-        calismaAlani: evet(r.ALAN_ISLEMLERI_YETKISI),
+        calismaAlani: evet(r.ALAN_ISLEMLERI_YETKISI) || yonetici,
     };
 };
 // ───────────────────────────── Menü yetkileri (harf listesi) ─────────────────────────────
@@ -264,25 +271,130 @@ export const kurDenetle = (y, gise, girilen, etiket = "Kur", pay = 0) => {
         return { hata: null, sapma: 0, uyari: null };
     const sapma = ((k - ref) / ref) * 100;
     const fark = Math.abs(sapma) > 1e-9;
-    if (y.yonetici || !fark)
+    if (!fark)
         return { hata: null, sapma, uyari: null };
-    if (y.kurYetkisi === "Yok" && Math.abs(sapma) > pay + 1e-9)
-        return { hata: `${etiket} değiştirme yetkiniz yok (gişe kuru ${ref}).`, sapma, uyari: null };
-    if (y.kurYetkisi === "Limitli" && Math.abs(sapma) > y.kurTolerans + pay + 1e-9) {
-        return { hata: `${etiket} gişe kurundan en çok %${yuzde(y.kurTolerans)} farklı olabilir (gişe ${ref}, sapma %${yuzde(sapma)}).`, sapma, uyari: null };
+    // 1. Yok: Kuru değiştiremez
+    if (y.kurYetkisi === "Yok") {
+        if (Math.abs(sapma) > pay + 1e-9) {
+            return { hata: `${etiket} değiştirme yetkiniz yok (gişe kuru: ${ref}).`, sapma, uyari: null };
+        }
+        return { hata: null, sapma: 0, uyari: null };
     }
-    const alis = Number(gise?.alis) || 0;
-    const satis = Number(gise?.satis) || 0;
-    if (!y.giseKuruDisinda && alis > 0 && satis > 0) {
-        const alt = Math.min(alis, satis) * (1 - pay / 100);
-        const ust = Math.max(alis, satis) * (1 + pay / 100);
-        if (k < alt - 1e-9 || k > ust + 1e-9)
-            return { hata: `${etiket} gişe alış–satış aralığının (${alt} – ${ust}) dışında olamaz.`, sapma, uyari: null };
+    // 2. Var: İstediğini yazar
+    if (y.kurYetkisi === "Var") {
+        return { hata: null, sapma, uyari: y.sapmaUyarisiYok ? null : `${etiket} gişe kurundan %${yuzde(sapma)} farklı (gişe ${ref}).` };
     }
-    return { hata: null, sapma, uyari: y.sapmaUyarisiYok ? null : `${etiket} gişe kurundan %${yuzde(sapma)} farklı (gişe ${ref}).` };
+    // 3. Esnek: Yalnızca alış ile satış kuru arasında değerler yazabilir
+    if (y.kurYetkisi === "Esnek") {
+        const alis = Number(gise?.alis) || 0;
+        const satis = Number(gise?.satis) || 0;
+        const minKur = Math.min(alis > 0 ? alis : ref, satis > 0 ? satis : ref);
+        const maxKur = Math.max(alis > 0 ? alis : ref, satis > 0 ? satis : ref);
+        if (minKur > 0 && maxKur > 0) {
+            const alt = minKur * (1 - pay / 100);
+            const ust = maxKur * (1 + pay / 100);
+            if (k < alt - 1e-9 || k > ust + 1e-9) {
+                return {
+                    hata: `${etiket} yalnızca alış–satış kuru arasında (${minKur} – ${maxKur}) olabilir (girilen: ${k}).`,
+                    sapma,
+                    uyari: null,
+                };
+            }
+        }
+        return { hata: null, sapma, uyari: y.sapmaUyarisiYok ? null : `${etiket} gişe kurundan %${yuzde(sapma)} farklı (gişe ${ref}).` };
+    }
+    // 4. Yüzde: Kuru maksimum bu yüzde kadar değiştirebilir (örn: yüzde 1, kur 100 ise 99–101)
+    if (y.kurYetkisi === "Yüzde" || y.kurYetkisi === "Limitli") {
+        if (Math.abs(sapma) > y.kurTolerans + pay + 1e-9) {
+            const alt = parseFloat((ref * (1 - y.kurTolerans / 100)).toFixed(4));
+            const ust = parseFloat((ref * (1 + y.kurTolerans / 100)).toFixed(4));
+            return {
+                hata: `${etiket} gişe kurundan en çok %${yuzde(y.kurTolerans)} farklı olabilir (İzin verilen aralık: ${alt} – ${ust}, gişe: ${ref}, girilen: ${k}).`,
+                sapma,
+                uyari: null,
+            };
+        }
+        return { hata: null, sapma, uyari: y.sapmaUyarisiYok ? null : `${etiket} gişe kurundan %${yuzde(sapma)} farklı (gişe ${ref}).` };
+    }
+    return { hata: null, sapma, uyari: null };
+};
+/**
+ * Kullanıcı yetkisine göre girilen kur değerini denetler ve sınırlandırır (clamp):
+ * - "Yok": gişe kurunu döner (değiştirilemez)
+ * - "Var": girilen değeri olduğu gibi döner (serbest)
+ * - "Esnek": [min(alis, satis), max(alis, satis)] aralığı dışındaysa sınıra çeker
+ * - "Yüzde": Gişe kuru ± tolerans% aralığı dışındaysa sınıra çeker (örn: %1, ref 100 => 102 yazarsa 101, 50 yazarsa 99)
+ */
+export const kurDegeriniSinirla = (y, gise, girilen, basamak = 4) => {
+    const k = Number(girilen) || 0;
+    if (k <= 0)
+        return { kur: k, degisti: false };
+    // 1. Yok: Kuru değiştiremez
+    if (y.kurYetkisi === "Yok") {
+        const ref = Number(gise?.kur) || k;
+        return {
+            kur: ref,
+            degisti: Math.abs(ref - k) > 1e-9,
+            mesaj: "Kur değiştirme yetkiniz yok.",
+        };
+    }
+    // 2. Var: İstediğini yazar
+    if (y.kurYetkisi === "Var") {
+        return { kur: k, degisti: false };
+    }
+    // 3. Esnek: Yalnızca alış–satış kuru arasında değerler yazabilir
+    if (y.kurYetkisi === "Esnek") {
+        const alis = Number(gise?.alis) || 0;
+        const satis = Number(gise?.satis) || 0;
+        const ref = Number(gise?.kur) || 0;
+        const minKur = Math.min(alis > 0 ? alis : (ref > 0 ? ref : 0), satis > 0 ? satis : (ref > 0 ? ref : 0));
+        const maxKur = Math.max(alis > 0 ? alis : (ref > 0 ? ref : 0), satis > 0 ? satis : (ref > 0 ? ref : 0));
+        if (minKur > 0 && maxKur > 0) {
+            if (k < minKur) {
+                return {
+                    kur: Number(minKur.toFixed(basamak)),
+                    degisti: true,
+                    mesaj: `Esnek kur aralığı (${minKur} - ${maxKur}). Kur alt sınıra getirildi.`,
+                };
+            }
+            if (k > maxKur) {
+                return {
+                    kur: Number(maxKur.toFixed(basamak)),
+                    degisti: true,
+                    mesaj: `Esnek kur aralığı (${minKur} - ${maxKur}). Kur üst sınıra getirildi.`,
+                };
+            }
+        }
+        return { kur: k, degisti: false };
+    }
+    // 4. Yüzde: Gişe kurundan en çok tolerans % kadar farklı olabilir
+    if (y.kurYetkisi === "Yüzde" || y.kurYetkisi === "Limitli") {
+        const ref = Number(gise?.kur) || Number(gise?.alis) || Number(gise?.satis) || 0;
+        const tolerans = Number(y.kurTolerans) || 0;
+        if (ref > 0 && tolerans > 0) {
+            const alt = Number((ref * (1 - tolerans / 100)).toFixed(basamak));
+            const ust = Number((ref * (1 + tolerans / 100)).toFixed(basamak));
+            if (k < alt) {
+                return {
+                    kur: alt,
+                    degisti: true,
+                    mesaj: `Kur %${tolerans} toleransının altında. Alt sınıra (${alt}) getirildi.`,
+                };
+            }
+            if (k > ust) {
+                return {
+                    kur: ust,
+                    degisti: true,
+                    mesaj: `Kur %${tolerans} toleransının üzerinde. Üst sınıra (${ust}) getirildi.`,
+                };
+            }
+        }
+        return { kur: k, degisti: false };
+    }
+    return { kur: k, degisti: false };
 };
 /** Kur alanı ekranda değiştirilebilir mi */
-export const kurDegistirilebilir = (y) => y.yonetici || y.kurYetkisi !== "Yok";
+export const kurDegistirilebilir = (y) => y.kurYetkisi !== "Yok";
 /** Menü harfine ek olarak bir yetki kutusu isteyen sayfalar (adres, baştaki "/" olmadan) */
 export const SAYFA_YETKI_KUTULARI = {
     "raporlar/cari-ekstre": "cariBakiye",

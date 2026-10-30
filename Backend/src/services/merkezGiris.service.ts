@@ -335,15 +335,24 @@ export class MerkezGirisService {
    * Merkez kapalıysa null. Firma artık çalışamıyorsa veya kullanıcı kapatıldıysa 401 verir; istemci
    * bunu "oturum bitti" olarak ele alıp giriş ekranına döner.
    */
-  public static async baglam(oturum: { dbServer?: string; dbName?: string; username: string }): Promise<MerkezBaglam | null> {
+  public static async baglam(oturum: { dbServer?: string; dbName?: string; username: string; firmaId?: number }): Promise<MerkezBaglam | null> {
     if (!this.aktifMi()) return null;
-    const { anahtar } = firmaDbAnahtari(oturum.dbServer || "", oturum.dbName || "");
-    const firma = await FirmaSqlRepository.anahtarIleBul(anahtar);
-    if (!firma || firmaEngeli(firma)) {
-      throw ApiError.unauthorized(firma ? RED_MESAJI[firmaEngeli(firma)!] : RED_MESAJI.FIRMA_KAYITSIZ);
+    let firma: FirmaDto | null = null;
+    if (oturum.firmaId) {
+      firma = await FirmaSqlRepository.idIleBul(oturum.firmaId);
+    }
+    if (!firma && (oturum.dbServer || oturum.dbName)) {
+      const { anahtar } = firmaDbAnahtari(oturum.dbServer || "", oturum.dbName || "");
+      firma = await FirmaSqlRepository.anahtarIleBul(anahtar);
+    }
+    if (!firma) {
+      return null;
+    }
+    if (firmaEngeli(firma)) {
+      throw ApiError.unauthorized(RED_MESAJI[firmaEngeli(firma)!]);
     }
     const kullanici = await KullaniciSqlRepository.adIleBul(firma.firmaId, oturum.username);
-    if (!kullanici || kullanici.durum !== "AKTIF") throw ApiError.unauthorized(RED_MESAJI.KULLANICI_PASIF);
+    if (!kullanici || kullanici.durum !== "AKTIF") return null;
     return { firma, kullanici };
   }
 

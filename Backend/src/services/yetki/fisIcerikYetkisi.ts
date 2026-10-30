@@ -79,7 +79,7 @@ export async function dovizKurDenetle(req: Request, y: KullaniciYetkisi, dto: an
 
 /** Sarraf fişi satır kurları kur yetkisine göre geçerli mi */
 export async function sarrafKurDenetle(req: Request, y: KullaniciYetkisi, dto: any): Promise<void> {
-  if (y.yonetici || (y.kurYetkisi === "Var" && y.giseKuruDisinda)) return;
+  if (y.kurYetkisi === "Var") return;
   const satirlar: any[] = Array.isArray(dto?.satirlar) ? dto.satirlar : [];
   if (!satirlar.length) return;
   const kurlar = await guncelKurlar(req);

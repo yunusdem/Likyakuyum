@@ -99,8 +99,9 @@ export const HizliSatisController = {
                 return { kaynak: null, mesaj: "Bu numara GİB'de kayıtlı değil. Bilgileri elle girin." };
             const unvan = (g.unvan || [g.ad, g.soyad].filter(Boolean).join(" ")).trim();
             const k = {
-                kaynak: "gib", cariKartId: null, cariKod: null, unvan, vknTckn: no, adres: "", il: "", ilce: "",
-                vergiDairesi: g.vergiDairesi || "", telefon: "", eposta: "", mukellef: false, uyari: g.uyari,
+                kaynak: "gib", cariKartId: null, cariKod: null, unvan, vknTckn: no, adres: "", il: g.il, ilce: g.ilce,
+                vergiDairesi: g.vergiDairesi || "", telefon: "", eposta: "", mukellef: false,
+                uyari: [g.uyari, g.ilIlceUyari].filter(Boolean).join(" ") || null,
             };
             return k;
         }

@@ -28,6 +28,7 @@ import {
   scoreNameOrSurname,
   isValidNameOrSurname,
   turkishizeFromRawText,
+  mergeExtractedData,
 } from "../../utils/kimlikOcrParser";
 import { autoCropIdCard } from "../../utils/imageCropUtils";
 import { CariFotografItem } from "../../services/cariService";
@@ -38,7 +39,7 @@ export interface CariKimlikFotografSectionProps {
   currentPhotos?: CariFotografItem[];
   pendingBase64?: string | null;
   pendingPhotos?: string[];
-  selectedBelgeTuru: number; // 0: Kimlik, 1: Pasaport, 2: Vergi Levhası
+  selectedBelgeTuru: number; // 0: Kimlik, 1: Pasaport, 2: Ehliyet, 3: Vergi Levhası
   onBelgeTuruChange: (turu: number) => void;
   onPhotoSelected: (base64: string, file?: File) => void;
   onPhotosSelected?: (base64List: string[]) => void;
@@ -46,6 +47,20 @@ export interface CariKimlikFotografSectionProps {
   onOcrApply: (data: OcrExtractedData) => void;
   disabled?: boolean;
 }
+
+export const getBelgeTuruTitle = (turu?: number): string => {
+  switch (turu) {
+    case 1:
+      return "Pasaport";
+    case 2:
+      return "Sürücü Belgesi (Ehliyet)";
+    case 3:
+      return "Vergi Levhası";
+    case 0:
+    default:
+      return "T.C. Kimlik Kartı";
+  }
+};
 
 export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps> = ({
   currentPhoto,
@@ -213,9 +228,15 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
     async (photosToScan: string[], isDeepAnalysis: boolean = false, skipReorder: boolean = false) => {
       if (!photosToScan || photosToScan.length === 0) return null;
 
-      setIsScanning(true);
-      setScanProgress(0);
-      setScanStatus(isDeepAnalysis ? "Detaylı OCR analizi başlatılıyor..." : "Kimlik okunuyor...");
+      const belgeLabel =
+        selectedBelgeTuru === 2
+          ? "Ehliyet"
+          : selectedBelgeTuru === 1
+          ? "Pasaport"
+          : selectedBelgeTuru === 3
+          ? "Vergi Levhası"
+          : "Kimlik";
+      setScanStatus(isDeepAnalysis ? "Detaylı OCR analizi başlatılıyor..." : `${belgeLabel} okunuyor...`);
       setOcrError(null);
       setIsApplied(false);
 
@@ -242,9 +263,9 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           scanResults.push(res);
         }
 
-        // Eğer 2 kimlik fotoğrafı varsa ve ters yüklenmişse (0: Arka Yüz, 1: Ön Yüz):
+        // Eğer 2 kimlik / ehliyet fotoğrafı varsa ve ters yüklenmişse (0: Arka Yüz, 1: Ön Yüz):
         // Kullanıcı manuel "Değiştir" yapmamışsa (skipReorder false) otomatik düzelt
-        if (!skipReorder && selectedBelgeTuru === 0 && currentPhotos.length === 2 && scanResults.length === 2) {
+        if (!skipReorder && (selectedBelgeTuru === 0 || selectedBelgeTuru === 2) && currentPhotos.length === 2 && scanResults.length === 2) {
           const is0Back = isKimlikBackFace(scanResults[0]);
           const is1Front = isKimlikFrontFace(scanResults[1]);
           if (is0Back && is1Front) {
@@ -261,91 +282,11 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         // Birleştir: Ön yüz ve Arka yüz verilerini kusursuz harmanla
         let mergedData: OcrExtractedData = { ...scanResults[0] };
         for (let i = 1; i < scanResults.length; i++) {
-          const res = scanResults[i];
-
-          // TCKN: Eğer res'te geçerli (checksum tutan) TCKN varsa, veya mergedData'da hiç yoksa al
-          if (res.tcKimlikNo) {
-            if (!mergedData.tcKimlikNo) {
-              mergedData.tcKimlikNo = res.tcKimlikNo;
-            } else if (!isValidTcKimlikNo(mergedData.tcKimlikNo) && isValidTcKimlikNo(res.tcKimlikNo)) {
-              mergedData.tcKimlikNo = res.tcKimlikNo;
-            }
-          }
-
-          // VKN
-          if (!mergedData.vergiKimlikNo && res.vergiKimlikNo) {
-            mergedData.vergiKimlikNo = res.vergiKimlikNo;
-          }
-
-          // Ad: Kalite puanı daha yüksek olanı tercih et
-          if (res.ad && isValidNameOrSurname(res.ad)) {
-            if (!mergedData.ad || !isValidNameOrSurname(mergedData.ad) || scoreNameOrSurname(res.ad) >= scoreNameOrSurname(mergedData.ad)) {
-              mergedData.ad = res.ad;
-            }
-          }
-
-          // Soyad: Kalite puanı daha yüksek olanı tercih et (örn: DEMİRBAŞ > DEMIRBAS > YL)
-          if (res.soyad && isValidNameOrSurname(res.soyad)) {
-            if (!mergedData.soyad || !isValidNameOrSurname(mergedData.soyad) || scoreNameOrSurname(res.soyad) >= scoreNameOrSurname(mergedData.soyad)) {
-              mergedData.soyad = res.soyad;
-            }
-          }
-
-          // Unvan
-          if (!mergedData.unvan && res.unvan) {
-            mergedData.unvan = res.unvan;
-          }
-
-          // Seri No: 9 karakterli geçerli seri no (cleanSeri) öncelikli
-          if (res.kimlikSeriNo) {
-            const cleanCur = cleanSeri(mergedData.kimlikSeriNo);
-            const cleanNew = cleanSeri(res.kimlikSeriNo);
-            if (!cleanCur && cleanNew) {
-              mergedData.kimlikSeriNo = cleanNew;
-            } else if (cleanCur && cleanNew && cleanCur.length !== 9 && cleanNew.length === 9) {
-              mergedData.kimlikSeriNo = cleanNew;
-            }
-          }
-
-          // Tarihler & Cinsiyet
-          if (!mergedData.dogumTarihi && res.dogumTarihi) mergedData.dogumTarihi = res.dogumTarihi;
-          if (!mergedData.kimlikGecerlilikTarihi && res.kimlikGecerlilikTarihi)
-            mergedData.kimlikGecerlilikTarihi = res.kimlikGecerlilikTarihi;
-          if (!mergedData.cinsiyet && res.cinsiyet) mergedData.cinsiyet = res.cinsiyet;
-
-          // Anne ve Baba Adı (özellikle arka yüzden gelir)
-          if (res.anneAdi && isValidNameOrSurname(res.anneAdi)) {
-            if (!mergedData.anneAdi || !isValidNameOrSurname(mergedData.anneAdi) || scoreNameOrSurname(res.anneAdi) > scoreNameOrSurname(mergedData.anneAdi)) {
-              mergedData.anneAdi = res.anneAdi;
-            }
-          }
-          if (res.babaAdi && isValidNameOrSurname(res.babaAdi)) {
-            if (!mergedData.babaAdi || !isValidNameOrSurname(mergedData.babaAdi) || scoreNameOrSurname(res.babaAdi) > scoreNameOrSurname(mergedData.babaAdi)) {
-              mergedData.babaAdi = res.babaAdi;
-            }
-          }
-
-          if (!mergedData.dogumYeri && res.dogumYeri) mergedData.dogumYeri = res.dogumYeri;
-          if (!mergedData.il && res.il) mergedData.il = res.il;
-          if (!mergedData.ilce && res.ilce) mergedData.ilce = res.ilce;
-          if (!mergedData.vergiDairesiAdi && res.vergiDairesiAdi) mergedData.vergiDairesiAdi = res.vergiDairesiAdi;
-          if (!mergedData.pasaportNo && res.pasaportNo) mergedData.pasaportNo = res.pasaportNo;
-          if (!mergedData.uyruk && res.uyruk) mergedData.uyruk = res.uyruk;
-          if (!mergedData.ulke && res.ulke) mergedData.ulke = res.ulke;
-          if (!mergedData.adres && res.adres) mergedData.adres = res.adres;
-          if (!mergedData.faaliyetKonusu && res.faaliyetKonusu) mergedData.faaliyetKonusu = res.faaliyetKonusu;
-
-          mergedData.rawText += "\n---\n" + (res.rawText || "");
+          mergedData = mergeExtractedData(mergedData, scanResults[i]);
         }
 
-        // Son temizlik: geçersiz veya noise kelimeleri sil
-        if (mergedData.ad && !isValidNameOrSurname(mergedData.ad)) delete mergedData.ad;
-        if (mergedData.soyad && !isValidNameOrSurname(mergedData.soyad)) delete mergedData.soyad;
-        if (mergedData.anneAdi && !isValidNameOrSurname(mergedData.anneAdi)) delete mergedData.anneAdi;
-        if (mergedData.babaAdi && !isValidNameOrSurname(mergedData.babaAdi)) delete mergedData.babaAdi;
-
-        // Seri No'yu son kez cleanSeri ile doğrula
-        if (mergedData.kimlikSeriNo) {
+        // Seri No'yu son kez cleanSeri ile doğrula (Sadece Kimlik Kartı için 9 hane; Ehliyet için serbest)
+        if (mergedData.kimlikSeriNo && mergedData.belgeTuru === 0) {
           const validated = cleanSeri(mergedData.kimlikSeriNo);
           if (validated) {
             mergedData.kimlikSeriNo = validated;
@@ -370,8 +311,10 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
         }
 
         setExtractedData(mergedData);
-        // Form alanları otomatik doldurulmaz; kullanıcı "Alanları Doldur" butonuna basınca aktarılır
+
+        // Okunan kimlik/ehliyet verilerini kullanıcı "Alanları Doldur" butonuna basmadan kesinlikle forma aktarma
         setIsApplied(false);
+
         return mergedData;
       } catch (err: any) {
         setOcrError("Kimlik metinleri okunurken hata: " + (err.message || err));
@@ -635,10 +578,10 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
 
   return (
     <div className="d-flex flex-column align-items-center w-100">
-      {/* 1. Belge Türü Seçimi (Kimlik / Pasaport / Vergi Levhası) */}
+      {/* 1. Belge Türü Seçimi (Kimlik / Pasaport / Ehliyet / Vergi Levhası) */}
       <div
         className="d-flex align-items-center gap-1 mb-1.5 w-100 bg-light p-0.5 rounded-2 border"
-        title="Belge Türü Seçimi (Kimlik / Pasaport / Vergi Levhası)"
+        title="Belge Türü Seçimi (Kimlik / Pasaport / Ehliyet / Vergi Levhası)"
       >
         <button
           type="button"
@@ -665,6 +608,16 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           className={`btn btn-sm p-0 flex-fill text-center border-0 ${selectedBelgeTuru === 2 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
             }`}
           onClick={() => onBelgeTuruChange(2)}
+          disabled={disabled}
+          style={{ fontSize: "10px", lineHeight: "1.8" }}
+        >
+          Ehliyet
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm p-0 flex-fill text-center border-0 ${selectedBelgeTuru === 3 ? "fw-bold text-primary bg-white shadow-2xs rounded-1" : "text-muted"
+            }`}
+          onClick={() => onBelgeTuruChange(3)}
           disabled={disabled}
           style={{ fontSize: "10px", lineHeight: "1.8" }}
         >
@@ -1048,6 +1001,33 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           </div>
         )}
 
+        {selectedBelgeTuru === 2 && photoList.length === 1 && !extractedData?.kanGrubu && (
+          <div
+            className="mt-2 p-2 rounded-3 border border-warning-subtle text-start w-100 shadow-2xs"
+            style={{ backgroundColor: "#fff9db", fontSize: "10px", lineHeight: "1.35" }}
+          >
+            <div className="d-flex align-items-center justify-content-between mb-1">
+              <span className="fw-bold text-dark d-flex align-items-center gap-1">
+                <span>💡 1. Ön Yüz Okundu</span>
+              </span>
+              <span className="badge bg-warning text-dark" style={{ fontSize: "8.5px" }}>
+                Arka Yüz Eksik
+              </span>
+            </div>
+            <div className="text-secondary mb-1.5" style={{ fontSize: "9.5px" }}>
+              Sürücü belgesinde <strong>Kan Grubu</strong> ve <strong>Sürücü Sınıfları</strong> arka yüzde yer alır.
+            </div>
+            <button
+              type="button"
+              className="btn btn-warning btn-sm w-100 py-1 px-1 fw-bold d-flex align-items-center justify-content-center gap-1 shadow-2xs"
+              style={{ fontSize: "10px", borderRadius: "6px" }}
+              onClick={handleAddSecondPhotoClick}
+            >
+              <span>➕ 2. Arka Yüzü Yükle</span>
+            </button>
+          </div>
+        )}
+
         {/* 6. EKSİKSİZ OKUNAN BELGE BİLGİLERİ TABLOSU (Kullanıcının talep ettiği satır satır liste) */}
         {extractedData && (
           <div
@@ -1078,7 +1058,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                   )}
                 </button>
                 <span className="badge bg-primary-subtle text-primary border border-primary-subtle" style={{ fontSize: "9px" }}>
-                  {extractedData.belgeTuru === 1 ? "Pasaport" : extractedData.belgeTuru === 2 ? "Vergi Levhası" : "T.C. Kimlik"}
+                  {getBelgeTuruTitle(extractedData.belgeTuru)}
                 </span>
               </div>
             </div>
@@ -1088,13 +1068,13 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                 <span className="text-muted">Belge Türü:</span>
                 <strong className="text-dark">
-                  {extractedData.belgeTuru === 1 ? "Pasaport" : extractedData.belgeTuru === 2 ? "Vergi Levhası" : "T.C. Kimlik Kartı"}
+                  {getBelgeTuruTitle(extractedData.belgeTuru)}
                 </strong>
               </div>
 
               {/* TCKN / VKN */}
               <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
-                <span className="text-muted">{extractedData.belgeTuru === 2 ? "VKN / TCKN:" : "T.C. Kimlik No:"}</span>
+                <span className="text-muted">{extractedData.belgeTuru === 3 ? "VKN / TCKN:" : "T.C. Kimlik No:"}</span>
                 {isEditingOcr ? (
                   <input
                     type="text"
@@ -1160,7 +1140,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 )}
               </div>
 
-              {/* Kimlik Seri No (Kimlik için) */}
+              {/* Kimlik Seri No (Sadece Kimlik Kartı için, Ehliyette gösterilmez) */}
               {extractedData.belgeTuru === 0 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Kimlik Seri No:</span>
@@ -1196,8 +1176,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 </div>
               )}
 
-              {/* Doğum Tarihi (Sadece Kimlik ve Pasaport) */}
-              {extractedData.belgeTuru !== 2 && (
+              {/* Doğum Tarihi (Kimlik, Pasaport ve Ehliyet) */}
+              {extractedData.belgeTuru !== 3 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Doğum Tarihi:</span>
                   {isEditingOcr ? (
@@ -1216,8 +1196,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 </div>
               )}
 
-              {/* Geçerlilik Tarihi */}
-              {extractedData.belgeTuru !== 2 && (
+              {/* Geçerlilik Tarihi (Kimlik, Pasaport ve Ehliyet) */}
+              {extractedData.belgeTuru !== 3 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Geçerlilik Tarihi:</span>
                   {isEditingOcr ? (
@@ -1236,8 +1216,8 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 </div>
               )}
 
-              {/* Cinsiyet */}
-              {extractedData.belgeTuru !== 2 && (
+              {/* Cinsiyet (Kimlik ve Pasaport) */}
+              {(extractedData.belgeTuru === 0 || extractedData.belgeTuru === 1) && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Cinsiyet:</span>
                   {isEditingOcr ? (
@@ -1266,7 +1246,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               </div>
 
               {/* Baba Adı (Sadece Kimlik ve Pasaport) */}
-              {extractedData.belgeTuru !== 2 && (
+              {(extractedData.belgeTuru === 0 || extractedData.belgeTuru === 1) && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Baba Adı:</span>
                   {isEditingOcr ? (
@@ -1298,7 +1278,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               )}
 
               {/* Anne Adı (Sadece Kimlik ve Pasaport) */}
-              {extractedData.belgeTuru !== 2 && (
+              {(extractedData.belgeTuru === 0 || extractedData.belgeTuru === 1) && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Anne Adı:</span>
                   {isEditingOcr ? (
@@ -1329,17 +1309,51 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
                 </div>
               )}
 
-
-              {/* Doğum Yeri (Sadece Pasaport için gösterilir, Kimlikte yoktur) */}
-              {extractedData.belgeTuru === 1 && (
+              {/* Doğum Yeri (Pasaport ve Ehliyet) */}
+              {(extractedData.belgeTuru === 1 || extractedData.belgeTuru === 2) && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Doğum Yeri:</span>
                   <strong className="text-dark">{extractedData.dogumYeri || "—"}</strong>
                 </div>
               )}
 
-              {/* İl (Sadece Vergi Levhası için gösterilir, Kimlikte yoktur) */}
+              {/* Veriliş Tarihi (Ehliyet) */}
+              {extractedData.belgeTuru === 2 && extractedData.verilisTarihi && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Veriliş Tarihi:</span>
+                  <strong className="text-dark font-monospace">{formatDateTr(extractedData.verilisTarihi)}</strong>
+                </div>
+              )}
+
+
+              {/* Kan Grubu (Ehliyet) */}
               {extractedData.belgeTuru === 2 && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Kan Grubu:</span>
+                  {isEditingOcr ? (
+                    <input
+                      type="text"
+                      className="form-control form-control-sm py-0 px-1 text-end font-monospace"
+                      style={{ fontSize: "10px", height: "20px", maxWidth: "125px" }}
+                      value={extractedData.kanGrubu || ""}
+                      onChange={(e) => handleEditOcrField("kanGrubu", e.target.value)}
+                    />
+                  ) : (
+                    <strong className="text-danger fw-bold">{extractedData.kanGrubu || "—"}</strong>
+                  )}
+                </div>
+              )}
+
+              {/* Veren Makam (Ehliyet) */}
+              {extractedData.belgeTuru === 2 && extractedData.verenMakam && (
+                <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
+                  <span className="text-muted">Veren Makam:</span>
+                  <strong className="text-dark">{extractedData.verenMakam}</strong>
+                </div>
+              )}
+
+              {/* İl (Sadece Vergi Levhası için gösterilir, Kimlikte yoktur) */}
+              {extractedData.belgeTuru === 3 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">İl:</span>
                   <strong className="text-dark">{extractedData.il || "—"}</strong>
@@ -1347,7 +1361,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               )}
 
               {/* İlçe (Sadece Vergi Levhası için gösterilir, Kimlikte yoktur) */}
-              {extractedData.belgeTuru === 2 && (
+              {extractedData.belgeTuru === 3 && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">İlçe:</span>
                   <strong className="text-dark">{extractedData.ilce || "—"}</strong>
@@ -1355,7 +1369,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               )}
 
               {/* Vergi Dairesi (Vergi Levhası veya Varsa) */}
-              {(extractedData.belgeTuru === 2 || extractedData.vergiDairesiAdi) && (
+              {(extractedData.belgeTuru === 3 || extractedData.vergiDairesiAdi) && (
                 <div className="d-flex justify-content-between align-items-center py-0.5 border-bottom border-light">
                   <span className="text-muted">Vergi Dairesi:</span>
                   <strong className="text-dark">{extractedData.vergiDairesiAdi || "—"}</strong>
@@ -1363,7 +1377,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               )}
 
               {/* Adres (Vergi Levhası veya Varsa) */}
-              {(extractedData.belgeTuru === 2 || extractedData.adres) && (
+              {(extractedData.belgeTuru === 3 || extractedData.adres) && (
                 <div className="d-flex flex-column py-0.5 border-bottom border-light">
                   <span className="text-muted">Adres:</span>
                   <span className="text-dark fw-semibold text-break">{extractedData.adres || "—"}</span>
@@ -1371,7 +1385,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
               )}
 
               {/* Ana Faaliyet (Vergi Levhası veya Varsa) */}
-              {(extractedData.belgeTuru === 2 || extractedData.faaliyetKonusu) && (
+              {(extractedData.belgeTuru === 3 || extractedData.faaliyetKonusu) && (
                 <div className="d-flex flex-column py-0.5">
                   <span className="text-muted">Ana Faaliyet:</span>
                   <span className="text-dark fw-semibold text-break">{extractedData.faaliyetKonusu || "—"}</span>
@@ -1500,8 +1514,7 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
           <Modal.Title className="h6 d-flex align-items-center gap-2 mb-0">
             <IconZoomIn size={18} className="text-primary" />
             <span>
-              {selectedBelgeTuru === 1 ? "Pasaport" : selectedBelgeTuru === 2 ? "Vergi Levhası" : "T.C. Kimlik"}{" "}
-              Fotoğrafı
+              {getBelgeTuruTitle(selectedBelgeTuru)} Fotoğrafı
               {photoList.length > 1
                 ? ` (${safeActiveIndex + 1} / ${photoList.length} - ${activePhoto?.label})`
                 : ""}
