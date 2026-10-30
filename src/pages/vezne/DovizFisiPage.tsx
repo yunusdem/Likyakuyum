@@ -399,7 +399,7 @@ export const DovizFisiPage: React.FC = () => {
   const [showTeklifTaniModal, setShowTeklifTaniModal] = useState<boolean>(false);
   const [printSnapshot, setPrintSnapshot] = useState<any>(null);
   const [isPendingDirectPrint, setIsPendingDirectPrint] = useState<boolean>(false);
-  const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
+  const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(() => CompanyService.cachedDefinitions);
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [pendingPrinter, setPendingPrinter] = useState<YaziciItem | null>(null);
@@ -2667,8 +2667,7 @@ export const DovizFisiPage: React.FC = () => {
       setMasakResult({ matches: [], searched: false });
     }
 
-    // 1. Yer: Kişi seçmede işlem tutarı MASAK sınırını (≥185.000 TL / 5.000 USD) aşıyorsa uyar (Fiş Dizayn Tipi = 1 ise uyarmaz)
-    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && isMasakLimitExceeded && !isGayriResmi) {
+    if (isMasakLimitExceeded) {
       setShowMasakCustomerWarningModal(true);
     }
   };
@@ -3239,9 +3238,9 @@ export const DovizFisiPage: React.FC = () => {
   // Firma Tanımlarındaki Limit sekmesinden dinamik MASAK Sınır Kontrolü (Altında Altın, Dövizde Döviz, TL'de TL Sınırı)
   // Firma Tanımlarındaki Limit sekmesinden dinamik MASAK Sınır Kontrolü (Altında Altın, Dövizde Döviz, TL'de TL Sınırı)
   const masakStatus = useMemo(() => {
-    const compDef = companyDefinitionsRef.current || companyDefinitions;
+    const compDef = companyDefinitionsRef.current || companyDefinitions || CompanyService.cachedDefinitions;
     const tlLimit = Number(compDef?.TL_VERGI_SINIRI) > 0 ? Number(compDef.TL_VERGI_SINIRI) : 100000;
-    const dovizLimit = Number(compDef?.DOVIZ_VERGI_SINIRI) > 0 ? Number(compDef.DOVIZ_VERGI_SINIRI) : 110000;
+    const dovizLimit = Number(compDef?.DOVIZ_VERGI_SINIRI) > 0 ? Number(compDef.DOVIZ_VERGI_SINIRI) : 5000;
     const dovizParaId = compDef?.DOVIZ_VERGI_SINIRI_PARA_ID ? Number(compDef.DOVIZ_VERGI_SINIRI_PARA_ID) : 2;
     const limitPara =
       paraList.find((p) => Number(p.id) === dovizParaId) ||
@@ -3249,13 +3248,13 @@ export const DovizFisiPage: React.FC = () => {
       paraList.find((p) => p.kod?.toUpperCase() === "USD");
     const limitParaKodu = (limitPara?.kod || (dovizParaId === 3 ? "EUR" : "USD")).toUpperCase().trim();
 
-    const altinLimit = Number(compDef?.ALTIN_VERGI_SINIRI) > 0 ? Number(compDef.ALTIN_VERGI_SINIRI) : 201000;
-    const altinParaId = compDef?.ALTIN_VERGI_SINIRI_PARA_ID ? Number(compDef.ALTIN_VERGI_SINIRI_PARA_ID) : 47;
+    const altinLimit = Number(compDef?.ALTIN_VERGI_SINIRI) > 0 ? Number(compDef.ALTIN_VERGI_SINIRI) : 5000;
+    const altinParaId = compDef?.ALTIN_VERGI_SINIRI_PARA_ID ? Number(compDef.ALTIN_VERGI_SINIRI_PARA_ID) : 2;
     const altinPara =
       paraList.find((p) => Number(p.id) === altinParaId) ||
-      paraList.find((p) => p.kod?.toUpperCase() === "22") ||
-      paraList.find((p) => p.kod?.toUpperCase() === "HAS");
-    const altinParaKodu = (altinPara?.kod || "22").toUpperCase().trim();
+      paraList.find((p) => p.kod?.toUpperCase() === "USD") ||
+      paraList.find((p) => p.kod?.toUpperCase() === "22");
+    const altinParaKodu = (altinPara?.kod || "USD").toUpperCase().trim();
 
     const fallback = {
       isExceeded: false,
@@ -3264,26 +3263,30 @@ export const DovizFisiPage: React.FC = () => {
       limitTitle: "MASAK Yasal Bildirim Sınırı Uyarısı",
     };
 
-    if (!isMasakKontroluVar) {
-      return fallback;
-    }
-    // İstatistik tanımlarında Fiş Dizayn Tipi = 1 (Gayriresmi/Özel) ise MASAK kontrolü ve limitleri çalışmaz
-    const activeStat =
-      selectedStatistic ||
-      statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === istatistikKodu));
-    const currentDizaynTipi = istatistikFisDizaynTipi ?? (activeStat ? Number(activeStat.fisDizaynTipi) : null);
-    if (currentDizaynTipi === 1) {
-      return fallback;
-    }
-
     const validLines = lines.filter((l) => {
       const m = parseMiktar(l.miktar);
       return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
     });
 
-    if (validLines.length === 0) return fallback;
+    if (validLines.length === 0) {
+      if (Math.max(Math.abs(sonToplam), Math.abs(totalTutar)) >= tlLimit) {
+        return {
+          isExceeded: true,
+          type: "tl" as const,
+          limitLabel: `TL Vergi Sınırını (${tlLimit.toLocaleString("tr-TR")} ₺)`,
+          limitTitle: "MASAK TL Bildirim Sınırı Uyarısı",
+        };
+      }
+      return fallback;
+    }
 
-    const activeLimitParaRate = limitPara ? resolveCurrencyRate(limitPara, tip, kurTuru) : 0;
+    const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD" || Number(p.id) === 2);
+    const usdRate = (() => {
+      const r = usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 0;
+      return r > 0 ? r : 35;
+    })();
+
+    const activeLimitParaRate = limitPara ? resolveCurrencyRate(limitPara, tip, kurTuru) : usdRate;
     const activeAltinParaRate = altinPara ? resolveCurrencyRate(altinPara, tip, kurTuru) : 0;
 
     const isGoldItem = (paraId?: number, kod?: string, ad?: string, uTipi?: number) => {
@@ -3293,6 +3296,7 @@ export const DovizFisiPage: React.FC = () => {
       if (["USD", "EUR", "GBP", "CHF", "CAD", "AUD", "JPY", "SAR", "AED", "RUB", "KWD", "$", "€", "£"].includes(upperKod)) {
         return false;
       }
+      if (isTlItem(kod)) return false;
       if (altinParaId && paraId && Number(paraId) === Number(altinParaId)) return true;
       if (uTipi === 1 || uTipi === 2 || uTipi === 3) return true;
       const matched = paraList.find((x) => (paraId && Number(x.id) === Number(paraId)) || (x.kod && kod && x.kod.toUpperCase().trim() === upperKod));
@@ -3306,16 +3310,18 @@ export const DovizFisiPage: React.FC = () => {
 
     const isTlItem = (kod?: string) => {
       const upper = (kod || "").toUpperCase().trim();
-      return upper === "TL" || upper === "TRY" || upper === "TRL" || upper === "POS" || upper === "HAVALE";
+      return upper === "TL" || upper === "TRY" || upper === "TRL" || upper === "POS" || upper === "HAVALE" || upper === "";
     };
 
     let totalDovizEquivalent = 0;
     let hasDovizLimitDirect = false;
     let hasDoviz = false;
 
-    let totalGoldEquivalent = 0;
-    let hasAltinLimitDirect = false;
+    let totalGoldTl = 0;
+    let totalGoldGram = 0;
     let hasGold = false;
+
+    let totalTlAmount = 0;
 
     validLines.forEach((l) => {
       const m = parseMiktar(l.miktar);
@@ -3326,24 +3332,9 @@ export const DovizFisiPage: React.FC = () => {
 
       if (isGoldItem(paraId, kod, ad, l.urunTipi)) {
         hasGold = true;
-        // Altın satırı kontrolü:
-        const isSameAsAltinSinir =
-          (altinParaId && Number(paraId) === Number(altinParaId)) ||
-          (altinPara?.kod && kod === altinPara.kod.toUpperCase().trim()) ||
-          kod === "22" ||
-          kod === "22AYAR";
-
-        if (isSameAsAltinSinir) {
-          totalGoldEquivalent += m;
-          if (m >= altinLimit) hasAltinLimitDirect = true;
-        } else {
-          // Altın Sınır Para Birimi cinsine has oranı veya TL kuru üzerinden dönüştür
-          const lineTl = m * (k > 0 ? k : 1);
-          const limitParaTlRate = activeAltinParaRate > 0 ? activeAltinParaRate : (altinPara?.hasOrani ? altinPara.hasOrani * 3200 : 3200);
-          const eq = limitParaTlRate > 0 ? lineTl / limitParaTlRate : m;
-          totalGoldEquivalent += eq;
-          if (eq >= altinLimit || m >= altinLimit) hasAltinLimitDirect = true;
-        }
+        const lineTl = m * (k > 0 ? k : (activeAltinParaRate > 0 ? activeAltinParaRate : 3000));
+        totalGoldTl += lineTl;
+        totalGoldGram += m;
       } else if (!isTlItem(kod)) {
         // Döviz satırı (USD, EUR, GBP, vb.)
         hasDoviz = true;
@@ -3354,36 +3345,51 @@ export const DovizFisiPage: React.FC = () => {
           (limitParaKodu === "EUR" && (kod === "€" || kod === "EUR" || kod.includes("EURO") || ad.toUpperCase().includes("EURO")));
 
         if (isTargetLimitCurrency) {
-          // Sınır para birimindeki miktar DOĞRUDAN döviz miktarı olarak toplanır ve sınırla kıyaslanır
           totalDovizEquivalent += m;
           if (m >= dovizLimit) hasDovizLimitDirect = true;
         } else {
-          // Diğer yabancı para birimleri -> Sınır Para Birimi (USD) karşılığı
           const lineTl = m * (k > 0 ? k : 1);
-          const usdKur = activeLimitParaRate > 0
-            ? activeLimitParaRate
-            : (limitPara ? resolveCurrencyRate(limitPara, tip, kurTuru) : 0) ||
-              (lines.find((x) => (x.paraKodu || "").toUpperCase() === limitParaKodu && parseKur(x.kur) > 0)?.kur ? parseKur(lines.find((x) => (x.paraKodu || "").toUpperCase() === limitParaKodu)!.kur) : 0) ||
-              (k > 0 ? k : 49.45);
-          const eq = usdKur > 0 ? lineTl / usdKur : m;
+          const activeRate = activeLimitParaRate > 0 ? activeLimitParaRate : usdRate;
+          const eq = activeRate > 0 ? lineTl / activeRate : m;
           totalDovizEquivalent += eq;
           if (eq >= dovizLimit) hasDovizLimitDirect = true;
         }
+      } else {
+        const lineTl = m * (k > 0 ? k : 1);
+        totalTlAmount += lineTl;
       }
     });
 
-    const tlTotal = Math.abs(sonToplam);
+    // 1) Altın kontrolü:
+    let isAltinExceeded = false;
+    if (hasGold) {
+      const isAltinParaCurrency = !altinPara || altinPara.urunTipi === 0 || ["USD", "EUR", "TL", "TRY", "$", "€"].includes(altinParaKodu);
+      if (altinParaKodu === "TL" || altinParaKodu === "TRY") {
+        isAltinExceeded = totalGoldTl >= altinLimit;
+      } else if (isAltinParaCurrency) {
+        const rate = (activeLimitParaRate > 0 && limitParaKodu === altinParaKodu)
+          ? activeLimitParaRate
+          : (activeAltinParaRate > 0 && activeAltinParaRate < 500 ? activeAltinParaRate : usdRate);
+        const goldCurrencyVal = rate > 0 ? totalGoldTl / rate : 0;
+        isAltinExceeded = goldCurrencyVal >= altinLimit || (altinLimit >= 1000 && totalGoldTl >= altinLimit);
+      } else {
+        const goldGramRate = activeAltinParaRate > 0 ? activeAltinParaRate : (3200 * 0.916);
+        const goldGrams = goldGramRate > 0 ? totalGoldTl / goldGramRate : totalGoldGram;
+        if (altinLimit < 500) {
+          isAltinExceeded = goldGrams >= altinLimit || (totalGoldGram > 0 && totalGoldGram >= altinLimit);
+        } else {
+          const goldUsd = usdRate > 0 ? totalGoldTl / usdRate : 0;
+          isAltinExceeded = goldGrams >= altinLimit || goldUsd >= altinLimit || totalGoldTl >= altinLimit;
+        }
+      }
+    }
 
-    // 1) Altın kontrolü: Yalnızca altın satırları Altın Vergi Sınırı ile kıyaslanır
-    const isAltinExceeded = hasGold && (hasAltinLimitDirect || totalGoldEquivalent >= altinLimit);
-
-    // 2) Döviz kontrolü: Yalnızca döviz satırları Döviz Vergi Sınırı ile kıyaslanır (Altın veya TL asla dövizi tetiklemez)
+    // 2) Döviz kontrolü:
     const isDovizExceeded = hasDoviz && (hasDovizLimitDirect || totalDovizEquivalent >= dovizLimit);
 
-    // 3) TL kontrolü: SADECE ve SADECE altın veya döviz olmayan saf TL işlemlerinde uygulanır
-    // Döviz fişinde döviz veya altın varken TL sınırı KESİNLİKLE kontrol edilmez!
-    const isPureTl = !hasGold && !hasDoviz;
-    const isTlExceeded = isPureTl && tlTotal >= tlLimit;
+    // 3) TL kontrolü:
+    const tlTotal = Math.max(Math.abs(sonToplam), Math.abs(totalTutar), totalTlAmount);
+    const isTlExceeded = tlTotal >= tlLimit;
 
     if (isAltinExceeded) {
       return {
@@ -4154,8 +4160,8 @@ export const DovizFisiPage: React.FC = () => {
       if (!kurOnayi(kYetki, kurSatirlari, (m) => setNotification({ type: "danger", message: m }))) return;
     }
 
-    // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolleri (Kaydetmede Kontrol)
-    if (isMasakKontroluVar && isMasakLimitExceeded) {
+    // MASAK Yasal Sınır Kontrolleri (Kaydetmede Kontrol)
+    if (isMasakLimitExceeded) {
       const isAnon = isAnonymousCustomerName(unvan);
 
       const missingFields: string[] = [];
@@ -7462,6 +7468,17 @@ export const DovizFisiPage: React.FC = () => {
                 >
                   Ctrl+N) Yeni Kayıt
                 </Button>
+                {isMasakLimitExceeded && (
+                  <span
+                    className="d-inline-flex align-items-center gap-1 px-2 py-0.5 rounded border border-danger bg-danger-subtle text-danger fw-bold"
+                    style={{ fontSize: "11.5px", cursor: "pointer" }}
+                    onClick={() => setShowMasakCustomerWarningModal(true)}
+                    title={`MASAK Bildirim Sınırı Aşıldı: ${masakLimitLabel}`}
+                  >
+                    <IconAlertTriangle size={14} className="text-danger" />
+                    <span>MASAK Sınırı Aşıldı ({masakStatus.type === "altin" ? "Altın" : masakStatus.type === "doviz" ? "Döviz" : "TL"})</span>
+                  </span>
+                )}
               </div>
             </Col>
 
