@@ -278,8 +278,19 @@ export const defaultCompanyTanim: TodvzTanimDto = {
 };
 
 export class CompanyService {
-  private static cachedDefinitions: TodvzTanimDto | null = null;
-  private static fetchPromise: Promise<TodvzTanimDto> | null = null;
+  public static cachedDefinitions: TodvzTanimDto | null = null;
+  public static fetchPromise: Promise<TodvzTanimDto> | null = null;
+
+  // Listen for cross-tab cache invalidations
+  static {
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", (e) => {
+        if (e.key === "company_definitions_version") {
+          CompanyService.cachedDefinitions = null;
+        }
+      });
+    }
+  }
 
   /**
    * Fetches company definitions from active DB via backend API (cached in-memory for instant page loads)
@@ -314,11 +325,26 @@ export class CompanyService {
   }
 
   /**
+   * Clears the in-memory cache of company definitions
+   */
+  public static clearCache(): void {
+    CompanyService.cachedDefinitions = null;
+    CompanyService.fetchPromise = null;
+  }
+
+  /**
    * Updates company definitions in active DB via backend API
    */
   public static async updateDefinitions(data: Partial<TodvzTanimDto>): Promise<TodvzTanimDto> {
     const response = await apiClient.put<TodvzTanimDto>("/company/definitions", data);
     CompanyService.cachedDefinitions = null;
+    CompanyService.fetchPromise = null;
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("company_definitions_version", Date.now().toString());
+        window.dispatchEvent(new CustomEvent("company_definitions_updated", { detail: response.data }));
+      } catch {}
+    }
     return response.data;
   }
 

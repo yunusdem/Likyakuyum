@@ -112,7 +112,8 @@ const toInt = (val: any, defaultVal = 0): number => {
 
 const toFloat = (val: any, defaultVal = 0.0): number => {
   if (val === undefined || val === null || val === "") return defaultVal;
-  const parsed = parseFloat(String(val));
+  const clean = String(val).replace(/,/g, ".");
+  const parsed = parseFloat(clean);
   return isNaN(parsed) ? defaultVal : parsed;
 };
 
@@ -150,6 +151,11 @@ export class UserSqlRepository {
         IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'ISCILIK_GIRIS_SEKLI') IS NULL
         BEGIN
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [ISCILIK_GIRIS_SEKLI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_ISCILIK_GIRIS_SEKLI DEFAULT 0;
+        END;
+
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'KUR_TOLERANS_ORANI') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [KUR_TOLERANS_ORANI] FLOAT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_KUR_TOLERANS_ORANI DEFAULT 0;
         END;
       `);
     } catch (e) {
@@ -330,6 +336,7 @@ export class UserSqlRepository {
   public static async findAll(dbContext?: { dbServer?: string; dbName?: string }): Promise<UserModel[]> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+      await UserSqlRepository.ensureSidebarColumn(pool);
       const result = await pool.request().query<TodvzKullaniciEntity>(`
         ${UserSqlRepository.BASE_SELECT}
         ORDER BY U.[KULLANICI_ID] ASC
@@ -348,6 +355,7 @@ export class UserSqlRepository {
   public static async findById(id: string | number, dbContext?: { dbServer?: string; dbName?: string }): Promise<UserModel | null> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+      await UserSqlRepository.ensureSidebarColumn(pool);
       const request = pool.request();
       request.input("userId", sql.Int, toInt(id));
 
@@ -373,6 +381,7 @@ export class UserSqlRepository {
   public static async findByUsername(username: string, dbContext?: { dbServer?: string; dbName?: string }): Promise<UserModel | null> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+      await UserSqlRepository.ensureSidebarColumn(pool);
       const request = pool.request();
       request.input("username", sql.VarChar(50), username.trim());
 
@@ -478,7 +487,7 @@ export class UserSqlRepository {
       request.input("VEZNE_ID", sql.Int, validVezneId);
 
       request.input("KUR_YETKISI", sql.TinyInt, kurYetkisiToDb(user.ratePermType));
-      request.input("KUR_TOLERANS_ORANI", sql.Float, (user.ratePermType === "Yüzde" || user.ratePermType === "Limitli") ? toFloat(user.ratePermValue, 0.0) : 0.0);
+      request.input("KUR_TOLERANS_ORANI", sql.Float, (kurYetkisiKoddan(user.ratePermType) === "Yüzde") ? toFloat(user.ratePermValue, 0.0) : 0.0);
       request.input("KOMISYON_ALMA_YETKISI", sql.Bit, toBit(user.hasCommissionPerm));
       request.input("PROGRAM_ZEMIN_RENGI", sql.Int, colorToDb(app?.programBgColor, 16316664));
       request.input("PROGRAM_YAZI_RENGI", sql.Int, colorToDb(app?.programTextColor, 0));
@@ -624,7 +633,7 @@ export class UserSqlRepository {
       request.input("YAZICI_ID", sql.Int, toInt(user.printerId, 1));
       request.input("VEZNE_ID", sql.Int, validVezneId);
       request.input("KUR_YETKISI", sql.TinyInt, kurYetkisiToDb(user.ratePermType));
-      request.input("KUR_TOLERANS_ORANI", sql.Float, (user.ratePermType === "Yüzde" || user.ratePermType === "Limitli") ? toFloat(user.ratePermValue, 0.0) : 0.0);
+      request.input("KUR_TOLERANS_ORANI", sql.Float, (kurYetkisiKoddan(user.ratePermType) === "Yüzde") ? toFloat(user.ratePermValue, 0.0) : 0.0);
       request.input("KOMISYON_ALMA_YETKISI", sql.Bit, toBit(user.hasCommissionPerm));
 
       request.input("PROGRAM_ZEMIN_RENGI", sql.Int, colorToDb(app?.programBgColor, 16316664));

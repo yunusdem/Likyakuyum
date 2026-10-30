@@ -6,7 +6,8 @@ const flexNumber = (defaultVal = 0) => z
     .transform((val) => {
     if (val === undefined || val === null || val === "")
         return defaultVal;
-    const num = parseFloat(String(val));
+    const clean = String(val).replace(/,/g, ".");
+    const num = parseFloat(clean);
     return isNaN(num) ? defaultVal : num;
 });
 const menuPermissionsSchema = z.object({

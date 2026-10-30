@@ -367,14 +367,50 @@ export function masakGerekli(
   modul: HizliSatisModul,
   sepet: Pick<SepetSatiri, "kod" | "miktar">[],
   toplam: Pick<SepetToplami, "genelToplam" | "araToplam" | "hasToplam">,
-  o: { hasKuru?: number; usdKuru?: number; gayriResmi?: boolean } = {}
+  o: { hasKuru?: number; usdKuru?: number; gayriResmi?: boolean; tlSiniri?: number; dovizSiniri?: number; altinSiniri?: number } = {}
 ): boolean {
   if (o.gayriResmi || modul === "ticari") return false;
-  const tlAsti = toplam.genelToplam >= MASAK_TL_SINIRI || toplam.araToplam >= MASAK_TL_SINIRI;
-  if (modul === "perakende") return toplam.genelToplam >= MASAK_TL_SINIRI;
-  const usdSatir = sepet.some((s) => ["USD", "$"].includes(String(s.kod ?? "").trim().toUpperCase()) && Number(s.miktar) >= MASAK_USD_SINIRI);
-  if (modul === "sarraf") return tlAsti || usdSatir || (toplam.hasToplam > 0 && (Number(o.hasKuru) || 0) * toplam.hasToplam >= MASAK_TL_SINIRI);
+  const tlLimit = o.tlSiniri && o.tlSiniri > 0 ? o.tlSiniri : MASAK_TL_SINIRI;
+  const dovizLimit = o.dovizSiniri && o.dovizSiniri > 0 ? o.dovizSiniri : MASAK_USD_SINIRI;
+  const altinLimit = o.altinSiniri && o.altinSiniri > 0 ? o.altinSiniri : tlLimit;
+
+  const isGoldRow = (kod: string) => {
+    const u = (kod || "").trim().toUpperCase();
+    return ["HAS", "CEYREK", "YARIM", "TAM", "ATA", "GREMSE", "22AYAR", "14AYAR", "18AYAR", "24AYAR", "ALTIN", "ZIYNET"].includes(u) || u.includes("ALTIN");
+  };
+
+  const isDovizRow = (kod: string) => {
+    const u = (kod || "").trim().toUpperCase();
+    return ["USD", "$", "EUR", "€", "GBP", "£", "CHF"].includes(u);
+  };
+
+  const hasGold = toplam.hasToplam > 0 || sepet.some((s) => isGoldRow(String(s.kod ?? "")));
+  const hasDoviz = sepet.some((s) => isDovizRow(String(s.kod ?? "")));
+
+  if (modul === "sarraf") {
+    const altinTl = toplam.hasToplam > 0 ? (Number(o.hasKuru) || 0) * toplam.hasToplam : toplam.genelToplam;
+    const altinAsti = hasGold && altinTl >= altinLimit;
+    const dovizAsti = hasDoviz && sepet.some((s) => isDovizRow(String(s.kod ?? "")) && Number(s.miktar) >= dovizLimit);
+    const tlAsti = !hasGold && !hasDoviz && (toplam.genelToplam >= tlLimit || toplam.araToplam >= tlLimit);
+    return altinAsti || dovizAsti || tlAsti;
+  }
+
+  if (modul === "perakende") {
+    const altinTl = toplam.hasToplam > 0 ? (Number(o.hasKuru) || 0) * toplam.hasToplam : (hasGold ? toplam.genelToplam : 0);
+    const altinAsti = hasGold && altinTl >= altinLimit;
+    const dovizAsti = hasDoviz && sepet.some((s) => isDovizRow(String(s.kod ?? "")) && Number(s.miktar) >= dovizLimit);
+    const tlAsti = !hasGold && !hasDoviz && (toplam.genelToplam >= tlLimit || toplam.araToplam >= tlLimit);
+    return altinAsti || dovizAsti || tlAsti;
+  }
+
+  // Döviz modülü
+  const dovizDirect = sepet.some((s) => isDovizRow(String(s.kod ?? "")) && Number(s.miktar) >= dovizLimit);
   const usdKuru = Number(o.usdKuru) || 0;
-  const usdKarsiligi = usdKuru > 0 ? toplam.araToplam / usdKuru : 0;
-  return tlAsti || usdSatir || usdKarsiligi >= MASAK_USD_SINIRI;
+  const usdKarsiligi = (!hasGold && usdKuru > 0) ? toplam.araToplam / usdKuru : 0;
+  const dovizAsti = hasDoviz && (dovizDirect || usdKarsiligi >= dovizLimit);
+  const altinTl = hasGold ? ((Number(o.hasKuru) || 0) * (toplam.hasToplam || 0) || toplam.genelToplam) : 0;
+  const altinAsti = hasGold && altinTl >= altinLimit;
+  const tlAsti = !hasGold && !hasDoviz && (toplam.genelToplam >= tlLimit || toplam.araToplam >= tlLimit);
+
+  return altinAsti || dovizAsti || tlAsti;
 }

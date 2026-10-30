@@ -282,32 +282,13 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
   };
 };
 
-export const formatIscilikGirisDegeri = (val: any, iscilikGirisSekli: number = 0): string => {
+export const formatIscilikGirisDegeri = (val: any, _iscilikGirisSekli: number = 0): string => {
   if (val === undefined || val === null || val === "") return "";
   const strVal = String(val).trim();
   if (!strVal) return "";
-
-  if (iscilikGirisSekli === 0) {
-    // Sayı (tam sayı) modu:
-    // 0, veya , ile yazılmışsa (veya . ile) aynı şekilde kalacak
-    if (strVal.startsWith(",") || strVal.startsWith(".")) {
-      return "0," + strVal.slice(1);
-    }
-    if (strVal.startsWith("0,") || strVal.startsWith("0.")) {
-      return strVal.replace(".", ",");
-    }
-    if (strVal.includes(",") || strVal.includes(".")) {
-      return strVal.replace(".", ",");
-    }
-    // 0, veya , ile yazmamışsa başına 0, koyulacak (örn: 25 -> 0,25)
-    const num = parseFloat(strVal);
-    if (!isNaN(num) && num > 0) {
-      return "0," + strVal;
-    }
-    return strVal;
+  if (strVal.startsWith(",") || strVal.startsWith(".")) {
+    return "0" + strVal.replace(".", ",");
   }
-
-  // Milyem seçili ise ne yazarsa o olacak
   return strVal;
 };
 
@@ -371,34 +352,29 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
 
   // İşçilik hesabı: 0: Gram, 1: Adet, 2: Toplam
   const iscilikSekli = Number(r.iscilikHesaplamaSekli) || 0;
-  let iscilikiMiktari = parseDecimal(r.iscilikiMiktari);
-  if (iscilikGirisSekli === 0 && r.iscilikiMiktari !== "" && r.iscilikiMiktari !== undefined && r.iscilikiMiktari !== null) {
-    const sVal = String(r.iscilikiMiktari).trim();
-    if (sVal !== "" && !sVal.includes(",") && !sVal.includes(".")) {
-      const parsedInt = parseFloat(sVal);
-      if (!isNaN(parsedInt) && parsedInt > 0) {
-        iscilikiMiktari = parseDecimal(`0.${sVal}`);
-      }
-    }
-  }
+  const rawIscilik = parseDecimal(r.iscilikiMiktari);
+  // Eğer tam sayı seçili ise (iscilikGirisSekli === 0), 1000'e bölünmüş hali kullanılır (örn: 25 -> 0.025). Milyem ise (1) doğrudan kullanılır.
+  const effectiveIscilik = (iscilikGirisSekli === 0) ? (rawIscilik / 1000) : rawIscilik;
   let iscilikHasGram: number | string = r.iscilikHasGram;
 
   if (changedField !== "iscilikHasGram") {
-    if (iscilikiMiktari > 0) {
+    if (effectiveIscilik > 0) {
       if (iscilikSekli === 0) {
         // Gram seçilirse: gram (veya miktar/adet) * işçilik
         const gramVal = miktar > 0 ? miktar : (adet > 0 ? adet : 0);
-        iscilikHasGram = parseFloat((gramVal * iscilikiMiktari).toFixed(4));
+        iscilikHasGram = parseFloat((gramVal * effectiveIscilik).toFixed(4));
       } else if (iscilikSekli === 1) {
         // Adet seçilirse: adet * işçilik
         const adetVal = adet > 0 ? adet : 1;
-        iscilikHasGram = parseFloat((adetVal * iscilikiMiktari).toFixed(4));
+        iscilikHasGram = parseFloat((adetVal * effectiveIscilik).toFixed(4));
       } else if (iscilikSekli === 2) {
         // Toplam seçilirse
-        iscilikHasGram = parseFloat(iscilikiMiktari.toFixed(4));
+        iscilikHasGram = parseFloat(effectiveIscilik.toFixed(4));
       }
     } else if (r.iscilikHasGram !== "" && parseDecimal(r.iscilikHasGram) > 0) {
       iscilikHasGram = parseDecimal(r.iscilikHasGram);
+    } else {
+      iscilikHasGram = "";
     }
   }
 
@@ -1208,28 +1184,228 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // MASAK Malvarlığı Dondurulanlar Bloke Durumu
   const isMasakBlocked = Boolean(isMasakKontroluVar && masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
 
-  // 185.000 TL veya 5.000 USD MASAK Yasal Sınır Kontrolü
-  const isMasakLimitExceeded = useMemo(() => {
+  const masakStatus = useMemo(() => {
+    const tlLimit = Number(companyDefinitions?.TL_VERGI_SINIRI) > 0 ? Number(companyDefinitions.TL_VERGI_SINIRI) : 100000;
+    const dovizLimit = Number(companyDefinitions?.DOVIZ_VERGI_SINIRI) > 0 ? Number(companyDefinitions.DOVIZ_VERGI_SINIRI) : 110000;
+    const dovizParaId = companyDefinitions?.DOVIZ_VERGI_SINIRI_PARA_ID ?? 2;
+    const altinLimit = Number(companyDefinitions?.ALTIN_VERGI_SINIRI) > 0 ? Number(companyDefinitions.ALTIN_VERGI_SINIRI) : 201000;
+    const altinParaId = companyDefinitions?.ALTIN_VERGI_SINIRI_PARA_ID ?? 47;
+
+    const isGold = (kod: string, tipNum?: number | null, ad?: string) => {
+      if (tipNum === 1 || tipNum === 3) return true;
+      if (tipNum === 0) return false;
+      const upper = (kod || "").toUpperCase().trim();
+      const upperAd = (ad || "").toUpperCase().trim();
+      return (
+        ["HAS", "GA", "ATA", "CEYREK", "YARIM", "TAM", "GREMSE", "ZIYNET", "22", "14", "18", "24", "22AYAR", "14AYAR", "18AYAR", "24AYAR", "ALTIN"].includes(upper) ||
+        upper.includes("ALTIN") || upper.includes("ÇEYREK") || upper.includes("CEYREK") || upper.includes("YARIM") || upper.includes("ATA") || upper.endsWith("AYAR") ||
+        upperAd.includes("ALTIN") || upperAd.includes("AYAR") || upperAd.includes("ZIYNET") || upperAd.includes("BİLEZİK") || upperAd.includes("BILEZIK")
+      );
+    };
+
+    const isDoviz = (kod: string, tipNum?: number | null, ad?: string) => {
+      if (isGold(kod, tipNum, ad)) return false;
+      const upper = (kod || "").toUpperCase().trim();
+      if (["TL", "TRY", "TRL", "POS", "HAVALE", ""].includes(upper)) return false;
+      if (tipNum === 0) return true;
+      return ["USD", "EUR", "GBP", "CHF", "AUD", "CAD", "JPY", "SAR", "AED", "RUB", "KWD", "NOK", "DKK", "SEK", "$", "€", "£"].includes(upper);
+    };
+
+    // Para birimini ve güncel TL kurunu çözümler
+    const resolvePara = (paraId: number, fallbackCode: string) => {
+      if (paraId === 1) return { kod: "TL", rate: 1 };
+      const targetCode = fallbackCode.toUpperCase().trim();
+      const kurItem = kurSatirlar.find((k) => k.paraId === paraId || (k.kod && k.kod.toUpperCase() === targetCode));
+      const kod = (kurItem?.kod || targetCode).toUpperCase().trim();
+      let rate = Number(tip === 0 ? (kurItem?.efektifAlis || kurItem?.dovizAlis) : (kurItem?.efektifSatis || kurItem?.dovizSatis)) || 0;
+      if (!rate) {
+        const fbKur = kurSatirlar.find((k) => k.kod && k.kod.toUpperCase() === targetCode);
+        rate = Number(tip === 0 ? (fbKur?.efektifAlis || fbKur?.dovizAlis) : (fbKur?.efektifSatis || fbKur?.dovizSatis)) || 0;
+      }
+      return { kod, rate: rate > 0 ? rate : (paraId === 47 ? 3200 : 49.45) };
+    };
+
+    const dovizSinirPara = resolvePara(dovizParaId, dovizParaId === 3 ? "EUR" : "USD");
+    const altinSinirPara = resolvePara(altinParaId, altinParaId === 47 ? "22" : altinParaId === 3 ? "EUR" : altinParaId === 1 ? "TL" : "USD");
+
+    const dovizLimitInTl = dovizParaId === 1 ? dovizLimit : dovizLimit * dovizSinirPara.rate;
+    const altinLimitInTl = altinParaId === 1 ? altinLimit : altinLimit * altinSinirPara.rate;
+
     if (!isMasakKontroluVar) {
-      return false;
+      return {
+        isExceeded: false,
+        type: null,
+        limitLabel: `TL: ${tlLimit.toLocaleString("tr-TR")} ₺ | Döviz: ${dovizLimit.toLocaleString("tr-TR")} ${dovizSinirPara.kod} | Altın: ${altinLimit.toLocaleString("tr-TR")} ${altinSinirPara.kod}`,
+        limitTitle: "MASAK Yasal Bildirim Sınırı Uyarısı",
+      };
     }
+
     // İstatistik tanımlarında Fiş Dizayn Tipi = 1 (Gayriresmi/Özel) ise MASAK kontrolü ve limitleri çalışmaz
     const activeStat = selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === istatistikKodu));
     const currentDizaynTipi = istatistikFisDizaynTipi ?? (activeStat ? Number(activeStat.fisDizaynTipi) : null);
     if (currentDizaynTipi === 1) {
-      return false;
+      return {
+        isExceeded: false,
+        type: null,
+        limitLabel: `TL: ${tlLimit.toLocaleString("tr-TR")} ₺ | Döviz: ${dovizLimit.toLocaleString("tr-TR")} ${dovizSinirPara.kod} | Altın: ${altinLimit.toLocaleString("tr-TR")} ${altinSinirPara.kod}`,
+        limitTitle: "MASAK Yasal Bildirim Sınırı Uyarısı",
+      };
     }
 
-    const goldTlEquivalent = (alisHas > 0 ? alisHas : odemeHas) * (Number(altinHasKuru) || 0);
+    // 1) Altın kontrolü: Yalnızca altın satırları ve altın ödemeleri Altın Vergi Sınırı ile kıyaslanır
+    const goldLines = lines.filter((l) => {
+      const kod = (l.urunKodu || "").toUpperCase().trim();
+      const ad = (l.urunAdi || "").trim();
+      const m = parseDecimal(l.miktar);
+      const a = parseDecimal(l.adet);
+      const h = parseDecimal(l.hasGram);
+      const t = parseDecimal(l.tutar);
+      return isGold(kod, l.urunTipi, ad) && (m > 0 || a > 0 || h > 0 || t > 0);
+    });
 
-    return (
-      totalTutar >= 185000 ||
-      totalOdemeTutar >= 185000 ||
-      goldTlEquivalent >= 185000 ||
-      odemeRows.some((o) => (o.paraKodu === "USD" || o.paraKodu === "$") && parseDecimal(o.miktar) >= 5000) ||
-      lines.some((l) => (l.urunKodu === "USD" || l.urunKodu === "$") && parseDecimal(l.miktar) >= 5000)
-    );
-  }, [isMasakKontroluVar, totalTutar, totalOdemeTutar, alisHas, odemeHas, altinHasKuru, odemeRows, lines, statisticList, selectedStatistic, istatistikFisDizaynTipi, istatistikId, istatistikKodu]);
+    const goldOdemeler = odemeRows.filter((o) => {
+      const kod = (o.paraKodu || "").toUpperCase().trim();
+      const ad = (o.paraAdi || "").trim();
+      const m = parseDecimal(o.miktar);
+      const a = parseDecimal(o.adet);
+      const h = parseDecimal(o.hasGram);
+      const t = parseDecimal(o.tutar);
+      return isGold(kod, o.urunTipi, ad) && (m > 0 || a > 0 || h > 0 || t > 0);
+    });
+
+    const hasGold = goldLines.length > 0 || goldOdemeler.length > 0;
+    const goldTlFromLines = goldLines.reduce((sum, l) => sum + (parseDecimal(l.tutar) || 0), 0);
+    const goldTlFromOdemeler = goldOdemeler.reduce((sum, o) => sum + (parseDecimal(o.tutar) || 0), 0);
+    const goldTlHasEq = (alisHas > 0 ? alisHas : odemeHas) * (Number(altinHasKuru) || 0);
+    const totalGoldTl = Math.max(goldTlFromLines, goldTlFromOdemeler, goldTlHasEq);
+
+    const hasGoldLineExceeded =
+      goldLines.some((l) => parseDecimal(l.miktar) >= altinLimit || parseDecimal(l.hasGram) >= altinLimit || parseDecimal(l.adet) >= altinLimit) ||
+      goldOdemeler.some((o) => parseDecimal(o.miktar) >= altinLimit || parseDecimal(o.hasGram) >= altinLimit || parseDecimal(o.adet) >= altinLimit);
+
+    const isAltinExceeded = hasGold && (hasGoldLineExceeded || totalGoldTl >= altinLimitInTl);
+
+    // 2) Döviz kontrolü: Yalnızca gerçek döviz satırları ve döviz ödemeleri Döviz Vergi Sınırı ile kıyaslanır (Altın asla dövize dahil edilmez)
+    const dovizLines = lines.filter((l) => {
+      const kod = (l.urunKodu || "").toUpperCase().trim();
+      const m = parseDecimal(l.miktar);
+      const t = parseDecimal(l.tutar);
+      return isDoviz(kod, l.urunTipi) && (m > 0 || t > 0);
+    });
+
+    const dovizOdemeler = odemeRows.filter((o) => {
+      const kod = (o.paraKodu || "").toUpperCase().trim();
+      const m = parseDecimal(o.miktar);
+      const t = parseDecimal(o.tutar);
+      return isDoviz(kod, o.urunTipi) && (m > 0 || t > 0);
+    });
+
+    const hasDoviz = dovizLines.length > 0 || dovizOdemeler.length > 0;
+
+    let totalDovizEquivalent = 0;
+    let hasDovizLineExceeded = false;
+    dovizLines.forEach((l) => {
+      const kod = (l.urunKodu || "").toUpperCase().trim();
+      const m = parseDecimal(l.miktar);
+      const k = parseDecimal(l.kur) || 0;
+      const t = parseDecimal(l.tutar) || (m * (k > 0 ? k : 1));
+      if (kod === dovizSinirPara.kod || (dovizSinirPara.kod === "USD" && (kod === "$" || kod === "USD")) || (dovizSinirPara.kod === "EUR" && (kod === "€" || kod === "EUR"))) {
+        totalDovizEquivalent += m;
+        if (m >= dovizLimit) hasDovizLineExceeded = true;
+      } else {
+        const eq = dovizSinirPara.rate > 0 ? t / dovizSinirPara.rate : m;
+        totalDovizEquivalent += eq;
+        if (eq >= dovizLimit || t >= dovizLimitInTl) hasDovizLineExceeded = true;
+      }
+    });
+
+    dovizOdemeler.forEach((o) => {
+      const kod = (o.paraKodu || "").toUpperCase().trim();
+      const m = parseDecimal(o.miktar);
+      const k = parseDecimal(o.kur) || 0;
+      const t = parseDecimal(o.tutar) || (m * (k > 0 ? k : 1));
+      if (kod === dovizSinirPara.kod || (dovizSinirPara.kod === "USD" && (kod === "$" || kod === "USD")) || (dovizSinirPara.kod === "EUR" && (kod === "€" || kod === "EUR"))) {
+        totalDovizEquivalent += m;
+        if (m >= dovizLimit) hasDovizLineExceeded = true;
+      } else {
+        const eq = dovizSinirPara.rate > 0 ? t / dovizSinirPara.rate : m;
+        totalDovizEquivalent += eq;
+        if (eq >= dovizLimit || t >= dovizLimitInTl) hasDovizLineExceeded = true;
+      }
+    });
+
+    const isDovizExceeded = hasDoviz && (hasDovizLineExceeded || totalDovizEquivalent >= dovizLimit);
+
+    // 3) TL kontrolü: Sadece altın veya döviz içermeyen saf TL işlemleri veya saf TL kalemleri için TL Vergi Sınırı uygulanır
+    const isPureTlTransaction = !hasGold && !hasDoviz;
+    const tlOdemeTutar = odemeRows
+      .filter((o) => {
+        const k = (o.paraKodu || "").toUpperCase().trim();
+        return k === "TL" || k === "TRY" || k === "" || k === "POS" || k === "HAVALE";
+      })
+      .reduce((sum, o) => sum + (parseDecimal(o.tutar) || 0), 0);
+
+    const tlLineTutar = lines
+      .filter((l) => {
+        const k = (l.urunKodu || "").toUpperCase().trim();
+        return k === "TL" || k === "TRY";
+      })
+      .reduce((sum, l) => sum + (parseDecimal(l.tutar) || 0), 0);
+
+    const isTlExceeded = isPureTlTransaction && (tlOdemeTutar >= tlLimit || tlLineTutar >= tlLimit || Math.abs(totalTutar) >= tlLimit);
+
+    if (isAltinExceeded) {
+      return {
+        isExceeded: true,
+        type: "altin" as const,
+        limitLabel: `Altın Vergi Sınırını (${altinLimit.toLocaleString("tr-TR")} ${altinSinirPara.kod})`,
+        limitTitle: "MASAK Altın Bildirim Sınırı Uyarısı",
+      };
+    }
+    if (isDovizExceeded) {
+      return {
+        isExceeded: true,
+        type: "doviz" as const,
+        limitLabel: `Döviz Vergi Sınırını (${dovizLimit.toLocaleString("tr-TR")} ${dovizSinirPara.kod})`,
+        limitTitle: "MASAK Döviz Bildirim Sınırı Uyarısı",
+      };
+    }
+    if (isTlExceeded) {
+      return {
+        isExceeded: true,
+        type: "tl" as const,
+        limitLabel: `TL Vergi Sınırını (${tlLimit.toLocaleString("tr-TR")} ₺)`,
+        limitTitle: "MASAK TL Bildirim Sınırı Uyarısı",
+      };
+    }
+
+    return {
+      isExceeded: false,
+      type: null,
+      limitLabel: `TL: ${tlLimit.toLocaleString("tr-TR")} ₺ | Döviz: ${dovizLimit.toLocaleString("tr-TR")} ${dovizSinirPara.kod} | Altın: ${altinLimit.toLocaleString("tr-TR")} ${altinSinirPara.kod}`,
+      limitTitle: "MASAK Yasal Bildirim Sınırı Uyarısı",
+    };
+  }, [
+    isMasakKontroluVar,
+    companyDefinitions,
+    selectedStatistic,
+    statisticList,
+    istatistikId,
+    istatistikKodu,
+    istatistikFisDizaynTipi,
+    lines,
+    odemeRows,
+    alisHas,
+    odemeHas,
+    altinHasKuru,
+    kurSatirlar,
+    tip,
+    totalTutar,
+  ]);
+
+  const isMasakLimitExceeded = masakStatus.isExceeded;
+  const masakLimitLabel = masakStatus.limitLabel;
+  const masakLimitTitle = masakStatus.limitTitle;
 
   const hasCariInOdeme = useMemo(() => {
     return odemeRows.some((r) => r.odemeAraciTuru === 1 || Boolean(r.cariKartId));
@@ -1752,7 +1928,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
         DovizFisService.getKayitsizMusteriler().catch(() => []),
         StatisticService.getStatistics().catch(() => [] as StatisticItem[]),
-        CompanyService.getDefinitions().catch(() => null),
+        CompanyService.getDefinitions(true).catch(() => null),
         KurService.getKurTablosu({ tur: 0 }).catch(() => null),
         KurService.getKurTablosu({ tur: 1 }).catch(() => null),
         NumeratorService.getNumerators().catch(() => [] as NumeratorItem[]),
@@ -1871,6 +2047,33 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   useEffect(() => {
     loadLookupsAndData();
   }, [loadLookupsAndData]);
+
+  // Sekmeler arası veya pencere odağında güncel firma limit tanımlarını otomatik tazele
+  useEffect(() => {
+    const refreshCompanyDefs = async () => {
+      try {
+        const freshDef = await CompanyService.getDefinitions(true);
+        if (freshDef) {
+          setCompanyDefinitions(freshDef);
+        }
+      } catch {}
+    };
+
+    window.addEventListener("company_definitions_updated", refreshCompanyDefs);
+    const storageHandler = (e: StorageEvent) => {
+      if (e.key === "company_definitions_version") {
+        refreshCompanyDefs();
+      }
+    };
+    window.addEventListener("storage", storageHandler);
+    window.addEventListener("focus", refreshCompanyDefs);
+
+    return () => {
+      window.removeEventListener("company_definitions_updated", refreshCompanyDefs);
+      window.removeEventListener("storage", storageHandler);
+      window.removeEventListener("focus", refreshCompanyDefs);
+    };
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     initialLoadDoneRef.current = false;
@@ -6141,7 +6344,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   <th style={{ width: 70 }} className="text-center">Milyem</th>
                   <th style={{ width: 85 }} className="text-center">Has</th>
                   <th style={{ width: 85 }} className="text-center">İşçilik şekli</th>
-                  <th style={{ width: 85 }} className="text-center">İşçilik</th>
+                  <th style={{ width: 85 }} className="text-center">{userIscilikGirisSekli === 0 ? "İşçilik/T" : "İşçilik/M"}</th>
                   <th style={{ width: 85 }} className="text-center">İşçilik (Has)</th>
                   <th style={{ width: 105 }} className="text-center">Kur</th>
                   <th style={{ width: 110 }} className="text-center">Tutar (TL)</th>
@@ -6423,7 +6626,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             backgroundColor: isParaOrZiynet ? "#e9ecef" : undefined,
                             cursor: isParaOrZiynet ? "not-allowed" : undefined,
                           }}
-                          title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz" : undefined}
+                          title={
+                            isParaOrZiynet
+                              ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz"
+                              : userIscilikGirisSekli === 0
+                                ? "İşçilik (Tam Sayı: örn. 25 girildiğinde 0,025 olarak hesaplanır)"
+                                : "İşçilik (Milyem: girilen değer doğrudan hesaplanır)"
+                          }
                         />
                       </td>
 
@@ -7971,7 +8180,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         <Modal.Header closeButton className="py-2 bg-warning-subtle text-warning-emphasis">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
             <IconAlertTriangle size={20} className="text-warning" />
-            MASAK Yasal Bildirim Sınırı Uyarısı
+            {masakLimitTitle}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="py-3">
@@ -7981,7 +8190,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             </div>
             <div>
               <p className="mb-2 fw-semibold">
-                İşlem tutarı MASAK Yasal Bildirim Sınırını (≥185.000 TL / 5.000 USD) aşmaktadır.
+                İşlem tutarı MASAK <strong>{masakLimitLabel}</strong> aşmaktadır.
               </p>
               <p className="small text-muted mb-0">
                 5549 sayılı yasa gereğince işlem yapılan müşterinin <strong>İsim / Ünvan, T.C. Kimlik / VKN, Adres ve Kişilik Tipi</strong> bilgilerinin eksiksiz girilmesi zorunludur. Detay bilgileri girilmeden işlem kaydedilemez.
@@ -8007,12 +8216,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         <Modal.Header closeButton className="py-2 bg-danger-subtle text-danger">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
             <IconAlertTriangle size={20} className="text-danger" />
-            MASAK Zorunlu Bilgi Eksikliği
+            {masakLimitTitle} - Zorunlu Bilgi Eksikliği
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="py-3">
           <p className="mb-2">
-            İşlem toplam tutarı <strong>MASAK Yasal Sınırını (≥185.000 TL / 5.000 USD)</strong> aşmaktadır.
+            İşlem toplam tutarı MASAK <strong>{masakLimitLabel}</strong> aşmaktadır.
           </p>
           <div className="alert alert-danger py-2 px-3 small mb-2">
             <strong>Eksik Alanlar:</strong>

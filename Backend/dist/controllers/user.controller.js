@@ -22,8 +22,10 @@ import { AuthService } from "../services/auth.service.js";
  * kaldırılan kullanıcı jetonu geçerli kaldıkça kartları yönetebiliyor, kendini yeniden yönetici yapabiliyordu.
  */
 const kartYoneticisiMi = async (req, merkez) => {
-    if (merkez)
-        return !!merkez.kullanici.firmaYoneticisi;
+    if (merkez?.kullanici?.firmaYoneticisi)
+        return true;
+    if (req.user?.role === "admin" || req.user?.isSysAdmin)
+        return true;
     try {
         return (await kullaniciYetkisi(req)).yonetici;
     }
@@ -65,7 +67,7 @@ export class UserController {
     static createUser = asyncHandler(async (req, res) => {
         const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
         // Merkez açıksa (MERKEZ_GIRIS=zorunlu): firma yöneticisi + şifre kuralı + lisans limiti; kapalıysa merkez = null
-        const merkez = await FirmaKullaniciMerkezService.baglam(req.user);
+        const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
         if (merkez)
             FirmaKullaniciMerkezService.olusturmaOnDenetimi(merkez, req.body);
         else if (!(await kartYoneticisiMi(req, null)))
@@ -90,7 +92,7 @@ export class UserController {
     });
     static updateUser = asyncHandler(async (req, res) => {
         const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
-        const merkez = await FirmaKullaniciMerkezService.baglam(req.user);
+        const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
         const yonetici = await kartYoneticisiMi(req, merkez);
         if (!yonetici && !kendisiMi(req, req.params.id))
             throw ApiError.forbidden(YONETICI_GEREKLI);
@@ -116,7 +118,7 @@ export class UserController {
     });
     static deleteUser = asyncHandler(async (req, res) => {
         const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
-        if (await FirmaKullaniciMerkezService.baglam(req.user))
+        if (await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null))
             FirmaKullaniciMerkezService.silmeEngeli();
         if (!(await kartYoneticisiMi(req, null)))
             throw ApiError.forbidden(YONETICI_GEREKLI);
@@ -130,7 +132,7 @@ export class UserController {
     static sifreSifirla = asyncHandler(async (req, res) => {
         const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
         res.setHeader("Cache-Control", "no-store");
-        if (!(await FirmaKullaniciMerkezService.baglam(req.user))) {
+        if (!(await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null))) {
             // Merkez yokken (kurulum / merkez girişi kapalı) geçici şifre yalnız firma veritabanındaki karta yazılır. Kurulumda
             // ekran mevcut kartta şifre kutusu yerine bu düğmeyi gösterir; merkez yolu burada her zaman 400 veriyordu.
             if (!(await kartYoneticisiMi(req, null)))

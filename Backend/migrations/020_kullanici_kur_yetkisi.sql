@@ -4,7 +4,14 @@
 -- Tekrar çalıştırılabilir (Idempotent), veri koruyucu göç dosyası.
 -- ============================================================================
 
--- 1. Mevcut kayıtlarda eski 'Limitli' (2) olanlar yüzde tolerans oranı girilmiş kayıtlar olduğu için yeni kodlamada 3 (Yüzde) olarak güncellenir.
+-- 1. KUR_TOLERANS_ORANI kolonunun varlığını güvenceye al
+IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'KUR_TOLERANS_ORANI') IS NULL
+BEGIN
+	ALTER TABLE dbo.TODVZ_KULLANICI ADD [KUR_TOLERANS_ORANI] FLOAT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_KUR_TOLERANS_ORANI DEFAULT 0;
+END;
+GO
+
+-- 2. Mevcut kayıtlarda eski 'Limitli' (2) olanlar yüzde tolerans oranı girilmiş kayıtlar olduğu için yeni kodlamada 3 (Yüzde) olarak güncellenir.
 UPDATE dbo.TODVZ_KULLANICI
 SET [KUR_YETKISI] = 3
 WHERE [KUR_YETKISI] = 2;

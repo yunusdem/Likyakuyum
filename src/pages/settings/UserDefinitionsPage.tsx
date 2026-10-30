@@ -384,8 +384,15 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
   const rawStyle = currentApp.sidebarStyle;
   const validStyles = ["hover", "classic", "flyout", "topbar", "dual", "megamenu"];
   const finalStyle = (rawStyle && validStyles.includes(rawStyle)) ? rawStyle : "classic";
+  const normalizedRateType = u.ratePermType === "Limitli" ? "Yüzde" : (u.ratePermType || "Var");
+  const normalizedRateValue = (u.ratePermValue !== undefined && u.ratePermValue !== null)
+    ? String(u.ratePermValue)
+    : "0.00";
+
   return {
     ...u,
+    ratePermType: normalizedRateType,
+    ratePermValue: normalizedRateValue,
     appearance: {
       ...defaultNewUserTemplate.appearance,
       ...currentApp,
@@ -501,8 +508,9 @@ const UserDefinitionsPage: React.FC = () => {
   // Yönetim paneli (merkez) açıkken mevcut kullanıcının şifresi buradan yazılmaz; firma yöneticisi sıfırlar
   const merkez = authUser?.merkez;
   // Kullanıcı kartlarını yöneten (sunucudaki kuralla aynı): merkez açıkken firma yöneticisi, değilse sistem yöneticisi.
-  // Yönetici olmayan yalnız kendi kartını görür; yetki, vezne ve istatistik alanları onda salt okunurdur.
-  const kartYoneticisi = merkez ? !!merkez.firmaYoneticisi : !!authUser?.isSysAdmin || authUser?.role === "admin";
+  const kartYoneticisi = Boolean(
+    merkez?.firmaYoneticisi || authUser?.isSysAdmin || authUser?.role === "admin"
+  );
 
   const seciliKullaniciId = currentUser?.id ? String(currentUser.id) : "";
   React.useEffect(() => {
@@ -837,10 +845,18 @@ const UserDefinitionsPage: React.FC = () => {
           }
         }
 
-        const updated = await UserService.updateUser(currentUser.id, {
+        const toSaveUser = {
           ...currentUser,
           username: trimmedUsername.replace(/\s+/g, ""),
-        });
+          ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
+          ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
+            ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
+                ? String(currentUser.ratePermValue).replace(/,/g, ".")
+                : "0.00")
+            : "0.00",
+        };
+
+        const updated = await UserService.updateUser(currentUser.id, toSaveUser);
         await kisayollariKaydet(String(currentUser.id));
         setAlertSuccess(`"${updated?.username || trimmedUsername}" kullanıcısı başarıyla güncellendi.`);
         const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
@@ -884,10 +900,17 @@ const UserDefinitionsPage: React.FC = () => {
         }
 
         const { id, ...newUserData } = currentUser;
-        const created = await UserService.createUser({
+        const toCreateUser = {
           ...newUserData,
           username: trimmedUsername.replace(/\s+/g, ""),
-        });
+          ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
+          ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
+            ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
+                ? String(currentUser.ratePermValue).replace(/,/g, ".")
+                : "0.00")
+            : "0.00",
+        };
+        const created = await UserService.createUser(toCreateUser);
         if (created?.id && kisayolKapali.length) await kisayollariKaydet(String(created.id));
         setAlertSuccess(`"${created?.username || trimmedUsername}" kullanıcısı başarıyla veritabanına eklendi.`);
 
@@ -1549,7 +1572,7 @@ const UserDefinitionsPage: React.FC = () => {
                                   size="sm"
                                   placeholder="0.00"
                                   disabled={!kartYoneticisi}
-                                  value={currentUser.ratePermValue || ""}
+                                  value={currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null ? String(currentUser.ratePermValue) : ""}
                                   onFocus={(e) => handleInputFocusOrClick(e, "ratePermValue")}
                                   onClick={(e) => handleInputFocusOrClick(e, "ratePermValue")}
                                   onChange={(e) =>
