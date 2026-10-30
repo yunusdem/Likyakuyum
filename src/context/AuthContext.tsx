@@ -53,11 +53,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const profile = await AuthService.getMe();
         setUser(profile);
-      } catch (err) {
+      } catch (err: any) {
         console.warn("JWT Token doğrulaması başarısız oldu veya süresi doldu:", err);
-        AuthService.clearSession();
-        setUser(null);
-        triggerSessionExpired();
+        if (err?.status === 401 || err?.message?.includes("Oturum süreniz doldu") || err?.name === "TokenExpiredError") {
+          AuthService.clearSession();
+          setUser(null);
+          triggerSessionExpired();
+        } else {
+          const localUser = AuthService.getUser();
+          if (localUser) {
+            setUser(localUser);
+          }
+        }
       } finally {
         setIsLoading(false);
       }

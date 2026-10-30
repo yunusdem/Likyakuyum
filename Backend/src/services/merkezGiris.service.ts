@@ -345,11 +345,14 @@ export class MerkezGirisService {
       const { anahtar } = firmaDbAnahtari(oturum.dbServer || "", oturum.dbName || "");
       firma = await FirmaSqlRepository.anahtarIleBul(anahtar);
     }
-    if (!firma || firmaEngeli(firma)) {
-      throw ApiError.unauthorized(firma ? RED_MESAJI[firmaEngeli(firma)!] : RED_MESAJI.FIRMA_KAYITSIZ);
+    if (!firma) {
+      return null;
+    }
+    if (firmaEngeli(firma)) {
+      throw ApiError.unauthorized(RED_MESAJI[firmaEngeli(firma)!]);
     }
     const kullanici = await KullaniciSqlRepository.adIleBul(firma.firmaId, oturum.username);
-    if (!kullanici || kullanici.durum !== "AKTIF") throw ApiError.unauthorized(RED_MESAJI.KULLANICI_PASIF);
+    if (!kullanici || kullanici.durum !== "AKTIF") return null;
     return { firma, kullanici };
   }
 
