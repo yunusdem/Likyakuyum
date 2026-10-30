@@ -94,12 +94,13 @@ export function sepetHesapla(modul, satirlar, secenek = {}) {
         return { ...bos, satirTutarlari: r.map((x) => x.toplam), araToplam: ara, kdv, indirim, genelToplam: Math.max(0, yuvarla2(brut - indirim)) };
     }
     if (modul === "ticari") {
-        const girdi = satirlar.map((s) => ({ miktar: s.miktar, kdvDahilFiyat: s.birimFiyat, kdvOrani: s.kdvOrani }));
+        const girdi = satirlar.map((s) => ({ miktar: s.miktar, kdvDahilFiyat: s.birimFiyat, kdvOrani: s.kdvOrani, iskontoTuru: (s.ek?.kampanya?.turu ?? 0), iskontoDegeri: s.ek?.kampanya?.deger ?? null }));
         const brut = ticariFisHesapla(girdi, null).genelToplam;
         const h = ticariFisHesapla(girdi, etkinIndirim(brut, secenek.indirim));
         return {
             ...bos,
-            satirTutarlari: h.satirlar.map((x) => x.brutDahil),
+            // Satır tutarı Satış Fişi'ndeki gibi matrah + KDV (kampanya / satır iskontosu düşülmüş); satırların toplamı genel toplama eşittir
+            satirTutarlari: h.satirlar.map((x) => x.toplamTutar),
             araToplam: h.araToplam,
             kdv: h.toplamKdv,
             indirim: h.baslikIskontoDahil,

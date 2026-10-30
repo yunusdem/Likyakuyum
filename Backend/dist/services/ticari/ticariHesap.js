@@ -122,7 +122,50 @@ export function ticariFisHesapla(girdiler, baslik) {
         genelToplam: topla((s) => s.toplamTutar),
     };
 }
-/** Kart fiyatı → KDV dahil satış fiyatı (kart KDV hariçse oran eklenir) */
+/** Kartı kapsayan kampanyalar arasından (birim fiyata göre) en yüksek indirimi vereni seçer; yoksa null */
+export function kampanyaSec(kampanyalar, kart, birimFiyat) {
+    let enIyi = null;
+    for (const k of kampanyalar) {
+        const kapsar = k.hedefTuru === 3 || (k.hedefTuru === 1 && !!kart.stokGrupId && k.grupIdler.includes(kart.stokGrupId)) || (k.hedefTuru === 2 && k.kartIdler.includes(kart.stokKartId));
+        if (!kapsar)
+            continue;
+        const indirim = yuvarla2(Math.min(birimFiyat, k.tur === 1 ? (birimFiyat * k.deger) / 100 : k.deger));
+        if (indirim <= 0)
+            continue;
+        if (!enIyi || indirim > enIyi.indirim)
+            enIyi = { kampanya: k, indirim };
+    }
+    return enIyi;
+}
+export const fiyatYuvarla = (x, y) => {
+    if (!Number.isFinite(x))
+        return 0;
+    if (y === "tl")
+        return Math.max(0, Math.round(x));
+    if (y === "99") {
+        const r = Math.round(x);
+        return r <= 1 ? 0.99 : yuvarla2(r - 0.01);
+    }
+    return Math.max(0, yuvarla2(x));
+};
+/** Yeni fiyat; alisKar'da alış yoksa null. Sonuç eksiye düşerse 0. */
+export function yeniFiyatHesapla(eski, alis, islem, yuvarlama) {
+    const d = Number(islem.deger) || 0;
+    let x;
+    if (islem.tur === "alisKar") {
+        if (alis === null || alis === undefined)
+            return null;
+        x = alis * (1 + d / 100);
+    }
+    else {
+        if (eski === null || eski === undefined)
+            return null;
+        x = islem.tur === "yuzde" ? eski * (1 + d / 100) : eski + d;
+    }
+    if (x < 0)
+        x = 0;
+    return fiyatYuvarla(x, yuvarlama);
+}
 export const kartDahilFiyat = (satisFiyati, kdvOrani, fiyatKdvDahil) => {
     const f = sayi(satisFiyati);
     return fiyatKdvDahil ? f : yuvarla(f * (1 + sayi(kdvOrani) / 100), 4);

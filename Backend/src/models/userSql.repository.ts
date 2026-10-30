@@ -146,9 +146,14 @@ export class UserSqlRepository {
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [SIDEBAR_GORUNUM] VARCHAR(30) NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_SIDEBAR_GORUNUM DEFAULT 'classic';
         END;
         UPDATE dbo.TODVZ_KULLANICI SET [SIDEBAR_GORUNUM] = 'classic' WHERE [SIDEBAR_GORUNUM] IS NULL OR LTRIM(RTRIM([SIDEBAR_GORUNUM])) = '';
+
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'ISCILIK_GIRIS_SEKLI') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [ISCILIK_GIRIS_SEKLI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_ISCILIK_GIRIS_SEKLI DEFAULT 0;
+        END;
       `);
     } catch (e) {
-      logger.warn("TODVZ_KULLANICI.SIDEBAR_GORUNUM kontrolü sırasında uyarı:", e);
+      logger.warn("TODVZ_KULLANICI kolon kontrolü sırasında uyarı:", e);
     }
   }
 
@@ -201,6 +206,7 @@ export class UserSqlRepository {
       commissionRate: entity.KOMISYON_ORANI ?? 0,
       ratePermType: kurYetkisiFromDb(entity.KUR_YETKISI),
       ratePermValue: entity.KUR_TOLERANS_ORANI ?? 0,
+      iscilikGirisSekli: Number(entity.ISCILIK_GIRIS_SEKLI ?? 0),
 
       // Right menu permissions
       menuPerms: {
@@ -472,7 +478,7 @@ export class UserSqlRepository {
       request.input("VEZNE_ID", sql.Int, validVezneId);
 
       request.input("KUR_YETKISI", sql.TinyInt, kurYetkisiToDb(user.ratePermType));
-      request.input("KUR_TOLERANS_ORANI", sql.Float, toFloat(user.ratePermValue, 0.0));
+      request.input("KUR_TOLERANS_ORANI", sql.Float, (user.ratePermType === "Yüzde" || user.ratePermType === "Limitli") ? toFloat(user.ratePermValue, 0.0) : 0.0);
       request.input("KOMISYON_ALMA_YETKISI", sql.Bit, toBit(user.hasCommissionPerm));
       request.input("PROGRAM_ZEMIN_RENGI", sql.Int, colorToDb(app?.programBgColor, 16316664));
       request.input("PROGRAM_YAZI_RENGI", sql.Int, colorToDb(app?.programTextColor, 0));
@@ -535,6 +541,7 @@ export class UserSqlRepository {
       request.input("SAPMA_UYARISI_VERILMESIN", sql.Bit, toBit(user.noDeviationWarning));
       request.input("GISE_KURU_DISINDA_OLABILIR", sql.Bit, toBit(user.canBeOutsideCounterRate));
       request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
+      request.input("ISCILIK_GIRIS_SEKLI", sql.TinyInt, toInt(user.iscilikGirisSekli, 0));
 
       await UserSqlRepository.ensureSidebarColumn(pool);
       request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (app?.sidebarStyle || "classic").slice(0, 30));
@@ -556,7 +563,8 @@ export class UserSqlRepository {
           [ALIS_ISTATISTIK_ID], [SATIS_ISTATISTIK_ID], [ARBITRAJ_ALIS_ISTATISTIK_ID], [ARBITRAJ_SATIS_ISTATISTIK_ID],
           [ENTEGRATOR_KULLANICI_ADI], [ENTEGRATOR_KULLANICI_SIFRESI], [E_BELGE_KULLANILIYOR],
           [MASAK_KULLANICI_ADI], [MASAK_KULLANICI_SIFRESI], [MASAK_UYARISI_VERSIN], [SUPHELI_ISLEMLER_YETKILISI],
-          [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK], [SIDEBAR_GORUNUM]
+          [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK], [SIDEBAR_GORUNUM],
+          [ISCILIK_GIRIS_SEKLI]
         )
         VALUES (
           @AD, @SIFRE, @SISTEM_YONETICISI, @YAZICI_ID, @VEZNE_ID, @KUR_YETKISI,
@@ -574,7 +582,8 @@ export class UserSqlRepository {
           @ALIS_ISTATISTIK_ID, @SATIS_ISTATISTIK_ID, @ARBITRAJ_ALIS_ISTATISTIK_ID, @ARBITRAJ_SATIS_ISTATISTIK_ID,
           @ENTEGRATOR_KULLANICI_ADI, @ENTEGRATOR_KULLANICI_SIFRESI, @E_BELGE_KULLANILIYOR,
           @MASAK_KULLANICI_ADI, @MASAK_KULLANICI_SIFRESI, @MASAK_UYARISI_VERSIN, @SUPHELI_ISLEMLER_YETKILISI,
-          @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK, @SIDEBAR_GORUNUM
+          @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK, @SIDEBAR_GORUNUM,
+          @ISCILIK_GIRIS_SEKLI
         );
 
         DECLARE @NEW_ID INT = SCOPE_IDENTITY();
@@ -615,7 +624,7 @@ export class UserSqlRepository {
       request.input("YAZICI_ID", sql.Int, toInt(user.printerId, 1));
       request.input("VEZNE_ID", sql.Int, validVezneId);
       request.input("KUR_YETKISI", sql.TinyInt, kurYetkisiToDb(user.ratePermType));
-      request.input("KUR_TOLERANS_ORANI", sql.Float, toFloat(user.ratePermValue, 0.0));
+      request.input("KUR_TOLERANS_ORANI", sql.Float, (user.ratePermType === "Yüzde" || user.ratePermType === "Limitli") ? toFloat(user.ratePermValue, 0.0) : 0.0);
       request.input("KOMISYON_ALMA_YETKISI", sql.Bit, toBit(user.hasCommissionPerm));
 
       request.input("PROGRAM_ZEMIN_RENGI", sql.Int, colorToDb(app?.programBgColor, 16316664));
@@ -679,6 +688,7 @@ export class UserSqlRepository {
       request.input("SAPMA_UYARISI_VERILMESIN", sql.Bit, toBit(user.noDeviationWarning));
       request.input("GISE_KURU_DISINDA_OLABILIR", sql.Bit, toBit(user.canBeOutsideCounterRate));
       request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
+      request.input("ISCILIK_GIRIS_SEKLI", sql.TinyInt, toInt(user.iscilikGirisSekli, 0));
 
       await UserSqlRepository.ensureSidebarColumn(pool);
       request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (app?.sidebarStyle || "classic").slice(0, 30));
@@ -748,7 +758,8 @@ export class UserSqlRepository {
           [SAPMA_UYARISI_VERILMESIN] = @SAPMA_UYARISI_VERILMESIN,
           [GISE_KURU_DISINDA_OLABILIR] = @GISE_KURU_DISINDA_OLABILIR,
           [CAPRAZ_KUR_KONTROLU_YOK] = @CAPRAZ_KUR_KONTROLU_YOK,
-          [SIDEBAR_GORUNUM] = @SIDEBAR_GORUNUM
+          [SIDEBAR_GORUNUM] = @SIDEBAR_GORUNUM,
+          [ISCILIK_GIRIS_SEKLI] = @ISCILIK_GIRIS_SEKLI
         WHERE [KULLANICI_ID] = @userId;
 
         ${UserSqlRepository.BASE_SELECT}

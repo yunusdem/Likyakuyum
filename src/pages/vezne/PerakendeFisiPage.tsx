@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
-import { kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { GiseKuru, kurDegistirilebilir, kurDenetle, kurDegeriniSinirla } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Table,
@@ -2614,7 +2615,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         let sanitizedValue = value;
         if (field === "adet") {
           sanitizedValue = value.replace(/\D/g, "");
-        } else if (field === "miktar") {
+        } else if (field === "miktar" || field === "kur") {
           sanitizedValue = onlyDecimal(String(value));
         }
         const updated = { ...r, [field]: sanitizedValue };
@@ -2735,6 +2736,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
     return 1;
   }, [kurMap, odemeUrunList, altinHasKuru]);
+
+  // Helper: Ödeme satırı için gişe kurunu ({ kur, alis, satis }) hesaplar
+  const getGiseForOdemeRow = useCallback((r: OdemeRow): GiseKuru | null => {
+    const isTL =
+      r.paraKodu?.trim().toUpperCase() === "TL" ||
+      r.paraKodu?.trim().toUpperCase() === "TRY" ||
+      r.paraKodu?.trim().toUpperCase() === "TRL" ||
+      r.odemeAraciTuru === 2;
+    if (isTL) return null;
+
+    const u = { paraId: r.paraId, kod: r.paraKodu, ad: r.paraAdi, urunTipi: r.urunTipi };
+    const islemTip: 0 | 1 = faturaTipi === 1 ? 1 : 0;
+    const alis = getKurForProduct(u, 0);
+    const satis = getKurForProduct(u, 1);
+    const kur = getKurForProduct(u, islemTip) || (Number(altinHasKuru) > 0 ? Number(altinHasKuru) : 0);
+    return {
+      kur: kur > 0 ? kur : (alis > 0 ? alis : satis),
+      alis: alis > 0 ? alis : (satis > 0 ? satis : null),
+      satis: satis > 0 ? satis : (alis > 0 ? alis : null),
+    };
+  }, [faturaTipi, getKurForProduct, altinHasKuru]);
 
   // Apply selected Currency / Product / Iskonto to Payment Row
   const applyProductToOdemeRow = useCallback((rowId: string, item: UrunItem) => {
@@ -3120,13 +3142,22 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const isForeignDoviz = !isTL && isDovizRowOrProduct(row);
     if (isZiynet || isForeignDoviz || row?.odemeAraciTuru === 2) {
       cols.push("adet");
+      if (!isTL && kurDegistirilebilir(kYetkiRef.current)) {
+        cols.push("kur");
+      }
       return cols;
     }
     if (isAltinOrGumusRow(row, odemeUrunList)) {
       cols.push("miktar", "milyem");
+      if (!isTL && kurDegistirilebilir(kYetkiRef.current)) {
+        cols.push("kur");
+      }
       return cols;
     }
     cols.push("miktar");
+    if (!isTL && kurDegistirilebilir(kYetkiRef.current)) {
+      cols.push("kur");
+    }
     return cols;
   }, [odemeUrunList]);
 
@@ -3416,6 +3447,23 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         lastOdemeRowIdRef.current = rowId;
         openOdemeUrunModal(rowId, cleanTyped);
         return;
+      }
+    }
+
+    if (colKey === "kur" && (e.key === "Enter" || e.key === "Tab" || e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      const val = currentRow?.kur;
+      if (val !== "" && val !== null && val !== undefined) {
+        const num = parseDecimal(val);
+        if (num > 0) {
+          const gise = getGiseForOdemeRow(currentRow);
+          if (gise) {
+            const res = kurDegeriniSinirla(kYetki, gise, num, 4);
+            if (res.degisti) {
+              updateOdemeRow(rowId, "kur", res.kur);
+              if (res.mesaj) showWarning(res.mesaj);
+            }
+          }
+        }
       }
     }
 
@@ -4785,6 +4833,26 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               return { ad: [item.urunAdi || "Ürün", item.ayar ? `${item.ayar} ayar` : ""].filter(Boolean).join(" "), miktar, tutar: Math.round((tutar + tutar * kdvOrani / 100) * 100) / 100, kdvOrani };
             }),
     });
+
+    // Ödeme tablosu satır kurlarının kur yetkisine (Var, Yok, Esnek, Yüzde) göre denetimi
+    const kurSatirlari = odemeRows
+      .filter((r) => {
+        const isTL = (r.paraKodu || "").trim().toUpperCase() === "TL" || (r.paraKodu || "").trim().toUpperCase() === "TRY" || r.odemeAraciTuru === 2;
+        return !isTL && (parseDecimal(r.tutar) > 0 || parseDecimal(r.miktar) > 0 || parseDecimal(r.adet) > 0);
+      })
+      .map((r, i) => {
+        const gise = getGiseForOdemeRow(r);
+        return {
+          etiket: `Ödeme ${i + 1}. satır (${r.paraKodu || "Döviz"}) kuru`,
+          gise,
+          kur: parseDecimal(r.kur) || (gise?.kur ?? 1),
+        };
+      });
+
+    if (kurSatirlari.length > 0) {
+      const devam = kurOnayi(kYetkiRef.current, kurSatirlari, (m) => showError(m));
+      if (!devam) return;
+    }
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
@@ -7723,24 +7791,49 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                           />
                         </td>
 
-                        {/* Kur - Kesinlikle Değiştirilemez / Salt Okunur */}
-                        <td style={{ padding: "2px 4px", backgroundColor: isOdemeRowTL ? "#e9ecef" : "#f8fafc", borderColor: rowBorderColor, verticalAlign: "middle" }}>
+                        {/* Kur */}
+                        <td style={{ padding: "2px 4px", backgroundColor: isOdemeRowTL || !kurDegistirilebilir(kYetki) ? "#e9ecef" : "#ffffff", borderColor: rowBorderColor, verticalAlign: "middle" }}>
                           <Form.Control
+                            ref={(el) => { odemeInputRefs.current[`${oRow.id}_kur`] = el; }}
                             size="sm"
-                            readOnly
-                            disabled
-                            tabIndex={-1}
+                            readOnly={isOdemeRowTL || !kurDegistirilebilir(kYetki)}
+                            disabled={isOdemeRowTL || !kurDegistirilebilir(kYetki)}
+                            tabIndex={isOdemeRowTL || !kurDegistirilebilir(kYetki) ? -1 : undefined}
                             className={`text-end font-monospace ${isOdemeRowTL ? "text-muted" : "fw-bold text-dark"}`}
-                            value={isOdemeRowTL ? "" : (oRow.kur !== "" && oRow.kur !== null && oRow.kur !== undefined && Number(oRow.kur) > 0 ? oRow.kur : (getKurForProduct({ paraId: oRow.paraId, kod: oRow.paraKodu, ad: oRow.paraAdi, urunTipi: oRow.urunTipi }, faturaTipi === 1 ? 0 : 1) || (Number(altinHasKuru) > 0 ? altinHasKuru : "")))}
+                            value={isOdemeRowTL ? "" : (oRow.kur !== "" && oRow.kur !== null && oRow.kur !== undefined ? oRow.kur : (getKurForProduct({ paraId: oRow.paraId, kod: oRow.paraKodu, ad: oRow.paraAdi, urunTipi: oRow.urunTipi }, faturaTipi === 1 ? 0 : 1) || (Number(altinHasKuru) > 0 ? altinHasKuru : "")))}
                             placeholder={isOdemeRowTL ? "-" : "Kur"}
+                            onChange={(e) => !isOdemeRowTL && updateOdemeRow(oRow.id, "kur", e.target.value)}
+                            onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "kur", oRow.id)}
+                            onBlur={() => {
+                              if (isOdemeRowTL || !kurDegistirilebilir(kYetki)) return;
+                              const val = oRow.kur;
+                              if (val !== "" && val !== null && val !== undefined) {
+                                const num = parseDecimal(val);
+                                if (num > 0) {
+                                  const gise = getGiseForOdemeRow(oRow);
+                                  if (gise) {
+                                    const res = kurDegeriniSinirla(kYetki, gise, num, 4);
+                                    if (res.degisti) {
+                                      updateOdemeRow(oRow.id, "kur", res.kur);
+                                      if (res.mesaj) showWarning(res.mesaj);
+                                    }
+                                  }
+                                }
+                              }
+                            }}
+                            onFocus={() => {
+                              setActiveOdemeRowIndex(rowIndex);
+                              cleanupEmptyOdemeRows(rowIndex);
+                              cleanupEmptyRows(null);
+                            }}
                             style={{
                               fontSize: "11px",
                               padding: "1px 4px",
-                              backgroundColor: isOdemeRowTL ? "#e9ecef" : "#f8fafc",
-                              cursor: "not-allowed",
+                              backgroundColor: isOdemeRowTL || !kurDegistirilebilir(kYetki) ? "#e9ecef" : "#ffffff",
+                              cursor: isOdemeRowTL || !kurDegistirilebilir(kYetki) ? "not-allowed" : undefined,
                               borderColor: rowBorderColor,
                             }}
-                            title="Ödeme kur değeri (Değiştirilemez)"
+                            title={isOdemeRowTL ? "TL için kur girilmez" : (!kurDegistirilebilir(kYetki) ? "Kur değiştirme yetkiniz yok" : undefined)}
                           />
                         </td>
 

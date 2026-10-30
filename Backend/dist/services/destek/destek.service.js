@@ -5,6 +5,25 @@ import { HttpStatus } from "../../constants/httpStatusCodes.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { logger } from "../../utils/logger.js";
 import { DestekEkService } from "./destekEk.js";
+import { DestekPersonelSqlRepository } from "../../models/admin/destekPersonelSql.repository.js";
+/** Admin paneli admininin destek panelindeki personel satırı (göç 002 yoksa null). Yoksa bir kez eşitleyip açar. */
+export const adminPersonelId = async (adminId) => {
+    try {
+        if (!(await DestekPersonelSqlRepository.kuruluMu()))
+            return null;
+        let p = await DestekPersonelSqlRepository.adminIdIleBul(adminId);
+        if (!p) {
+            await DestekPersonelSqlRepository.adminleriEsitle();
+            p = await DestekPersonelSqlRepository.adminIdIleBul(adminId);
+        }
+        return p?.personelId ?? null;
+    }
+    catch (err) {
+        logger.warn(`[DESTEK] Admin ${adminId} için personel satırı bulunamadı: ${err?.message}`);
+        return null;
+    }
+};
+const adminYazan = async (admin) => ({ adminId: admin.adminId, personelId: await adminPersonelId(admin.adminId), adSoyad: admin.adSoyad });
 /**
  * Destek / bildirim iş kuralları (docs/DESTEK_VE_BILDIRIM_YOL_HARITASI.md).
  * Kullanıcı tarafı DestekKimlik ile, admin tarafı AdminBaglam ile çalışır; exe (kurulum) köprüsü de kullanıcı yöntemlerini kullanır.
@@ -15,18 +34,20 @@ const kuruluOlmali = async () => {
         throw new ApiError(HttpStatus.SERVICE_UNAVAILABLE, KURULU_DEGIL);
 };
 const gorunenAd = (k) => k.adSoyad?.trim() || k.kullaniciAdi;
+/** Müşteriye giden kayıtta destek ekibinden kimin ilgilendiği görünmez (D14). */
+const musteriIcin = (k) => ({ ...k, atananAdminId: null, atananAdmin: null, atananPersonelId: null });
 export class DestekService {
     // =================================================================== Kullanıcı ===
     static async kullaniciOzet(kimlik) {
         if (!adminYapilandirildiMi() || !(await DestekSqlRepository.kuruluMu()))
             return { okunmamis: 0, onemli: [], kurulu: false };
         const o = await DestekSqlRepository.kullaniciOzet(kimlik);
-        return { ...o, kurulu: true };
+        return { ...o, onemli: o.onemli.map(musteriIcin), kurulu: true };
     }
     static async kullaniciKonulari(kimlik, sekme) {
         if (!adminYapilandirildiMi() || !(await DestekSqlRepository.kuruluMu()))
             return [];
-        return DestekSqlRepository.kullaniciKonulari(kimlik, sekme);
+        return (await DestekSqlRepository.kullaniciKonulari(kimlik, sekme)).map(musteriIcin);
     }
     /** Konu + mesajlar; görülebiliyorsa okundu işaretlenir (merkez kullanıcı id'si olanlarda). */
     static async kullaniciKonu(kimlik, konuId, okunduYaz = true) {
@@ -41,7 +62,7 @@ export class DestekService {
             await DestekSqlRepository.okunduYaz(konuId, "KULLANICI", kimlik.kullaniciId, konu.karsiSonMesajId);
             konu.okunmamis = false;
         }
-        return { konu, mesajlar };
+        return { konu: musteriIcin(konu), mesajlar };
     }
     static async talepAc(kimlik, g) {
         await kuruluOlmali();
@@ -207,7 +228,8 @@ export class DestekService {
             throw ApiError.notFound("Kayıt bulunamadı.");
         if (konu.tur === "BILDIRIM")
             throw ApiError.badRequest("Bildirime mesaj yazılmaz; gelen yanıtlar ayrı talep olarak listelenir.");
-        await DestekSqlRepository.mesajEkle({ konuId, gonderenTur: "ADMIN", adminId: admin.adminId, gonderenAd: admin.adSoyad, metin, icNot: !!g.icNot });
+        const yazan = await adminYazan(admin);
+        await DestekSqlRepository.mesajEkle({ konuId, gonderenTur: "ADMIN", adminId: admin.adminId, personelId: yazan.personelId, gonderenAd: admin.adSoyad, metin, icNot: !!g.icNot });
         if (!g.icNot && konu.tur === "TALEP" && konu.durum !== "KAPALI")
             await DestekSqlRepository.durumYaz(konuId, "CEVAPLANDI");
         return this.adminKonu(admin, konuId, true);
@@ -219,22 +241,91 @@ export class DestekService {
             throw ApiError.notFound("Kayıt bulunamadı.");
         if (konu.tur === "BILDIRIM")
             throw ApiError.badRequest("Bildirim için gönder / geri çek kullanılır.");
-        if (g.atananAdminId !== undefined) {
+        const yazan = await adminYazan(admin);
+        const panel = await DestekPersonelSqlRepository.kuruluMu();
+        if (g.atananPersonelId !== undefined && panel) {
+            await this.atamaDegistir(yazan, konu, g.atananPersonelId);
+        }
+        else if (g.atananAdminId !== undefined && panel) {
+            // Eski ekran admin no gönderir: adminin personel satırına çevrilir
+            const hedef = g.atananAdminId === null ? null : await adminPersonelId(g.atananAdminId);
+            if (g.atananAdminId !== null && hedef === null)
+                throw ApiError.badRequest("Seçilen admin destek ekibinde bulunamadı.");
+            await this.atamaDegistir(yazan, konu, hedef);
+        }
+        else if (g.atananAdminId !== undefined) {
             await DestekSqlRepository.atamaYaz(konuId, g.atananAdminId);
             await AdminLogSqlRepository.islemLogu({ adminId: admin.adminId, islem: "DESTEK_ATAMA", hedefTur: "KONU", hedefId: konuId, yeni: { atananAdminId: g.atananAdminId } });
         }
-        if (g.durum && g.durum !== konu.durum) {
-            await DestekSqlRepository.durumYaz(konuId, g.durum, admin.adminId);
-            await DestekSqlRepository.mesajEkle({
-                konuId,
-                gonderenTur: "SISTEM",
-                metin: g.durum === "KAPALI" ? `Kayıt ${admin.adSoyad} tarafından kapatıldı.` : `Kayıt ${admin.adSoyad} tarafından yeniden açıldı.`,
-            });
-            if (g.durum === "KAPALI")
-                await DestekEkService.konuEkleriniSil(konuId); // K6
-            await AdminLogSqlRepository.islemLogu({ adminId: admin.adminId, islem: "DESTEK_DURUM", hedefTur: "KONU", hedefId: konuId, eski: { durum: konu.durum }, yeni: { durum: g.durum } });
-        }
+        if (g.durum && g.durum !== konu.durum)
+            await this.durumDegistir(yazan, konu, g.durum);
         return this.adminKonu(admin, konuId, true);
+    }
+    // ===================================================== Ortak ekip işlemleri ===
+    // Admin paneli ve destek paneli (DestekPanelService) aynı kuralları kullanır.
+    /**
+     * Kapat / yeniden aç. Müşteriye giden sistem mesajında kişi adı yazmaz (D14); kimin yaptığı iç notta ve kayıtta kalır.
+     * Kapanınca görseller silinir (K6).
+     */
+    static async durumDegistir(yazan, konu, durum) {
+        if (durum === konu.durum)
+            return;
+        await DestekSqlRepository.durumYaz(konu.konuId, durum, yazan.adminId, yazan.personelId);
+        await DestekSqlRepository.mesajEkle({
+            konuId: konu.konuId,
+            gonderenTur: "ADMIN",
+            adminId: yazan.adminId,
+            personelId: yazan.personelId,
+            gonderenAd: yazan.adSoyad,
+            metin: durum === "KAPALI" ? `${yazan.adSoyad} kaydı kapattı.` : `${yazan.adSoyad} kaydı yeniden açtı.`,
+            icNot: true,
+        });
+        await DestekSqlRepository.mesajEkle({
+            konuId: konu.konuId,
+            gonderenTur: "SISTEM",
+            metin: durum === "KAPALI" ? "Kayıt destek ekibi tarafından kapatıldı." : "Kayıt destek ekibi tarafından yeniden açıldı.",
+        });
+        if (durum === "KAPALI")
+            await DestekEkService.konuEkleriniSil(konu.konuId);
+        await AdminLogSqlRepository.islemLogu({
+            adminId: yazan.adminId,
+            islem: "DESTEK_DURUM",
+            hedefTur: "KONU",
+            hedefId: konu.konuId,
+            eski: { durum: konu.durum },
+            yeni: { durum, yapan: yazan.adSoyad },
+        });
+    }
+    /** Atama / aktarma / havuza bırakma (D7, D9). İç notta "kimden kime" kaydı kalır. */
+    static async atamaDegistir(yazan, konu, personelId) {
+        if ((konu.atananPersonelId ?? null) === personelId)
+            return;
+        let hedefAd = "havuz";
+        if (personelId !== null) {
+            const hedef = await DestekPersonelSqlRepository.idIleBul(personelId);
+            if (!hedef || hedef.durum !== "AKTIF")
+                throw ApiError.badRequest("Seçilen kişi aktif bir destek hesabı değil.");
+            hedefAd = hedef.adSoyad;
+        }
+        await DestekSqlRepository.personelAtamaYaz(konu.konuId, personelId);
+        const onceki = konu.atananAdmin || "havuz";
+        await DestekSqlRepository.mesajEkle({
+            konuId: konu.konuId,
+            gonderenTur: "ADMIN",
+            adminId: yazan.adminId,
+            personelId: yazan.personelId,
+            gonderenAd: yazan.adSoyad,
+            metin: personelId === null ? `${yazan.adSoyad} kaydı havuza bıraktı (önceki: ${onceki}).` : `${yazan.adSoyad} kaydı aktardı: ${onceki} → ${hedefAd}.`,
+            icNot: true,
+        });
+        await AdminLogSqlRepository.islemLogu({
+            adminId: yazan.adminId,
+            islem: "DESTEK_ATAMA",
+            hedefTur: "KONU",
+            hedefId: konu.konuId,
+            eski: { atanan: konu.atananPersonelId ?? null },
+            yeni: { atanan: personelId, yapan: yazan.adSoyad },
+        });
     }
     static async adminEk(ekId) {
         await kuruluOlmali();
@@ -245,6 +336,17 @@ export class DestekService {
         if (!(await DestekSqlRepository.kuruluMu()))
             return { satirlar: [], toplam: 0, kurulu: false };
         return { ...(await DestekSqlRepository.adminKonulari(admin.adminId, { tur: "BILDIRIM", sayfaBoyu: 200 })), kurulu: true };
+    }
+    /** Atama seçenekleri: aktif destek ekibi (admin paneli adminleri dahil). Göç 002 yoksa kurulu=false. */
+    static async ekip() {
+        if (!(await DestekPersonelSqlRepository.kuruluMu()))
+            return { kurulu: false, ekip: [] };
+        await DestekPersonelSqlRepository.adminleriEsitle();
+        const liste = await DestekPersonelSqlRepository.liste();
+        return {
+            kurulu: true,
+            ekip: liste.filter((x) => x.durum === "AKTIF").map((x) => ({ personelId: x.personelId, adSoyad: x.adSoyad, rol: x.rol, adminId: x.adminId })),
+        };
     }
     static hedefSecenekleri() {
         return DestekSqlRepository.hedefSecenekleri();
@@ -278,6 +380,19 @@ export class DestekService {
         });
     }
     static async bildirimOlustur(admin, g, ek) {
+        const konuId = await this.bildirimYaz(await adminYazan(admin), g, ek);
+        return this.adminKonu(admin, konuId, false);
+    }
+    static async bildirimGuncelle(admin, konuId, g) {
+        await this.bildirimDuzenle(await adminYazan(admin), konuId, g);
+        return this.adminKonu(admin, konuId, false);
+    }
+    static async bildirimGeriCek(admin, konuId) {
+        await this.bildirimCek(await adminYazan(admin), konuId);
+        return this.adminKonu(admin, konuId, false);
+    }
+    /** Yeni bildirim (taslak ya da hemen gönder). Admin paneli ve destek paneli (D11) ortak. */
+    static async bildirimYaz(yazan, g, ek) {
         await kuruluOlmali();
         const baslik = g.baslik.trim();
         const metin = g.metin.trim();
@@ -298,25 +413,26 @@ export class DestekService {
             cevapAlir: g.cevapAlir,
             hedef: g.hedef,
             surum: ek?.surum ?? null,
-            olusturanAdminId: admin.adminId,
+            olusturanAdminId: yazan.adminId,
+            olusturanPersonelId: yazan.personelId,
             sonMesajTaraf: "ADMIN",
             gonderildi: g.gonder,
         });
-        await DestekSqlRepository.mesajEkle({ konuId, gonderenTur: "ADMIN", adminId: admin.adminId, gonderenAd: admin.adSoyad, metin });
+        await DestekSqlRepository.mesajEkle({ konuId, gonderenTur: "ADMIN", adminId: yazan.adminId, personelId: yazan.personelId, gonderenAd: yazan.adSoyad, metin });
         await DestekSqlRepository.hedefEkle(konuId, hedefler);
         await AdminLogSqlRepository.islemLogu({
-            adminId: admin.adminId,
+            adminId: yazan.adminId,
             islem: (g.gonder ? "BILDIRIM_GONDERILDI" : "BILDIRIM_TASLAK"),
             hedefTur: "KONU",
             hedefId: konuId,
-            yeni: { baslik, hedef: g.hedef, hedefSayisi: hedefler.length, onemli: g.onemli },
+            yeni: { baslik, hedef: g.hedef, hedefSayisi: hedefler.length, onemli: g.onemli, yapan: yazan.adSoyad },
         });
-        return this.adminKonu(admin, konuId, false);
+        return konuId;
     }
     /** Taslak düzenleme ve gönderme. Gönderilmiş bildirim düzenlenmez (geri çekilip yenisi yazılır). */
-    static async bildirimGuncelle(admin, konuId, g) {
+    static async bildirimDuzenle(yazan, konuId, g) {
         await kuruluOlmali();
-        const konu = await DestekSqlRepository.konuGetir(konuId, "ADMIN", admin.adminId);
+        const konu = await DestekSqlRepository.konuGetir(konuId, "ADMIN", yazan.adminId);
         if (!konu || konu.tur !== "BILDIRIM")
             throw ApiError.notFound("Bildirim bulunamadı.");
         if (konu.durum !== "TASLAK")
@@ -332,20 +448,24 @@ export class DestekService {
         await DestekSqlRepository.hedefEkle(konuId, hedefler);
         if (g.gonder) {
             await DestekSqlRepository.durumYaz(konuId, "GONDERILDI");
-            await AdminLogSqlRepository.islemLogu({ adminId: admin.adminId, islem: "BILDIRIM_GONDERILDI", hedefTur: "KONU", hedefId: konuId, yeni: { baslik, hedef: g.hedef, hedefSayisi: hedefler.length } });
+            await AdminLogSqlRepository.islemLogu({
+                adminId: yazan.adminId,
+                islem: "BILDIRIM_GONDERILDI",
+                hedefTur: "KONU",
+                hedefId: konuId,
+                yeni: { baslik, hedef: g.hedef, hedefSayisi: hedefler.length, yapan: yazan.adSoyad },
+            });
         }
-        return this.adminKonu(admin, konuId, false);
     }
-    static async bildirimGeriCek(admin, konuId) {
+    static async bildirimCek(yazan, konuId) {
         await kuruluOlmali();
-        const konu = await DestekSqlRepository.konuGetir(konuId, "ADMIN", admin.adminId);
+        const konu = await DestekSqlRepository.konuGetir(konuId, "ADMIN", yazan.adminId);
         if (!konu || konu.tur !== "BILDIRIM")
             throw ApiError.notFound("Bildirim bulunamadı.");
         if (konu.durum !== "GONDERILDI")
             throw ApiError.badRequest("Yalnız gönderilmiş bildirim geri çekilebilir.");
         await DestekSqlRepository.durumYaz(konuId, "GERI_CEKILDI");
-        await AdminLogSqlRepository.islemLogu({ adminId: admin.adminId, islem: "BILDIRIM_GERI_CEKILDI", hedefTur: "KONU", hedefId: konuId });
-        return this.adminKonu(admin, konuId, false);
+        await AdminLogSqlRepository.islemLogu({ adminId: yazan.adminId, islem: "BILDIRIM_GERI_CEKILDI", hedefTur: "KONU", hedefId: konuId, yeni: { yapan: yazan.adSoyad } });
     }
     // ============================================================= Sistem olayları ===
     /**

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
-import { kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { kurDegistirilebilir, kurDenetle, kurDegeriniSinirla } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
@@ -13,6 +13,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { useAuth } from "../../context/AuthContext";
+import { AuthService } from "../../services/authService";
 import { MasakService, MasakEslesme } from "../../services/masakService";
 import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
 import MasakModal from "../../components/masak/MasakModal";
@@ -281,7 +282,36 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
   };
 };
 
-const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow): GridRow => {
+export const formatIscilikGirisDegeri = (val: any, iscilikGirisSekli: number = 0): string => {
+  if (val === undefined || val === null || val === "") return "";
+  const strVal = String(val).trim();
+  if (!strVal) return "";
+
+  if (iscilikGirisSekli === 0) {
+    // Sayı (tam sayı) modu:
+    // 0, veya , ile yazılmışsa (veya . ile) aynı şekilde kalacak
+    if (strVal.startsWith(",") || strVal.startsWith(".")) {
+      return "0," + strVal.slice(1);
+    }
+    if (strVal.startsWith("0,") || strVal.startsWith("0.")) {
+      return strVal.replace(".", ",");
+    }
+    if (strVal.includes(",") || strVal.includes(".")) {
+      return strVal.replace(".", ",");
+    }
+    // 0, veya , ile yazmamışsa başına 0, koyulacak (örn: 25 -> 0,25)
+    const num = parseFloat(strVal);
+    if (!isNaN(num) && num > 0) {
+      return "0," + strVal;
+    }
+    return strVal;
+  }
+
+  // Milyem seçili ise ne yazarsa o olacak
+  return strVal;
+};
+
+const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0): GridRow => {
   const isPara = r.urunTipi === 0 && Boolean(r.urunKodu && r.urunKodu.trim());
   const isZiynet = r.urunTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
   const isParaOrZiynet = isPara || isZiynet;
@@ -341,7 +371,16 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
 
   // İşçilik hesabı: 0: Gram, 1: Adet, 2: Toplam
   const iscilikSekli = Number(r.iscilikHesaplamaSekli) || 0;
-  const iscilikiMiktari = parseDecimal(r.iscilikiMiktari);
+  let iscilikiMiktari = parseDecimal(r.iscilikiMiktari);
+  if (iscilikGirisSekli === 0 && r.iscilikiMiktari !== "" && r.iscilikiMiktari !== undefined && r.iscilikiMiktari !== null) {
+    const sVal = String(r.iscilikiMiktari).trim();
+    if (sVal !== "" && !sVal.includes(",") && !sVal.includes(".")) {
+      const parsedInt = parseFloat(sVal);
+      if (!isNaN(parsedInt) && parsedInt > 0) {
+        iscilikiMiktari = parseDecimal(`0.${sVal}`);
+      }
+    }
+  }
   let iscilikHasGram: number | string = r.iscilikHasGram;
 
   if (changedField !== "iscilikHasGram") {
@@ -427,6 +466,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   isDuzeltme = false,
 }) => {
   const { user } = useAuth();
+  const userIscilikGirisSekli = Number(user?.iscilikGirisSekli ?? AuthService.getUser()?.iscilikGirisSekli ?? 0);
   // Kullanıcı kartı yetkileri: tarih, fiş no, kur, banka hesabı, cari bakiye, MASAK uyarısı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2;
   // sunucu da denetler). Geri çağrılarda güncel değer için ref.
   const kYetki = useKullaniciYetkisi();
@@ -894,7 +934,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 newKur = newHas || line.kur;
               }
               const updated = { ...line, kur: newKur };
-              return recomputeRow(updated, Number(newKur) || Number(newHas) || 0);
+              return recomputeRow(updated, Number(newKur) || Number(newHas) || 0, undefined, userIscilikGirisSekli);
             })
           );
 
@@ -997,7 +1037,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const totalAdet = lines.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
   const totalMiktar = lines.reduce((s, r) => s + (parseDecimal(r.miktar) || 0), 0);
   const totalHasGram = lines.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
-  const totalIscilikMiktari = lines.reduce((s, r) => s + (parseDecimal(r.iscilikiMiktari) || 0), 0);
+  const totalIscilikMiktari = lines.reduce((s, r) => s + (parseDecimal(formatIscilikGirisDegeri(r.iscilikiMiktari, userIscilikGirisSekli)) || 0), 0);
   const totalIscilikHasGram = lines.reduce((s, r) => s + (parseDecimal(r.iscilikHasGram) || 0), 0);
   const totalTutar = lines.reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
 
@@ -1502,7 +1542,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             karat: s.karat || "",
             aciklama: s.aciklama || "",
           };
-          return recomputeRow(rowObj, curHasKuru);
+          return recomputeRow(rowObj, curHasKuru, undefined, userIscilikGirisSekli);
         });
         setLines(mapped.length > 0 ? mapped : [createEmptyRow(1)]);
       } else {
@@ -2188,7 +2228,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             milyem: isPZ ? 0 : (parseDecimal(l.milyem) || 0),
             hasGram: isPZ ? 0 : (parseDecimal(l.hasGram) || 0),
             adet: effectiveAdet,
-            iscilikiMiktari: isPZ ? 0 : (parseDecimal(l.iscilikiMiktari) || 0),
+            iscilikiMiktari: isPZ ? 0 : (parseDecimal(formatIscilikGirisDegeri(l.iscilikiMiktari, userIscilikGirisSekli)) || 0),
             iscilikHasGram: isPZ ? 0 : (parseDecimal(l.iscilikHasGram) || 0),
             iscilikHesaplamaSekli: isPZ ? 0 : (l.iscilikHesaplamaSekli !== undefined && l.iscilikHesaplamaSekli !== null && !isNaN(Number(l.iscilikHesaplamaSekli)) ? Number(l.iscilikHesaplamaSekli) : 0),
             aciklama: l.aciklama || null,
@@ -2246,7 +2286,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             miktar: l.miktar,
             milyem: l.milyem,
             hasGram: l.hasGram,
-            iscilikiMiktari: l.iscilikiMiktari,
+            iscilikiMiktari: formatIscilikGirisDegeri(l.iscilikiMiktari, userIscilikGirisSekli),
             iscilikHasGram: l.iscilikHasGram,
             iscilikHesaplamaSekli: l.iscilikHesaplamaSekli,
             kur: l.kur,
@@ -2807,19 +2847,36 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     detayVekilAdi, detayVekilKimlikNo, user?.id, showNotif]);
 
   // Helper: İşlem tipine (Alış: 0, Satış: 1) göre HAS Altın Kurunu Al (Öncelik: Efektif Alış/Satış)
-  const getHasKurForTip = useCallback((islemTip: 0 | 1): number => {
-    const hasKurItem = kurSatirlar.find((k) =>
+  const findHasKurItem = useCallback(() => {
+    return kurSatirlar.find((k) =>
       ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"].includes((k.kod || "").toUpperCase().trim()) ||
-      (k.ad && ["HAS ALTIN", "HAS"].includes(k.ad.toUpperCase().trim()))
+      (k.ad && ["HAS ALTIN", "HAS"].includes(k.ad.toUpperCase().trim())) ||
+      (k.kod || "").toUpperCase().trim().startsWith("HAS") ||
+      (k.ad || "").toUpperCase().trim().startsWith("HAS")
     );
+  }, [kurSatirlar]);
+
+  const getHasKurAlisSatis = useCallback((): { alis: number; satis: number } => {
+    const hasKurItem = findHasKurItem();
     if (hasKurItem) {
-      const rate = islemTip === 0
-        ? (hasKurItem.efektifAlis && Number(hasKurItem.efektifAlis) > 0 ? hasKurItem.efektifAlis : (hasKurItem.dovizAlis && Number(hasKurItem.dovizAlis) > 0 ? hasKurItem.dovizAlis : 0))
-        : (hasKurItem.efektifSatis && Number(hasKurItem.efektifSatis) > 0 ? hasKurItem.efektifSatis : (hasKurItem.dovizSatis && Number(hasKurItem.dovizSatis) > 0 ? hasKurItem.dovizSatis : 0));
-      if (Number(rate) > 0) return Number(rate);
+      const ea = Number(hasKurItem.efektifAlis) || 0;
+      const es = Number(hasKurItem.efektifSatis) || 0;
+      const da = Number(hasKurItem.dovizAlis) || 0;
+      const ds = Number(hasKurItem.dovizSatis) || 0;
+      const alis = ea > 0 ? ea : da;
+      const satis = es > 0 ? es : ds;
+      if (alis > 0 || satis > 0) {
+        return { alis: alis > 0 ? alis : satis, satis: satis > 0 ? satis : alis };
+      }
     }
-    return Number(altinHasKuru) || 0;
-  }, [kurSatirlar, altinHasKuru]);
+    const current = Number(altinHasKuru) || 0;
+    return { alis: current, satis: current };
+  }, [findHasKurItem, altinHasKuru]);
+
+  const getHasKurForTip = useCallback((islemTip: 0 | 1): number => {
+    const { alis, satis } = getHasKurAlisSatis();
+    return islemTip === 0 ? alis : satis;
+  }, [getHasKurAlisSatis]);
 
   // Helper: İşlem tipine göre Gümüş HAS Kurunu Al
   const getGumusKurForTip = useCallback((islemTip: 0 | 1): number => {
@@ -2904,6 +2961,64 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, [kurSatirlar, getHasKurForTip, getGumusKurForTip]);
   getKurRef.current = getKurForProduct;
 
+  const getKurAlisSatisForProduct = useCallback((
+    urun: { paraId?: number; id?: number; kod?: string; urunTipi?: number; ad?: string }
+  ): { alis: number; satis: number; ref: number } => {
+    const pId = urun.paraId ?? urun.id;
+    const code = (urun.kod || "").toUpperCase().trim();
+    const name = (urun.ad || "").toUpperCase().trim();
+
+    if (code === "TL" || code === "TRY" || code === "TRL") return { alis: 1, satis: 1, ref: 1 };
+
+    // 1. Anlık Fiyat Listesinde bu ürüne ait kur satırı
+    const curKur = kurSatirlar.find((k) =>
+      (pId && k.paraId === pId) ||
+      (code && k.kod && k.kod.toUpperCase().trim() === code) ||
+      (name && k.ad && k.ad.toUpperCase().trim() === name)
+    );
+
+    if (curKur) {
+      const ea = Number(curKur.efektifAlis) || 0;
+      const es = Number(curKur.efektifSatis) || 0;
+      const da = Number(curKur.dovizAlis) || 0;
+      const ds = Number(curKur.dovizSatis) || 0;
+      const alis = ea > 0 ? ea : da;
+      const satis = es > 0 ? es : ds;
+      if (alis > 0 || satis > 0) {
+        const finalAlis = alis > 0 ? alis : satis;
+        const finalSatis = satis > 0 ? satis : alis;
+        return { alis: finalAlis, satis: finalSatis, ref: tip === 0 ? finalAlis : finalSatis };
+      }
+    }
+
+    // 2. Gümüş ise Gümüş HAS kuru
+    if (urun.urunTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS")) {
+      const gumusItem = kurSatirlar.find((k) =>
+        ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS"].includes((k.kod || "").toUpperCase().trim()) ||
+        (k.ad && ["HAS GÜMÜŞ", "GÜMÜŞ", "GUMUS"].includes(k.ad.toUpperCase().trim()))
+      );
+      if (gumusItem) {
+        const ea = Number(gumusItem.efektifAlis) || 0;
+        const es = Number(gumusItem.efektifSatis) || 0;
+        const da = Number(gumusItem.dovizAlis) || 0;
+        const ds = Number(gumusItem.dovizSatis) || 0;
+        const alis = ea > 0 ? ea : da;
+        const satis = es > 0 ? es : ds;
+        if (alis > 0 || satis > 0) {
+          const finalAlis = alis > 0 ? alis : satis;
+          const finalSatis = satis > 0 ? satis : alis;
+          return { alis: finalAlis, satis: finalSatis, ref: tip === 0 ? finalAlis : finalSatis };
+        }
+      }
+      const gKuru = Number(gumusHasKuru) || 0;
+      return { alis: gKuru, satis: gKuru, ref: gKuru };
+    }
+
+    // 3. Altın ise Altın HAS kuru
+    const has = getHasKurAlisSatis();
+    return { alis: has.alis, satis: has.satis, ref: tip === 0 ? has.alis : has.satis };
+  }, [kurSatirlar, tip, gumusHasKuru, getHasKurAlisSatis]);
+
   // e-Banka'dan fiş kesiliyorsa banka tutarı (TL); miktarı boş ürün satırında miktar bu tutarın kalanından hesaplanır
   const ebHedefRef = useRef(0);
 
@@ -2971,10 +3086,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           }
         }
       }
-      return recomputeRow(updated, finalKur);
+      return recomputeRow(updated, finalKur, undefined, userIscilikGirisSekli);
     }));
     setInvalidRowIds((prev) => ({ ...prev, [rowId]: true }));
-  }, [tip, getKurForProduct, getMilyemForProduct, getHasKurForTip, getGumusKurForTip]);
+  }, [tip, getKurForProduct, getMilyemForProduct, getHasKurForTip, getGumusKurForTip, userIscilikGirisSekli]);
 
   const applyProductToOdemeRow = useCallback((
     rowId: string,
@@ -3262,7 +3377,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     if (newKur > 0) {
       setLines((prev) => prev.map((r) => {
         const updated = { ...r, kur: newKur };
-        return recomputeRow(updated, newKur);
+        return recomputeRow(updated, newKur, undefined, userIscilikGirisSekli);
       }));
       setOdemeRows((prev) => prev.map((r) => recomputeOdemeRow(r, newKur)));
     }
@@ -3311,9 +3426,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         miktar,
         [field]: sanitizedValue
       };
-      return recomputeRow(updated, curHasKuru, field);
+      return recomputeRow(updated, curHasKuru, field, userIscilikGirisSekli);
     }));
-  }, [altinHasKuru, urunList]);
+  }, [altinHasKuru, urunList, userIscilikGirisSekli]);
 
   const normalizeRowOnBlur = useCallback((rowId: string, field: keyof GridRow) => {
     setInvalidRowIds((prev) => ({ ...prev, [rowId]: true }));
@@ -3323,10 +3438,31 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (typeof val === "string" && (val.startsWith(",") || val.startsWith("."))) {
         val = "0" + val;
       }
+      if (field === "iscilikiMiktari") {
+        val = formatIscilikGirisDegeri(val, userIscilikGirisSekli);
+      }
+      if (field === "kur") {
+        const kurVal = parseDecimal(val);
+        if (kurVal > 0) {
+          const matchedUrun = urunList.find((item) => (r.urunId && item.id === r.urunId) || (r.urunKodu && item.kod.trim().toLowerCase() === r.urunKodu.trim().toLowerCase()));
+          const u = matchedUrun || { paraId: r.urunId, id: r.urunId, kod: r.urunKodu, ad: r.urunAdi, urunTipi: r.urunTipi };
+          const { alis, satis, ref } = getKurAlisSatisForProduct(u);
+          const gise = (ref > 0 || alis > 0 || satis > 0) ? { kur: ref || alis || satis, alis: alis || null, satis: satis || null } : null;
+          if (gise) {
+            const res = kurDegeriniSinirla(kYetkiRef.current, gise, kurVal, 4);
+            if (res.degisti) {
+              val = res.kur;
+              if (res.mesaj) {
+                showNotif("warning", res.mesaj);
+              }
+            }
+          }
+        }
+      }
       const curHasKuru = Number(altinHasKuru) || 0;
-      return recomputeRow({ ...r, [field]: val }, curHasKuru, field);
+      return recomputeRow({ ...r, [field]: val }, curHasKuru, field, userIscilikGirisSekli);
     }));
-  }, [altinHasKuru]);
+  }, [altinHasKuru, userIscilikGirisSekli, tip, showNotif]);
 
   const updateOdemeRow = useCallback((rowId: string, field: keyof OdemeRow, value: any) => {
     let sanitizedValue = value;
@@ -3381,10 +3517,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (typeof val === "string" && (val.startsWith(",") || val.startsWith("."))) {
         val = "0" + val;
       }
+      if (field === "kur") {
+        const kurVal = parseDecimal(val);
+        if (kurVal > 0) {
+          const matchedUrun = urunList.find((item) => (r.paraId && (item.id === r.paraId || item.paraId === r.paraId)) || (r.paraKodu && item.kod.trim().toLowerCase() === r.paraKodu.trim().toLowerCase()));
+          const u = matchedUrun || { paraId: r.paraId, id: r.paraId ?? undefined, kod: r.paraKodu, ad: r.paraAdi, urunTipi: r.urunTipi };
+          const { alis, satis, ref } = getKurAlisSatisForProduct(u);
+          const gise = (ref > 0 || alis > 0 || satis > 0) ? { kur: ref || alis || satis, alis: alis || null, satis: satis || null } : null;
+          if (gise) {
+            const res = kurDegeriniSinirla(kYetkiRef.current, gise, kurVal, 4);
+            if (res.degisti) {
+              val = res.kur;
+              if (res.mesaj) showNotif("warning", res.mesaj);
+            }
+          }
+        }
+      }
       const curHasKuru = Number(altinHasKuru) || 0;
       return recomputeOdemeRow({ ...r, [field]: val }, curHasKuru, field);
     }));
-  }, [altinHasKuru]);
+  }, [altinHasKuru, tip, showNotif]);
 
   const handleDeleteLine = useCallback((rowId: string) => {
     setInvalidRowIds((prev) => {
@@ -3558,7 +3710,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         } else if (!isParaOrZiynet && (!lastRow.miktar || parseDecimal(lastRow.miktar) <= 0)) {
           requestAnimationFrame(() => focusGridCell(lastRow.id, "miktar", "select"));
         } else {
-          requestAnimationFrame(() => focusGridCell(lastRow.id, "kur", "select"));
+          requestAnimationFrame(() => focusGridCell(lastRow.id, kurAcik ? "kur" : "iscilikiMiktari", "select"));
         }
         return false;
       }
@@ -3573,7 +3725,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setActiveRowIndex(currentLines.length);
     requestAnimationFrame(() => focusGridCell(newRow.id, "urunKodu", "select"));
     return true;
-  }, [isSarrafRowFilled, focusGridCell, isCokluSatirIzinli]);
+  }, [isSarrafRowFilled, focusGridCell, isCokluSatirIzinli, kurAcik]);
 
   const handleAddOdemeRow = useCallback((afterIndex?: number) => {
     const currentOdemeRows = odemeRowsRef.current;
@@ -4088,6 +4240,19 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         setIstatistikSearchTerm(val);
         setShowIstatistikModal(true);
       } else if (field === "hasKuru") {
+        const kurVal = parseDecimal(altinHasKuru);
+        if (kurVal > 0) {
+          const { alis, satis } = getHasKurAlisSatis();
+          const ref = tip === 0 ? alis : satis;
+          const gise = (ref > 0 || alis > 0 || satis > 0) ? { kur: ref || alis || satis, alis: alis || null, satis: satis || null } : null;
+          if (gise) {
+            const res = kurDegeriniSinirla(kYetkiRef.current, gise, kurVal, 2);
+            if (res.degisti) {
+              handleAltinHasKuruChange(String(res.kur));
+              if (res.mesaj) showNotif("warning", res.mesaj);
+            }
+          }
+        }
         kdvOraniRef.current?.focus();
       } else if (field === "kdvOrani") {
         if (lines.length > 0) {
@@ -4170,6 +4335,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const isColPassive = (col: GridColKey, rIdx: number = rowIndex) => {
       if (col === "urunAdi" || col === "hasGram" || col === "iscilikHasGram" || col === "tutar") return true;
+      if (col === "kur" && !kurAcik) return true;
       const currentRow = lines[rIdx];
       const isPara = currentRow && currentRow.urunTipi === 0 && Boolean(currentRow.urunKodu && currentRow.urunKodu.trim());
       const isZiynet = currentRow && (currentRow.urunTipi === 3 || isZiynetProduct({ urunTipi: currentRow.urunTipi, kod: currentRow.urunKodu, ad: currentRow.urunAdi }));
@@ -4182,6 +4348,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
       e.preventDefault();
+      if (colKey === "iscilikiMiktari") {
+        normalizeRowOnBlur(rowId, "iscilikiMiktari");
+      }
+      if (colKey === "kur") {
+        normalizeRowOnBlur(rowId, "kur");
+      }
       // On urunKodu, try to resolve product or open lookup with typed text
       if (colKey === "urunKodu") {
         const row = lines[rowIndex];
@@ -4269,6 +4441,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
     } else if (e.key === "Tab" && e.shiftKey) {
       e.preventDefault();
+      if (colKey === "iscilikiMiktari") {
+        normalizeRowOnBlur(rowId, "iscilikiMiktari");
+      }
+      if (colKey === "kur") {
+        normalizeRowOnBlur(rowId, "kur");
+      }
       let prevIdx = colIdx - 1;
       while (prevIdx >= 0 && isColPassive(GRID_COLS[prevIdx])) {
         prevIdx--;
@@ -4290,6 +4468,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
+      if (colKey === "iscilikiMiktari") {
+        normalizeRowOnBlur(rowId, "iscilikiMiktari");
+      }
+      if (colKey === "kur") {
+        normalizeRowOnBlur(rowId, "kur");
+      }
       if (rowIndex < lines.length - 1) {
         const nr = lines[rowIndex + 1];
         setActiveRowIndex(rowIndex + 1);
@@ -4299,6 +4483,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      if (colKey === "iscilikiMiktari") {
+        normalizeRowOnBlur(rowId, "iscilikiMiktari");
+      }
+      if (colKey === "kur") {
+        normalizeRowOnBlur(rowId, "kur");
+      }
+      if (colKey === "iscilikiMiktari") {
+        normalizeRowOnBlur(rowId, "iscilikiMiktari");
+      }
       if (rowIndex > 0) {
         const pr = lines[rowIndex - 1];
         setActiveRowIndex(rowIndex - 1);
@@ -4312,6 +4505,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const isPassive = isColPassive(colKey);
       if (isPassive || isAtEnd) {
         e.preventDefault();
+        if (colKey === "iscilikiMiktari") {
+          normalizeRowOnBlur(rowId, "iscilikiMiktari");
+        }
+        if (colKey === "kur") {
+          normalizeRowOnBlur(rowId, "kur");
+        }
         let nextIdx = colIdx + 1;
         while (nextIdx < totalCols && isColPassive(GRID_COLS[nextIdx])) {
           nextIdx++;
@@ -4352,7 +4551,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
       }
     }
-  }, [lines, urunList, updateRow, altinHasKuru, applyProductToRow, openUrunModal, handleAddSarrafRow, isAnyModalOpen]);
+  }, [lines, urunList, updateRow, altinHasKuru, applyProductToRow, openUrunModal, handleAddSarrafRow, isAnyModalOpen, kurAcik, normalizeRowOnBlur]);
 
   const handleOdemeGridKeyDown = useCallback((
     e: React.KeyboardEvent<HTMLElement>,
@@ -5430,7 +5629,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           kur: curKur > 0 ? curKur : r.kur,
                           milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                         };
-                        return recomputeRow(updated, curKur);
+                        return recomputeRow(updated, curKur, undefined, userIscilikGirisSekli);
                       }));
 
                       const odemeTip: 0 | 1 = newTip === 0 ? 1 : 0;
@@ -5480,7 +5679,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             kur: curKur > 0 ? curKur : r.kur,
                             milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                           };
-                          return recomputeRow(updated, curKur);
+                          return recomputeRow(updated, curKur, undefined, userIscilikGirisSekli);
                         }));
 
                         const odemeTip: 0 | 1 = newTip === 0 ? 1 : 0;
@@ -5824,7 +6023,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     size="sm"
                     value={altinHasKuru}
                     onChange={(e) => handleAltinHasKuruChange(e.target.value)}
+                    onBlur={() => {
+                      const kurVal = parseDecimal(altinHasKuru);
+                      if (kurVal > 0) {
+                        const { alis, satis } = getHasKurAlisSatis();
+                        const ref = tip === 0 ? alis : satis;
+                        const gise = (ref > 0 || alis > 0 || satis > 0) ? { kur: ref || alis || satis, alis: alis || null, satis: satis || null } : null;
+                        if (gise) {
+                          const res = kurDegeriniSinirla(kYetkiRef.current, gise, kurVal, 2);
+                          if (res.degisti) {
+                            handleAltinHasKuruChange(String(res.kur));
+                            if (res.mesaj) showNotif("warning", res.mesaj);
+                          }
+                        }
+                      }
+                    }}
                     disabled={!kurAcik}
+                    readOnly={!kurAcik}
                     title={kurAcik ? undefined : "Kur değiştirme yetkiniz yok"}
                     onKeyDown={(e) => handleHeaderKeyDown(e, "hasKuru")}
                     className="font-monospace text-end"
@@ -6236,18 +6451,21 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           size="sm"
                           className={`text-end font-monospace ${isKurMissing ? "text-danger fw-bold" : ""}`}
                           value={row.kur}
-                          onChange={(e) => updateRow(row.id, "kur", e.target.value)}
-                          disabled={!kurAcik && !isKurMissing}
+                          onChange={(e) => kurAcik && updateRow(row.id, "kur", e.target.value)}
+                          disabled={!kurAcik}
+                          readOnly={!kurAcik}
+                          tabIndex={!kurAcik ? -1 : undefined}
                           onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "kur", row.id)}
                           onBlur={() => normalizeRowOnBlur(row.id, "kur")}
                           onFocus={handleKalemRowFocus}
                           style={{
                             fontSize: "11px",
                             padding: "1px 4px",
-                            backgroundColor: isKurMissing ? "#fee2e2" : undefined,
+                            backgroundColor: !kurAcik ? "#e9ecef" : (isKurMissing ? "#fee2e2" : undefined),
                             border: isKurMissing ? "1.5px solid #dc2626" : undefined,
+                            cursor: !kurAcik ? "not-allowed" : undefined,
                           }}
-                          title={isKurMissing ? "Lütfen kur giriniz" : undefined}
+                          title={!kurAcik ? "Kur değiştirme yetkiniz yok" : isKurMissing ? "Lütfen kur giriniz" : undefined}
                         />
                       </td>
 
@@ -6347,7 +6565,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                       const isOdemeParaOrZiynet = isOdemePara || isOdemeZiynet;
 
                       const isOdemeTL = (oRow.paraKodu || "").trim().toUpperCase() === "TL" || (oRow.paraKodu || "").trim().toUpperCase() === "TRY" || (oRow.paraKodu || "").trim().toUpperCase() === "TRL" || (!oRow.paraKodu && (oRow.odemeAraciTuru === 0 || oRow.odemeAraciTuru === 2 || oRow.odemeAraciTuru === 3));
-                      const isOdemeKurDisabled = true;
+                      const isOdemeKurDisabled = !kurAcik || isOdemeTL || isOdemeKart || isOdemeHesap;
 
                       const isOdemeAdetMissing = hasPayment && isOdemeParaOrZiynet && (!oRow.adet || String(oRow.adet).trim() === "" || Number(oRow.adet) <= 0);
                       const isOdemeMiktarMissing = hasPayment && !isOdemeParaOrZiynet && (!oRow.miktar || String(oRow.miktar).trim() === "" || parseDecimal(oRow.miktar) <= 0);

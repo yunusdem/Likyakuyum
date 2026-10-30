@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
-import { dovizGiseKuru, kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { dovizGiseKuru, kurDegistirilebilir, kurDenetle, kurDegeriniSinirla } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -3603,7 +3603,7 @@ export const DovizFisiPage: React.FC = () => {
 
     // Görünür olan navigasyon sütunlarının dinamik sırası (% BMV, BMV, % KMV ve KMV salt okunur olduğundan atlanır)
     const isRowTL = lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TL" || lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TRY" || lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TRL";
-    const visibleCols: GridColumnKey[] = isRowTL ? ["kod", "miktar"] : ["kod", "miktar", "kur"];
+    const visibleCols: GridColumnKey[] = (isRowTL || !kurAcik) ? ["kod", "miktar"] : ["kod", "miktar", "kur"];
     if (colVisibility.komisyonOrani) visibleCols.push("komisyonOrani");
     if (colVisibility.komisyon) visibleCols.push("komisyon");
 
@@ -3690,6 +3690,36 @@ export const DovizFisiPage: React.FC = () => {
         }
         return;
       } else {
+        if (field === "kur") {
+          const row = lines[rowIndex];
+          if (row && !isRowTL && kurAcik) {
+            const val = String(row.kur || "").trim();
+            if (val !== "") {
+              let num = parseFloat(val.replace(/,/g, "."));
+              if (!isNaN(num) && num > 0) {
+                const p = paraList.find((x) =>
+                  (row.paraId && x.id === row.paraId) ||
+                  (x.kod && row.paraKodu && x.kod.toUpperCase().trim() === String(row.paraKodu).toUpperCase().trim())
+                );
+                if (p) {
+                  const alis = resolveCurrencyRate(p, 0, kurTuru);
+                  const satis = resolveCurrencyRate(p, 1, kurTuru);
+                  const ref = resolveCurrencyRate(p, tip, kurTuru);
+                  const gise = { kur: ref || alis || satis, alis: alis || null, satis: satis || null };
+                  const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
+                  if (res.degisti) {
+                    num = res.kur;
+                    if (res.mesaj) {
+                      setNotification({ type: "warning", message: res.mesaj });
+                    }
+                  }
+                }
+                const formattedKur = num.toFixed(kurKurusSayisi);
+                handleLineFieldChange(row.id, "kur", formattedKur);
+              }
+            }
+          }
+        }
         // Sıradaki görünür sütuna geç (örn: kod -> miktar -> kur)
         const nextCol = visibleCols[currentVisIdx + 1];
         if (nextCol) {
@@ -6984,37 +7014,55 @@ export const DovizFisiPage: React.FC = () => {
                           type="text"
                           inputMode="decimal"
                           autoComplete="off"
-                          disabled={isLocked || isTL || (!kurAcik && !isKurMissing)}
-                          readOnly={isTL}
-                          tabIndex={isTL ? -1 : undefined}
+                          disabled={isLocked || isTL || !kurAcik}
+                          readOnly={isTL || !kurAcik}
+                          tabIndex={isTL || !kurAcik ? -1 : undefined}
                           className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${isTL ? "text-muted" : (isKurMissing ? "text-danger fw-bold" : "")
                             }`}
                           style={{
                             height: "26px",
                             fontSize: "13px",
-                            backgroundColor: isTL ? "#e9ecef" : (isKurMissing ? "#fee2e2" : "transparent"),
+                            backgroundColor: (isTL || !kurAcik) ? "#e9ecef" : (isKurMissing ? "#fee2e2" : "transparent"),
                             border: isKurMissing ? "1.5px solid #dc2626" : "none",
                             borderRadius: isKurMissing ? "3px" : undefined,
-                            cursor: isTL ? "not-allowed" : undefined,
+                            cursor: (isTL || !kurAcik) ? "not-allowed" : undefined,
                           }}
                           value={isTL ? "" : row.kur}
                           onFocus={() => {
                             setActiveRowIndex(idx);
                             cleanupEmptyRows(idx);
                           }}
-                          onChange={(e) => !isTL && handleLineFieldChange(row.id, "kur", e.target.value)}
+                          onChange={(e) => !isTL && kurAcik && handleLineFieldChange(row.id, "kur", e.target.value)}
                           onBlur={(e) => {
-                            if (isTL) return;
+                            if (isTL || !kurAcik) return;
                             const val = e.target.value.trim();
                             if (val !== "") {
-                              const num = parseFloat(val.replace(/,/g, "."));
-                              if (!isNaN(num)) {
-                                handleLineFieldChange(row.id, "kur", num.toFixed(kurKurusSayisi));
+                              let num = parseFloat(val.replace(/,/g, "."));
+                              if (!isNaN(num) && num > 0) {
+                                const p = paraList.find((x) =>
+                                  (row.paraId && x.id === row.paraId) ||
+                                  (x.kod && row.paraKodu && x.kod.toUpperCase().trim() === String(row.paraKodu).toUpperCase().trim())
+                                );
+                                if (p) {
+                                  const alis = resolveCurrencyRate(p, 0, kurTuru);
+                                  const satis = resolveCurrencyRate(p, 1, kurTuru);
+                                  const ref = resolveCurrencyRate(p, tip, kurTuru);
+                                  const gise = { kur: ref || alis || satis, alis: alis || null, satis: satis || null };
+                                  const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
+                                  if (res.degisti) {
+                                    num = res.kur;
+                                    if (res.mesaj) {
+                                      setNotification({ type: "warning", message: res.mesaj });
+                                    }
+                                  }
+                                }
+                                const formattedKur = num.toFixed(kurKurusSayisi);
+                                handleLineFieldChange(row.id, "kur", formattedKur);
                               }
                             }
                           }}
                           onKeyDown={(e) => handleCellKeyDown(e, idx, "kur")}
-                          title={isTL ? "TL için kur girilmez" : isKurMissing ? "Lütfen geçerli bir kur giriniz" : undefined}
+                          title={isTL ? "TL için kur girilmez" : !kurAcik ? "Kur değiştirme yetkiniz yok" : isKurMissing ? "Lütfen geçerli bir kur giriniz" : undefined}
                         />
                       </td>
 

@@ -23,5 +23,25 @@ export async function ticariSemaHazirla(pool) {
             await pool.request().batch(b);
         logger.info("[Ticari] Stok tabloları kuruldu (göç 006 ilk kullanımda uygulandı).");
     }
+    // Göç 017: kartta stok kontrol seçeneği (İş 9, G22)
+    const kontrolYok = Number((await pool.request().query(`SELECT CASE WHEN COL_LENGTH('dbo.TODVZ_STOK_KART','STOK_KONTROL') IS NULL THEN 1 ELSE 0 END AS EKSIK`)).recordset[0]?.EKSIK);
+    if (kontrolYok) {
+        const dosya = gocDosyalari().find((d) => d.no === 17);
+        if (!dosya)
+            throw new Error("Ticari şema dosyası (migrations/017_stok_kontrol.sql) bulunamadı.");
+        for (const b of dosya.batchler)
+            await pool.request().batch(b);
+        logger.info("[Ticari] STOK_KONTROL kolonu eklendi (göç 017 ilk kullanımda uygulandı).");
+    }
+    // Göç 018: fiyat listeleri, tedarikçi, kampanya, fiyat geçmişi (İş 11)
+    const fiyatYok = Number((await pool.request().query(`SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_STOK_KAMPANYA_HEDEF','U') IS NULL OR COL_LENGTH('dbo.TODVZ_FATURA_SATIRI','KAMPANYA_ID') IS NULL OR COL_LENGTH('dbo.TODVZ_STOK_KART','TEDARIKCI_CARI_ID') IS NULL THEN 1 ELSE 0 END AS EKSIK`)).recordset[0]?.EKSIK);
+    if (fiyatYok) {
+        const dosya = gocDosyalari().find((d) => d.no === 18);
+        if (!dosya)
+            throw new Error("Ticari şema dosyası (migrations/018_fiyat_listesi_kampanya.sql) bulunamadı.");
+        for (const b of dosya.batchler)
+            await pool.request().batch(b);
+        logger.info("[Ticari] Fiyat listesi / kampanya tabloları kuruldu (göç 018 ilk kullanımda uygulandı).");
+    }
     hazir.add(pool);
 }

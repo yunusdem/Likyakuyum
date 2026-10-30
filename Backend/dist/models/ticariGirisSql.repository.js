@@ -2,7 +2,7 @@ import sql from "mssql";
 import { ApiError } from "../utils/ApiError.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { GECERLI_KDV_ORANLARI, girisSatirHesapla, yuvarla2 } from "../services/ticari/ticariHesap.js";
-import { STOK_BELGE, TicariStokSqlRepository } from "./ticariStokSql.repository.js";
+import { STOK_BELGE, TicariStokSqlRepository, stokKontrolOku } from "./ticariStokSql.repository.js";
 /**
  * Stok Giriş Fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T9, T11): tedarikçiden ürün girişi. Her satır stok hareket
  * defterine giriş yazar, kartın son alış fiyatını günceller. Tedarikçi cari seçilirse genel toplam cariye ALACAK yazılır
@@ -33,28 +33,37 @@ export async function bakiyeler(tx, kartIdler) {
     return m;
 }
 /**
- * İşlem sonunda eksi stok denetimi (T8): bu işlemle bakiyesi azalıp eksiye düşen kartlar. ENGELLE → hata;
- * UYAR → onay yoksa 409 (EKSI_STOK, kalemler) ile işlem geri alınır, ekran onay sorup yeniden gönderir; SESSIZ → geçer.
+ * İşlem sonunda eksi stok denetimi (T8, İş 9 G22): bu işlemle bakiyesi azalıp eksiye düşen kartlar. Davranış karta özel
+ * (STOK_KONTROL), boşsa Stok Ayarları'ndaki genel davranış. ENGELLE kalemi varsa → 400 (hiçbiri yazılmaz); UYAR kalemi varsa ve
+ * onay yoksa → 409 (EKSI_STOK, kalemler), ekran onay sorup yeniden gönderir; SESSIZ → geçer, uyarı da vermez.
+ * Döner: yalnız UYAR davranışlı kalemler (kayıt sonrası uyarı metni için).
  */
 export async function eksiStokDenetle(tx, onceki, onay) {
     const sonraki = await bakiyeler(tx, [...onceki.keys()]);
     const idler = [...onceki.keys()].filter((id) => (sonraki.get(id) ?? 0) < -0.00001 && (sonraki.get(id) ?? 0) < (onceki.get(id) ?? 0) - 0.00001);
     if (!idler.length)
         return [];
-    const r = await new sql.Request(tx).query(`SELECT STOK_KART_ID, RTRIM(KOD) AS KOD, AD, BIRIM FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${idler.join(",")})`);
-    const kalemler = r.recordset.map((x) => ({
-        stokKartId: x.STOK_KART_ID, kod: temiz(x.KOD), ad: temiz(x.AD), birim: temiz(x.BIRIM),
-        onceki: onceki.get(x.STOK_KART_ID) ?? 0, sonraki: sonraki.get(x.STOK_KART_ID) ?? 0,
-    }));
-    const davranis = await TicariStokSqlRepository.eksiStokDavranisi(undefined, tx);
-    const liste = kalemler.map((k) => `${k.kod} ${k.ad}: ${k.sonraki.toLocaleString("tr-TR")} ${k.birim}`).join(", ");
-    if (davranis === "ENGELLE") {
-        throw new ApiError(HttpStatus.BAD_REQUEST, `Stok yetersiz, işlem yapılmadı (Stok Ayarları: eksi stoğa izin yok). Kalacak bakiye: ${liste}`, { kod: "EKSI_STOK_ENGEL", kalemler });
+    const r = await new sql.Request(tx).query(`SELECT STOK_KART_ID, RTRIM(KOD) AS KOD, AD, BIRIM, STOK_KONTROL FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${idler.join(",")})`);
+    const genel = await TicariStokSqlRepository.eksiStokDavranisi(undefined, tx);
+    const kalemler = r.recordset.map((x) => {
+        const ozel = stokKontrolOku(x.STOK_KONTROL);
+        return {
+            stokKartId: x.STOK_KART_ID, kod: temiz(x.KOD), ad: temiz(x.AD), birim: temiz(x.BIRIM),
+            onceki: onceki.get(x.STOK_KART_ID) ?? 0, sonraki: sonraki.get(x.STOK_KART_ID) ?? 0,
+            davranis: ozel && ozel !== "hata" ? ozel : genel,
+        };
+    });
+    const yaz = (l) => l.map((k) => `${k.kod} ${k.ad}: ${k.sonraki.toLocaleString("tr-TR")} ${k.birim}`).join(", ");
+    const sade = (l) => l.map(({ davranis: _d, ...k }) => k);
+    const engel = kalemler.filter((k) => k.davranis === "ENGELLE");
+    if (engel.length) {
+        throw new ApiError(HttpStatus.BAD_REQUEST, `Stok yetersiz, işlem yapılmadı (eksi stoğa izin yok). Kalacak bakiye: ${yaz(engel)}`, { kod: "EKSI_STOK_ENGEL", kalemler: sade(engel) });
     }
-    if (davranis === "UYAR" && !onay) {
-        throw new ApiError(HttpStatus.CONFLICT, `Stok eksiye düşecek: ${liste}. Yine de devam edilsin mi?`, { kod: "EKSI_STOK", kalemler });
+    const uyar = kalemler.filter((k) => k.davranis === "UYAR");
+    if (uyar.length && !onay) {
+        throw new ApiError(HttpStatus.CONFLICT, `Stok eksiye düşecek: ${yaz(uyar)}. Yine de devam edilsin mi?`, { kod: "EKSI_STOK", kalemler: sade(uyar) });
     }
-    return kalemler;
+    return sade(uyar);
 }
 /** Kartların son alış fiyatını giriş fişlerinden yeniden hesaplar (en son tarihli, fiyatı olan satır) */
 export async function sonAlisGuncelle(tx, kartIdler) {
@@ -195,17 +204,20 @@ export class TicariGirisSqlRepository {
           OUTPUT INSERTED.STOK_GIRIS_ID VALUES (@NO, @TARIH, @CARI, @BELGE, @ACIKLAMA, @ARA, @KDV, @GENEL, @VEZNE, @KUL)`);
                 id = r.recordset[0].STOK_GIRIS_ID;
             }
-            for (const s of satirlar) {
-                await new sql.Request(tx)
-                    .input("ID", sql.Int, id).input("NO", sql.Int, s.satirNo).input("KART", sql.Int, s.stokKartId).input("M", sql.Float, s.miktar)
-                    .input("B", sql.VarChar(20), s.birim).input("F", sql.Float, s.birimFiyat).input("KDV", sql.Float, s.kdvOrani)
-                    .input("T", sql.Float, s.tutar).input("KT", sql.Float, s.kdvTutari).input("TT", sql.Float, s.toplamTutar)
-                    .input("TARIH", sql.DateTime, tarih).input("TUR", sql.TinyInt, STOK_BELGE.GIRIS).input("KUL", sql.Int, kullaniciId || null)
-                    .query(`INSERT INTO dbo.TODVZ_STOK_GIRIS_SATIRI (STOK_GIRIS_ID, SATIR_NO, STOK_KART_ID, MIKTAR, BIRIM, BIRIM_FIYAT, KDV_ORANI, TUTAR, KDV_TUTARI, TOPLAM_TUTAR)
-                  VALUES (@ID, @NO, @KART, @M, @B, @F, @KDV, @T, @KT, @TT);
-                  INSERT INTO dbo.TODVZ_STOK_HAREKET (STOK_KART_ID, TARIH, BELGE_TURU, BELGE_ID, SATIR_NO, GIRIS, CIKIS, BIRIM_FIYAT, EKLEYEN_ID)
-                  VALUES (@KART, @TARIH, @TUR, @ID, @NO, @M, 0, @F, @KUL);`);
+            // Satırlar 10 parametre / satır → 200 satır / paket (Excel açılışında binlerce satır olabilir); hareketler satırlardan tek sorguyla
+            for (let i = 0; i < satirlar.length; i += 200) {
+                const paket = satirlar.slice(i, i + 200);
+                const req = new sql.Request(tx).input("ID", sql.Int, id);
+                const degerler = paket.map((s, j) => {
+                    req.input(`N${j}`, sql.Int, s.satirNo).input(`K${j}`, sql.Int, s.stokKartId).input(`M${j}`, sql.Float, s.miktar).input(`B${j}`, sql.VarChar(20), s.birim)
+                        .input(`F${j}`, sql.Float, s.birimFiyat).input(`V${j}`, sql.Float, s.kdvOrani).input(`T${j}`, sql.Float, s.tutar).input(`KT${j}`, sql.Float, s.kdvTutari).input(`TT${j}`, sql.Float, s.toplamTutar);
+                    return `(@ID, @N${j}, @K${j}, @M${j}, @B${j}, @F${j}, @V${j}, @T${j}, @KT${j}, @TT${j})`;
+                });
+                await req.query(`INSERT INTO dbo.TODVZ_STOK_GIRIS_SATIRI (STOK_GIRIS_ID, SATIR_NO, STOK_KART_ID, MIKTAR, BIRIM, BIRIM_FIYAT, KDV_ORANI, TUTAR, KDV_TUTARI, TOPLAM_TUTAR) VALUES ${degerler.join(",")}`);
             }
+            await new sql.Request(tx).input("ID", sql.Int, id).input("TARIH", sql.DateTime, tarih).input("TUR", sql.TinyInt, STOK_BELGE.GIRIS).input("KUL", sql.Int, kullaniciId || null).query(`
+        INSERT INTO dbo.TODVZ_STOK_HAREKET (STOK_KART_ID, TARIH, BELGE_TURU, BELGE_ID, SATIR_NO, GIRIS, CIKIS, BIRIM_FIYAT, EKLEYEN_ID)
+        SELECT S.STOK_KART_ID, @TARIH, @TUR, @ID, S.SATIR_NO, S.MIKTAR, 0, S.BIRIM_FIYAT, @KUL FROM dbo.TODVZ_STOK_GIRIS_SATIRI S WHERE S.STOK_GIRIS_ID = @ID ORDER BY S.SATIR_NO`);
             if (cariKartId && genelToplam > 0) {
                 const aciklama = `Stok Giriş Fişi No: ${fisNo}${temiz(girdi.belgeNo) ? ` / ${temiz(girdi.belgeNo)}` : ""}`.slice(0, 100);
                 const ch = await new sql.Request(tx)
@@ -221,6 +233,10 @@ export class TicariGirisSqlRepository {
                     .query(`UPDATE dbo.TODVZ_STOK_GIRIS SET CARI_HAREKET_ID = @CH WHERE STOK_GIRIS_ID = @ID`);
             }
             await sonAlisGuncelle(tx, [...tumKartlar, ...eskiKartlar]);
+            // Tedarikçi (İş 11, G10): fişteki cari satır kartlarının tedarikçisi olur (son giriş)
+            if (cariKartId && tumKartlar.length) {
+                await new sql.Request(tx).input("C", sql.Int, cariKartId).query(`UPDATE dbo.TODVZ_STOK_KART SET TEDARIKCI_CARI_ID = @C WHERE STOK_KART_ID IN (${tumKartlar.join(",")})`);
+            }
             const eksi = await eksiStokDenetle(tx, onceki, girdi.eksiStokOnay);
             if (eksi.length)
                 uyari = `Eksiye düşen stok: ${eksi.map((k) => `${k.kod} ${k.ad} (${k.sonraki})`).join(", ")}`;

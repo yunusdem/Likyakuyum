@@ -102,6 +102,7 @@ router.post("/destek/konular/:id/mesajlar", validate(adminMesajSchema), DestekAd
 router.put("/destek/konular/:id", validate(adminKonuGuncelleSchema), DestekAdminController.konuGuncelle);
 router.get("/destek/bildirimler", DestekAdminController.bildirimler);
 router.get("/destek/hedefler", DestekAdminController.hedefSecenekleri);
+router.get("/destek/ekip", DestekAdminController.ekip);
 router.post("/destek/bildirimler", validate(bildirimOlusturSchema), DestekAdminController.bildirimOlustur);
 router.put("/destek/bildirimler/:id", validate(bildirimGuncelleSchema), DestekAdminController.bildirimGuncelle);
 router.post("/destek/bildirimler/:id/geri-cek", validate(destekIdSchema), DestekAdminController.bildirimGeriCek);
