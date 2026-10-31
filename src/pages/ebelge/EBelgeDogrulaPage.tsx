@@ -48,6 +48,8 @@ import {
 } from "../../services/ebelgeService";
 import "./ebelgeForm.css";
 import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
+import { useAuth } from "../../context/AuthContext";
+import { kuyumLisansiMi } from "../../config/kullaniciGorunum";
 
 /**
  * E-Belge — Belge Doğrulama (Faz 5)
@@ -139,6 +141,7 @@ const EBelgeDogrulaPage: React.FC = () => {
   const [ytbNo, setYtbNo] = useState<string>("");
   const [ytbTarihi, setYtbTarihi] = useState<string>("");
   const [muafiyetSebebi, setMuafiyetSebebi] = useState<string>("");
+  const kuyumGorunumu = kuyumLisansiMi(useAuth().user);
   const [halMasraflari, setHalMasraflari] = useState<{ ad: string; tutar: number; kdvOrani?: number }[]>([]);
   const [earsivTipi, setEarsivTipi] = useState<"NORMAL" | "INTERNET">("NORMAL");
   const [earsivGonderimSekli, setEarsivGonderimSekli] = useState<"KAGIT" | "ELEKTRONIK">("ELEKTRONIK");
@@ -660,6 +663,8 @@ const EBelgeDogrulaPage: React.FC = () => {
       muafiyetSebebi: istisnaSebebiMi ? muafiyetSebebi.trim() || undefined : undefined,
       halMasraflari: halMi && halMasraflari.filter((m) => m.ad.trim()).length ? halMasraflari.filter((m) => m.ad.trim()) : undefined,
       earsiv: earsivMi ? { tip: earsivTipi, gonderimSekli: earsivGonderimSekli } : undefined,
+      // Kuyum lisansında Kütükçü düzenindeki fatura görünümü (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF27)
+      gorunum: kuyumGorunumu ? ("KUYUM" as const) : undefined,
     };
   };
 

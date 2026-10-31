@@ -41,6 +41,8 @@ export interface KaydetBaglami {
   musteri: HizliMusteri;
   veri: ModulVerisi;
   istatistik: StatisticItem | null;
+  /** Sarraf: e-Belge GİB kodu (805, 808, 230 …); boşsa faturada altın 805, gümüş 808 */
+  istisnaKodu?: string | null;
   /** nesne: AuthContext kullanıcısı (yazıcı seçimi için) */
   kullanici: { id: number; ad: string; nesne: any };
   pos: PosKancasi;

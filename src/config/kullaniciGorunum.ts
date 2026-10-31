@@ -70,10 +70,28 @@ export const etkinModuller = (firmaModulleri: string[] | null | undefined, kapal
 };
 
 /**
- * Sunucudan gelen profili ekrana hazırlar: yönetici olmayanda `merkez.moduller` etkin listeye iner; kapalı liste
+ * Kuyum lisansında kapalı e-Banka / POS sayfaları (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF1): lisansta Kuyum varsa,
+ * öteki ürünler (Döviz, Connector, ERP) ne olursa olsun menüden ve doğrudan adresten kapanır. API'ler açık kalır.
+ */
+export const KUYUM_GIZLI_MODULLER = ["banka:ebanka/bekleyenler", "banka:ebanka/sanal-pos-tahsilat", "banka:banka/pos-islemleri"];
+
+export const kuyumLisansiMi = (u: Pick<UserProfileDto, "merkez"> | null | undefined): boolean => !!u?.merkez?.urunler?.includes("kuyum");
+
+/** Kuyum lisansında KUYUM_GIZLI_MODULLER firma modül listesinden düşülür (yöneticide de); lisans null ise tam katalogdan */
+export const kuyumSuzgeci = <T extends UserProfileDto | null>(u: T): T => {
+  if (!u || !u.merkez || !kuyumLisansiMi(u)) return u;
+  const gizli = new Set(KUYUM_GIZLI_MODULLER);
+  const kaynak = u.merkez.moduller ?? modulKatalogu().map((m) => m.modulKodu);
+  if (u.merkez.moduller && !kaynak.some((k) => gizli.has(k))) return u;
+  return { ...u, merkez: { ...u.merkez, moduller: kaynak.filter((k) => !gizli.has(k)) } } as T;
+};
+
+/**
+ * Sunucudan gelen profili ekrana hazırlar (önce Kuyum süzgeci): yönetici olmayanda `merkez.moduller` etkin listeye iner; kapalı liste
  * `gorunumKapali`'da kalır (kontrol düğmeleri oradan okunur). Yöneticide dokunulmaz.
  */
-export const profiliGorunumeGoreHazirla = <T extends UserProfileDto | null>(u: T): T => {
+export const profiliGorunumeGoreHazirla = <T extends UserProfileDto | null>(ham: T): T => {
+  const u = kuyumSuzgeci(ham);
   if (!u || gorunumYoneticisiMi(u)) return u;
   const kapali = u.gorunumKapali;
   // Merkez bilgisi yoksa (geliştirme: merkez kapalı) lisans süzgeci zaten yok; menü kısıtı uygulanmaz, kontrol düğmeleri uygulanır

@@ -23,6 +23,10 @@ router.post("/mutabakat/esle", EBankaController.mutabakatEsle);
 router.post("/mutabakat/esle-kaldir", EBankaController.mutabakatEslemeKaldir);
 router.post("/mutabakat/fatura-gerekmez", EBankaController.mutabakatFaturaGerekmez);
 router.post("/mutabakat/cari-onayla", EBankaController.mutabakatCariOnayla);
+// Kuyum e-Banka Faturalandırma: hareketten doğrudan satış faturası / gider pusulası (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md)
+router.post("/mutabakat/belge/hazirla", EBankaController.belgeHazirla);
+router.post("/mutabakat/belge/gonder", EBankaController.belgeGonder);
+router.post("/mutabakat/belge/bag-kaldir", EBankaController.belgeBagKaldir);
 
 // Eşitleme (yalnızca elle)
 router.post("/esitle", EBankaController.esitle);

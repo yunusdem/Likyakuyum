@@ -65,6 +65,8 @@ import { StokKartModal } from "../ticari/StokKartModal";
 import { TicariService as TicariYetkiService } from "../../services/ticariService";
 import { ModulVerisi, SatirTaslagi, barkodCoz, barkoddanSatir, butondanSatir, gayriResmiMi, kampanyaIsle, karttanSatir, kurlariGetir, modulVerisiYukle, satirAnahtari, satiriYenidenFiyatla, varsayilanIstatistik } from "./modulVerisi";
 import { KAYDEDICILER } from "./kaydet";
+import KuyumKodDurbun from "../../components/common/KuyumKodDurbun";
+import { ALTIN_KODU, kuyumKoduBul } from "../../../Backend/src/services/kuyumKodlari";
 import { ANONIM_MUSTERI, HizliMusteri } from "./kaydet/tipler";
 
 /**
@@ -108,6 +110,8 @@ export const HizliSatisPage: React.FC = () => {
   const [secili, setSecili] = useState<string | null>(null);
   const [giris, setGiris] = useState("");
   const [indirim, setIndirim] = useState<IndirimGirdisi | null>(null);
+  // Sarraf: e-Belge GİB kodu (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29, EF33); KDV'siz satışta zorunlu, ön değer 805
+  const [istisnaKodu, setIstisnaKodu] = useState<string>(ALTIN_KODU);
   const [odemeler, setOdemeler] = useState<SepetOdemesi[]>([]);
   const [musteri, setMusteri] = useState<HizliMusteri>(ANONIM_MUSTERI);
   const [barkod, setBarkod] = useState("");
@@ -603,6 +607,11 @@ export const HizliSatisPage: React.FC = () => {
     const d = odemeDurumu(toplam.genelToplam, odemeListesi);
     if (d.fazlaOdeme) return showError("Nakit dışı ödemeler fiş toplamını aşıyor.");
     if (odemeListesi.length && d.kalan > 0.01) return showError(`Kalan ${para(d.kalan)} TL ödenmedi.`);
+    if (modul === "sarraf") {
+      const k = istisnaKodu.trim();
+      if (k && !kuyumKoduBul(k)) return showError(`KDV kodu ${k} kuyumculuk kodlarından değil; dürbünden seçin.`);
+      if (tip === 1 && !k) return showError("Sarraf satışında KDV istisna kodu seçilmeli (dürbünden; altın için 805).");
+    }
 
     // 12.000 TL fatura sınırı (H12) ve MASAK (H14): alıcı bilgisi eksikse pencere açılır, onaydan sonra kaldığı yerden
     const faturaSiniri = faturaSiniriAsildiMi(modul, toplam.genelToplam, yetki.faturaSiniri, tip);
@@ -645,6 +654,7 @@ export const HizliSatisPage: React.FC = () => {
         musteri: m,
         veri,
         istatistik,
+        istisnaKodu: istisnaKodu.trim() || null,
         kullanici: { id: Number(user?.id) || 0, ad: (user as any)?.fullName || (user as any)?.username || "", nesne: user },
         pos,
       });
@@ -784,6 +794,12 @@ export const HizliSatisPage: React.FC = () => {
               )}
               {modul === "sarraf" && toplam.indirim > 0 && (
                 <div className="d-flex justify-content-between"><span className="text-muted">Fiş tutarı</span><span>{para(toplam.araToplam)}</span></div>
+              )}
+              {modul === "sarraf" && (
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <span className="text-muted">KDV kodu{tip === 0 ? " (gider pusulasına yazılmaz)" : ""}</span>
+                  <KuyumKodDurbun value={istisnaKodu} onChange={setIstisnaKodu} isInvalid={tip === 1 && !istisnaKodu.trim()} />
+                </div>
               )}
               {toplam.indirim > 0 && (
                 <div className="d-flex justify-content-between text-danger">

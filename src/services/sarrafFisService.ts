@@ -72,6 +72,8 @@ export interface SarrafFisModel {
   gumusHasKuru: number;
   kdvOrani?: number;
   kdv?: number;
+  /** e-Belge GİB kodu (805, 808, 230 …) */
+  istisnaKodu?: string | null;
   unvan?: string;
   cariKartId?: number | null;
   vezneId?: number;
@@ -128,6 +130,8 @@ export interface SaveSarrafFisPayload {
   istatistikKodu?: string | null;
   kdvOrani?: number | null;
   kdv?: number | null;
+  /** e-Belge GİB kodu (805, 808, 230 …; docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29) */
+  istisnaKodu?: string | null;
   kisilikTipi?: number | null;
   uyrukId?: number | null;
   ulkeId?: number | null;

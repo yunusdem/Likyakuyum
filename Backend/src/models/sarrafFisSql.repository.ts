@@ -61,6 +61,8 @@ export interface SaveSarrafFisDto {
   altinHasKuru: number;
   kdvOrani?: number | null;
   kdv?: number | null;
+  /** e-Belge GİB kodu (805, 808, 230 …; docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29) */
+  istisnaKodu?: string | null;
   eFaturaPosta?: string | null;
   eIrsaliyePosta?: string | null;
   irsaliyeNo?: string | null;
@@ -289,6 +291,7 @@ export class SarrafFisSqlRepository {
       await pool.request().query(`
         IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [ISTATISTIK_ID] INT NULL;
         IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI', 'ISCILIK_TUTARI') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI_SATIRI ADD [ISCILIK_TUTARI] FLOAT NOT NULL CONSTRAINT DF_TODVZ_SARRAF_FISI_SATIRI_ISCILIK_TUTARI DEFAULT 0;
+        IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'E_BELGE_ISTISNA_KODU') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [E_BELGE_ISTISNA_KODU] VARCHAR(10) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ISKONTO_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ISKONTO_ID] INT NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
@@ -350,6 +353,7 @@ export class SarrafFisSqlRepository {
         tip: h.TIP, altinHasKuru: Number(h.ALTIN_HAS_KURU) || 0,
         alisKuru: Number(h.ALIS_KURU) || 0, satisKuru: Number(h.SATIS_KURU) || 0,
         gumusHasKuru: Number(h.GUMUS_HAS_KURU) || 0, kdvOrani: h.KDV_ORANI ?? null, kdv: h.KDV ?? null,
+        istisnaKodu: h.E_BELGE_ISTISNA_KODU ? String(h.E_BELGE_ISTISNA_KODU).trim() : null,
         unvan: h.UNVAN || "", cariKartId: h.CARI_KART_ID ?? null, vezneId: h.VEZNE_ID ?? null,
         belgeTuru: h.BELGE_TURU ?? 0, kisilikTipi: h.KISILIK_TIPI ?? null,
         uyrukId: h.UYRUK_ID ?? null, ulkeId: h.ULKE_ID ?? null,
@@ -460,11 +464,14 @@ export class SarrafFisSqlRepository {
 
     await pool.request().query(`
       IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [ISTATISTIK_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'E_BELGE_ISTISNA_KODU') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [E_BELGE_ISTISNA_KODU] VARCHAR(10) NULL;
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ISKONTO_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ISKONTO_ID] INT NULL;
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
     `).catch(() => {});
 
+    // e-Belge KDV kodu kolonu (göç 022): yoksa (yetki / eski şema) fiş yine kaydedilir, yalnız kod yazılmaz
+    const istisnaKoduKolonu = (await pool.request().query(`SELECT COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'E_BELGE_ISTISNA_KODU') AS L`).catch(() => ({ recordset: [{ L: null }] }))).recordset[0]?.L != null;
     const req = pool.request();
 
     const parseNum = (val: any): number => {
@@ -558,6 +565,7 @@ export class SarrafFisSqlRepository {
     req.input("IN_ALTIN_HAS_KURU", sql.Float, parseNum(dto.altinHasKuru));
     req.input("IN_KDV_ORANI", sql.Float, dto.kdvOrani != null && !isNaN(parseNum(dto.kdvOrani)) ? parseNum(dto.kdvOrani) : null);
     req.input("IN_KDV", sql.Float, parseNum(effectiveKdv));
+    req.input("IN_E_BELGE_ISTISNA_KODU", sql.VarChar(10), String(dto.istisnaKodu ?? "").trim().slice(0, 10) || null);
     req.input("IN_E_FATURA_POSTA", sql.VarChar(200), dto.eFaturaPosta ?? null);
     req.input("IN_E_IRSALIYE_POSTA", sql.VarChar(200), dto.eIrsaliyePosta ?? null);
     req.input("IN_IRSALIYE_ZAMANI", sql.DateTime, safeDate(dto.irsaliyeZamani));
@@ -1116,7 +1124,7 @@ export class SarrafFisSqlRepository {
             KIMLIK_GECERLILIK_TARIHI = @IN_KIMLIK_GECERLILIK_TARIHI,
             VEKIL_ADI = @IN_VEKIL_ADI,
             VEKIL_KIMLIK_NO = @IN_VEKIL_KIMLIK_NO,
-            KISILIK_TIPI = @IN_KISILIK_TIPI
+            KISILIK_TIPI = @IN_KISILIK_TIPI${istisnaKoduKolonu ? ", E_BELGE_ISTISNA_KODU = @IN_E_BELGE_ISTISNA_KODU" : ""}
         WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID;
 
         ${validOdemeler.map((o, idx) => `

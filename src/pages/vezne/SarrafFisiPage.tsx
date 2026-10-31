@@ -57,6 +57,8 @@ import { FastLookupCache } from "../../services/fastLookupCache";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import { apiClient } from "../../services/apiClient";
 import { ParaItem } from "./DovizFisiPage";
+import KuyumKodDurbun from "../../components/common/KuyumKodDurbun";
+import { ALTIN_KODU, kuyumKoduBul } from "../../../Backend/src/services/kuyumKodlari";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface VezneItem { id: number; kod: string; ad: string; }
@@ -857,6 +859,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [satisKuru, setSatisKuru] = useState<number | string>("");
   const [gumusHasKuru, setGumusHasKuru] = useState<number | string>("");
   const [kdvOrani, setKdvOrani] = useState<number | string>("");
+  // e-Belge GİB kodu (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29): ön değer 805, gümüş satırlarına faturada 808
+  const [istisnaKodu, setIstisnaKodu] = useState<string>(ALTIN_KODU);
   const [vezneId, setVezneId] = useState(0);
   const [vezneKod, setVezneKod] = useState("");
   const [vezneAd, setVezneAd] = useState("");
@@ -1813,6 +1817,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       setSatisKuru(data.satisKuru || "");
       setGumusHasKuru(data.gumusHasKuru || "");
       setKdvOrani(data.kdvOrani !== null && data.kdvOrani !== undefined ? data.kdvOrani : "");
+      setIstisnaKodu(data.istisnaKodu || ALTIN_KODU);
       if (data.vezneId) {
         setVezneId(data.vezneId);
         const vz = vezneList.find((v) => v.id === data.vezneId);
@@ -2015,6 +2020,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setSatisKuru("");
     setGumusHasKuru(defaultGumus);
     setKdvOrani("");
+    setIstisnaKodu(ALTIN_KODU);
     setDetayUnvan(DEFAULT_CUSTOMER_NAME);
     setDetayKisilikTipi(0);
     setDetayVergiKimlikNo("");
@@ -2376,6 +2382,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     });
     if (!validLines.length) { return; }
 
+    // e-Belge kodu (EF30): KDV %0 satışta zorunlu; yazılan kod kuyumculuk kodlarından olmalı
+    const kodTemiz = (istisnaKodu || "").trim();
+    if (kodTemiz && !kuyumKoduBul(kodTemiz)) { showNotif("warning", `KDV kodu ${kodTemiz} kuyumculuk kodlarından değil; dürbünden seçin (805, 808, 230, 231, 232, 301).`); return; }
+    if (tip === 1 && !(parseDecimal(kdvOrani) > 0) && !kodTemiz) { showNotif("warning", "KDV %0 satışta KDV istisna kodu seçilmeli (dürbünden; altın için 805)."); return; }
+
     // Ürün tablosu ile Ödeme tablosu arasındaki fark kontrolü (Fark var ise doğrudan kaydetmez, onay modalını açar)
     const currentOdemeTutar = activeOdemeRows.reduce((sum, r) => sum + (parseDecimal(r.tutar) || 0), 0);
     const curFarkTL = totalTutar - currentOdemeTutar;
@@ -2562,6 +2573,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         gumusHasKuru: parseDecimal(gumusHasKuru) || 0,
         kdvOrani: kdvOrani !== "" && !isNaN(parseDecimal(kdvOrani)) ? parseDecimal(kdvOrani) : null,
         kdv: parseFloat(calculatedKdv.toFixed(2)),
+        istisnaKodu: (istisnaKodu || "").trim() || null,
         belgeTuru,
         unvan: unvan || detayUnvan || null,
         kisilikTipi: detayKisilikTipi || null,
@@ -2790,7 +2802,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       setIsSaving(false);
     }
   }, [vezneId, fisId, fisNo, seriNo, tarih, saat, tip, belgeTuru, altinHasKuru, alisKuru, satisKuru,
-    gumusHasKuru, kdvOrani, unvan, detayUnvan, detayKisilikTipi, detayVergiKimlikNo,
+    gumusHasKuru, kdvOrani, istisnaKodu, unvan, detayUnvan, detayKisilikTipi, detayVergiKimlikNo,
     detayBabaAdi, detayAnneAdi, detayAdres, detayEposta, detayTelefonNo, detayDogumTarihi,
     detayDogumYeri, detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru,
     detayKimlikGecerlilikTarihi, detayVekilAdi, detayVekilKimlikNo,
@@ -3655,7 +3667,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         urunTipi: resolvedUrunTipi,
         kur: finalKur > 0 ? finalKur : (r.kur || ""),
       };
-      // e-Banka: miktar boşsa banka tutarının kalanı / (kur × milyem)
+      // e-Banka: miktar boşsa banka tutarının kalanından (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF20).
+      // Altın tipinde tutar = gram × kur (recomputeRow): gram kura bölünür, milyeme bölünmez (eskiden bölünüyordu,
+      // 1500 TL'lik ödeme 1637,62 TL'lik fiş oluyordu). Gümüş / hurda: tutar = has × kur → kur × milyem.
+      // Gram / adet yuvarlandığı için kalan kuruş farkı kalmasın diye satır tutarı banka tutarına sabitlenir (ziynette adet tam sayı, sabitlenmez).
+      let ebSabitTutar: number | null = null;
       if (ebHedefRef.current > 0 && !(parseDecimal(updated.miktar) > 0)) {
         const kalan = ebHedefRef.current - prev.filter((x) => x.id !== rowId).reduce((t, x) => t + parseDecimal(x.tutar), 0);
         const kurN = parseDecimal(updated.kur);
@@ -3664,14 +3680,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             const ad = isZiynet ? Math.round(kalan / kurN) : parseFloat((kalan / kurN).toFixed(2));
             updated.adet = ad;
             updated.miktar = "";
+            if (!isZiynet) ebSabitTutar = parseFloat(kalan.toFixed(2));
           } else {
+            const tipAltin = resolvedUrunTipi === 1 || getUrunTipiInfo(updated).label === "Altın";
             const ham = parseDecimal(updated.milyem);
-            const mil = ham > 1 ? (ham <= 100 ? ham / 100 : ham / 1000) : (ham > 0 ? ham : 1);
+            const mil = tipAltin ? 1 : ham > 1 ? (ham <= 100 ? ham / 100 : ham / 1000) : (ham > 0 ? ham : 1);
             updated.miktar = parseFloat((kalan / (kurN * mil)).toFixed(3));
+            ebSabitTutar = parseFloat(kalan.toFixed(2));
           }
         }
       }
-      return recomputeRow(updated, finalKur, undefined, userIscilikGirisSekli);
+      const hesaplanan = recomputeRow(updated, finalKur, undefined, userIscilikGirisSekli);
+      return ebSabitTutar !== null && parseDecimal(hesaplanan.tutar) > 0 ? { ...hesaplanan, tutar: ebSabitTutar } : hesaplanan;
     }));
     setInvalidRowIds((prev) => ({ ...prev, [rowId]: true }));
   }, [tip, getKurForProduct, getMilyemForProduct, getHasKurForTip, getGumusKurForTip, userIscilikGirisSekli]);
@@ -6816,6 +6836,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     className="font-monospace text-end"
                     style={{ width: "95px" }}
                   />
+                </div>
+
+                {/* e-Belge KDV kodu (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29): kuyumculuk GİB kodları dürbünü */}
+                <div className="d-flex align-items-center gap-1">
+                  <label style={{ fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap" }} className="mb-0 text-secondary"
+                    title={tip === 0 ? "Alış fişi gider pusulasına gider; GİB gider pusulasında bu kod yazılmaz, fişte saklanır." : "Faturada altın satırı KDV %0 ile bu kodla gider (805 seçiliyken gümüş 808)."}>
+                    KDV Kodu
+                  </label>
+                  <KuyumKodDurbun value={istisnaKodu} onChange={setIstisnaKodu} isInvalid={tip === 1 && !(parseDecimal(kdvOrani) > 0) && !istisnaKodu.trim()} />
+                  {tip === 0 && <span className="text-muted" style={{ fontSize: "10px", whiteSpace: "nowrap" }}>(gider pusulasına yazılmaz)</span>}
                 </div>
               </div>
             </div>

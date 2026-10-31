@@ -92,6 +92,7 @@ export function sarrafYuku(b: KaydetBaglami, kartlar: Record<string, PosKarti> =
     satisKuru: 0,
     kdvOrani: null,
     kdv: 0,
+    istisnaKodu: b.istisnaKodu ?? null,
     istatistikId: b.istatistik?.id ?? null,
     istatistikKodu: b.istatistik?.kod ?? null,
     unvan: anonim ? ANONIM : m.unvan.trim(),

@@ -89,7 +89,7 @@ const adSoyad = (unvan: string, vkn: string): { ad: string; soyad: string } => {
   return { ad: parcalar.join(" "), soyad };
 };
 
-const aliciTarafi = (b: PerakendeBaslik) => {
+export const aliciTarafi = (b: PerakendeBaslik) => {
   const vkn = temiz(b.ALICI_VKN_TCKN).replace(/\D/g, "") || NIHAI_TUKETICI;
   if (vkn.length !== 10 && vkn.length !== 11) throw ApiError.badRequest("Alıcı VKN / TCKN 10 ya da 11 hane olmalıdır; fişi düzeltin.");
   const unvan = temiz(b.ALICI_UNVAN) || "NİHAİ TÜKETİCİ";
@@ -235,6 +235,60 @@ export function perakendeGiderGirdisi(kaynak: { baslik: PerakendeBaslik; satirla
     throw ApiError.badRequest(`Fişin genel toplamı (${genelToplam.toFixed(2)}) ile satır toplamı (${toplam.toFixed(2)}) uyuşmuyor; gönderim durduruldu.`);
   }
   return { belgeNo, uuid: temiz(b.ETTN) || undefined, tarih: tarihYaz(b.TARIH), belgeTipi: "SATIS", paraBirimi: "TRY", alici, satirlar };
+}
+
+/* ==========================================================================
+   Perakende alış → kuyum e-Gider pusulası (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF18)
+   Sarraf alışla aynı biçim: "22 AYAR BİLEZİK (Milyem 916, Has 11,450 gr)", 0003 GV stopajı %0, satır = satıcıya ödenen.
+   ========================================================================== */
+
+export const PERAKENDE_KDV_SIFIR_UYARISI =
+  "Bu alış fişinde KDV var; gider pusulasında KDV olmaz. Belge KDV 0 olarak, satıcıya ödenen tutarla (KDV dahil) gönderilecektir.";
+
+/** Satır adı: ürün + ayar, gram ve has gramdan milyem + has */
+export const perakendeKuyumAdi = (s: PerakendeSatir): string => {
+  const urun = temiz(s.URUN_ADI).toLocaleUpperCase("tr-TR") || "ÜRÜN";
+  const ayar = temiz(s.AYAR).toLocaleUpperCase("tr-TR");
+  const ayarYaz = ayar && !urun.includes(`${ayar} AYAR`) ? `${ayar} AYAR` : "";
+  const gram = sayi(s.GRAM);
+  const has = sayi(s.HAS_GRAM);
+  const ek: string[] = [];
+  if (gram > 0 && has > 0) ek.push(`Milyem ${Math.round((has / gram) * 1000)}`);
+  if (has > 0) ek.push(`Has ${has.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} gr`);
+  return [urun, ayarYaz].filter(Boolean).join(" ") + (ek.length ? ` (${ek.join(", ")})` : "");
+};
+
+export const perakendeKdvVar = (satirlar: PerakendeSatir[]): boolean => satirlar.some((s) => sayi(s.KDV_TUTARI) > 0);
+
+/**
+ * Alış fişi → kuyum e-Gider pusulası. Fişte KDV varsa onay (kdvSifir) olmadan durur; onayla satır tutarı ödenen tutardır
+ * (KDV dahil, Sarraf K22 ile aynı). Birim fiyat tutardan 6 haneyle bulunur; toplam fişin genel toplamına eşit kalır.
+ */
+export function perakendeKuyumGiderGirdisi(kaynak: { baslik: PerakendeBaslik; satirlar: PerakendeSatir[] }, secenek: { kdvSifir?: boolean } = {}): Omit<GiderPusulasiGirdi, "gonderici"> {
+  const b = kaynak.baslik;
+  if (Number(b.FATURA_TIPI) !== 0) throw ApiError.badRequest("Bu fiş alış fişi değil.");
+  const belgeNo = onKontrol(b, kaynak.satirlar);
+  const alici = aliciTarafi(b);
+  if (alici.vknTckn.length === 10) throw ApiError.badRequest("Mükellef (VKN'li) cariden alışta belgeyi karşı taraf keser; gider pusulası düzenlenmez.");
+  if (sayi(b.ISKONTO_TUTARI) > 0) throw ApiError.badRequest("İskontolu alış fişi gider pusulası olarak gönderilemez; iskontoyu satır fiyatına yansıtın.");
+  const kdvVar = perakendeKdvVar(kaynak.satirlar);
+  if (kdvVar && !secenek.kdvSifir) throw ApiError.conflict(`${PERAKENDE_KDV_SIFIR_UYARISI} Göndermek için onay gerekir.`);
+  const satirlar = kaynak.satirlar.map((s, i) => {
+    const miktar = sayi(s.MIKTAR) || 1;
+    const tutar = yuvarla(sayi(s.TUTAR) + (kdvVar ? sayi(s.KDV_TUTARI) : 0));
+    if (miktar <= 0 || tutar <= 0) throw ApiError.badRequest(`${i + 1}. satırda miktar / tutar geçersiz.`);
+    const birimFiyat = Math.round((tutar / miktar) * 1e6) / 1e6;
+    return { ad: perakendeKuyumAdi(s), miktar, birimKodu: birimKodu(s.BIRIM), birimFiyat, vergiOrani: 0 };
+  });
+  const toplam = yuvarla(satirlar.reduce((t, s) => t + yuvarla(s.miktar * s.birimFiyat), 0));
+  const genelToplam = yuvarla(sayi(b.GENEL_TOPLAM));
+  if (Math.abs(toplam - genelToplam) > 0.011) {
+    throw ApiError.badRequest(`Fişin genel toplamı (${genelToplam.toFixed(2)}) ile satır toplamı (${toplam.toFixed(2)}) uyuşmuyor; gönderim durduruldu.`);
+  }
+  return {
+    belgeNo, uuid: temiz(b.ETTN) || undefined, tarih: tarihYaz(b.TARIH), belgeTipi: "SATIS", paraBirimi: "TRY", alici, satirlar,
+    vergiTuruKodu: "0003", notlar: [`Perakende fiş no: ${belgeNo}`],
+  };
 }
 
 /**

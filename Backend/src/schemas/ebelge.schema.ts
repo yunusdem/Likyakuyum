@@ -206,6 +206,8 @@ export const ebelgeDogrulaSchema = z.object({
     tip: z.enum(["NORMAL", "INTERNET"]).optional(),
     gonderimSekli: z.enum(["KAGIT", "ELEKTRONIK"]).optional(),
   }).optional(),
+  /** Kuyum lisansında Kütükçü düzenindeki görünüm şablonu (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF27) */
+  gorunum: z.enum(["KUYUM"]).optional(),
   /** TRY dışı belgelerde TL karşılığı kur */
   dovizKuru: z
     .object({

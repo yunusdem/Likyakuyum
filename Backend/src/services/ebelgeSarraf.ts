@@ -1,7 +1,8 @@
 import { ApiError } from "../utils/ApiError.js";
 import { GiderPusulasiGirdi } from "./ice/ubl/giderPusulasiBuilder.js";
-import { UblFaturaGirdi } from "./ice/ubl/invoiceBuilder.js";
-import { NIHAI_TUKETICI, PerakendeBaslik, PerakendeSatir, perakendeFaturaGirdisi, perakendeGiderGirdisi } from "./ebelgePerakende.js";
+import { UblFaturaGirdi, hesapla } from "./ice/ubl/invoiceBuilder.js";
+import { BELGE_NO_BICIMI, NIHAI_TUKETICI, PerakendeBaslik, PerakendeSatir, aliciTarafi, perakendeGiderGirdisi } from "./ebelgePerakende.js";
+import { faturaTipiKodlardan, kuyumNotlari, kuyumUblSatirlari, sarrafKuyumCoz } from "./kuyumFatura.js";
 
 /**
  * Sarraf fişi (TODVZ_SARRAF_FISI) → e-Belge girdisi. Saf dönüşüm; veritabanına ve ICE'ye dokunmaz.
@@ -45,6 +46,8 @@ export interface SarrafBaslik {
   /** Fişin kendi numarası (gider pusulasına not olarak yazılır); SARRAF_FIS_NO tablodan (Kaynak detay sorgusu) */
   FIS_NO?: string | null;
   SARRAF_FIS_NO?: string | null;
+  /** Fişte seçilen GİB kodu (kuyumKodlari.ts); boşsa altın 805, gümüş 808 (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29) */
+  E_BELGE_ISTISNA_KODU?: string | null;
 }
 
 /** TODVZ_SARRAF_FISI_SATIRI + ürün (TODVZ_PARA) */
@@ -63,6 +66,10 @@ export interface SarrafSatir {
   MILYEM?: number | null;
   PARA_HAS_ORANI?: number | null;
   HAS_GRAM?: number | null;
+  /** TODVZ_PARA.URUN_TIPI: 0 para, 1 altın, 2 gümüş, 3 ziynet (gümüşte özel matrah 808) */
+  URUN_TIPI?: number | null;
+  /** İşçilik (TL) sütunu (göç 021); faturada işçilik satırı bundan (EF35) */
+  ISCILIK_TUTARI?: number | null;
 }
 
 const temiz = (v: unknown): string => String(v ?? "").trim();
@@ -165,12 +172,56 @@ export const sarrafPerakendeBicimi = (kaynak: { baslik: SarrafBaslik; satirlar: 
   };
 };
 
-/** Satış fişi → e-Fatura / e-Arşiv girdisi. Senaryo çağıranda mükellef sorgusuyla kesinleşir. */
+/**
+ * Satış fişi → kuyum satış faturası çözümü (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF16): her altın satırı
+ * "22 ayar altın" gram × fiyat, KDV %0 + 805 (gümüş 808); işçilik (fiş KDV'si ÷ oran) tek satırda, fişin KDV oranıyla.
+ * KDV'siz fişte yalnız altın satırları. Toplam fiş toplamına eşit.
+ */
+export const sarrafKuyumCozumu = (kaynak: { baslik: SarrafBaslik; satirlar: SarrafSatir[] }) => {
+  const b = kaynak.baslik;
+  if (!kaynak.satirlar.length) throw ApiError.badRequest("Sarraf fişinin satırları bulunamadı.");
+  if (kaynak.satirlar.some((s) => sayi(s.TUTAR) < 0)) throw ApiError.badRequest("Sarraf fişinde eksi tutarlı satır var; e-belge düzenlenemez.");
+  const kdvler = sarrafSatirKdvleri(b, kaynak.satirlar);
+  if (kdvler.some((k, i) => k > yuvarla(sayi(kaynak.satirlar[i].TUTAR)))) throw ApiError.badRequest("Fişteki KDV satır tutarından büyük; fişi kontrol edin.");
+  return sarrafKuyumCoz(kaynak.satirlar, kdvler, sayi(b.KDV_ORANI), temiz(b.E_BELGE_ISTISNA_KODU) || null);
+};
+
+/** Satış fişi → e-Fatura / e-Arşiv girdisi (kuyum düzeni, EF16 + EF27). Senaryo çağıranda mükellef sorgusuyla kesinleşir. */
 export function sarrafFaturaGirdisi(kaynak: { baslik: SarrafBaslik; satirlar: SarrafSatir[] }, belgeNo: string): Omit<UblFaturaGirdi, "gonderici"> {
   if (Number(kaynak.baslik.TIP) === 0) throw ApiError.badRequest("Bu fiş alış fişi; fatura değil gider pusulası düzenlenir.");
   if (Number(kaynak.baslik.BELGE_TURU) === 2) throw ApiError.badRequest("Fişte belge türü e-İrsaliye seçili; e-İrsaliye ekranından gönderin.");
-  return perakendeFaturaGirdisi(sarrafPerakendeBicimi(kaynak, belgeNo));
+  const no = temiz(belgeNo).toUpperCase();
+  if (!BELGE_NO_BICIMI.test(no)) throw ApiError.badRequest(`Belge numarası GİB biçiminde değil (${no || "boş"}).`);
+  const bicim = sarrafPerakendeBicimi(kaynak, no).baslik;
+  const cozum = sarrafKuyumCozumu(kaynak);
+  const satirlar = kuyumUblSatirlari(cozum);
+  const toplam = sarrafToplam(kaynak.satirlar);
+  const ozet = hesapla(satirlar);
+  if (Math.abs(ozet.odenecekTutar - toplam) > 0.011) {
+    throw ApiError.badRequest(`Fişin toplamı (${toplam.toFixed(2)}) ile e-belge toplamı (${ozet.odenecekTutar.toFixed(2)}) uyuşmuyor; gönderim durduruldu.`);
+  }
+  const alici = aliciTarafi(bicim);
+  const tarih = new Date(kaynak.baslik.TARIH);
+  if (Number.isNaN(tarih.getTime())) throw ApiError.badRequest("Fiş tarihi okunamadı.");
+  return {
+    belgeNo: no,
+    tarih: tarih.toISOString().slice(0, 10),
+    paraBirimi: "TRY",
+    senaryo: alici.vknTckn === NIHAI_TUKETICI ? "EARSIVFATURA" : "TICARIFATURA",
+    faturaTipi: faturaTipiKodlardan(satirlar),
+    alici,
+    satirlar,
+    notlar: kuyumNotlari(toplam),
+    gorunum: "KUYUM",
+  };
 }
+
+/** Kaynak önizlemesinde faturaya gidecek satırlar (ad, miktar, KDV hariç tutar, KDV) */
+export const sarrafFaturaOnizlemeSatirlari = (kaynak: { baslik: SarrafBaslik; satirlar: SarrafSatir[] }) => {
+  const satirlar = kuyumUblSatirlari(sarrafKuyumCozumu(kaynak));
+  const ozet = hesapla(satirlar);
+  return satirlar.map((s, i) => ({ URUN_ADI: s.ad, MIKTAR: s.miktar, TUTAR: ozet.satirlar[i].matrah, KDV_TUTARI: ozet.satirlar[i].kdvTutari }));
+};
 
 /* ==========================================================================
    Alış → kuyum e-Gider pusulası (docs/E_GIDER_YOL_HARITASI.md K19, K22, K23)

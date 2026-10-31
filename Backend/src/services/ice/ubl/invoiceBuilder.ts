@@ -1,6 +1,44 @@
 import { randomUUID } from "crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { escapeXml } from "../ice.client.js";
 import { ApiError } from "../../../utils/ApiError.js";
+import { tutarYaziyla } from "../../ebelgeKaynakPdf.js";
+
+/* ==========================================================================
+   Kuyum görünüm şablonu (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF19, U7): Kütükçü düzeni.
+   Backend/belge/xslt/kuyumFatura.xslt (src ve dist aynı derinlikte; belge klasörü exe paketine de kopyalanır).
+   Gider pusulasındaki gibi AdditionalDocumentReference ile Base64 eklenir; ICE ve alıcı belgeyi bu şablonla gösterir.
+   ========================================================================== */
+
+const KUYUM_XSLT_YOLU = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../belge/xslt/kuyumFatura.xslt");
+let kuyumXsltBase64: string | null = null;
+
+export const kuyumXslt = (): string => {
+  if (kuyumXsltBase64) return kuyumXsltBase64;
+  let icerik: Buffer;
+  try {
+    icerik = fs.readFileSync(KUYUM_XSLT_YOLU);
+  } catch {
+    icerik = Buffer.alloc(0);
+  }
+  if (!icerik.length) throw ApiError.internal("Kuyum fatura görünüm şablonu (Backend/belge/xslt/kuyumFatura.xslt) sunucuda bulunamadı; belge gönderilmedi.");
+  kuyumXsltBase64 = icerik.toString("base64");
+  return kuyumXsltBase64;
+};
+
+const gorunumEkiXml = (uuid: string, tarih: string, belgeNo: string): string =>
+  `<cac:AdditionalDocumentReference>` +
+  `<cbc:ID>${escapeXml(uuid)}</cbc:ID>` +
+  `<cbc:IssueDate>${escapeXml(tarih)}</cbc:IssueDate>` +
+  `<cbc:DocumentType>XSLT</cbc:DocumentType>` +
+  `<cac:Attachment>` +
+  `<cbc:EmbeddedDocumentBinaryObject characterSetCode="UTF-8" encodingCode="Base64" filename="${escapeXml(belgeNo)}.xslt" mimeCode="application/xml">` +
+  kuyumXslt() +
+  `</cbc:EmbeddedDocumentBinaryObject>` +
+  `</cac:Attachment>` +
+  `</cac:AdditionalDocumentReference>`;
 
 /**
  * UBL-TR 1.2 e-Fatura / e-Arşiv XML üreteci.
@@ -200,7 +238,15 @@ export interface UblFaturaGirdi {
   halMasraflari?: { ad: string; tutar: number; kdvOrani?: number }[];
   /** e-Arşiv: belge tipi ve gönderim şekli */
   earsiv?: { tip?: "NORMAL" | "INTERNET"; gonderimSekli?: "KAGIT" | "ELEKTRONIK" };
+  /**
+   * Görünüm şablonu: "KUYUM" → Kütükçü düzenindeki XSLT (Backend/belge/xslt/kuyumFatura.xslt) belgeye eklenir
+   * (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF19, U7). Verilmezse ICE'nin varsayılan görünümü.
+   */
+  gorunum?: "KUYUM";
 }
+
+/** Özel matrah kod aralığı (801–812) */
+export const ozelMatrahKoduMu = (kod: string | undefined | null): boolean => /^8(0[1-9]|1[0-2])$/.test(String(kod ?? "").trim());
 
 export interface UblSatirHesap {
   siraNo: number;
@@ -408,7 +454,12 @@ export const dogrulaGirdi = (girdi: UblFaturaGirdi): void => {
     }
   });
 
-  if (girdi.faturaTipi === "OZELMATRAH" && !girdi.satirlar.some((x) => x.ozelMatrahKodu?.trim())) {
+  // Kuyum (Kütükçü örneği, docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md U3): altın satırı KDV %0 + 805 (gümüş 808) istisna
+  // koduyla, işçilik ayrı satırda %20. Bu da özel matrahlı satır sayılır.
+  if (
+    girdi.faturaTipi === "OZELMATRAH" &&
+    !girdi.satirlar.some((x) => x.ozelMatrahKodu?.trim() || (x.kdvOrani === 0 && ozelMatrahKoduMu(x.istisnaKodu)))
+  ) {
     throw ApiError.badRequest("OZELMATRAH tipi faturada en az bir satırda özel matrah kodu ve tutarı olmalıdır.");
   }
 
@@ -929,7 +980,12 @@ export const buildInvoiceXml = (girdi: UblFaturaGirdi): UblUretimSonucu => {
   const tarih = girdi.tarih?.trim() || bugun();
   const saat = girdi.saat?.trim() || simdi();
 
-  const notlarXml = (girdi.notlar || [])
+  // Kuyum görünümünde yazıyla tutar notu yoksa eklenir (elle kesilen fatura; şablon "YALNIZ" ile başlayan notu basar)
+  const notlar = [...(girdi.notlar || [])];
+  if (girdi.gorunum === "KUYUM" && !notlar.some((n) => /^\s*YALNIZ/.test(n || ""))) {
+    notlar.unshift(`YALNIZ ${tutarYaziyla(ozet.odenecekTutar, "TÜRK LİRASI", "KURUŞ")}`);
+  }
+  const notlarXml = notlar
     .filter((n) => n && n.trim())
     .map((n) => `<cbc:Note>${escapeXml(n)}</cbc:Note>`)
     .join("");
@@ -993,6 +1049,7 @@ export const buildInvoiceXml = (girdi: UblFaturaGirdi): UblUretimSonucu => {
     (girdi.senaryo === "EARSIVFATURA" && girdi.earsiv?.gonderimSekli
       ? belgeReferansXml("cac:AdditionalDocumentReference", { no: girdi.earsiv.gonderimSekli, tarih, tur: "GONDERIMSEKLI" })
       : "") +
+    (girdi.gorunum === "KUYUM" ? gorunumEkiXml(uuid, tarih, girdi.belgeNo.trim()) : "") +
     `<cac:AccountingSupplierParty>${partyXml(girdi.gonderici)}</cac:AccountingSupplierParty>` +
     `<cac:AccountingCustomerParty>${partyXml(girdi.alici)}</cac:AccountingCustomerParty>` +
     // UBL-TR sequence: AccountingCustomerParty → BuyerCustomerParty → ... → TaxRepresentativeParty → Delivery

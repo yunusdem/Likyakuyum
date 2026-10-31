@@ -167,7 +167,8 @@ export const DashboardMenu: MenuItemType[] = [
           { id: uuid(), name: "E- POS Terminalleri ve Hareketleri", link: "ebanka/pos" },
           { id: uuid(), name: "F- Sanal POS Tahsilat", link: "ebanka/sanal-pos-tahsilat" },
           { id: uuid(), name: "G- Ayarlar", link: "ebanka/ayarlar" },
-          { id: uuid(), name: "H- Tahsilat / Ödeme Mutabakatı", link: "ebanka/mutabakat" },
+          // Kod linkten türer (banka:ebanka/mutabakat); ad değişebilir (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF2)
+          { id: uuid(), name: "H- e-Banka Faturalandırma", link: "ebanka/mutabakat" },
         ],
       },
       // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md): fiziksel cihaz tanımları ve cihazdan alınan tahsilatlar

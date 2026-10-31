@@ -88,6 +88,35 @@ export interface MutabakatSatiri {
   fisleKarsilandi: boolean;
   fisler: MutabakatFisi[];
   adaylar: MutabakatFisi[];
+  /** Kuyum: hareketten doğrudan kesilen belgeler (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md U1) */
+  belgeler?: MutabakatBelgesi[];
+}
+
+export interface MutabakatBelgesi {
+  vomsisId: number;
+  uuid: string;
+  belgeNo: string;
+  /** EFatura · EArsiv · EGider */
+  belgeTuru: string;
+  durum: string;
+  tutar: number;
+  tarih: string | null;
+}
+
+/** "Hazırla" sonucu: sunucunun kesin hesabı + ICE doğrulaması (faturada HTML önizleme) */
+export interface EBankaBelgeHazir {
+  vomsisId: number;
+  tur: "fatura" | "gider";
+  senaryo: string;
+  belgeTuruAdi: string;
+  belgeNo: string;
+  tarih: string;
+  hedef: number;
+  satirlar: { ad: string; miktar: number; birim: string; birimFiyat: number; kdvOrani: number; tutar: number; kdv: number; iskonto?: number }[];
+  toplam: number;
+  fiyatKaydi: { eski: number; yeni: number } | null;
+  uyarilar: string[];
+  onizlemeHtml: string | null;
 }
 
 export interface MutabakatListesi {
@@ -542,6 +571,20 @@ export const EBankaService = {
 
   async mutabakatFaturaGerekmez(vomsisId: number, deger: boolean, not?: string): Promise<void> {
     await apiClient.post("/ebanka/mutabakat/fatura-gerekmez", { vomsisId, deger, not });
+  },
+
+  // ─── Kuyum: hareketten doğrudan belge (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF4) ─────────
+  /** Hesap + ICE doğrulaması; hiçbir şey gönderilmez */
+  async belgeHazirla(istek: unknown): Promise<EBankaBelgeHazir> {
+    return veri<EBankaBelgeHazir>(await apiClient.post("/ebanka/mutabakat/belge/hazirla", istek, { timeoutMs: 180000 }));
+  },
+
+  async belgeGonder(istek: unknown): Promise<{ uuid: string; belgeNo: string; durum: string; mesaj: string; tur: "fatura" | "gider"; belgeTuruAdi: string }> {
+    return veri(await apiClient.post("/ebanka/mutabakat/belge/gonder", istek, { timeoutMs: 300000 }));
+  },
+
+  async belgeBagKaldir(vomsisId: number, uuid: string): Promise<void> {
+    await apiClient.post("/ebanka/mutabakat/belge/bag-kaldir", { vomsisId, uuid });
   },
 
   // ─── Sistem denetimi ───────────────────────────────────────────────────────

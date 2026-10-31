@@ -207,15 +207,22 @@ export class EbelgeKaynakRepository {
    */
   static async detay(k: KaynakKimlik, ctx?: DbContext) {
     const pool = await this.pool(ctx);
+    // Fişte seçilen GİB kodu (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29); kolon sarraf kaydı ilk çalışınca eklenir
+    const kodKolonu = (await pool.request().query(`SELECT COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'E_BELGE_ISTISNA_KODU') AS L`)).recordset[0]?.L != null;
+    const istisnaKolonu = kodKolonu ? "RTRIM(S.E_BELGE_ISTISNA_KODU) AS E_BELGE_ISTISNA_KODU" : "CAST(NULL AS VARCHAR(10)) AS E_BELGE_ISTISNA_KODU";
+    // Satırın İşçilik (TL) sütunu (yusuf, göç 021); faturada işçilik satırı bundan (EF35). Kolon yoksa 0.
+    const tlKolonu = (await pool.request().query(`SELECT COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI', 'ISCILIK_TUTARI') AS L`)).recordset[0]?.L != null
+      ? "ISNULL(S.ISCILIK_TUTARI, 0) ISCILIK_TUTARI" : "CAST(0 AS FLOAT) ISCILIK_TUTARI";
     const res = await pool.request().input("id", sql.Int, k.belgeId).query(`
-      SELECT F.*, S.E_FATURA_DURUMU, S.E_FATURA_HATA_ACIKLAMASI, RTRIM(S.FIS_NO) SARRAF_FIS_NO, T.E_FATURA_KDV_MUAFIYET_KODU, T.E_FATURA_KDV_MUAFIYET_ADI
+      SELECT F.*, S.E_FATURA_DURUMU, S.E_FATURA_HATA_ACIKLAMASI, RTRIM(S.FIS_NO) SARRAF_FIS_NO, T.E_FATURA_KDV_MUAFIYET_KODU, T.E_FATURA_KDV_MUAFIYET_ADI,
+             ${istisnaKolonu}
       FROM dbo.VODVZ_SARRAF_FISI F
       JOIN dbo.TODVZ_SARRAF_FISI S ON S.SARRAF_FISI_ID=F.SARRAF_FISI_ID
       OUTER APPLY (SELECT TOP 1 E_FATURA_KDV_MUAFIYET_KODU, E_FATURA_KDV_MUAFIYET_ADI FROM dbo.VODVZ_E_BELGE_TANIMI) T
       WHERE F.SARRAF_FISI_ID=@id;
       -- MILYEM / HAS_GRAM / ürün has oranı: kuyum gider pusulasında satır adına (docs/E_GIDER_YOL_HARITASI.md K19)
       SELECT S.SATIR_NO, RTRIM(P.AD) URUN_ADI, P.BIRIM URUN_BIRIM, S.MIKTAR, S.ADET, S.ISCILIK_HAS_GRAM, S.TUTAR,
-             S.MILYEM, S.HAS_GRAM, ISNULL(P.HAS_ORANI, 0) PARA_HAS_ORANI
+             S.MILYEM, S.HAS_GRAM, ISNULL(P.HAS_ORANI, 0) PARA_HAS_ORANI, P.URUN_TIPI, ${tlKolonu}
         FROM dbo.TODVZ_SARRAF_FISI_SATIRI S LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.URUN_ID
         WHERE S.SARRAF_FISI_ID=@id ORDER BY S.SATIR_NO, S.SARRAF_FISI_SATIRI_ID;
     `);

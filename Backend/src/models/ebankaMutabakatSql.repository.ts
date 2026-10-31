@@ -20,7 +20,24 @@ export interface MutabakatHareketi extends AktarimAdayi {
   fisBankaId: number | null;
   faturaGerekmez: boolean;
   not: string | null;
+  /** Kullanıcının bağını kaldırdığı belgelerin ETTN'leri (küçük harf) */
+  kaldirilanBelgeler: string[];
 }
+
+/** Kuyum: hareketten doğrudan kesilen belge (giden kutusu kaydı) */
+export interface HareketBelgesi {
+  vomsisId: number;
+  uuid: string;
+  belgeNo: string;
+  /** EFatura · EArsiv · EGider */
+  belgeTuru: string;
+  durum: string;
+  tutar: number;
+  tarih: string | null;
+}
+
+/** Giden kutusunda hareketin belge anahtarı (KAYNAK_FIS_ID); Kaynak fiş anahtarlarıyla ("0:…", "99:…") çakışmaz */
+export const belgeAnahtari = (vomsisId: number) => `EB:${vomsisId}`;
 
 export interface MutabakatFisi {
   fisTuru: FisTuru;
@@ -99,6 +116,10 @@ export class EBankaMutabakatSqlRepository {
 
           IF COL_LENGTH('TODVZ_EBANKA_MUTABAKAT_ISARET', 'CARI_KART_ID') IS NULL
             ALTER TABLE [dbo].[TODVZ_EBANKA_MUTABAKAT_ISARET] ADD [CARI_KART_ID] INT NULL;
+
+          -- Kuyum e-Banka Faturalandırma (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md U2): kullanıcının bağını kaldırdığı belgeler (ETTN, virgülle)
+          IF COL_LENGTH('TODVZ_EBANKA_MUTABAKAT_ISARET', 'KALDIRILAN_BELGELER') IS NULL
+            ALTER TABLE [dbo].[TODVZ_EBANKA_MUTABAKAT_ISARET] ADD [KALDIRILAN_BELGELER] NVARCHAR(MAX) NULL;
         `);
       } catch (err: any) {
         logger.warn(`[EBankaMutabakatSqlRepository.ensureTables] Warning: ${err.message}`);
@@ -113,12 +134,14 @@ export class EBankaMutabakatSqlRepository {
       const kolonlar = (
         await pool.request().query(`
           SELECT COL_LENGTH('TODVZ_FIS','E_FATURA_ETTN') AS ETTN, COL_LENGTH('TODVZ_FIS','ODEME_TUTARI') AS ODEME,
+                 COL_LENGTH('TODVZ_EBANKA_MUTABAKAT_ISARET','KALDIRILAN_BELGELER') AS KALDIRILAN,
                  ${hesapKolonlari("TODVZ_ODEME_SATIRI")} AS SARRAF_HESAP, ${hesapKolonlari("TODVZ_FATURA_ODEME")} AS PERAKENDE_HESAP
         `)
       ).recordset[0];
       const kume = new Set(adlar);
       if (kolonlar.ETTN !== null) kume.add("FIS.E_FATURA_ETTN");
       if (kolonlar.ODEME !== null) kume.add("FIS.ODEME_TUTARI");
+      if (kolonlar.KALDIRILAN !== null) kume.add("ISARET.KALDIRILAN_BELGELER");
       if (kolonlar.SARRAF_HESAP !== null && kume.has("TODVZ_SARRAF_FISI")) kume.add("ODEME_SATIRI.HESAP");
       if (kolonlar.PERAKENDE_HESAP !== null && kume.has("TODVZ_FATURA")) kume.add("FATURA_ODEME.HESAP");
       this.tablolar.set(pool, kume);
@@ -138,10 +161,24 @@ export class EBankaMutabakatSqlRepository {
     const req = pool.request();
     req.input("BAS", sql.DateTime, gunTarihi(baslangic));
     req.input("BIT", sql.DateTime, new Date(gunTarihi(bitis).getTime() + 86_400_000 - 1000));
+    return this.hareketSorgusu(req, "t.SISTEM_TARIHI BETWEEN @BAS AND @BIT AND t.TUTAR <> 0", dbContext);
+  }
+
+  /** Tek hareket (belge kesiminde sunucu tutarı ve yönü kendisi okur) */
+  public static async hareketGetir(vomsisId: number, dbContext?: DbContext): Promise<MutabakatHareketi | null> {
+    const pool = await this.pool(dbContext);
+    const req = pool.request();
+    req.input("ID", sql.BigInt, vomsisId);
+    return (await this.hareketSorgusu(req, "t.VOMSIS_ID = @ID", dbContext))[0] ?? null;
+  }
+
+  private static async hareketSorgusu(req: sql.Request, kosul: string, dbContext?: DbContext): Promise<MutabakatHareketi[]> {
+    // Kolon göç 022 ile gelir; yoksa (yetki / eski şema) liste yine çalışır, bağ kaldırma yalnız kolon varken
+    const kaldirilan = (await this.var(await this.pool(dbContext), "ISARET.KALDIRILAN_BELGELER")) ? "i.KALDIRILAN_BELGELER" : "CAST(NULL AS NVARCHAR(MAX)) AS KALDIRILAN_BELGELER";
     const rows = (
       await req.query(`
         SELECT t.*, k.BANKA_ID AS KART_BANKA_ID, h.HESAP_NO, b.BANKA_ADI, p.TIP_ADI, ISNULL(p.KURAL, 0) AS KURAL, p.CARI_KART_ID AS TIP_CARI_ID,
-               i.FATURA_GEREKMEZ, i.NOTU, i.CARI_KART_ID AS ONAYLI_CARI_ID,
+               i.FATURA_GEREKMEZ, i.NOTU, i.CARI_KART_ID AS ONAYLI_CARI_ID, ${kaldirilan},
                ${FIS_BANKA_ID} AS FIS_BANKA_ID
         FROM TODVZ_EBANKA_HAREKET t
         LEFT JOIN TODVZ_EBANKA_HESAP h ON h.VOMSIS_HESAP_ID = t.VOMSIS_HESAP_ID
@@ -149,7 +186,7 @@ export class EBankaMutabakatSqlRepository {
         LEFT JOIN TODVZ_EBANKA_BANKA b ON b.VOMSIS_BANKA_ID = h.VOMSIS_BANKA_ID
         LEFT JOIN TODVZ_EBANKA_HAREKET_TIPI p ON p.TIP_KODU = t.TIP_KODU
         LEFT JOIN TODVZ_EBANKA_MUTABAKAT_ISARET i ON i.VOMSIS_ID = t.VOMSIS_ID
-        WHERE t.SISTEM_TARIHI BETWEEN @BAS AND @BIT AND t.TUTAR <> 0
+        WHERE ${kosul}
         ORDER BY t.SISTEM_TARIHI DESC, t.VOMSIS_ID DESC
       `)
     ).recordset;
@@ -184,7 +221,63 @@ export class EBankaMutabakatSqlRepository {
       fisBankaId: r.FIS_BANKA_ID ?? null,
       faturaGerekmez: Boolean(r.FATURA_GEREKMEZ),
       not: r.NOTU ?? null,
+      kaldirilanBelgeler: String(r.KALDIRILAN_BELGELER || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
     }));
+  }
+
+  // ─── Kuyum: hareketten kesilen belgeler (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md U1, U2) ───────
+
+  /**
+   * Hareketlerden kesilmiş belgeler: giden kutusunda KAYNAK_FIS_ID = 'EB:<VOMSIS_ID>'. Reddedilen (HATA) ve iptal edilen
+   * belgeler dönmez (EF25: bağ kendiliğinden kalkar); kullanıcının bağını kaldırdıkları çağıranda süzülür.
+   */
+  public static async belgeler(vomsisIdler: number[], dbContext?: DbContext): Promise<HareketBelgesi[]> {
+    const idler = [...new Set(vomsisIdler.filter((n) => Number.isSafeInteger(n) && n > 0))];
+    if (!idler.length) return [];
+    const pool = await this.pool(dbContext);
+    // Havuz önbelleğine (tablolar) bakılmaz: e-Belge tabloları e-Banka'dan sonra kurulmuş olabilir
+    if (!(await pool.request().query(`SELECT OBJECT_ID('dbo.TODVZ_EBELGE_GIDEN', 'U') AS ID`)).recordset[0]?.ID) return [];
+    const sonuc: HareketBelgesi[] = [];
+    for (let i = 0; i < idler.length; i += 800) {
+      const anahtarlar = idler.slice(i, i + 800).map((id) => `'${belgeAnahtari(id)}'`).join(",");
+      const rows = (
+        await pool.request().query(`
+          SELECT KAYNAK_FIS_ID, UUID, BELGE_NO, BELGE_TURU, GONDERIM_DURUMU, TUTAR, DUZENLEME_TARIHI
+          FROM TODVZ_EBELGE_GIDEN
+          WHERE KAYNAK_FIS_ID IN (${anahtarlar}) AND GONDERIM_DURUMU NOT IN ('HATA', 'IPTAL', 'IPTAL_EDILIYOR')
+        `)
+      ).recordset;
+      for (const r of rows) {
+        sonuc.push({
+          vomsisId: Number(String(r.KAYNAK_FIS_ID).slice(3)),
+          uuid: String(r.UUID),
+          belgeNo: String(r.BELGE_NO || "").trim(),
+          belgeTuru: String(r.BELGE_TURU || ""),
+          durum: String(r.GONDERIM_DURUMU || ""),
+          tutar: Number(r.TUTAR) || 0,
+          tarih: zaman(r.DUZENLEME_TARIHI)?.slice(0, 10) ?? null,
+        });
+      }
+    }
+    return sonuc;
+  }
+
+  /** Belgenin hareketle bağını kaldırır (U2: alıcının reddettiği e-Fatura); belge silinmez */
+  public static async belgeBaginiKaldir(vomsisId: number, uuid: string, kullaniciId?: number, dbContext?: DbContext): Promise<boolean> {
+    const pool = await this.pool(dbContext);
+    const req = pool.request();
+    req.input("ID", sql.BigInt, vomsisId);
+    req.input("UUID", sql.NVarChar(80), uuid.trim().toLowerCase());
+    req.input("KUL", sql.Int, kullaniciId ?? null);
+    if (!(await pool.request().input("ID", sql.BigInt, vomsisId).query(`SELECT 1 AS X FROM TODVZ_EBANKA_HAREKET WHERE VOMSIS_ID = @ID`)).recordset.length) return false;
+    await req.query(`
+      UPDATE TODVZ_EBANKA_MUTABAKAT_ISARET
+        SET KALDIRILAN_BELGELER = CASE WHEN LEN(ISNULL(KALDIRILAN_BELGELER, '')) = 0 THEN @UUID ELSE KALDIRILAN_BELGELER + ',' + @UUID END,
+            GUNCELLEYEN_ID = @KUL, GUNCELLEME_ZAMANI = GETDATE()
+        WHERE VOMSIS_ID = @ID;
+      IF @@ROWCOUNT = 0 INSERT INTO TODVZ_EBANKA_MUTABAKAT_ISARET (VOMSIS_ID, FATURA_GEREKMEZ, KALDIRILAN_BELGELER, GUNCELLEYEN_ID) VALUES (@ID, 0, @UUID, @KUL);
+    `);
+    return true;
   }
 
   // ─── Fişler ────────────────────────────────────────────────────────────────
