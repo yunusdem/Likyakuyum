@@ -1,7 +1,7 @@
 /**
  * Kuyumculukla ilgili GİB KDV kodları (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29–EF34). Bağımlılığı yok: ön yüz
  * (Sarraf fişi, Hızlı Satış, e-Banka "Belge kes" dürbünü) ve sunucu (fatura kurulumu) aynı listeyi kullanır.
- * Adlar Backend/src/models/ebelgeKod.repository.ts'deki GİB listesiyle aynıdır.
+ * 805 / 808 metinleri GİB kod listesindeki (ve onaylı Kütükçü faturasındaki) "mamül … teslim ve ithali" yazımıyla.
  *
  *  - 8xx özel matrah → fatura tipi ÖZELMATRAH; 2xx/3xx istisna → fatura tipi İSTİSNA.
  *  - Satır yapısı onaylı Kütükçü faturasındaki gibi: altın satırı KDV %0 + kod, işçilik ayrı satırda KDV'li.
@@ -16,8 +16,8 @@ export interface KuyumKodu {
 }
 
 export const KUYUM_KODLARI: KuyumKodu[] = [
-  { kod: "805", tur: "OZELMATRAH", ad: "Altından mamul veya altın ihtiva eden ziynet eşyaları ile sikke altınların teslimi" },
-  { kod: "808", tur: "OZELMATRAH", ad: "Gümüşten mamul veya gümüş ihtiva eden ziynet eşyaları ile sikke gümüşlerin teslimi" },
+  { kod: "805", tur: "OZELMATRAH", ad: "Altından mamül veya altın ihtiva eden ziynet eşyaları ile sikke altınların teslim ve ithali" },
+  { kod: "808", tur: "OZELMATRAH", ad: "Gümüşten mamül veya gümüş ihtiva eden ziynet eşyaları ile sikke gümüşlerin teslim ve ithali" },
   { kod: "230", tur: "ISTISNA", ad: "17/4-g Külçe altın, külçe gümüş ve kıymetli taşların teslimi" },
   { kod: "231", tur: "ISTISNA", ad: "17/4-g Metal, plastik, lastik, kauçuk, kağıt, cam hurda ve atıkların teslimi" },
   { kod: "232", tur: "ISTISNA", ad: "17/4-g Döviz, para, damga pulu, değerli kağıtlar, hisse senedi ve tahvil teslimleri" },

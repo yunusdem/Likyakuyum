@@ -244,7 +244,7 @@ test("KDV kodu (EF29–EF34): 805 / 808 ön değer, başka kod tüm satırlara, 
   const { xml, ozet } = buildInvoiceXml({ ...g, gonderici });
   assert.equal(ozet.odenecekTutar, 62000);
   assert.equal((xml.match(/<cbc:TaxExemptionReasonCode>/g) || []).length, 4); // 2 belge düzeyi + 2 satır
-  assert.match(xml, /Gümüşten mamul/);
+  assert.match(xml, /Gümüşten mamül/);
   // Fişte 230 seçili: tüm altın satırları 230, işçilik %20, tip İSTİSNA (Kütükçü yapısı)
   const ist = sarrafFaturaGirdisi({ baslik: { ...baslik, E_BELGE_ISTISNA_KODU: "230" }, satirlar }, "KKA2026000000011");
   assert.deepEqual([ist.faturaTipi, ist.satirlar.map((s) => s.istisnaKodu || "")], ["ISTISNA", ["230", "230", ""]]);

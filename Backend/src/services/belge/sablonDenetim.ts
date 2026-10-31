@@ -72,6 +72,7 @@ export function sablonDenetle(ham: unknown, tur: FisTuru, varsayilan: BelgeSablo
   if (sablon.kenar !== undefined && !(sayiMi(sablon.kenar) && sablon.kenar >= 0 && sablon.kenar <= 100)) hata("\"kenar\" 0–100 arası sayı olmalı.", undefined, "kenar");
   if (sablon.yaziBoyutu !== undefined && !(sayiMi(sablon.yaziBoyutu) && sablon.yaziBoyutu >= 3 && sablon.yaziBoyutu <= 72)) hata("\"yaziBoyutu\" 3–72 arası olmalı.", undefined, "yaziBoyutu");
   if (sablon.yaziTipi !== undefined && !["sans", "mono"].includes(sablon.yaziTipi)) hata("\"yaziTipi\" \"sans\" ya da \"mono\" olmalı.", undefined, "yaziTipi");
+  if (sablon.yaziGorunumu !== undefined && !["termal", "standart"].includes(sablon.yaziGorunumu)) hata("\"yaziGorunumu\" \"termal\" ya da \"standart\" olmalı.", undefined, "yaziGorunumu");
   const kenar = sayiMi(sablon.kenar) ? sablon.kenar : 28;
   const icG = kg - 2 * kenar;
   const icH = kh > 0 ? kh - 2 * kenar : Infinity;
@@ -100,7 +101,7 @@ export function sablonDenetle(ham: unknown, tur: FisTuru, varsayilan: BelgeSablo
     const konumlu = o.tip !== "cizgi" && o.tip !== "filigran";
     if (konumlu) { sayisal("x", -0.5, icG, true); sayisal("y", -0.5, Math.min(icH, 5000), true); }
     sayisal("boyut", o.tip === "qr" ? 10 : 3, o.tip === "qr" ? 400 : 72, o.tip === "qr");
-    sayisal("satirH", 3, 200); sayisal("aralik", 0, 100); sayisal("kalinlik", 0, 10); sayisal("baslikBoyut", 3, 72);
+    sayisal("satirH", 3, 200); sayisal("aralik", 0, 100); sayisal("kalinlik", 0, 10); sayisal("baslikBoyut", 3, 72); sayisal("cizgiKalinlik", 0, 10); sayisal("baslikH", 3, 200);
     if (["satirlar", "tablo", "liste", "kutu"].includes(o.tip)) sayisal("g", 1, icG + 0.5, true); else sayisal("g", 1, icG + 0.5);
     if (o.tip === "kutu") sayisal("h", 0, 5000, true); else sayisal("h", 1, 5000);
     if (o.tip === "tablo" || (o.tip === "liste" && !o.sutunlar)) sayisal("etiketG", 0, sayiMi(o.g) ? o.g : icG, o.tip === "tablo");
@@ -111,7 +112,7 @@ export function sablonDenetle(ham: unknown, tur: FisTuru, varsayilan: BelgeSablo
       const genislik = o.tip === "qr" ? o.boyut : o.tip === "resim" ? (o.g ?? 60) : o.g;
       if (sayiMi(genislik) && o.x + genislik > icG + 0.5) hata(`Öğe kâğıdın sağından taşıyor (x + genişlik = ${Math.round(o.x + genislik)} > ${Math.round(icG)}).`, ad, "x");
     }
-    for (const r of ["renk", "zemin", "baslikZemin"]) if (o[r] !== undefined && !renkGecerli(o[r])) hata(`"${r}" #rgb ya da #rrggbb biçiminde renk olmalı.`, ad, r);
+    for (const r of ["renk", "zemin", "baslikZemin", "cizgiRenk", "baslikRenk"]) if (o[r] !== undefined && !renkGecerli(o[r])) hata(`"${r}" #rgb ya da #rrggbb biçiminde renk olmalı.`, ad, r);
     if (o.font !== undefined && !(typeof o.font === "string" && YAZI_TIPLERI[o.font])) hata(`"font" şunlardan biri olmalı: ${Object.keys(YAZI_TIPLERI).join(", ")}.`, ad, "font");
     if (o.italik !== undefined && typeof o.italik !== "boolean") hata(`"italik" true ya da false olmalı.`, ad, "italik");
     for (const h of ["hiza", "hizaDeger"]) if (o[h] !== undefined && !HIZALAR.includes(o[h])) hata(`"${h}" left, center ya da right olmalı.`, ad, h);
@@ -160,6 +161,8 @@ export function sablonDenetle(ham: unknown, tur: FisTuru, varsayilan: BelgeSablo
           for (const s of o.sutunlar) {
             if (!s || typeof s !== "object" || typeof s.deger !== "string" || !sayiMi(s.g) || s.g <= 0) { hata("Sütun { \"deger\", \"g\" } içermeli; g sıfırdan büyük sayı.", ad, "sutunlar"); break; }
             if (s.hiza !== undefined && !HIZALAR.includes(s.hiza)) hata("Sütun \"hiza\" left, center ya da right olmalı.", ad, "sutunlar");
+            if (s.baslikHiza !== undefined && !HIZALAR.includes(s.baslikHiza)) hata("Sütun \"baslikHiza\" left, center ya da right olmalı.", ad, "sutunlar");
+            for (const a of ["kaydir", "baslikKaydir"]) if (s[a] !== undefined && !(sayiMi(s[a]) && Math.abs(s[a]) <= 10)) hata(`Sütun "${a}" -10 ile 10 arası sayı olmalı.`, ad, "sutunlar");
             toplam += s.g;
           }
           if (sayiMi(o.x) && o.x + toplam > icG + 0.5) hata(`Sütunların toplam genişliği kâğıttan taşıyor (${Math.round(o.x + toplam)} > ${Math.round(icG)}).`, ad, "sutunlar");
@@ -200,6 +203,7 @@ export function sablonDenetle(ham: unknown, tur: FisTuru, varsayilan: BelgeSablo
   const temiz: BelgeSablon = {
     kod: varsayilan.kod, ad: typeof sablon.ad === "string" && sablon.ad.trim() ? sablon.ad.trim().slice(0, 120) : varsayilan.ad,
     kagit: sablon.kagit ?? varsayilan.kagit, kenar, yaziBoyutu: sablon.yaziBoyutu ?? varsayilan.yaziBoyutu, yaziTipi: sablon.yaziTipi ?? varsayilan.yaziTipi,
+    ...((sablon.yaziGorunumu ?? varsayilan.yaziGorunumu) ? { yaziGorunumu: sablon.yaziGorunumu ?? varsayilan.yaziGorunumu } : {}),
     ogeler,
   };
   return { gecerli: true, hatalar: [], sablon: temiz };

@@ -29,19 +29,34 @@ export const YAZI_AILESI = {
   sans: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif",
 } as const;
 
-function metinHtml(c: Extract<Cizim, { tip: "metin" }>, sol: number, ust: number): string {
+/**
+ * Yazı tiplerinin (yükselen + inen) / em oranı. Tarayıcı satır kutusunda yazıyı bu yükseklik ile satır yüksekliği
+ * (SATIR_ORANI) farkının yarısı kadar yukarı koyar; PDF motoru (pdfkit) koymaz. Standart görünümde bu fark kapatılır.
+ */
+const YAZI_YUKSEKLIGI: Record<string, number> = { "Tahoma": 1.207, "Arial": 1.117, "Verdana": 1.215, "Times New Roman": 1.107, "Georgia": 1.136, "Courier New": 1.133 };
+
+/**
+ * `standart` (şablonun yaziGorunumu "standart"): normal 400 / kalın 700, öğenin rengi, kerning yok — PDF ile aynı.
+ * Değilse termal görünüm: 600 / 800, hep siyah.
+ */
+function metinHtml(c: Extract<Cizim, { tip: "metin" }>, sol: number, ust: number, standart = false): string {
   const hiza = c.hiza === "center" || c.hiza === "right" ? c.hiza : "left";
+  const kalinAgirlik = standart ? 700 : 800;
+  const yaziRengi = standart ? renk(c.renk, "#000000") : "#000000";
   const parcalar = kalinParcala(c.metin)
-    .map(p => (p.kalin && !c.kalin ? `<b style="font-weight:800;color:#000000">${kacis(p.metin)}</b>` : kacis(p.metin))).join("");
+    .map(p => (p.kalin && !c.kalin ? `<b style="font-weight:${kalinAgirlik};color:${yaziRengi}">${kacis(p.metin)}</b>` : kacis(p.metin))).join("");
   const rawBoyut = say(c.boyut);
   const etkinBoyut = rawBoyut > 0 ? rawBoyut : 7.5;
+  const kayma = standart ? ((YAZI_YUKSEKLIGI[c.font || "Arial"] ?? 1.15) - SATIR_ORANI) / 2 * etkinBoyut : 0;
   const wrapStyle = c.tekSatir
-    ? `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${pt(c.g)};height:${pt(etkinBoyut * SATIR_ORANI)}`
+    ? `white-space:${standart ? "pre" : "nowrap"};overflow:hidden;text-overflow:ellipsis;max-width:${pt(c.g)};height:${pt(etkinBoyut * SATIR_ORANI)}`
     : `white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;max-width:${pt(c.g)}`;
   const stil = [
     "position:absolute", `left:${pt(sol + say(c.x))}`, `top:${pt(ust + say(c.y))}`, `width:${pt(c.g)}`,
-    `font-size:${pt(etkinBoyut)}`, `line-height:${pt(etkinBoyut * SATIR_ORANI)}`, `font-weight:${c.kalin ? 800 : 600}`,
-    `text-align:${hiza}`, `color:#000000`, "margin:0", "padding:0",
+    `font-size:${pt(etkinBoyut)}`, `line-height:${pt(etkinBoyut * SATIR_ORANI)}`, `font-weight:${c.kalin ? kalinAgirlik : standart ? 400 : 600}`,
+    `text-align:${hiza}`, `color:${yaziRengi}`, "margin:0", "padding:0",
+    standart ? "font-kerning:none" : "",
+    kayma ? `transform:translateY(${pt(kayma)})` : "",
     "-webkit-font-smoothing:antialiased",
     wrapStyle,
     c.font && YAZI_TIPLERI[c.font] ? `font-family:${YAZI_TIPLERI[c.font].css}` : "",
@@ -60,17 +75,20 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
   const { kenar: k, genislik: W, yukseklik: H } = sahne;
   const cizgiler: string[] = [];
   const ustKatman: string[] = [];
+  const standart = !!sahne.standart;
+  // Termal görünümde çizgi en az 1 pt (ruloda kaybolmasın); standart görünümde kendi kalınlığı
+  const kalinlik = (n: unknown) => (standart ? Math.max(0.1, say(n)) : Math.max(1, say(n)));
 
   for (const c of sahne.cizimler) {
     switch (c.tip) {
       case "kutu":
-        cizgiler.push(`<rect x="${say(k + say(c.x))}" y="${say(k + say(c.y))}" width="${Math.max(0, say(c.g))}" height="${Math.max(0, say(c.h))}" fill="${c.zemin ? renk(c.zemin, "none") : "none"}"${say(c.kalinlik) > 0 ? ` stroke="#000" stroke-width="${Math.max(1, say(c.kalinlik))}"` : ""}/>`);
+        cizgiler.push(`<rect x="${say(k + say(c.x))}" y="${say(k + say(c.y))}" width="${Math.max(0, say(c.g))}" height="${Math.max(0, say(c.h))}" fill="${c.zemin ? renk(c.zemin, "none") : "none"}"${say(c.kalinlik) > 0 ? ` stroke="${renk(c.renk ?? "", "#000")}" stroke-width="${kalinlik(c.kalinlik)}"` : ""}/>`);
         break;
       case "cizgi":
-        cizgiler.push(`<line x1="${say(k + say(c.x1))}" y1="${say(k + say(c.y1))}" x2="${say(k + say(c.x2))}" y2="${say(k + say(c.y2))}" stroke="#000" stroke-width="${Math.max(1, say(c.kalinlik))}"${c.noktali ? ' stroke-dasharray="1 1.5"' : c.kesikli ? ' stroke-dasharray="3 2"' : ""}/>`);
+        cizgiler.push(`<line x1="${say(k + say(c.x1))}" y1="${say(k + say(c.y1))}" x2="${say(k + say(c.x2))}" y2="${say(k + say(c.y2))}" stroke="${renk(c.renk ?? "", "#000")}" stroke-width="${kalinlik(c.kalinlik)}"${c.noktali ? ' stroke-dasharray="1 1.5"' : c.kesikli ? ' stroke-dasharray="3 2"' : ""}/>`);
         break;
       case "metin":
-        ustKatman.push(metinHtml(c, k, k));
+        ustKatman.push(metinHtml(c, k, k, standart));
         break;
       case "resim": {
         const src = gorselAdresi(gorseller[c.dosya]);

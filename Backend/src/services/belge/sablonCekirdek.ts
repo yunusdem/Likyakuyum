@@ -38,7 +38,11 @@ interface OgeOrtak {
 }
 
 /** Çok sütunlu listede sütun: başlık, değer (`{{s.alan}}`), genişlik. `cokSatir` sığmayan metni alt satıra kaydırır. */
-export interface ListeSutunu { baslik?: string; deger: string; g: number; hiza?: Hiza; kalin?: boolean; cokSatir?: boolean }
+export interface ListeSutunu { baslik?: string; deger: string; g: number; hiza?: Hiza; kalin?: boolean; cokSatir?: boolean;
+  /** Değer yazısını sütun içinde yatay kaydırma (pt, ±10) — ince hizalama */
+  kaydir?: number;
+  /** Başlığın hizası (verilmezse değerin hizası) ve yatay kaydırması (pt, ±10) */
+  baslikHiza?: Hiza; baslikKaydir?: number }
 /** Satırın altında, bir sütunun içinde basılan ek satır (ör. "Has: 1,2345 gr", barkod). */
 export interface ListeAltSatiri { metin: string; sutun?: number; kosul?: string; boyut?: number; kalin?: boolean }
 
@@ -52,10 +56,15 @@ export type BelgeOge = OgeOrtak & (
       etiketG?: number; satirlar?: TabloSatiri[]; hizaDeger?: Hiza; kalinDeger?: boolean;
       /** Sütun düzeni (her kayıt bir satır) */
       sutunlar?: ListeSutunu[]; baslikSatiri?: boolean; baslikZemin?: string; baslikBoyut?: number; altSatirlar?: ListeAltSatiri[];
+      /** Başlık satırının yüksekliği (verilmezse satirH) ve yazı rengi (verilmezse siyah) */
+      baslikH?: number; baslikRenk?: string;
       /** Sütun düzeninde kayıtlar arasına çizgi (aralığın ortasına; çerçevesiz listede) */
-      satirAyraci?: "noktali" | "kesikli" | "duz" }
-  | { tip: "kutu"; x: number; y: number; g: number; h: number; kalinlik?: number; zemin?: string }
-  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik?: number; kesikli?: boolean; noktali?: boolean }
+      satirAyraci?: "noktali" | "kesikli" | "duz";
+      /** Hücre çerçevesi ve satır ayracının rengi / kalınlığı (verilmezse eski görünüm) */
+      cizgiRenk?: string; cizgiKalinlik?: number }
+  /** `renk`: çerçeve rengi (verilmezse PDF'te #333) */
+  | { tip: "kutu"; x: number; y: number; g: number; h: number; kalinlik?: number; zemin?: string; renk?: string }
+  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik?: number; kesikli?: boolean; noktali?: boolean; renk?: string }
   | { tip: "resim"; dosya: string; x: number; y: number; g?: number; h?: number }
   /** Firmanın yüklediği logo / imza-kaşe görseli; `gorsel` görselin firmada verilen adıdır. */
   | { tip: "logo" | "imza"; gorsel: string; x: number; y: number; g?: number; h?: number }
@@ -74,6 +83,12 @@ export interface BelgeSablon {
   yaziBoyutu?: number;
   /** "sans" (Arial) varsayılan; "mono" termal fişlerdeki Courier görünümü. */
   yaziTipi?: "sans" | "mono";
+  /**
+   * "termal" (varsayılan): tarayıcıda yazılar koyu (600 / 800), siyah, çizgiler en az 1 pt — termal yazıcıda okunur olsun.
+   * "standart": yazılar normal / kalın (400 / 700), öğenin rengiyle, harf çifti sıkıştırması (kerning) yok, çizgiler kendi
+   * kalınlığında — A4 e-Fatura görünümü (Kütükçü düzeni, EF36); PDF ve tarayıcı aynı basar.
+   */
+  yaziGorunumu?: "termal" | "standart";
   ogeler: BelgeOge[];
 }
 
@@ -81,8 +96,8 @@ export interface BelgeSablon {
 
 export type Cizim =
   | { tip: "metin"; x: number; y: number; g: number; metin: string; boyut: number; kalin: boolean; hiza: Hiza; renk: string; altCizgi: boolean; tekSatir: boolean; font?: string; italik?: boolean }
-  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik: number; kesikli: boolean; noktali?: boolean }
-  | { tip: "kutu"; x: number; y: number; g: number; h: number; kalinlik: number; zemin?: string }
+  | { tip: "cizgi"; x1: number; y1: number; x2: number; y2: number; kalinlik: number; kesikli: boolean; noktali?: boolean; renk?: string }
+  | { tip: "kutu"; x: number; y: number; g: number; h: number; kalinlik: number; zemin?: string; renk?: string }
   /** `dosya`: belge klasöründeki dosya adı ya da firma görseli için `firma:<ad>`; `siyahBeyaz`: termal ruloda firma görseli */
   | { tip: "resim"; dosya: string; x: number; y: number; g: number; h: number; siyahBeyaz?: boolean }
   | { tip: "qr"; x: number; y: number; boyut: number; icerik: string }
@@ -99,6 +114,8 @@ export interface Sahne {
   yukseklik: number;
   kenar: number;
   yaziTipi: "sans" | "mono";
+  /** Şablonun `yaziGorunumu` "standart" mı */
+  standart?: boolean;
   cizimler: Cizim[];
   /**
    * Her şablon öğesinin (ogeler dizisindeki sırayla) kayma sonrası kapladığı alan — editörde seçim kutuları için.
@@ -244,7 +261,7 @@ export function ogeKutusu(o: BelgeOge, varsayilanBoyut: number): { ust: number; 
     case "satirlar": return { ust: o.y, h: o.satirlar.length * (boyut * SATIR_ORANI + (o.aralik ?? 2)) };
     case "tablo": return { ust: o.y, h: o.satirlar.length * (o.satirH ?? 15) };
     case "liste": return { ust: o.y, h: Array.isArray(o.sutunlar) && o.sutunlar.length
-      ? (o.baslikSatiri ? 2 : 1) * (o.satirH ?? 15)
+      ? (o.baslikSatiri ? (o.baslikH ?? o.satirH ?? 15) : 0) + (o.satirH ?? 15)
       : Math.max(1, (o.satirlar || []).length) * (o.satirH ?? 15) };
     case "kutu": return { ust: o.y, h: o.h };
     case "cizgi": return { ust: Math.min(o.y1, o.y2), h: Math.abs(o.y2 - o.y1) };
@@ -374,8 +391,8 @@ export const renkGecerli = (r: unknown): r is string => typeof r === "string" &&
 /** Çok sütunlu liste: başlık satırı + kayıt başına bir satır (+ sütun altı ek satırlar); yükseklik döner. */
 function sutunluListe(
   o: { x: number; y: number; g: number; satirH?: number; boyut?: number; aralik?: number; bosMetin?: string; cerceve?: "hucre" | "yok";
-    sutunlar: ListeSutunu[]; baslikSatiri?: boolean; baslikZemin?: string; baslikBoyut?: number; altSatirlar?: ListeAltSatiri[];
-    satirAyraci?: "noktali" | "kesikli" | "duz" },
+    sutunlar: ListeSutunu[]; baslikSatiri?: boolean; baslikZemin?: string; baslikBoyut?: number; baslikH?: number; baslikRenk?: string; altSatirlar?: ListeAltSatiri[];
+    satirAyraci?: "noktali" | "kesikli" | "duz"; cizgiRenk?: string; cizgiKalinlik?: number },
   dizi: any[], veri: Record<string, any>, varsayilanBoyut: number, yt: string, c: Cizim[],
 ): number {
   const boyut = o.boyut ?? varsayilanBoyut;
@@ -387,17 +404,22 @@ function sutunluListe(
   sutunlar.reduce((x, s) => { xler.push(x); return x + s.g; }, o.x);
   const toplamG = sutunlar.reduce((t, s) => t + s.g, 0);
   const metinY = (y: number, h: number, b: number) => y + (h - b * SATIR_ORANI) / 2;
+  const cRenk = renkGecerli(o.cizgiRenk) ? { renk: o.cizgiRenk } : {};
+  const cK = (v: number) => (typeof o.cizgiKalinlik === "number" && Number.isFinite(o.cizgiKalinlik) ? o.cizgiKalinlik : v);
   let y = o.y;
 
   if (o.baslikSatiri) {
     const bb = o.baslikBoyut ?? boyut;
-    if (renkGecerli(o.baslikZemin)) c.push({ tip: "kutu", x: o.x, y, g: toplamG, h: satirH, kalinlik: 0, zemin: o.baslikZemin });
+    const bh = typeof o.baslikH === "number" && Number.isFinite(o.baslikH) && o.baslikH > 0 ? o.baslikH : satirH;
+    const bRenk = renkGecerli(o.baslikRenk) ? o.baslikRenk : "#000";
+    if (renkGecerli(o.baslikZemin)) c.push({ tip: "kutu", x: o.x, y, g: toplamG, h: bh, kalinlik: 0, zemin: o.baslikZemin });
     sutunlar.forEach((s, i) => {
-      if (hucre) c.push({ tip: "kutu", x: xler[i], y, g: s.g, h: satirH, kalinlik: 0.5 });
-      c.push({ tip: "metin", x: xler[i] + ic, y: metinY(y, satirH, bb), g: s.g - 2 * ic, metin: doldur(s.baslik || "", veri), boyut: bb, kalin: true, hiza: s.hiza || "left", renk: "#000", altCizgi: false, tekSatir: true });
+      if (hucre) c.push({ tip: "kutu", x: xler[i], y, g: s.g, h: bh, kalinlik: cK(0.5), ...cRenk });
+      const bk = typeof s.baslikKaydir === "number" && Number.isFinite(s.baslikKaydir) ? Math.max(-10, Math.min(10, s.baslikKaydir)) : 0;
+      c.push({ tip: "metin", x: xler[i] + ic + bk, y: metinY(y, bh, bb), g: s.g - 2 * ic, metin: doldur(s.baslik || "", veri), boyut: bb, kalin: true, hiza: s.baslikHiza || s.hiza || "left", renk: bRenk, altCizgi: false, tekSatir: true });
     });
-    if (!hucre) c.push({ tip: "cizgi", x1: o.x, y1: y + satirH, x2: o.x + toplamG, y2: y + satirH, kalinlik: 0.6, kesikli: false });
-    y += satirH;
+    if (!hucre) c.push({ tip: "cizgi", x1: o.x, y1: y + bh, x2: o.x + toplamG, y2: y + bh, kalinlik: 0.6, kesikli: false });
+    y += bh;
   }
 
   if (dizi.length === 0 && o.bosMetin) {
@@ -414,7 +436,7 @@ function sutunluListe(
       // Kayıtlar arası ayraç: aralığın ortasına, liste genişliğinde
       if (o.satirAyraci && !hucre) {
         const ay = y + aralik / 2;
-        c.push({ tip: "cizgi", x1: o.x, y1: ay, x2: o.x + toplamG, y2: ay, kalinlik: 0.5, kesikli: o.satirAyraci === "kesikli", ...(o.satirAyraci === "noktali" ? { noktali: true } : {}) });
+        c.push({ tip: "cizgi", x1: o.x, y1: ay, x2: o.x + toplamG, y2: ay, kalinlik: cK(0.5), kesikli: o.satirAyraci === "kesikli", ...(o.satirAyraci === "noktali" ? { noktali: true } : {}), ...cRenk });
       }
       y += aralik;
     }
@@ -439,8 +461,9 @@ function sutunluListe(
     const satirToplam = anaH + (altToplam ? altToplam + 1 : 0);
 
     for (const h of hucreler) {
-      if (hucre) c.push({ tip: "kutu", x: xler[h.i], y, g: h.s.g, h: satirToplam, kalinlik: 0.5 });
-      c.push({ tip: "metin", x: xler[h.i] + ic, y: y + ustBosluk, g: h.s.g - 2 * ic, metin: h.metin, boyut, kalin: !!h.s.kalin, hiza: h.s.hiza || "left", renk: "#000", altCizgi: false, tekSatir: h.tahmini <= 1 });
+      if (hucre) c.push({ tip: "kutu", x: xler[h.i], y, g: h.s.g, h: satirToplam, kalinlik: cK(0.5), ...cRenk });
+      const kay = typeof h.s.kaydir === "number" && Number.isFinite(h.s.kaydir) ? Math.max(-10, Math.min(10, h.s.kaydir)) : 0;
+      c.push({ tip: "metin", x: xler[h.i] + ic + kay, y: y + ustBosluk, g: h.s.g - 2 * ic, metin: h.metin, boyut, kalin: !!h.s.kalin, hiza: h.s.hiza || "left", renk: "#000", altCizgi: false, tekSatir: h.tahmini <= 1 });
     }
     sutunAltlari.forEach((liste, i) => {
       let ay = y + anaH;
@@ -531,10 +554,10 @@ function ogeyiHazirla(o: BelgeOge, veri: Record<string, any>, varsayilanBoyut: n
       break;
     }
     case "kutu":
-      c.push({ tip: "kutu", x: o.x, y: o.y, g: o.g, h: o.h, kalinlik: o.kalinlik ?? 0.6, ...(renkGecerli(o.zemin) ? { zemin: o.zemin } : {}) });
+      c.push({ tip: "kutu", x: o.x, y: o.y, g: o.g, h: o.h, kalinlik: o.kalinlik ?? 0.6, ...(renkGecerli(o.zemin) ? { zemin: o.zemin } : {}), ...(renkGecerli(o.renk) ? { renk: o.renk } : {}) });
       break;
     case "cizgi":
-      c.push({ tip: "cizgi", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, kalinlik: o.kalinlik ?? 0.8, kesikli: !!o.kesikli, ...(o.noktali ? { noktali: true } : {}) });
+      c.push({ tip: "cizgi", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, kalinlik: o.kalinlik ?? 0.8, kesikli: !!o.kesikli, ...(o.noktali ? { noktali: true } : {}), ...(renkGecerli(o.renk) ? { renk: o.renk } : {}) });
       break;
     case "resim":
       c.push({ tip: "resim", dosya: o.dosya, x: o.x, y: o.y, g: o.g ?? 60, h: o.h ?? 60 });
@@ -661,7 +684,7 @@ export function sahneKur(sablon: BelgeSablon, veri: Record<string, any>): Sahne 
     if (h.gorunur) enAlt = Math.max(enAlt, altKenar(h, sira));
   });
   const yukseklik = kh > 0 ? kh : Math.ceil(enAlt + 2 * kenar + 4);
-  return { genislik: kg, yukseklik, kenar, yaziTipi: yt, cizimler, ogeKutulari, cizimOgesi };
+  return { genislik: kg, yukseklik, kenar, yaziTipi: yt, ...(sablon.yaziGorunumu === "standart" ? { standart: true } : {}), cizimler, ogeKutulari, cizimOgesi };
 }
 
 /**

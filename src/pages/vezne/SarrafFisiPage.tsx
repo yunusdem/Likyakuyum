@@ -65,6 +65,8 @@ interface VezneItem { id: number; kod: string; ad: string; }
 
 interface GridRow {
   id: string;
+  /** e-Banka'dan doldurulan satır: banka tutarına sabitlendiği andaki gram / adet / kur / tutar (EF20) */
+  ebSabit?: { miktar: number; adet: number; kur: number; tutar: number } | null;
   satirId?: number | null;
   satirNo: number;
   urunId: number;
@@ -370,6 +372,15 @@ export const formatIscilikGirisDegeri = (val: any, _iscilikGirisSekli: number = 
   return strVal;
 };
 
+/**
+ * e-Banka'dan sabitlenen satır tutarı (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF20): gram, adet ve kur değişmedikçe banka
+ * tutarı korunur (hücreden çıkış, kur yenileme gibi yeniden hesaplamalar 0,156 × 6.412,04 = 1.000,28'e döndürmesin).
+ */
+const sabitTutariKoru = (r: GridRow, kur: number | string, hesaplanan: number | string): number | string =>
+  r.ebSabit && parseDecimal(r.miktar) === r.ebSabit.miktar && parseDecimal(r.adet) === r.ebSabit.adet && parseDecimal(kur) === r.ebSabit.kur
+    ? r.ebSabit.tutar
+    : hesaplanan;
+
 const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0): GridRow => {
   const isPara = r.urunTipi === 0 && Boolean(r.urunKodu && r.urunKodu.trim());
   const isZiynet = r.urunTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
@@ -389,6 +400,7 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
       } else {
         tutar = "";
       }
+      tutar = sabitTutariKoru(r, kur, tutar);
     }
     return {
       ...r,
@@ -532,6 +544,7 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
         tutar = parseFloat((base * effectiveKur).toFixed(2));
       }
     }
+    tutar = sabitTutariKoru(r, kur, tutar);
   }
 
   return {
@@ -2711,6 +2724,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               };
             }),
           toplamTutar: totalTutar,
+      // Kütükçü düzenindeki çıktı için (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF36)
+      kdvOrani: parseDecimal(kdvOrani) || null,
+      istisnaKodu: (istisnaKodu || "").trim() || null,
           toplamHas: alisHas,
           odenenTutar: currentOdemeTutar,
           kalanTutar: curFarkTL,
@@ -3691,7 +3707,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
       }
       const hesaplanan = recomputeRow(updated, finalKur, undefined, userIscilikGirisSekli);
-      return ebSabitTutar !== null && parseDecimal(hesaplanan.tutar) > 0 ? { ...hesaplanan, tutar: ebSabitTutar } : hesaplanan;
+      return ebSabitTutar !== null && parseDecimal(hesaplanan.tutar) > 0
+        ? { ...hesaplanan, tutar: ebSabitTutar, ebSabit: { miktar: parseDecimal(hesaplanan.miktar), adet: parseDecimal(hesaplanan.adet), kur: parseDecimal(hesaplanan.kur), tutar: ebSabitTutar } }
+        : hesaplanan;
     }));
     setInvalidRowIds((prev) => ({ ...prev, [rowId]: true }));
   }, [tip, getKurForProduct, getMilyemForProduct, getHasKurForTip, getGumusKurForTip, userIscilikGirisSekli]);
@@ -5784,13 +5802,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           };
         }),
       toplamTutar: totalTutar,
+      // Kütükçü düzenindeki çıktı için (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF36)
+      kdvOrani: parseDecimal(kdvOrani) || null,
+      istisnaKodu: (istisnaKodu || "").trim() || null,
       toplamHas: alisHas,
       odenenTutar: totalOdemeTutar,
       kalanTutar: farkTL,
     });
     setIsPendingDirectPrint(false);
     setShowPrintModal(true);
-  }, [fisId, fisNo, seriNo, tip, tarih, saat, unvan, detayUnvan, detayVergiKimlikNo, detayAdres, detayTelefonNo, detayPasaportNo, vezneKod, user, lines, odemeRows, totalTutar, alisHas, totalOdemeTutar, farkTL]);
+  }, [fisId, fisNo, seriNo, tip, tarih, saat, unvan, detayUnvan, detayVergiKimlikNo, detayAdres, detayTelefonNo, detayPasaportNo, vezneKod, user, lines, odemeRows, totalTutar, alisHas, totalOdemeTutar, farkTL, kdvOrani, istisnaKodu]);
 
   const closeAllModals = useCallback(() => {
     setShowCariModal(false);
@@ -5884,6 +5905,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           };
         }),
       toplamTutar: totalTutar,
+      // Kütükçü düzenindeki çıktı için (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF36)
+      kdvOrani: parseDecimal(kdvOrani) || null,
+      istisnaKodu: (istisnaKodu || "").trim() || null,
       toplamHas: alisHas,
       odenenTutar: totalOdemeTutar,
       kalanTutar: farkTL,
@@ -5913,7 +5937,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     } catch (printErr: any) {
       showNotif("warning", `⚠️ Fiş yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`);
     }
-  }, [lines, fisId, fisNo, seriNo, tip, tarih, saat, unvan, detayUnvan, detayVergiKimlikNo, detayAdres, detayTelefonNo, detayPasaportNo, vezneKod, user, odemeRows, altinHasKuru, totalTutar, alisHas, totalOdemeTutar, farkTL, vezneList, vezneId, printers, showNotif]);
+  }, [lines, fisId, fisNo, seriNo, tip, tarih, saat, unvan, detayUnvan, detayVergiKimlikNo, detayAdres, detayTelefonNo, detayPasaportNo, vezneKod, user, odemeRows, altinHasKuru, totalTutar, alisHas, totalOdemeTutar, farkTL, vezneList, vezneId, printers, showNotif, kdvOrani, istisnaKodu]);
 
   const handleTriggerF10 = useCallback(() => {
     if (isMasakBlocked) {
