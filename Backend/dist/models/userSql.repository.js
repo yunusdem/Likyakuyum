@@ -184,7 +184,7 @@ export class UserSqlRepository {
             hasCommissionPerm: toBool(entity.KOMISYON_ALMA_YETKISI),
             hasSlipNoChangePerm: toBool(entity.FIS_NO_DEGISTIRME_YETKISI),
             hasCashDeskBalanceCheck: toBool(entity.VEZNE_BAKIYE_KONTROLU),
-            canViewAccountBalance: toBool(entity.CARI_BAKIYE_GOREBILIR),
+            canViewAccountBalance: isSysAdmin || (entity.CARI_BAKIYE_GOREBILIR != null ? toBool(entity.CARI_BAKIYE_GOREBILIR) : true),
             canViewOpenTermTrans: toBool(entity.ACIK_VADELI_ISLEM_GOREBILIR),
             hasSlipBankAccountPerm: toBool(entity.FIS_BANKA_HESABI_SECME_YETKISI),
             hasSlipAmountChangePerm: toBool(entity.FIS_TUTAR_DEGISTIRME_YETKISI),

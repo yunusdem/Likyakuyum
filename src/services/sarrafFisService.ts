@@ -14,6 +14,7 @@ export interface SarrafFisSatiriItem {
   adet: number | string;
   iscilikiMiktari: number | string;
   iscilikHasGram: number | string;
+  iscilikTutari?: number | string | null;
   aciklama?: string;
   iscilikHesaplamaSekli?: number | null;
   kur: number | string;

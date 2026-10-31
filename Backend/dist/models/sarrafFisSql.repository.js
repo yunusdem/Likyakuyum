@@ -124,6 +124,7 @@ export class SarrafFisSqlRepository {
         try {
             await pool.request().query(`
         IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [ISTATISTIK_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI', 'ISCILIK_TUTARI') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI_SATIRI ADD [ISCILIK_TUTARI] FLOAT NOT NULL CONSTRAINT DF_TODVZ_SARRAF_FISI_SATIRI_ISCILIK_TUTARI DEFAULT 0;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ISKONTO_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ISKONTO_ID] INT NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
@@ -216,6 +217,7 @@ export class SarrafFisSqlRepository {
                         adet: Number(r.ADET) || 0, iscilikiMiktari: Number(r.ISCILIK_MIKTARI) || 0,
                         iscilikHasGram: Number(r.ISCILIK_HAS_GRAM) || 0, aciklama: r.ACIKLAMA || null,
                         iscilikHesaplamaSekli: r.ISCILIK_HESAPLAMA_SEKLI ?? null,
+                        iscilikTutari: Number(r.ISCILIK_TUTARI) || 0,
                         kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0, urunTipi: r.URUN_TIPI ?? 0,
                         karat: r.KARAT != null ? Number(r.KARAT) : null, sarrafFisiSatiriId: r.SARRAF_FISI_SATIRI_ID,
                     };
@@ -450,6 +452,7 @@ export class SarrafFisSqlRepository {
             req.input(`${p}_ad`, sql.Int, Math.round(parseNum(s.adet)));
             req.input(`${p}_im`, sql.Float, parseNum(s.iscilikiMiktari));
             req.input(`${p}_ihg`, sql.Float, parseNum(s.iscilikHasGram));
+            req.input(`${p}_it`, sql.Float, parseNum(s.iscilikTutari));
             req.input(`${p}_ac`, sql.VarChar(100), s.aciklama || null);
             req.input(`${p}_ihs`, sql.TinyInt, parseNum(s.iscilikHesaplamaSekli));
             req.input(`${p}_kur`, sql.Float, parseNum(s.kur));
@@ -457,7 +460,7 @@ export class SarrafFisSqlRepository {
             req.input(`${p}_ut`, sql.TinyInt, parseNum(s.urunTipi));
             req.input(`${p}_uop`, sql.Int, s.urunOgesiParaId ? Number(s.urunOgesiParaId) : null);
             req.input(`${p}_kar`, sql.Float, s.karat != null && !isNaN(parseNum(s.karat)) && parseNum(s.karat) > 0 ? parseNum(s.karat) : null);
-            return `(@${p}_sId, @${p}_sNo, @${p}_uId, @${p}_mik, @${p}_mil, @${p}_hg, @${p}_ad, @${p}_im, @${p}_ihg, @${p}_ac, @${p}_ihs, @${p}_kur, @${p}_tut, @${p}_ut, @${p}_uop, @${p}_kar)`;
+            return `(@${p}_sId, @${p}_sNo, @${p}_uId, @${p}_mik, @${p}_mil, @${p}_hg, @${p}_ad, @${p}_im, @${p}_ihg, @${p}_it, @${p}_ac, @${p}_ihs, @${p}_kur, @${p}_tut, @${p}_ut, @${p}_uop, @${p}_kar)`;
         });
         let validOdemeler = (dto.odemeSatirlari || []).filter((o) => {
             const m = parseNum(o.miktar);
@@ -540,6 +543,7 @@ export class SarrafFisSqlRepository {
         MIKTAR FLOAT NOT NULL DEFAULT 0, MILYEM FLOAT NOT NULL DEFAULT 0,
         HAS_GRAM FLOAT NOT NULL DEFAULT 0, ADET INT NOT NULL DEFAULT 0,
         ISCILIK_MIKTARI FLOAT NOT NULL DEFAULT 0, ISCILIK_HAS_GRAM FLOAT NOT NULL DEFAULT 0,
+        ISCILIK_TUTARI FLOAT NOT NULL DEFAULT 0,
         ACIKLAMA VARCHAR(100) NULL, ISCILIK_HESAPLAMA_SEKLI TINYINT NOT NULL DEFAULT 0,
         KUR FLOAT NOT NULL DEFAULT 1, TUTAR FLOAT NOT NULL DEFAULT 0,
         URUN_TIPI TINYINT NOT NULL DEFAULT 0, URUN_OGESI_PARA_ID INT NULL, KARAT FLOAT NULL
@@ -563,7 +567,7 @@ export class SarrafFisSqlRepository {
 
       ${lineValuesSql.length > 0 ? `INSERT INTO #TODVZ_ISKELE_SARRAF_FISI_SATIRI (
         SATIR_ID, SATIR_NO, URUN_ID, MIKTAR, MILYEM, HAS_GRAM, ADET,
-        ISCILIK_MIKTARI, ISCILIK_HAS_GRAM, ACIKLAMA, ISCILIK_HESAPLAMA_SEKLI,
+        ISCILIK_MIKTARI, ISCILIK_HAS_GRAM, ISCILIK_TUTARI, ACIKLAMA, ISCILIK_HESAPLAMA_SEKLI,
         KUR, TUTAR, URUN_TIPI, URUN_OGESI_PARA_ID, KARAT
       ) VALUES ${lineValuesSql.join(",\n")};` : ""}
 
@@ -974,6 +978,7 @@ export class SarrafFisSqlRepository {
           SELECT 
             @TOPLAM_ISCILIK_TUTARI = ISNULL(SUM(
               CASE 
+                WHEN ISNULL(ISCILIK_TUTARI, 0) > 0 THEN ISCILIK_TUTARI
                 WHEN ISNULL(ISCILIK_HAS_GRAM, 0) > 0 THEN ISCILIK_HAS_GRAM * @IN_ALTIN_HAS_KURU 
                 WHEN ISNULL(ISCILIK_MIKTARI, 0) > 0 THEN ISCILIK_MIKTARI 
                 ELSE 0 

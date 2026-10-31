@@ -413,7 +413,7 @@ export const CariHareketPage: React.FC = () => {
 
   // Load balance whenever cariKartId changes
   const loadCariBakiye = async (cId: number) => {
-    if (!cariBakiyeYetkisi) {
+    if (!cId || cId <= 0) {
       setBakiyeSummary(null);
       return;
     }
@@ -1677,8 +1677,7 @@ export const CariHareketPage: React.FC = () => {
           </Card>
         </Col>
 
-        {/* SAĞ PANEL: Cari Bakiye Durumu (yalnız "Cari bakiye görebilir" yetkisinde) */}
-        {cariBakiyeYetkisi && (
+        {/* SAĞ PANEL: Cari Bakiye Durumu */}
         <Col xs={12} lg={5} xl={5}>
           <Card className="border shadow-sm h-100 bg-white">
             {/* Header: HAS / Net Bakiye Özeti */}
@@ -1816,7 +1815,6 @@ export const CariHareketPage: React.FC = () => {
             )}
           </Card>
         </Col>
-        )}
       </Row>
 
       {/* 4. MODALS */}

@@ -466,7 +466,8 @@ export class EbelgeService {
                 kullanici,
                 istekOzet: `vkn=${vknTckn}`,
                 cevapOzet: `${sonuc.kullanicilar.length} etiket`
-                    + (sonuc.silinenler.length ? `, ${sonuc.silinenler.length} silinmiş etiket` : ""),
+                    + (sonuc.silinenler.length ? `, ${sonuc.silinenler.length} silinmiş etiket` : "")
+                    + (sonuc.duzListeden ? " (Detail boş, düz listeden)" : ""),
             }, dbContext);
             const tumuSilinmis = sonuc.kullanicilar.length === 0 && sonuc.silinenler.length > 0;
             return {

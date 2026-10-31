@@ -11,7 +11,7 @@ export async function ensureSarrafStoredProcedures(pool: sql.ConnectionPool): Pr
   try {
     const check = await pool.request().query(`
       SELECT CASE 
-        WHEN OBJECT_DEFINITION(OBJECT_ID('SODVZ_SARRAF_FISI_KAYDET')) LIKE '%Altın (1) veya Gümüş (2) ise: kesinlikle MİKTAR (gram) vezneye işlenmeli%' THEN 1 
+        WHEN OBJECT_DEFINITION(OBJECT_ID('SODVZ_SARRAF_FISI_KAYDET')) LIKE '%ISCILIK_TUTARI%' THEN 1 
         ELSE 0 
       END AS ok
     `).catch(() => ({ recordset: [{ ok: 1 }] }));

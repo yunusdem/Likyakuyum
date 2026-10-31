@@ -87,10 +87,24 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
   useEffect(() => {
     if (!show) return;
     const term = initialSearchTerm ? initialSearchTerm.trim() : "";
+    const field = initialSearchField || "all";
     setSearchTerm(term);
-    setSearchField(initialSearchField || "all");
+    setSearchField(field);
     setSelectedIndex(0);
     setGibResults([]);
+
+    if (term) {
+      const norm = normalizeTr(term).trim();
+      const hasReg = effectiveCariler.some((c) => checkItemMatch(c, norm, field));
+      const hasUnreg = effectiveKayitsizlar.some((k) => checkItemMatch(k, norm, field));
+      if (!hasReg && hasUnreg) {
+        setActiveTab("unregistered");
+      } else {
+        setActiveTab("registered");
+      }
+    } else {
+      setActiveTab("registered");
+    }
 
     const checkAndFetch = async () => {
       const needsCariler = effectiveCariler.length === 0;
@@ -161,36 +175,52 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
     }
   }, [searchTerm]);
 
+  const normalizeTr = (val: any) =>
+    val != null
+      ? String(val)
+          .replace(/İ/g, "i")
+          .replace(/I/g, "ı")
+          .toLocaleLowerCase("tr-TR")
+      : "";
+
+  const checkItemMatch = (item: CariKartItem | KayitsizMusteriItem, termStr: string, field: CustomerSearchField) => {
+    if (!termStr) return true;
+    const kod = normalizeTr((item as any).kod);
+    const ad = normalizeTr(item.ad);
+    const unvan = normalizeTr((item as any).unvan);
+    const vkn = (item.vergiKimlikNo || "").replace(/\s+/g, "").toLowerCase();
+    const pasaport = ((item as any).pasaportNo || "").replace(/\s+/g, "").toLowerCase();
+    const tel = normalizeTr(item.telefon);
+    const adres = normalizeTr((item as any).adres);
+    const il = normalizeTr((item as any).il);
+    const ilce = normalizeTr((item as any).ilce);
+    const cleanTerm = termStr.replace(/\s+/g, "");
+
+    if (field === "kod") return kod.includes(termStr);
+    if (field === "unvan") return ad.includes(termStr) || unvan.includes(termStr);
+    if (field === "vkn") return vkn.includes(cleanTerm) || pasaport.includes(cleanTerm);
+    return kod.includes(termStr) || ad.includes(termStr) || unvan.includes(termStr) ||
+      vkn.includes(cleanTerm) || pasaport.includes(cleanTerm) || tel.includes(termStr) ||
+      adres.includes(termStr) || il.includes(termStr) || ilce.includes(termStr);
+  };
+
+  const registeredCount = useMemo(() => {
+    const term = normalizeTr(searchTerm).trim();
+    if (!term) return effectiveCariler.length;
+    return effectiveCariler.filter((item) => checkItemMatch(item, term, searchField)).length;
+  }, [effectiveCariler, searchTerm, searchField]);
+
+  const unregisteredCount = useMemo(() => {
+    const term = normalizeTr(searchTerm).trim();
+    if (!term) return effectiveKayitsizlar.length;
+    return effectiveKayitsizlar.filter((item) => checkItemMatch(item, term, searchField)).length;
+  }, [effectiveKayitsizlar, searchTerm, searchField]);
+
   const currentList = useMemo((): UnifiedItem[] => {
     const sourceList = activeTab === "registered" ? effectiveCariler : effectiveKayitsizlar;
-
-    const normalizeTr = (val: any) =>
-      val != null
-        ? String(val)
-            .replace(/İ/g, "i")
-            .replace(/I/g, "ı")
-            .toLocaleLowerCase("tr-TR")
-        : "";
-
     const term = normalizeTr(searchTerm).trim();
 
-    const filtered = sourceList.filter((item) => {
-      if (!term) return true;
-      const kod = normalizeTr((item as any).kod);
-      const ad = normalizeTr(item.ad);
-      const unvan = normalizeTr((item as any).unvan);
-      const vkn = (item.vergiKimlikNo || "").replace(/\s+/g, "").toLowerCase();
-      const tel = normalizeTr(item.telefon);
-      const adres = normalizeTr((item as any).adres);
-      const il = normalizeTr((item as any).il);
-      const ilce = normalizeTr((item as any).ilce);
-      if (searchField === "kod") return kod.includes(term);
-      if (searchField === "unvan") return ad.includes(term) || unvan.includes(term);
-      if (searchField === "vkn") return vkn.includes(term.replace(/\s+/g, ""));
-      return kod.includes(term) || ad.includes(term) || unvan.includes(term) ||
-        vkn.includes(term.replace(/\s+/g, "")) || tel.includes(term) ||
-        adres.includes(term) || il.includes(term) || ilce.includes(term);
-    });
+    const filtered = sourceList.filter((item) => checkItemMatch(item, term, searchField));
 
     const sqlItems: UnifiedItem[] = filtered.map((item) =>
       activeTab === "registered"
@@ -208,23 +238,6 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
       rowRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest", behavior: "auto" });
     }
   }, [selectedIndex, show]);
-
-  // Tek kayıt varsa ekran açılmasın, doğrudan seçsin (örnek istatistik kodundaki gibi)
-  const autoSelectedRef = useRef(false);
-
-  useEffect(() => {
-    if (!show) {
-      autoSelectedRef.current = false;
-      return;
-    }
-
-    if (show && !isLoading && !isGibLoading && (initialSearchTerm ?? "").trim()) {
-      if (!autoSelectedRef.current && currentList.length === 1) {
-        autoSelectedRef.current = true;
-        void handleSelectRow(currentList[0]);
-      }
-    }
-  }, [show, isLoading, isGibLoading, initialSearchTerm, currentList]);
 
   const handleSelectRow = async (item: UnifiedItem) => {
     if (item._kind === "registered") {
@@ -404,7 +417,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
       `}</style>
 
       <Modal
-        show={show && !autoSelectedRef.current}
+        show={show}
         onHide={onClose}
         size="xl"
         centered
@@ -483,7 +496,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
                     cursor: "pointer",
                   }}
                 >
-                  Kayıtlı Cariler ({effectiveCariler.length})
+                  Kayıtlı Cariler ({registeredCount})
                 </Nav.Link>
               </Nav.Item>
               <Nav.Item>
@@ -498,7 +511,7 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
                     cursor: "pointer",
                   }}
                 >
-                  Kayıtsız Müşteriler ({effectiveKayitsizlar.length})
+                  Kayıtsız Müşteriler ({unregisteredCount})
                 </Nav.Link>
               </Nav.Item>
             </Nav>
