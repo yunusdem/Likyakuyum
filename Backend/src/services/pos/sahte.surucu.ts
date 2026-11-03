@@ -5,6 +5,8 @@ import { PosIslem, PosSurucu, PosTerminal, SurucuIstek, SurucuSonuc, kurus } fro
  * ekran akışı ve doğrulama senaryoları cihaz gelmeden denenebilsin:
  *   ,01 → kart reddedildi          ,02 → müşteri cihazda vazgeçti
  *   ,03 → cihaz hiç cevap vermez   ,06 / ,09 / ,12 → o kadar taksitle onay
+ *   ,04 → onay, ama cihaz bilgi fişini basamadı (kağıt bitti; Hugin 206)
+ *   ,05 → cihaz bağlı değil, gönderilemez (Hugin DISCONNECTED)
  *   diğerleri → tek çekim onay
  * Onay ve ret 5 saniye sonra "gelir". Banka, tutarın lira kısmına göre sırayla değişir.
  * Durum hesapla bulunur, bellekte tutulmaz: sunucu yeniden başlasa da sonuç aynıdır.
@@ -23,6 +25,7 @@ export const sahteSonuc = (posIslemId: number, tutar: number, gecenSaniye: numbe
 
   const banka = BANKALAR[Math.floor(tutar) % BANKALAR.length];
   return {
+    ...(k === 4 ? { hata: "Kart çekildi ama cihaz bilgi fişini basamadı (kağıt bitti, örnek)." } : {}),
     durum: "ONAY",
     bankaKodu: banka,
     bankaAdi: banka,
@@ -37,6 +40,7 @@ export const sahteSonuc = (posIslemId: number, tutar: number, gecenSaniye: numbe
 
 export const SahteSurucu: PosSurucu = {
   async gonder(istek: SurucuIstek) {
+    if (kurus(istek.islem.tutar) % 100 === 5) throw new Error("Cihaz bağlı değil (örnek): cihazın internetini ve Gateway bağlantısını kontrol edin.");
     return { ref: `SAHTE-${istek.islem.posIslemId}` };
   },
   async sorgula(islem: PosIslem) {

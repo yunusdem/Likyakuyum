@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Alert, Badge, Button, Form, Modal, Spinner, Table } from "react-bootstrap";
 import { IconAlertTriangle, IconCheck, IconCreditCard, IconHelpCircle, IconX } from "@tabler/icons-react";
 import { v4 as uuid } from "uuid";
-import { PosBelgeTipi, PosBelgeTuru, PosIslem, PosIslemService, PosKalem, PosMod, PosPesinOdeme, PosTerminal } from "../../services/posIslemService";
+import { PosBelgeTipi, PosBelgeTuru, PosIslem, PosIslemService, PosKalem, PosMod, PosPesinOdeme, PosTerminal, TOPLU_ENTEGRASYONLAR } from "../../services/posIslemService";
 
 // POS cihazı tahsilatı — docs/POS_ENTEGRASYON_YOL_HARITASI.md (K13: kart, fiş kaydedilmeden hemen önce çekilir)
 // Fiş ekranları yalnızca bu kancayı çağırır; cihazla ilgili iş mantığı fiş ekranlarına yazılmaz.
-// Inpos (bulut, K34): fişin bütün POS satırları tek sipariş olarak gider, cihazda tek bilgi fişi basılır; sonuç satırlara dağıtılır.
+// Inpos (bulut, K34) ve Hugin (PC Link, K36): fişin bütün POS satırları tek sipariş / belge olarak gider, cihazda tek bilgi fişi
+// basılır; sonuç satırlara dağıtılır.
 
 export interface PosTahsilSatiri {
   /** Ödeme satırının ekrandaki kimliği */
@@ -298,8 +299,9 @@ export function usePosTahsilat() {
 
   const gonder = useCallback(
     (p: Pencere, s: Satir) => {
-      // Inpos: fişin alınmamış bütün satırları tek sipariş olarak gider (tek bilgi fişi)
-      if (p.terminaller.find((t) => t.posTerminalId === terminalId)?.entegrasyon === "inpos") {
+      // Inpos / Hugin: fişin alınmamış bütün satırları tek sipariş / belge olarak gider (tek bilgi fişi)
+      const entegrasyon = p.terminaller.find((t) => t.posTerminalId === terminalId)?.entegrasyon;
+      if (entegrasyon && TOPLU_ENTEGRASYONLAR.includes(entegrasyon)) {
         return gonderToplu(p, p.satirlar.filter((x) => !alindiMi(x) && !x.mesgul));
       }
       if (terminalId) localStorage.setItem(SON_CIHAZ_ANAHTARI, String(terminalId));
@@ -426,10 +428,12 @@ export function usePosTahsilat() {
     if (s.hata) return s.hata;
     if (!i) return "";
     if (i.durum === "ONAY") {
-      return [i.bankaAdi, i.taksit && i.taksit > 1 ? `${i.taksit} taksit` : null, i.onayKodu ? `Onay ${i.onayKodu}` : null, i.posCihaziAd].filter(Boolean).join(" · ");
+      // Onaylı işlemde hata yalnız uyarıdır (Hugin: kart çekildi ama bilgi fişi basılamadı)
+      return [i.bankaAdi, i.taksit && i.taksit > 1 ? `${i.taksit} taksit` : null, i.onayKodu ? `Onay ${i.onayKodu}` : null, i.posCihaziAd, i.hata].filter(Boolean).join(" · ");
     }
     if (i.durum === "BELIRSIZ") return "Cihazdan cevap gelmedi. Cihaza bakıp işaretleyin.";
     if (i.durum === "BEKLIYOR" && i.entegrasyon === "inpos" && i.mod === "canli") return "Cihazda Siparişler'den bu fişi seçip kartı okutun.";
+    if (i.durum === "BEKLIYOR" && i.entegrasyon === "hugin" && i.mod === "canli") return "Tutar cihaz ekranında; kartı okutun.";
     return i.hata || "";
   };
 

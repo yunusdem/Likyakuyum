@@ -1,11 +1,13 @@
 import { apiClient } from "./apiClient";
 
-// POS cihazı entegrasyonu (Inpos + Beko) — docs/POS_ENTEGRASYON_YOL_HARITASI.md
+// POS cihazı entegrasyonu (Inpos + Beko + Hugin) — docs/POS_ENTEGRASYON_YOL_HARITASI.md
 
 /** Firmanın POS modu; yönetim panelinden belirlenir. test = örnek cihaz, hiçbir yere istek gitmez. */
 export type PosMod = "kapali" | "test" | "canli";
 /** yok = entegrasyonsuz cihaz: tutar cihaza elle girilir, program yalnızca kaydını tutar */
-export type PosEntegrasyon = "yok" | "beko" | "inpos";
+export type PosEntegrasyon = "yok" | "beko" | "inpos" | "hugin";
+/** Fiş başına tek belge gönderen entegrasyonlar: fişin bütün POS satırları birlikte gider */
+export const TOPLU_ENTEGRASYONLAR: PosEntegrasyon[] = ["inpos", "hugin"];
 export type PosDurum = "BEKLIYOR" | "ONAY" | "RET" | "IPTAL" | "BELIRSIZ";
 export type PosBelgeTuru = "perakende" | "sarraf";
 export type PosBelgeTipi = "earsiv" | "efatura";
@@ -128,7 +130,7 @@ export interface PosKalem {
   kdvOrani: number;
 }
 
-/** Fiş başına tek sipariş (Inpos): aynı fişin bütün POS satırları birlikte gider */
+/** Fiş başına tek sipariş / belge (Inpos, Hugin): aynı fişin bütün POS satırları birlikte gider */
 export interface PosTopluGirdi {
   grupKimlik: string;
   posTerminalId: number | null;

@@ -22,6 +22,13 @@ export interface PosMerkezAyarSatiri {
   /** Inpos'un sonuç bildirimini (webhook) bizim uca gönderirken kullanacağı Basic Auth kullanıcı adı / şifresi (şifreli) */
   inposWebhookKullanici: string | null;
   inposWebhookSifreSifreli: string | null;
+  /** Hugin PC Link — TSM Gateway adresi, Hugin'in yazılım firmasına verdiği tsmToken (şifreli), X-SoftwareId (bizim VKN), X-HardwareId */
+  huginGwUrl: string | null;
+  huginTsmTokenSifreli: string | null;
+  huginYazilimId: string | null;
+  huginDonanimId: string | null;
+  /** Hugin kolonları merkezde kurulu mu (migrations-admin/003_pos_hugin.sql) */
+  huginKurulu: boolean;
   guncellemeTarihi: Date | null;
 }
 
@@ -40,6 +47,14 @@ export interface PosMerkezAyarKaydet {
   inposWebhookKullanici: string | null;
   /** undefined → kayıtlı değer korunur */
   inposWebhookSifreSifreli?: string | null;
+}
+
+export interface PosHuginAyarKaydet {
+  huginGwUrl: string | null;
+  /** undefined → kayıtlı değer korunur */
+  huginTsmTokenSifreli?: string | null;
+  huginYazilimId: string | null;
+  huginDonanimId: string | null;
 }
 
 /** Sağlayıcıya giden sipariş / sepet kimliğinin hangi firmaya ait olduğu (sonuç bildirimi tek adrese gelir). */
@@ -91,6 +106,11 @@ export class PosAdminSqlRepository {
       inposSifreSifreli: r.INPOS_SIFRE_ENC || null,
       inposWebhookKullanici: metin(r.INPOS_WEBHOOK_KULLANICI),
       inposWebhookSifreSifreli: r.INPOS_WEBHOOK_SIFRE_ENC || null,
+      huginGwUrl: metin(r.HUGIN_GW_URL),
+      huginTsmTokenSifreli: r.HUGIN_TSM_TOKEN_ENC || null,
+      huginYazilimId: metin(r.HUGIN_YAZILIM_ID),
+      huginDonanimId: metin(r.HUGIN_DONANIM_ID),
+      huginKurulu: "HUGIN_GW_URL" in r,
       guncellemeTarihi: r.GUNCELLEME_TARIHI ?? null,
     };
   }
@@ -128,6 +148,37 @@ export class PosAdminSqlRepository {
         GUNCELLEYEN_ADMIN_ID = @adminId, GUNCELLEME_TARIHI = GETDATE()
       WHERE AYAR_ID = 1;
     `);
+  }
+
+  /**
+   * Hugin ayarları ayrı yazılır: kolonlar sürümle gelen göçle (migrations-admin/003_pos_hugin.sql) kurulur; göç
+   * çalışmamış sunucuda Inpos / Beko ayarlarının kaydı bozulmasın. Kolonlar yoksa false döner.
+   */
+  public static async huginAyarKaydet(dto: PosHuginAyarKaydet): Promise<boolean> {
+    const pool = await getAdminPool();
+    const req = pool.request();
+    req.input("gwUrl", sql.VarChar(300), dto.huginGwUrl);
+    req.input("tokenDegisti", sql.Bit, dto.huginTsmTokenSifreli !== undefined ? 1 : 0);
+    req.input("token", sql.VarChar(sql.MAX), dto.huginTsmTokenSifreli ?? null);
+    req.input("yazilimId", sql.VarChar(20), dto.huginYazilimId);
+    req.input("donanimId", sql.VarChar(100), dto.huginDonanimId);
+    const r = await req.query(`
+      IF COL_LENGTH('dbo.ADM_POS_AYAR', 'HUGIN_GW_URL') IS NULL
+        SELECT CAST(0 AS BIT) AS KURULU;
+      ELSE
+      BEGIN
+        EXEC sp_executesql N'
+          UPDATE dbo.ADM_POS_AYAR SET
+            HUGIN_GW_URL = @gwUrl,
+            HUGIN_TSM_TOKEN_ENC = CASE WHEN @tokenDegisti = 1 THEN @token ELSE HUGIN_TSM_TOKEN_ENC END,
+            HUGIN_YAZILIM_ID = @yazilimId, HUGIN_DONANIM_ID = @donanimId
+          WHERE AYAR_ID = 1',
+          N'@gwUrl VARCHAR(300), @tokenDegisti BIT, @token VARCHAR(MAX), @yazilimId VARCHAR(20), @donanimId VARCHAR(100)',
+          @gwUrl, @tokenDegisti, @token, @yazilimId, @donanimId;
+        SELECT CAST(1 AS BIT) AS KURULU;
+      END
+    `);
+    return Boolean(r.recordset?.[0]?.KURULU);
   }
 
   /** Inpos TSM erişim anahtarı (JWT, şifreli). Süresi veritabanı saatiyle denetlenir. */

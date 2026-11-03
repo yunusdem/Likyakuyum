@@ -50,6 +50,17 @@ BEGIN
 END
 GO
 
+-- 02.11.2026 — Hugin S1 (PC Link + TSM Gateway). Sürümle gelen göç Backend/migrations-admin/003_pos_hugin.sql ile aynıdır.
+IF COL_LENGTH('dbo.ADM_POS_AYAR', 'HUGIN_GW_URL') IS NULL
+BEGIN
+  ALTER TABLE [dbo].[ADM_POS_AYAR] ADD
+    [HUGIN_GW_URL]        VARCHAR(300)  NULL,                    -- https://pclink-gw.hugin.co
+    [HUGIN_TSM_TOKEN_ENC] VARCHAR(MAX)  NULL,                    -- Hugin tsmToken (AES-256-GCM)
+    [HUGIN_YAZILIM_ID]    VARCHAR(20)   NULL,                    -- X-SoftwareId: bizim VKN
+    [HUGIN_DONANIM_ID]    VARCHAR(100)  NULL;                    -- X-HardwareId: sunucunun sabit kimliği
+END
+GO
+
 -- Sağlayıcıya giden sipariş / sepet kimliği hangi firmanın? Sonuç bildirimi tek adrese gelir; firma buradan bulunur.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ADM_POS_SEPET')
 BEGIN

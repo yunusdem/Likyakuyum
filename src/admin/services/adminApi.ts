@@ -342,6 +342,14 @@ export interface PosMerkezAyar {
   inposWebhookSifreTanimli: boolean;
   /** Inpos portalına (Webhook Konfigürasyonu › Sipariş Durum Güncelleme) yazılacak adres */
   inposWebhookAdresi: string;
+  /** false: Hugin kolonları merkezde yok (migrations-admin/003_pos_hugin.sql çalışmamış) */
+  huginKurulu: boolean;
+  huginGwUrl: string;
+  huginGwVarsayilan: string;
+  huginTsmTokenTanimli: boolean;
+  huginYazilimId: string;
+  huginDonanimId: string;
+  huginDonanimVarsayilan: string;
   guncellemeTarihi: string | null;
 }
 
@@ -360,6 +368,11 @@ export interface PosMerkezAyarGirdi {
   inposWebhookKullanici: string;
   /** Boş → kayıtlı şifre korunur */
   inposWebhookSifre?: string;
+  huginGwUrl: string;
+  /** Boş → kayıtlı token korunur */
+  huginTsmToken?: string;
+  huginYazilimId: string;
+  huginDonanimId: string;
 }
 
 export interface PosSenaryo {
@@ -376,7 +389,7 @@ export interface PosSenaryo {
 
 export interface PosDogrulamaModeli {
   model: string;
-  entegrasyon: "beko" | "inpos";
+  entegrasyon: "beko" | "inpos" | "hugin";
   ad: string;
   senaryolar: PosSenaryo[];
   gecenAdet: number;
@@ -394,7 +407,7 @@ export interface PosKonsolFirma {
 export interface PosKonsolTerminal {
   posTerminalId: number;
   ad: string;
-  entegrasyon: "yok" | "beko" | "inpos";
+  entegrasyon: "yok" | "beko" | "inpos" | "hugin";
   model: string | null;
   terminalKimlik: string | null;
   aktif: boolean;
@@ -764,7 +777,7 @@ export const adminApi = {
   posDogrulamaYaz: (veri: { model: string; senaryoNo: number; sonuc: PosDogrulamaSonucu | null; notu?: string }) =>
     istek<{ modeller: PosDogrulamaModeli[] }>("PUT", "/pos/dogrulama", veri),
   posLog: (limit = 100) => istek<PosLogu[]>("GET", `/pos/log${sorgu({ limit })}`),
-  posKimlikTesti: (saglayici: "token" | "inpos" = "token") => istek<{ ayrinti: string }>("POST", "/pos/kimlik-testi", { saglayici }),
+  posKimlikTesti: (saglayici: "token" | "inpos" | "hugin" = "token") => istek<{ ayrinti: string }>("POST", "/pos/kimlik-testi", { saglayici }),
   posFirmalar: () => istek<PosKonsolFirma[]>("GET", "/pos/firmalar"),
   firmaPosModu: (firmaId: number) => istek<{ mod: PosMod; tablolarKurulu: boolean }>("GET", `/firmalar/${firmaId}/pos`),
   firmaPosModuYaz: (firmaId: number, mod: PosMod) => istek<{ mod: PosMod; tablolarKurulu: boolean }>("PUT", `/firmalar/${firmaId}/pos`, { mod }),

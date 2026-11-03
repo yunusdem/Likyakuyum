@@ -1,11 +1,11 @@
-// POS cihazı entegrasyonu (Inpos + Beko) — docs/POS_ENTEGRASYON_YOL_HARITASI.md
+// POS cihazı entegrasyonu (Inpos + Beko + Hugin) — docs/POS_ENTEGRASYON_YOL_HARITASI.md
 
 export type DbContext = { dbServer?: string; dbName?: string };
 
 /** Firma bazında admin panelinden yönetilir (K25). test = sahte cihaz, hiçbir şey gitmez. */
 export type PosMod = "kapali" | "test" | "canli";
 /** yok = entegrasyonsuz cihaz, bugünkü gibi elle çalışır (K23) */
-export type PosEntegrasyon = "yok" | "beko" | "inpos";
+export type PosEntegrasyon = "yok" | "beko" | "inpos" | "hugin";
 export type PosDurum = "BEKLIYOR" | "ONAY" | "RET" | "IPTAL" | "BELIRSIZ";
 /** deneme = admin test konsolundan gönderilen, belgesiz işlem */
 export type PosBelgeTuru = "perakende" | "sarraf" | "deneme";
@@ -13,8 +13,10 @@ export type PosBelgeTipi = "earsiv" | "efatura";
 /** 0: yok · 1: iade bekliyor · 2: iade edildi */
 export type PosIadeDurumu = 0 | 1 | 2;
 
-export const ENTEGRASYONLAR: PosEntegrasyon[] = ["yok", "beko", "inpos"];
-export const MODELLER: Record<PosEntegrasyon, string[]> = { yok: [], beko: ["300TR", "X30TR", "400TR"], inpos: ["M530"] };
+export const ENTEGRASYONLAR: PosEntegrasyon[] = ["yok", "beko", "inpos", "hugin"];
+export const MODELLER: Record<PosEntegrasyon, string[]> = { yok: [], beko: ["300TR", "X30TR", "400TR"], inpos: ["M530"], hugin: ["S1"] };
+/** Fiş başına tek belge gönderen sürücüler: fişin bütün POS satırları + peşin kısmı birlikte gider (K35, Hugin K36) */
+export const TOPLU_ENTEGRASYONLAR: PosEntegrasyon[] = ["inpos", "hugin"];
 
 /** Cevapsız kalan işlem bu süreden sonra Belirsiz'e düşer; cihaz o zamana kadar meşgul sayılır. */
 export const ZAMAN_ASIMI_SN: Record<Exclude<PosMod, "kapali">, number> = { test: 30, canli: 180 };
@@ -26,7 +28,7 @@ export interface PosTerminal {
   entegrasyon: PosEntegrasyon;
   model: string | null;
   sicilNo: string | null;
-  /** Beko: Token terminal-id · Inpos: köprüdeki cihaz kimliği */
+  /** Beko: Token terminal-id · Inpos: cihaz CSN · Hugin: boş (sicil no kullanılır) */
   terminalKimlik: string | null;
   /** Banka eşlemesi bulunamazsa kullanılacak muhasebe POS kartı */
   posCihaziId: number | null;
@@ -140,6 +142,10 @@ export interface GrupOdemesi {
   tutar: number;
   bankaKodu: string | null;
   bankaAdi: string | null;
+  /** Ödeme başına gelen ayrıntı (Hugin); Inpos'ta yok */
+  onayKodu?: string | null;
+  taksit?: number | null;
+  kartNo?: string | null;
 }
 
 /** Fiş cihaza gönderilmeden önce tahsil edilmiş (nakit, havale, cari) kısım; bilgi fişinde "ödenmiş" görünür, cihaz çekmez */
@@ -169,6 +175,12 @@ export interface SurucuIstek {
    * gönderir, dönen referans hepsine yazılır. Yoksa yalnız islem gönderilir.
    */
   grup?: { islemler: PosIslem[]; pesinOdemeler: PesinOdeme[]; kalemler?: PosKalem[] };
+  /**
+   * Sonucu isteğin kendi cevabında öğrenen sürücüler (Hugin PC Link: kart okunana kadar istek açık kalır) gonder'den
+   * hemen döner, tahsilatı arka planda sürdürür ve bitince sonucu buradan bildirir. Bildirim gonder'in döndürdüğü
+   * referansa bağlı bütün işlemlere yazılır.
+   */
+  sonucBildir?: (sonuc: SurucuSonuc) => Promise<void>;
 }
 
 /**

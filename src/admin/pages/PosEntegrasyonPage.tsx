@@ -16,7 +16,7 @@ import {
   tarihYaz,
 } from "../services/adminApi";
 
-// POS cihazı entegrasyonu (Inpos + Beko) — docs/POS_ENTEGRASYON_YOL_HARITASI.md, 3.5
+// POS cihazı entegrasyonu (Inpos + Beko + Hugin) — docs/POS_ENTEGRASYON_YOL_HARITASI.md, 3.5
 // Doğrulama sekmesi kabul ölçütüdür: bir modelde tüm senaryolar Geçti olunca o model "Doğrulandı" sayılır.
 
 const paraYaz = (n: number): string => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -222,7 +222,7 @@ const Konsol: React.FC<{ modeller: PosDogrulamaModeli[] | null; isaretle: (model
       }
     });
 
-  const kimlikDene = (saglayici: "token" | "inpos") =>
+  const kimlikDene = (saglayici: "token" | "inpos" | "hugin") =>
     calistir(async () => {
       const s = await adminApi.posKimlikTesti(saglayici);
       setMesaj({ tur: "success", metin: s.ayrinti });
@@ -297,8 +297,8 @@ const Konsol: React.FC<{ modeller: PosDogrulamaModeli[] | null; isaretle: (model
           </Alert>
         ) : (
           <Alert variant="light" className="border py-2 small">
-            Örnek cihazda sonuç tutarın kuruşuna göre belirlenir: <code>,01</code> ret · <code>,02</code> cihazda vazgeçme · <code>,03</code> hiç cevap yok · <code>,06</code> <code>,09</code>{" "}
-            <code>,12</code> taksitli onay · diğerleri tek çekim onay.
+            Örnek cihazda sonuç tutarın kuruşuna göre belirlenir: <code>,01</code> ret · <code>,02</code> cihazda vazgeçme · <code>,03</code> hiç cevap yok · <code>,04</code> onay ama fiş basılamadı (kağıt) ·{" "}
+            <code>,05</code> cihaz bağlı değil · <code>,06</code> <code>,09</code> <code>,12</code> taksitli onay · diğerleri tek çekim onay.
           </Alert>
         )}
 
@@ -410,6 +410,9 @@ const Konsol: React.FC<{ modeller: PosDogrulamaModeli[] | null; isaretle: (model
         <Button size="sm" variant="outline-secondary" disabled={calisiyor} onClick={() => kimlikDene("inpos")}>
           Inpos Kimliğini Dene
         </Button>
+        <Button size="sm" variant="outline-secondary" disabled={calisiyor} onClick={() => kimlikDene("hugin")}>
+          Hugin Ayarlarını Dene
+        </Button>
       </div>
     </>
   );
@@ -431,6 +434,10 @@ const Ayarlar: React.FC = () => {
     inposSifre: "",
     inposWebhookKullanici: "",
     inposWebhookSifre: "",
+    huginGwUrl: "",
+    huginTsmToken: "",
+    huginYazilimId: "",
+    huginDonanimId: "",
   });
   const [hata, setHata] = useState<string | null>(null);
   const [bilgi, setBilgi] = useState<string | null>(null);
@@ -450,6 +457,10 @@ const Ayarlar: React.FC = () => {
       inposSifre: "",
       inposWebhookKullanici: a.inposWebhookKullanici,
       inposWebhookSifre: "",
+      huginGwUrl: a.huginGwUrl,
+      huginTsmToken: "",
+      huginYazilimId: a.huginYazilimId,
+      huginDonanimId: a.huginDonanimId,
     });
   };
 
@@ -472,6 +483,7 @@ const Ayarlar: React.FC = () => {
           tokenClientSecret: form.tokenClientSecret || undefined,
           inposSifre: form.inposSifre || undefined,
           inposWebhookSifre: form.inposWebhookSifre || undefined,
+          huginTsmToken: form.huginTsmToken || undefined,
         })
       );
       setBilgi("POS ayarları kaydedildi.");
@@ -492,10 +504,19 @@ const Ayarlar: React.FC = () => {
     );
   }
 
-  const alan = (etiket: string, ad: keyof PosMerkezAyarGirdi, ek?: { tur?: string; yer?: string }) => (
+  const alan = (etiket: string, ad: keyof PosMerkezAyarGirdi, ek?: { tur?: string; yer?: string; kapali?: boolean; aciklama?: string }) => (
     <Form.Group className="mb-3">
       <Form.Label className="small fw-semibold mb-1">{etiket}</Form.Label>
-      <Form.Control size="sm" type={ek?.tur || "text"} placeholder={ek?.yer} autoComplete="off" value={form[ad] || ""} disabled={!ayar.tablolarKurulu} onChange={(e) => setForm({ ...form, [ad]: e.target.value })} />
+      <Form.Control
+        size="sm"
+        type={ek?.tur || "text"}
+        placeholder={ek?.yer}
+        autoComplete="off"
+        value={form[ad] || ""}
+        disabled={!ayar.tablolarKurulu || ek?.kapali}
+        onChange={(e) => setForm({ ...form, [ad]: e.target.value })}
+      />
+      {ek?.aciklama && <Form.Text className="text-muted">{ek.aciklama}</Form.Text>}
     </Form.Group>
   );
 
@@ -535,6 +556,22 @@ const Ayarlar: React.FC = () => {
         </Form.Text>
       </Form.Group>
       {alan("Uygulama Numarası (GMP3, kullanılmıyor)", "inposUygulamaNo")}
+
+      <h6 className="mb-3 mt-4">Hugin (PC Link · TSM Gateway)</h6>
+      {ayar.tablolarKurulu && !ayar.huginKurulu && (
+        <Alert variant="warning" className="py-2 small">
+          Hugin ayar kolonları merkezde kurulu değil. Sürümü yayınlayın (<code>migrations-admin/003_pos_hugin.sql</code>) ya da <code>docs/sql/LIKYA_ADMIN_POS.sql</code> betiğini yeniden çalıştırın.
+        </Alert>
+      )}
+      {alan("Gateway Adresi", "huginGwUrl", { yer: ayar.huginGwVarsayilan, kapali: !ayar.huginKurulu, aciklama: `Boş bırakılırsa ${ayar.huginGwVarsayilan} kullanılır.` })}
+      {alan("Yazılım Kimliği (X-SoftwareId)", "huginYazilimId", { yer: "Firmamızın VKN'si", kapali: !ayar.huginKurulu, aciklama: "Hugin'e tsmToken talebinde bildirilen VKN; token bu kimlikle eşleşir." })}
+      {alan("tsmToken", "huginTsmToken", {
+        tur: "password",
+        yer: ayar.huginTsmTokenTanimli ? "Kayıtlı (değiştirmek için yazın)" : "Hugin GMP desteğinin verdiği token",
+        kapali: !ayar.huginKurulu,
+        aciklama: "Bütün Hugin cihazları için tek token. Cihaz başına erişim anahtarı bundan alınır.",
+      })}
+      {alan("Donanım Kimliği (X-HardwareId)", "huginDonanimId", { yer: ayar.huginDonanimVarsayilan, kapali: !ayar.huginKurulu, aciklama: `Boş bırakılırsa ${ayar.huginDonanimVarsayilan}. Bütün kasalar sunucu üzerinden gittiği için tek değer kullanılır.` })}
 
       <div className="d-flex align-items-center gap-3">
         <Button type="submit" size="sm" className="btn-adm" disabled={!ayar.tablolarKurulu || kaydediliyor}>

@@ -11,7 +11,7 @@ import { SistemService } from "../../services/sistemService";
 // F- Banka / POS > E- POS Cihazları (docs/POS_ENTEGRASYON_YOL_HARITASI.md)
 // Fiziksel cihazlar burada tanımlanır; muhasebe POS kartları (B- POS Cihazı Tanımları) ayrıdır (K15).
 
-const ENTEGRASYON_ADI: Record<PosEntegrasyon, string> = { yok: "Yok (elle)", beko: "Beko", inpos: "Inpos" };
+const ENTEGRASYON_ADI: Record<PosEntegrasyon, string> = { yok: "Yok (elle)", beko: "Beko", inpos: "Inpos", hugin: "Hugin" };
 const BOS: PosTerminalKaydet = { posTerminalId: null, ad: "", entegrasyon: "yok", model: null, sicilNo: null, terminalKimlik: null, posCihaziId: null, aktif: true, vezneIdler: [] };
 
 export const PosModRozeti: React.FC<{ mod?: PosMod }> = ({ mod }) =>
@@ -321,6 +321,7 @@ export const PosCihazlariPage: React.FC = () => {
               <Col xs={6}>
                 <Form.Label className="fw-bold text-secondary mb-1">Sicil No</Form.Label>
                 <Form.Control size="sm" type="text" maxLength={50} value={form.sicilNo || ""} onChange={(e) => setForm({ ...form, sicilNo: e.target.value || null })} />
+                {form.entegrasyon === "hugin" && <Form.Text className="text-muted">Hugin'de zorunlu: cihazın mali sicil numarası.</Form.Text>}
               </Col>
               <Col xs={6}>
                 <Form.Label className="fw-bold text-secondary mb-1">Terminal Kimliği</Form.Label>
