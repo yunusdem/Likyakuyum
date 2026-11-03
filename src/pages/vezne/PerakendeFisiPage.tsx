@@ -6534,24 +6534,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 variant="outline-secondary"
                 className="px-2 py-0 d-flex align-items-center justify-content-center"
                 onClick={() => {
-                  const val = (istatistikKodu || "").trim();
-                  if (val) {
-                    const q = val.toLowerCase();
-                    const matched = statisticList.filter((s) => {
-                      const fType = Number(s.fisTipi);
-                      const isTypeAllowed = Number(faturaTipi) === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
-                      return isTypeAllowed && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || (s as any).ad || "").toLowerCase().includes(q) || String(s.id) === q);
-                    });
-                    if (matched.length === 1) {
-                      const single = matched[0];
-                      setIstatistikId(single.id);
-                      setIstatistikKodu(single.kod);
-                      setSelectedStatistic(single);
-                      faturaTipiRef.current?.focus();
-                      return;
-                    }
-                  }
-                  setIstatistikSearchTerm(val);
+                  setIstatistikSearchTerm("");
                   setShowIstatistikModal(true);
                 }}
                 title="F3) İstatistik Kodu Seçimi"

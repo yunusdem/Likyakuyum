@@ -6771,55 +6771,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                       onMouseDown={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        const term = (istatistikKodu || "").trim();
-                        const q = term.toLowerCase();
-                        if (term) {
-                          const matched = statisticList.filter((s) => {
-                            const fType = Number(s.fisTipi);
-                            const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
-                            return typeMatch && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || "").toLowerCase().includes(q));
-                          });
-                          if (matched.length === 1) {
-                            const single = matched[0];
-                            setIstatistikId(single.id);
-                            setIstatistikKodu(single.kod);
-                            setSelectedStatistic(single);
-                            setIstatistikFisDizaynTipi(Number(single.fisDizaynTipi));
-                            lastFocusedIstatistikKodRef.current = single.kod;
-                            hasKuruRef.current?.focus();
-                            hasKuruRef.current?.select();
-                            return;
-                          }
-                        }
                         lastModalCallerRef.current = "istatistik";
-                        setIstatistikSearchTerm(term);
+                        setIstatistikSearchTerm("");
                         setShowIstatistikModal(true);
                       }}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        const term = (istatistikKodu || "").trim();
-                        const q = term.toLowerCase();
-                        if (term) {
-                          const matched = statisticList.filter((s) => {
-                            const fType = Number(s.fisTipi);
-                            const typeMatch = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
-                            return typeMatch && ((s.kod || "").toLowerCase().includes(q) || (s.aciklama || "").toLowerCase().includes(q));
-                          });
-                          if (matched.length === 1) {
-                            const single = matched[0];
-                            setIstatistikId(single.id);
-                            setIstatistikKodu(single.kod);
-                            setSelectedStatistic(single);
-                            setIstatistikFisDizaynTipi(Number(single.fisDizaynTipi));
-                            lastFocusedIstatistikKodRef.current = single.kod;
-                            hasKuruRef.current?.focus();
-                            hasKuruRef.current?.select();
-                            return;
-                          }
-                        }
                         lastModalCallerRef.current = "istatistik";
-                        setIstatistikSearchTerm(term);
+                        setIstatistikSearchTerm("");
                         setShowIstatistikModal(true);
                       }}
                       title="F3) İstatistik Kodu Seçimi"
