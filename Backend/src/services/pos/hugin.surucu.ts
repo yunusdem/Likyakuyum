@@ -114,6 +114,22 @@ interface Yanit {
   veri: any;
 }
 
+/** Gövde hata zarfı mı: {"status":"ERROR"} ya da dolu "error" nesnesi */
+export const govdeHataMi = (veri: any): boolean =>
+  Boolean(veri && typeof veri === "object" && (String(veri.status || "").toUpperCase() === "ERROR" || (veri.error && typeof veri.error === "object" && (veri.error.code || veri.error.title))));
+
+/** 200 + ERROR gövdesinin karşılığı olan HTTP durumu (hata türü ve mesajlar bu koda göre çalışır) */
+export const hataDurumu = (veri: any): number => {
+  const k = String(veri?.error?.code || "").toUpperCase();
+  if (k === "DISCONNECTED" || k === "ERR_NO_TSM" || k === "ERR_PCLINK_INACTIVE") return 503;
+  if (k === "ERR_INVALID_STATE" || k === "BUSY" || k === "ERR_OPEN_DOCUMENT" || k.startsWith("DOCUMENT_ALREADY")) return 409;
+  if (k === "DOCUMENT_NOT_FOUND" || k === "NOT_FOUND") return 404;
+  if (k === "ERR_TOKEN_EXPIRED" || k === "INVALID_REFRESH_TOKEN" || k === "UNAUTHORIZED") return 401;
+  if (/CANCEL/.test(k) && k !== "ERR_INVALID_CANCEL") return 417;
+  if (/^\d{2,3}$/.test(k) || ["INSUFFICIENT_FUNDS", "DO_NOT_HONOR", "INVALID_CARD", "EXPIRED_CARD", "INCORRECT_PIN", "TIMEOUT"].includes(k)) return 417;
+  return 400;
+};
+
 const http = async (ozet: string, url: string, metod: string, basliklar: Record<string, string>, govde: unknown, zamanMs: number, gizli = false): Promise<Yanit> => {
   const kontrol = new AbortController();
   const zamanlayici = setTimeout(() => kontrol.abort(), zamanMs);
@@ -131,9 +147,11 @@ const http = async (ozet: string, url: string, metod: string, basliklar: Record<
     } catch {
       veri = { ham: metin.slice(0, 300) };
     }
+    // Hugin hataları HTTP 200 ile de döndürebiliyor ({"status":"ERROR","error":{...}}); bunlar hata koduna çevrilir
+    const durum = yanit.status < 300 && govdeHataMi(veri) ? hataDurumu(veri) : yanit.status;
     // tsmToken / accessToken günlüğe yazılmaz
-    await gunluk({ ozet: `${ozet} → ${yanit.status}`, istek: gizli ? null : govde ?? null, yanit: gizli ? { durum: yanit.status } : veri, basarili: yanit.status < 400 });
-    return { durum: yanit.status, veri };
+    await gunluk({ ozet: `${ozet} → ${yanit.status}${durum !== yanit.status ? ` (ERROR → ${durum})` : ""}`, istek: gizli ? null : govde ?? null, yanit: gizli ? { durum: yanit.status } : veri, basarili: durum < 400 });
+    return { durum, veri };
   } catch (err: any) {
     const mesaj = err?.name === "AbortError" ? "Hugin cihazı / Gateway zamanında yanıt vermedi." : `Hugin Gateway'e ulaşılamadı: ${err?.message || err}`;
     await gunluk({ ozet: `${ozet} → ulaşılamadı`, yanit: mesaj, basarili: false });
@@ -171,6 +189,13 @@ const hataMetni = (durum: number, veri: any, varsayilan: string): string => {
  *  baglanti — cihaz Gateway'e bağlı değil, TSM'ye ulaşamıyor
  *  diger    — belge / veri hatası
  */
+/** Cihazda kart beklenirken süre doldu (Hugin kodu 81 / TIMEOUT): kart okutulmadı, para çekilmedi */
+export const kartZamanAsimi = (veri: any): boolean => {
+  const { kod, baslik } = huginHataOku(veri);
+  const k = (kod || "").toUpperCase();
+  return k === "81" || k === "TIMEOUT" || /zaman aşımı/i.test(baslik || "");
+};
+
 export type HataTuru = "ret" | "vazgecme" | "mesgul" | "baglanti" | "diger";
 
 export const huginHataTuru = (durum: number, veri: any): HataTuru => {
@@ -533,7 +558,7 @@ export const huginTahsilEt = async (i: SurucuIstek, seri: string, documentId: st
     if (alinan.length) return sonucYap(alinan, null, documentId, { hata: hataMetni(y.durum, y.veri, "Kart çekildi ama belge cihazda kapatılamadı; cihazdan tamamlayın.") });
   }
   await belgeyiBirak(seri, documentId);
-  return retSonucu(tur, hataMetni(y.durum, y.veri, tur === "ret" ? "Kart reddedildi." : tur === "vazgecme" ? "Cihazda vazgeçildi." : "Cihaz satışı tamamlamadı."), documentId);
+  return retSonucu(tur, hataMetni(y.durum, y.veri, tur === "ret" ? (kartZamanAsimi(y.veri) ? "Kart zamanında okutulmadı." : "Kart reddedildi.") : tur === "vazgecme" ? "Cihazda vazgeçildi." : "Cihaz satışı tamamlamadı."), documentId);
 };
 
 /** Belirsiz sonuç (bağlantı koptu): pos.service'e "henüz sonuç yok" demek için null'a çevrilir. */
