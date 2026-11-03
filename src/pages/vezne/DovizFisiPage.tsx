@@ -5803,8 +5803,11 @@ export const DovizFisiPage: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
+        const currentConfirmed = (selectedStatistic?.kod || istatistikKodu || "").trim();
         const rawVal = istatistikRef.current?.value ?? istatistikKodu ?? "";
-        openIstatistikModalWithTerm((rawVal || "").trim());
+        const val = (rawVal || "").trim();
+        const searchTerm = (hasUserTypedIstatistikRef.current && val.toLowerCase() !== currentConfirmed.toLowerCase()) ? val : "";
+        openIstatistikModalWithTerm(searchTerm);
       } else if (isF4) {
         e.preventDefault();
         e.stopPropagation();
@@ -7127,9 +7130,11 @@ export const DovizFisiPage: React.FC = () => {
                               e.preventDefault();
                               e.stopPropagation();
                               isOpeningIstatistikModalRef.current = true;
+                              const currentConfirmed = (selectedStatistic?.kod || istatistikKodu || "").trim();
                               const rawVal = istatistikRef.current?.value ?? "";
                               const val = (rawVal || istatistikKodu || "").trim();
-                              openIstatistikModalWithTerm(val);
+                              const searchTerm = (hasUserTypedIstatistikRef.current && val.toLowerCase() !== currentConfirmed.toLowerCase()) ? val : "";
+                              openIstatistikModalWithTerm(searchTerm);
                             }
                           }}
                           className={`font-monospace text-center px-2.5 py-1 ${
@@ -7155,28 +7160,12 @@ export const DovizFisiPage: React.FC = () => {
                             isOpeningIstatistikModalRef.current = true;
                           }}
                           onClick={() => {
+                            const currentConfirmed = (selectedStatistic?.kod || istatistikKodu || "").trim();
                             const rawVal = istatistikRef.current?.value ?? "";
                             const val = (rawVal || istatistikKodu || "").trim();
-                            const valLower = val.toLowerCase();
-                            if (val) {
-                              const matched = statisticList.filter((s) => {
-                                const fType = Number(s.fisTipi);
-                                const isTypeAllowed = tip === 0 ? (fType === 0 || fType === 2) : (fType === 1 || fType === 2);
-                                if (!isTypeAllowed) return false;
-                                const kod = (s.kod || "").trim().toLowerCase();
-                                const idStr = String(s.id);
-                                const aciklama = (s.aciklama || (s as any).ad || "").trim().toLowerCase();
-                                return kod.includes(valLower) || idStr === valLower || aciklama.includes(valLower);
-                              });
-                              if (matched.length === 1) {
-                                handleSelectIstatistik(matched[0]);
-                                isOpeningIstatistikModalRef.current = false;
-                                focusCell(0, "kod", "select");
-                                return;
-                              }
-                            }
+                            const searchTerm = (hasUserTypedIstatistikRef.current && val.toLowerCase() !== currentConfirmed.toLowerCase()) ? val : "";
                             isOpeningIstatistikModalRef.current = true;
-                            openIstatistikModalWithTerm(val);
+                            openIstatistikModalWithTerm(searchTerm);
                           }}
                           title="F3) İstatistik Kodu Seçimi"
                         >
@@ -7683,7 +7672,7 @@ export const DovizFisiPage: React.FC = () => {
                 className="p-1.5 rounded d-flex flex-wrap align-items-center justify-content-center gap-1.5 border shadow-2xs"
                 style={{ backgroundColor: "#e0f2fe", color: "#0369a1" }}
               >
-                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowIstatistikModal(true)}>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => openIstatistikModalWithTerm("")}>
                   F3) İst.
                 </Button>
                 <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowKurListesiModal(true)}>
