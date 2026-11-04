@@ -135,7 +135,7 @@ const createEmptyOdemeRow = (satirNo: number): OdemeRow => ({
   adet: "", miktar: "", milyem: "", refMilyem: "", hasGram: "", kur: "", tutar: "", urunTipi: 0,
 });
 
-export const isZiynetProduct = (urun?: { urunTipi?: number; kod?: string; ad?: string; mamulTipi?: string } | null): boolean => {
+export const isZiynetProduct = (urun?: { urunTipi?: number | string | null; kod?: string; ad?: string; mamulTipi?: string } | null): boolean => {
   if (!urun) return false;
   const k = (urun.kod || "").trim().toUpperCase();
   const n = (urun.ad || (urun as any).mamulTipi || "").trim().toUpperCase();
@@ -3745,6 +3745,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const isZiynet = resolvedUrunTipi === 3;
     const isPara = resolvedUrunTipi === 0;
     const isParaOrZiynet = isPara || isZiynet;
+    const isTL = ["TL", "TRY", "TRL"].includes((item.kod || "").trim().toUpperCase()) || (item.ad || "").trim().toUpperCase().includes("TÜRK LİRASI");
     const autoKur = getKurForProduct(item, tip);
     const autoMilyem = getMilyemForProduct(item, tip);
     const curHasKuru = isParaOrZiynet ? autoKur : (resolvedUrunTipi === 2 ? getGumusKurForTip(tip) : getHasKurForTip(tip));
@@ -3818,6 +3819,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const isZiynet = resolvedUrunTipi === 3;
     const isPara = resolvedUrunTipi === 0;
     const isParaOrZiynet = isPara || isZiynet;
+    const isTL = ["TL", "TRY", "TRL"].includes((item.kod || "").trim().toUpperCase()) || (item.ad || "").trim().toUpperCase().includes("TÜRK LİRASI");
     const odemeTip: 0 | 1 = tip === 0 ? 1 : 0;
     const autoKur = getKurForProduct(item, odemeTip);
     const autoMilyem = getMilyemForProduct(item, odemeTip);
