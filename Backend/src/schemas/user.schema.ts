@@ -93,6 +93,8 @@ export const createUserSchema = z.object({
     commissionRate: flexNumber(0),
     ratePermType: z.string().optional().default("Var"),
     ratePermValue: flexNumber(0),
+    milyemPermType: z.string().optional().default("Var"),
+    milyemPermValue: flexNumber(0),
     iscilikGirisSekli: flexNumber(0),
 
     menuPerms: menuPermissionsSchema.passthrough().optional(),
@@ -151,6 +153,8 @@ export const updateUserSchema = z.object({
     commissionRate: flexNumber(0),
     ratePermType: z.string().optional(),
     ratePermValue: flexNumber(0),
+    milyemPermType: z.string().optional(),
+    milyemPermValue: flexNumber(0),
     iscilikGirisSekli: flexNumber(0),
 
     menuPerms: menuPermissionsSchema.partial().passthrough().optional(),

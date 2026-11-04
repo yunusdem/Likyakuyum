@@ -2,8 +2,9 @@ import { PosAdminSqlRepository } from "../../models/admin/posAdminSql.repository
 import { PosEntegrasyonSqlRepository as Repo } from "../../models/posEntegrasyonSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { logger } from "../../utils/logger.js";
+import { HuginSurucu } from "./hugin.surucu.js";
 import { InposSurucu, inposCsn, inposSiparisIslendi } from "./inpos.surucu.js";
-import { ENTEGRASYONLAR, MODELLER, ZAMAN_ASIMI_SN, } from "./pos.types.js";
+import { ENTEGRASYONLAR, MODELLER, TOPLU_ENTEGRASYONLAR, ZAMAN_ASIMI_SN, } from "./pos.types.js";
 import { PosMerkezService } from "./posMerkez.service.js";
 import { SahteSurucu } from "./sahte.surucu.js";
 import { TokenSurucu } from "./token.surucu.js";
@@ -26,7 +27,16 @@ const PESIN_TURLERI = ["nakit", "havale", "cari"];
 /** Fiş başına tek siparişte en çok bu kadar POS satırı gider */
 const AZAMI_GRUP_SATIRI = 10;
 /** Test modunda her cihaz sahte sürücüyle çalışır; hiçbir yere istek gitmez. */
-const surucuSec = (mod, entegrasyon) => (mod === "test" ? SahteSurucu : entegrasyon === "inpos" ? InposSurucu : TokenSurucu);
+const surucuSec = (mod, entegrasyon) => mod === "test" ? SahteSurucu : entegrasyon === "inpos" ? InposSurucu : entegrasyon === "hugin" ? HuginSurucu : TokenSurucu;
+/** Ödemenin satıra taşınan ayrıntısı (Hugin'de ödeme başına onay kodu / taksit / kart gelir) */
+const odemeAyrintisi = (o) => ({
+    durum: "ONAY",
+    bankaKodu: o.bankaKodu,
+    bankaAdi: o.bankaAdi,
+    ...(o.onayKodu !== undefined ? { onayKodu: o.onayKodu } : {}),
+    ...(o.taksit !== undefined ? { taksit: o.taksit } : {}),
+    ...(o.kartNo !== undefined ? { kartNo: o.kartNo } : {}),
+});
 const girdiyiCoz = (g) => {
     if (!g.istekKimlik || !KIMLIK.test(g.istekKimlik))
         throw ApiError.badRequest("İstek kimliği geçersiz.");
@@ -66,14 +76,14 @@ export const grupOdemeleriniDagit = (satirlar, odemeler) => {
             continue;
         }
         const [o] = kalanOdemeler.splice(i, 1);
-        sonuclar.set(s.posIslemId, { durum: "ONAY", bankaKodu: o.bankaKodu, bankaAdi: o.bankaAdi });
+        sonuclar.set(s.posIslemId, odemeAyrintisi(o));
     }
     const kalanTutar = kalanOdemeler.reduce((t, o) => t + o.tutar, 0);
     const eslesmeyenTutar = eslesmeyenler.reduce((t, s) => t + s.tutar, 0);
     const ortakBanka = kalanOdemeler.slice().sort((a, b) => b.tutar - a.tutar)[0];
     for (const s of eslesmeyenler) {
         if (eslesmeyenler.length && ayniTutar(kalanTutar, eslesmeyenTutar)) {
-            sonuclar.set(s.posIslemId, { durum: "ONAY", bankaKodu: ortakBanka?.bankaKodu ?? null, bankaAdi: ortakBanka?.bankaAdi ?? null });
+            sonuclar.set(s.posIslemId, ortakBanka ? odemeAyrintisi(ortakBanka) : { durum: "ONAY", bankaKodu: null, bankaAdi: null });
         }
         else {
             const alinan = odemeler.map((o) => o.tutar.toFixed(2)).join(" + ") || "yok";
@@ -131,6 +141,8 @@ export class PosService {
             throw ApiError.badRequest("Seçilen model bu entegrasyona ait değil.");
         if (entegrasyon !== "yok" && !model)
             throw ApiError.badRequest("Entegrasyonlu cihazda model seçilmelidir.");
+        if (entegrasyon === "hugin" && !temiz(g.sicilNo, 50) && !temiz(g.terminalKimlik, 100))
+            throw ApiError.badRequest("Hugin cihazında sicil numarası zorunludur (cihaz Gateway'de bununla bulunur).");
         const dto = {
             posTerminalId: tamSayi(g.posTerminalId),
             ad,
@@ -234,17 +246,35 @@ export class PosService {
         if (!acilan.yeni)
             return this.getir(acilan.posIslemId, dbContext);
         const islem = (await Repo.islemGetir(acilan.posIslemId, dbContext));
+        const kanal = this.sonucKanali(dbContext);
         try {
             const ayar = mod === "canli" && terminal.entegrasyon === "beko" ? await PosMerkezService.ayar() : null;
             const donusAdresi = PosMerkezService.donusAdresi(ayar?.donusKok, "token", firmaId, islem.posIslemId);
-            const { ref } = await surucuSec(mod, terminal.entegrasyon).gonder({ islem, terminal, aliciAd: g.aliciAd, aliciVkn: g.aliciVkn, donusAdresi });
+            const { ref } = await surucuSec(mod, terminal.entegrasyon).gonder({ islem, terminal, aliciAd: g.aliciAd, aliciVkn: g.aliciVkn, donusAdresi, sonucBildir: kanal.bildir });
             await Repo.refYaz(islem.posIslemId, ref, dbContext);
+            kanal.refYazildi(ref);
             await this.sepetKaydet(mod, terminal.entegrasyon, ref, firmaId);
         }
         catch (err) {
             await Repo.bekleyeniKapat(islem.posIslemId, "RET", err?.message || "Cihaza gönderilemedi.", dbContext);
         }
         return (await Repo.islemGetir(islem.posIslemId, dbContext));
+    }
+    /**
+     * Sonucu arka planda öğrenen sürücüler (Hugin) için bildirim kanalı. Sürücü sonucu, gonder'in döndürdüğü referans
+     * işlemlere yazıldıktan SONRA işlenir (çok hızlı gelen ret, referans yazılmadan kaybolmasın).
+     */
+    static sonucKanali(dbContext) {
+        let refYazildi;
+        const hazir = new Promise((coz) => (refYazildi = coz));
+        return {
+            bildir: async (sonuc) => {
+                const ref = await hazir;
+                if (ref)
+                    await this.disaridanGrupSonuc(ref, sonuc, dbContext);
+            },
+            refYazildi,
+        };
     }
     /** Bulut sağlayıcının sonuç bildirimi tek adrese gelir; sipariş kimliğinin firması merkezde tutulur. */
     static async sepetKaydet(mod, entegrasyon, ref, firmaId) {
@@ -276,8 +306,8 @@ export class PosService {
         const terminal = await this.terminalBul(girdi.posTerminalId, dbContext);
         if (!terminal.aktif)
             throw ApiError.badRequest(`"${terminal.ad}" pasif; tahsilat gönderilemez.`);
-        if (terminal.entegrasyon !== "inpos")
-            throw ApiError.badRequest("Toplu gönderim yalnız Inpos cihazlarında kullanılır.");
+        if (!TOPLU_ENTEGRASYONLAR.includes(terminal.entegrasyon))
+            throw ApiError.badRequest("Toplu gönderim yalnız Inpos ve Hugin cihazlarında kullanılır.");
         const cozulenler = satirlar.map((s) => girdiyiCoz({
             istekKimlik: s.istekKimlik,
             posTerminalId: terminal.posTerminalId,
@@ -348,9 +378,19 @@ export class PosService {
             }
             return Repo.grupIslemleri(grupKimlik, dbContext);
         }
+        const kanal = this.sonucKanali(dbContext);
         try {
-            const { ref } = await surucu.gonder({ islem: islemler[0], terminal, aliciAd: ilk.aliciAd, aliciVkn: ilk.aliciVkn, donusAdresi: null, grup: { islemler, pesinOdemeler, kalemler } });
+            const { ref } = await surucu.gonder({
+                islem: islemler[0],
+                terminal,
+                aliciAd: ilk.aliciAd,
+                aliciVkn: ilk.aliciVkn,
+                donusAdresi: null,
+                grup: { islemler, pesinOdemeler, kalemler },
+                sonucBildir: kanal.bildir,
+            });
             await Repo.grubaRefYaz(grupKimlik, ref, dbContext);
+            kanal.refYazildi(ref);
             await this.sepetKaydet(mod, terminal.entegrasyon, ref, firmaId);
         }
         catch (err) {
@@ -370,7 +410,19 @@ export class PosService {
         const dagitim = sonuc.durum === "ONAY" ? grupOdemeleriniDagit(acikOlanlar, sonuc.grupOdemeleri || []) : acikOlanlar.map((i) => ({ posIslemId: i.posIslemId, sonuc }));
         for (const d of dagitim) {
             const islem = acikOlanlar.find((i) => i.posIslemId === d.posIslemId);
-            await this.sonucuIsle(islem, terminal, { ...sonuc, ...d.sonuc, bankaKodu: d.sonuc.bankaKodu ?? null, bankaAdi: d.sonuc.bankaAdi ?? null, hata: d.sonuc.hata ?? sonuc.hata ?? null }, dbContext);
+            // Onaylı fişte ret düşen satır (Hugin: sonraki kart reddedildi) sürücünün açıklamasını taşır
+            const hata = d.sonuc.durum === "RET" && sonuc.durum === "ONAY" && sonuc.hata ? sonuc.hata : d.sonuc.hata ?? sonuc.hata ?? null;
+            const onay = d.sonuc.durum === "ONAY";
+            await this.sonucuIsle(islem, terminal, {
+                ...sonuc,
+                ...d.sonuc,
+                bankaKodu: d.sonuc.bankaKodu ?? null,
+                bankaAdi: d.sonuc.bankaAdi ?? null,
+                onayKodu: onay ? (d.sonuc.onayKodu ?? sonuc.onayKodu ?? null) : null,
+                taksit: onay ? (d.sonuc.taksit ?? sonuc.taksit ?? null) : null,
+                kartNo: onay ? (d.sonuc.kartNo ?? sonuc.kartNo ?? null) : null,
+                hata,
+            }, dbContext);
         }
         const ref = islemler[0]?.surucuRef;
         if (sonuc.durum === "ONAY" && ref && terminal && islemler[0].entegrasyon === "inpos" && islemler[0].mod === "canli") {
@@ -384,7 +436,7 @@ export class PosService {
             void inposSiparisIslendi(ref, csn);
         }
     }
-    /** Bulut sağlayıcının bildirdiği sipariş sonucu (Inpos webhook). Sipariş bilinmiyorsa hiçbir kayda dokunulmaz. */
+    /** Bulut sağlayıcının bildirdiği sipariş sonucu (Inpos webhook, Hugin arka plan tahsilatı). Sipariş bilinmiyorsa hiçbir kayda dokunulmaz. */
     static async disaridanGrupSonuc(ref, sonuc, dbContext) {
         const islemler = await Repo.refIslemleri(ref, dbContext);
         if (!islemler.length)

@@ -78,6 +78,8 @@ export class UserService {
             commissionRate: input.commissionRate ?? 0,
             ratePermType: input.ratePermType ?? "Var",
             ratePermValue: input.ratePermValue ?? 0,
+            milyemPermType: input.milyemPermType ?? "Var",
+            milyemPermValue: input.milyemPermValue ?? 0,
             menuPerms: input.menuPerms ? {
                 mainMenu: input.menuPerms.mainMenu || "Tam Yetki",
                 cashier: input.menuPerms.cashier || "Tam Yetki",

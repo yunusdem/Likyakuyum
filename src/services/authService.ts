@@ -44,6 +44,49 @@ const CONNECTION_MODE_KEY = "kuyumcu_erp_connection_mode";
 const LAST_SERVER_KEY = "kuyumcu_erp_last_server";
 const LAST_DB_KEY = "kuyumcu_erp_last_db";
 
+const PROTECTED_STORAGE_KEYS = new Set([
+  ACCESS_TOKEN_KEY,
+  USER_KEY,
+  DB_SERVER_KEY,
+  DB_NAME_KEY,
+  CONNECTION_MODE_KEY,
+  LAST_SERVER_KEY,
+  LAST_DB_KEY,
+  "kuyumcu_erp_firma_id",
+  "kuyumcu_erp_musteri_no",
+  "kuyumcu_erp_remember_me",
+  "kuyumcu_erp_remember_user",
+]);
+
+function safeSetStorageItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    try {
+      // QuotaExceededError durumunda kritik olmayan büyük localStorage kayıtlarını temizle
+      const entries: { k: string; len: number }[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && !PROTECTED_STORAGE_KEYS.has(k)) {
+          entries.push({ k, len: (localStorage.getItem(k) || "").length });
+        }
+      }
+      entries.sort((a, b) => b.len - a.len);
+      for (const entry of entries) {
+        localStorage.removeItem(entry.k);
+        try {
+          localStorage.setItem(key, value);
+          return;
+        } catch {
+          // Devam et
+        }
+      }
+    } catch {
+      // Ignore storage errors so session verification never crashes
+    }
+  }
+}
+
 export const AuthService = {
   /**
    * Giriş ekranı: müşteri no yazılınca o müşterinin veritabanları
@@ -90,7 +133,7 @@ export const AuthService = {
   async getMe(): Promise<UserProfileDto> {
     const res = await apiClient.get<UserProfileDto>("/auth/me");
     if (res.data) {
-      localStorage.setItem(USER_KEY, JSON.stringify(res.data));
+      safeSetStorageItem(USER_KEY, JSON.stringify(res.data));
     }
     return res.data;
   },
@@ -106,7 +149,7 @@ export const AuthService = {
 
   /** Sunucunun verdiği yeni erişim jetonunu saklar (kurulumda şifre değişiminden sonra) */
   jetonuYenile(accessToken: string | null | undefined): void {
-    if (accessToken) localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    if (accessToken) safeSetStorageItem(ACCESS_TOKEN_KEY, accessToken);
   },
 
   /**
@@ -116,20 +159,20 @@ export const AuthService = {
     try {
       FastLookupCache.clear();
     } catch {}
-    localStorage.setItem(ACCESS_TOKEN_KEY, token);
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    safeSetStorageItem(ACCESS_TOKEN_KEY, token);
+    safeSetStorageItem(USER_KEY, JSON.stringify(user));
     if (dbServer) {
-      localStorage.setItem(DB_SERVER_KEY, dbServer);
-      localStorage.setItem(LAST_SERVER_KEY, dbServer);
+      safeSetStorageItem(DB_SERVER_KEY, dbServer);
+      safeSetStorageItem(LAST_SERVER_KEY, dbServer);
     }
     if (dbName) {
-      localStorage.setItem(DB_NAME_KEY, dbName);
-      localStorage.setItem(LAST_DB_KEY, dbName);
+      safeSetStorageItem(DB_NAME_KEY, dbName);
+      safeSetStorageItem(LAST_DB_KEY, dbName);
     }
     // DB kullanıcı adı / şifresi artık tarayıcıda tutulmaz (bağlantı sunucuda firma kaydından çözülür)
     localStorage.removeItem(DB_USER_KEY);
     localStorage.removeItem(DB_PASSWORD_KEY);
-    localStorage.setItem(CONNECTION_MODE_KEY, "cloud");
+    safeSetStorageItem(CONNECTION_MODE_KEY, "cloud");
   },
 
   /**

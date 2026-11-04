@@ -2,7 +2,7 @@ import { Request } from "express";
 import { getDbPool } from "../../config/mssql.config.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { HizliSatisSqlRepository } from "../../models/hizliSatisSql.repository.js";
-import { KullaniciYetkisi, KurSatiri, caprazKurDenetle, dovizGiseKuru, kurDenetle, sarrafGiseKuru } from "./kullaniciYetkiKural.js";
+import { KullaniciYetkisi, KurSatiri, caprazKurDenetle, dovizGiseKuru, kurDenetle, milyemDenetle, sarrafGiseKuru } from "./kullaniciYetkiKural.js";
 
 /**
  * Fiş içeriğinde kullanıcı yetkileri (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2): banka hesabı seçme, komisyon alma,
@@ -90,6 +90,60 @@ export async function sarrafKurDenetle(req: Request, y: KullaniciYetkisi, dto: a
     const iskontosuz = sayi(s?.iskontosuzKur);
     const kur = iskontosuz > 0 && sayi(s?.kur) <= iskontosuz + 1e-9 ? iskontosuz : sayi(s?.kur);
     const d = kurDenetle(y, gise, kur, `${i + 1}. satırın kuru`, SUNUCU_KUR_PAYI);
+    if (d.hata) throw ApiError.forbidden(d.hata);
+  });
+}
+
+/** Sarraf fişi satır milyemleri milyem yetkisine göre geçerli mi */
+export async function sarrafMilyemDenetle(req: Request, y: KullaniciYetkisi, dto: any): Promise<void> {
+  if (y.milyemYetkisi === "Var") return;
+  const satirlar: any[] = Array.isArray(dto?.satirlar) ? dto.satirlar : [];
+  const odemeSatirlari: any[] = Array.isArray(dto?.odemeSatirlari) ? dto.odemeSatirlari : [];
+  if (!satirlar.length && !odemeSatirlari.length) return;
+
+  const { dbServer, dbName } = baglam(req);
+  const pool = await getDbPool(dbServer, dbName);
+  const r = await pool.request().query(`
+    SELECT PARA_ID, RTRIM(KOD) AS KOD, AD, ISNULL(URUN_TIPI, 0) AS URUN_TIPI,
+           ISNULL(HAS_ORANI, 0) AS HAS_ORANI,
+           ISNULL(HAS_ALIS_KATSAYISI, 0) AS HAS_ALIS_KATSAYISI,
+           ISNULL(HAS_SATIS_KATSAYISI, 0) AS HAS_SATIS_KATSAYISI
+    FROM dbo.TODVZ_PARA WITH (NOLOCK)
+  `);
+  const urunler = new Map<number, any>((r.recordset || []).map((x: any) => [Number(x.PARA_ID), x]));
+
+  const tip = Number(dto?.tip) || 0; // 0: Alış, 1: Satış
+  const odemeTip = tip === 0 ? 1 : 0;
+
+  // Kalemler
+  satirlar.forEach((s, i) => {
+    const urun = urunler.get(Number(s?.urunId));
+    if (!urun) return;
+    const urunTipi = Number(urun.URUN_TIPI);
+    if (urunTipi === 3) return; // Ziynette milyem denetlenmez
+    const refMilyem = tip === 0
+      ? (Number(urun.HAS_ALIS_KATSAYISI) > 0 ? Number(urun.HAS_ALIS_KATSAYISI) : Number(urun.HAS_ORANI))
+      : (Number(urun.HAS_SATIS_KATSAYISI) > 0 ? Number(urun.HAS_SATIS_KATSAYISI) : Number(urun.HAS_ORANI));
+    if (!(refMilyem > 0)) return;
+    const m = sayi(s?.milyem);
+    if (!(m > 0)) return;
+    const d = milyemDenetle(y, refMilyem, m, `${i + 1}. satırın milyemi`);
+    if (d.hata) throw ApiError.forbidden(d.hata);
+  });
+
+  // Ödeme satırları
+  odemeSatirlari.forEach((s, i) => {
+    const urun = urunler.get(Number(s?.paraId));
+    if (!urun) return;
+    const urunTipi = Number(urun.URUN_TIPI);
+    if (urunTipi === 3) return; // Ziynette milyem denetlenmez
+    const refMilyem = odemeTip === 0
+      ? (Number(urun.HAS_ALIS_KATSAYISI) > 0 ? Number(urun.HAS_ALIS_KATSAYISI) : Number(urun.HAS_ORANI))
+      : (Number(urun.HAS_SATIS_KATSAYISI) > 0 ? Number(urun.HAS_SATIS_KATSAYISI) : Number(urun.HAS_ORANI));
+    if (!(refMilyem > 0)) return;
+    const m = sayi(s?.milyem);
+    if (!(m > 0)) return;
+    const d = milyemDenetle(y, refMilyem, m, `Ödeme ${i + 1}. satırın milyemi`);
     if (d.hata) throw ApiError.forbidden(d.hata);
   });
 }

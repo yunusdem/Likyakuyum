@@ -34,6 +34,8 @@ const KOLONLAR = [
   "CAPRAZ_KUR_KONTROLU_YOK",
   "KUR_YETKISI",
   "KUR_TOLERANS_ORANI",
+  "MILYEM_YETKISI",
+  "MILYEM_TOLERANS_ORANI",
   "GISE_KURU_DISINDA_OLABILIR",
   "SAPMA_UYARISI_VERILMESIN",
   "MASAK_UYARISI_VERSIN",
@@ -73,7 +75,12 @@ export async function kullaniciYetkisi(req: Request): Promise<KullaniciYetkisi> 
     .request()
     .input("K", sql.Int, id)
     .input("UN", sql.NVarChar(100), username)
-    .query(`SELECT ${secilen.kolonlar.map((k) => `[${k}]`).join(", ")} FROM dbo.TODVZ_KULLANICI WHERE KULLANICI_ID = @K OR (ISNULL(@UN, '') <> '' AND LOWER(RTRIM(LTRIM([AD]))) = LOWER(@UN))`);
+    .query(`
+      SELECT ${secilen.kolonlar.map((k) => `[${k}]`).join(", ")}
+      FROM dbo.TODVZ_KULLANICI
+      WHERE KULLANICI_ID = @K OR (ISNULL(@UN, '') <> '' AND LOWER(RTRIM(LTRIM([AD]))) = LOWER(@UN))
+      ORDER BY CASE WHEN ISNULL(@UN, '') <> '' AND LOWER(RTRIM(LTRIM([AD]))) = LOWER(@UN) THEN 0 ELSE 1 END
+    `);
   const satir = sonuc.recordset[0];
   if (!satir) {
     if (req.user?.role === "admin") {

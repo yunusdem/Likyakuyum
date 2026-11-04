@@ -145,6 +145,8 @@ export async function belgeCiz(sablon, veri, baslik, gorsel = belgeKlasoruGorsel
             return doc.font(d);
         };
         const X = (x) => sol + x, Y = (y) => ust + y;
+        // "standart" görünüm: harf çifti sıkıştırması yok (tarayıcıdaki e-Fatura görünümüyle aynı harf aralığı)
+        const kern = sahne.standart ? { features: { kern: false } } : {};
         // Katman sırası HTML çiziciyle aynı: filigran → kutu / çizgi → yazı, görsel, karekod.
         const katman = (c) => (c.tip === "filigran" ? 0 : c.tip === "kutu" || c.tip === "cizgi" ? 1 : 2);
         const sirali = sahne.cizimler.map((c, i) => ({ c, i })).sort((a, b) => katman(a.c) - katman(b.c) || a.i - b.i).map(x => x.c);
@@ -164,9 +166,9 @@ export async function belgeCiz(sablon, veri, baslik, gorsel = belgeKlasoruGorsel
                     const x = X(c.x), y = Y(c.y);
                     const parcalar = kalinParcala(c.metin);
                     const duz = parcalar.map(p => p.metin).join("");
-                    const secenek = { width: c.g, align: c.hiza, lineBreak: !c.tekSatir, height: c.tekSatir ? c.boyut * SATIR_ORANI : undefined, ellipsis: c.tekSatir ? true : undefined, lineGap: c.boyut * (SATIR_ORANI - 1.15) };
+                    const secenek = { width: c.g, align: c.hiza, lineBreak: !c.tekSatir, height: c.tekSatir ? c.boyut * SATIR_ORANI : undefined, ellipsis: c.tekSatir ? true : undefined, lineGap: c.boyut * (SATIR_ORANI - 1.15), ...kern };
                     // Satır içi kalın, ortalı / sağa hizalı metinde tek satıra sığıyorsa parçaların toplam genişliğiyle hizalanır.
-                    const parcaGenisligi = () => parcalar.reduce((t, p) => t + F(c, !!(p.kalin || c.kalin)).fontSize(c.boyut).widthOfString(p.metin), 0);
+                    const parcaGenisligi = () => parcalar.reduce((t, p) => t + F(c, !!(p.kalin || c.kalin)).fontSize(c.boyut).widthOfString(p.metin, kern), 0);
                     const hizaliParca = parcalar.length > 1 && c.hiza !== "left" && !c.kalin && parcaGenisligi() <= c.g;
                     if (parcalar.length <= 1 || (c.hiza !== "left" && !hizaliParca)) {
                         F(c, !!(c.kalin || (parcalar.length === 1 && parcalar[0].kalin))).text(duz, x, y, secenek);
@@ -177,12 +179,12 @@ export async function belgeCiz(sablon, veri, baslik, gorsel = belgeKlasoruGorsel
                         let cx = c.hiza === "center" ? x + (c.g - w) / 2 : c.hiza === "right" ? x + c.g - w : x;
                         for (const p of parcalar) {
                             F(c, !!(p.kalin || c.kalin)).fontSize(c.boyut);
-                            doc.text(p.metin, cx, y, { lineBreak: false });
-                            cx += doc.widthOfString(p.metin);
+                            doc.text(p.metin, cx, y, { lineBreak: false, ...kern });
+                            cx += doc.widthOfString(p.metin, kern);
                         }
                     }
                     if (c.altCizgi) {
-                        const w = Math.min(c.g, F(c, !!c.kalin).fontSize(c.boyut).widthOfString(duz));
+                        const w = Math.min(c.g, F(c, !!c.kalin).fontSize(c.boyut).widthOfString(duz, kern));
                         const bx = c.hiza === "center" ? x + (c.g - w) / 2 : c.hiza === "right" ? x + c.g - w : x;
                         doc.moveTo(bx, y + c.boyut + 1.5).lineTo(bx + w, y + c.boyut + 1.5).lineWidth(0.6).strokeColor(c.renk).stroke();
                     }
@@ -191,11 +193,11 @@ export async function belgeCiz(sablon, veri, baslik, gorsel = belgeKlasoruGorsel
                 case "kutu":
                     doc.rect(X(c.x), Y(c.y), c.g, c.h);
                     if (c.zemin && c.kalinlik > 0)
-                        doc.lineWidth(c.kalinlik).fillAndStroke(c.zemin, "#333");
+                        doc.lineWidth(c.kalinlik).fillAndStroke(c.zemin, c.renk ?? "#333");
                     else if (c.zemin)
                         doc.fill(c.zemin);
                     else if (c.kalinlik > 0)
-                        doc.lineWidth(c.kalinlik).strokeColor("#333").stroke();
+                        doc.lineWidth(c.kalinlik).strokeColor(c.renk ?? "#333").stroke();
                     break;
                 case "cizgi":
                     doc.save();
@@ -203,7 +205,7 @@ export async function belgeCiz(sablon, veri, baslik, gorsel = belgeKlasoruGorsel
                         doc.dash(0.8, { space: 1.4 });
                     else if (c.kesikli)
                         doc.dash(2.5, { space: 2 });
-                    doc.moveTo(X(c.x1), Y(c.y1)).lineTo(X(c.x2), Y(c.y2)).lineWidth(c.kalinlik).strokeColor("#000").stroke();
+                    doc.moveTo(X(c.x1), Y(c.y1)).lineTo(X(c.x2), Y(c.y2)).lineWidth(c.kalinlik).strokeColor(c.renk ?? "#000").stroke();
                     doc.restore();
                     break;
                 case "resim": {

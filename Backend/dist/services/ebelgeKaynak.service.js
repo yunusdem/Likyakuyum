@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EbelgeKaynakRepository, dovizMi, kaynakAnahtar, kaynakKimlikCoz, perakendeMi, sarrafMi } from "../models/ebelgeKaynak.repository.js";
-import { NIHAI_TUKETICI, perakendeFaturaGirdisi, perakendeGiderGirdisi } from "./ebelgePerakende.js";
-import { KDV_SIFIR_UYARISI, sarrafAliciVkn, sarrafFaturaGirdisi, sarrafGiderGirdisi, sarrafKaynakTuru, sarrafKdvVar, sarrafPerakendeBicimi, sarrafSatirKdvleri, sarrafToplam } from "./ebelgeSarraf.js";
+import { NIHAI_TUKETICI, PERAKENDE_KDV_SIFIR_UYARISI, perakendeFaturaGirdisi, perakendeKdvVar, perakendeKuyumGiderGirdisi } from "./ebelgePerakende.js";
+import { kuyumNotlari } from "./kuyumFatura.js";
+import { KDV_SIFIR_UYARISI, sarrafAliciVkn, sarrafFaturaGirdisi, sarrafFaturaOnizlemeSatirlari, sarrafGiderGirdisi, sarrafKaynakTuru, sarrafKdvVar, sarrafPerakendeBicimi, sarrafSatirKdvleri, sarrafToplam } from "./ebelgeSarraf.js";
 import { getEDovizCikti, getEDovizStatus, previewEDoviz } from "./ice/ice.edoviz.js";
 import { logger } from "../utils/logger.js";
 import { EbelgeKuyrukService } from "./ebelgeKuyruk.service.js";
@@ -16,6 +17,16 @@ import { PerakendeService } from "./perakende.service.js";
 import { TicariSatisSqlRepository } from "../models/ticariSatisSql.repository.js";
 const temiz = (v) => String(v ?? "").trim();
 export const kaynakParmakizi = (kaynak) => createHash("sha256").update(JSON.stringify(kaynak)).digest("hex");
+/**
+ * Perakende satış faturası: satır yapısı değişmez (EF17); Ticari satış dışında Kütükçü görünümü + yazıyla tutar (EF27).
+ * Perakende fişi yalnız Kuyum (ve ERP) paketinde; Ticari satış fişi (FIS_KAYNAGI 1) aynı tablodan gelir, ona uygulanmaz.
+ */
+export function perakendeSatisGirdisi(kaynak) {
+    const girdi = perakendeFaturaGirdisi(kaynak);
+    if (Number(kaynak.baslik.FIS_KAYNAGI) === 1)
+        return girdi;
+    return { ...girdi, notlar: [...(girdi.notlar || []), ...kuyumNotlari(hesapla(girdi.satirlar).odenecekTutar)], gorunum: "KUYUM" };
+}
 /** Uses the ERP's invoice-line view; never derives gold tax bases from raw gram/currency rows. */
 export function kaynakFaturaGirdisi(kaynak) {
     const b = kaynak.baslik;
@@ -77,8 +88,9 @@ export class EbelgeKaynakService {
             // Önizleme faturaya gidecek satırları gösterir (ad gramla, adet / gram, KDV hariç tutar); dönüşüm kuralına
             // takılan fişte (eksi tutar vb.) fişin ham satırları gösterilir
             let fatura = null;
+            // Satış: kuyum düzeni (altın + işçilik, docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF16); alış: gider pusulası satırları
             try {
-                fatura = sarrafPerakendeBicimi({ baslik: b, satirlar }, '').satirlar;
+                fatura = sarrafKaynakTuru(b.TIP, b.BELGE_TURU) === 1 ? sarrafFaturaOnizlemeSatirlari({ baslik: b, satirlar }) : sarrafPerakendeBicimi({ baslik: b, satirlar }, '').satirlar;
             }
             catch {
                 fatura = null;
@@ -123,7 +135,7 @@ export class EbelgeKaynakService {
         return { tur: "pdf", veri: await this.pdf(k, ctx) };
     }
     static async perakendeOnizlemeGirdisi(k, kullanici, ctx) {
-        const girdi = await this.aliciAdresiniTamamla(perakendeFaturaGirdisi(await EbelgeKaynakRepository.perakendeDetay(k, ctx)), ctx);
+        const girdi = await this.aliciAdresiniTamamla(perakendeSatisGirdisi(await EbelgeKaynakRepository.perakendeDetay(k, ctx)), ctx);
         girdi.senaryo = await this.perakendeSenaryo(girdi.alici.vknTckn, kullanici, ctx);
         return girdi;
     }
@@ -245,13 +257,15 @@ export class EbelgeKaynakService {
     static async perakendeHazirla(k, kullanici, ctx) {
         const kaynak = await EbelgeKaynakRepository.perakendeDetay(k, ctx);
         if (Number(kaynak.baslik.FATURA_TIPI) === 0) {
-            const girdi = await this.aliciAdresiniTamamla(perakendeGiderGirdisi(kaynak), ctx);
+            // Kuyum biçimi (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF18); KDV'li alışta onay ekranda sorulur (uyari → kdvSifir)
+            const girdi = await this.aliciAdresiniTamamla(perakendeKuyumGiderGirdisi(kaynak, { kdvSifir: true }), ctx);
             if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx))
                 throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
             const { ozet } = await EbelgeService.giderPusulasiOnizle(girdi, ctx);
-            return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan || "", belgeTuruAdi: "e-Gider pusulası", parmakizi: kaynakParmakizi(kaynak), senaryo: "GIDERPUSULASI", tutar: ozet.odenecekTutar, durum: "HAZIR" };
+            const uyari = perakendeKdvVar(kaynak.satirlar) ? PERAKENDE_KDV_SIFIR_UYARISI : undefined;
+            return { ...k, belgeNo: girdi.belgeNo, unvan: girdi.alici.unvan || "", belgeTuruAdi: "e-Gider pusulası", parmakizi: kaynakParmakizi(kaynak), senaryo: "GIDERPUSULASI", tutar: ozet.odenecekTutar, durum: "HAZIR", uyari };
         }
-        const girdi = await this.aliciAdresiniTamamla(perakendeFaturaGirdisi(kaynak), ctx);
+        const girdi = await this.aliciAdresiniTamamla(perakendeSatisGirdisi(kaynak), ctx);
         if (await EbelgeSqlRepository.gidenBelgeNoVarMi(girdi.belgeNo, ctx))
             throw ApiError.conflict("Bu belge giden kutusunda zaten mevcut.");
         girdi.senaryo = await this.perakendeSenaryo(girdi.alici.vknTckn, kullanici, ctx);
@@ -262,12 +276,12 @@ export class EbelgeKaynakService {
             parmakizi: kaynakParmakizi(kaynak), senaryo: girdi.senaryo, tutar: sonuc.ozet.odenecekTutar, durum: "HAZIR" };
     }
     /** Perakende fişi gönderimi (P4, P5): Sarraf akışıyla aynı güvenlik sırası; sonuç kaynak kaydına ve fişe yazılır. */
-    static async perakendeGonder(k, parmakizi, senaryo, kullanici, ctx) {
+    static async perakendeGonder(k, parmakizi, senaryo, kullanici, ctx, kdvSifir = false) {
         const kaynak = await EbelgeKaynakRepository.perakendeDetay(k, ctx);
         if (kaynakParmakizi(kaynak) !== parmakizi)
             throw ApiError.conflict("Fiş değişmiş. Yeniden hazırlayın ve onaylayın.");
         const alis = Number(kaynak.baslik.FATURA_TIPI) === 0;
-        const belgeNo = alis ? perakendeGiderGirdisi(kaynak).belgeNo : perakendeFaturaGirdisi(kaynak).belgeNo;
+        const belgeNo = alis ? perakendeKuyumGiderGirdisi(kaynak, { kdvSifir }).belgeNo : perakendeSatisGirdisi(kaynak).belgeNo;
         if (await EbelgeSqlRepository.gidenBelgeNoVarMi(belgeNo, ctx))
             throw ApiError.conflict("Belge giden kutusunda zaten mevcut; yeniden gönderilmedi.");
         await EbelgeKaynakRepository.reserve(k, belgeNo, ctx);
@@ -280,10 +294,10 @@ export class EbelgeKaynakService {
             if (alis) {
                 if (senaryo !== "GIDERPUSULASI")
                     throw ApiError.conflict("Belge türü değişmiş. Yeniden hazırlayın.");
-                sonuc = await EbelgeService.giderPusulasiGonder((await this.aliciAdresiniTamamla(perakendeGiderGirdisi(guncel), ctx)), kullanici, ctx, secenek);
+                sonuc = await EbelgeService.giderPusulasiGonder((await this.aliciAdresiniTamamla(perakendeKuyumGiderGirdisi(guncel, { kdvSifir }), ctx)), kullanici, ctx, secenek);
             }
             else {
-                const girdi = await this.aliciAdresiniTamamla(perakendeFaturaGirdisi(guncel), ctx);
+                const girdi = await this.aliciAdresiniTamamla(perakendeSatisGirdisi(guncel), ctx);
                 girdi.senaryo = await this.perakendeSenaryo(girdi.alici.vknTckn, kullanici, ctx);
                 if (girdi.senaryo !== senaryo)
                     throw ApiError.conflict("Alıcının mükellefiyeti değişmiş. Yeniden hazırlayın.");
@@ -407,7 +421,7 @@ export class EbelgeKaynakService {
         if (dovizMi(k))
             return this.dovizGonder(k, parmakizi, kullanici, ctx);
         if (perakendeMi(k))
-            return this.perakendeGonder(k, parmakizi, senaryo, kullanici, ctx);
+            return this.perakendeGonder(k, parmakizi, senaryo, kullanici, ctx, kdvSifir);
         if (sarrafMi(k))
             return this.sarrafGonder(k, parmakizi, senaryo, kullanici, ctx, kdvSifir);
         throw ApiError.badRequest("Bilinmeyen kaynak belge türü.");

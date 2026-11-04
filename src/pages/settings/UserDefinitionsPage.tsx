@@ -34,6 +34,7 @@ import {
   IconPrinter,
   IconZoomIn,
   IconExchange,
+  IconPercentage,
   IconServer,
   IconPlus,
   IconAlertCircle,
@@ -316,6 +317,8 @@ const defaultNewUserTemplate: UserProfile = {
   commissionRate: "0.00",
   ratePermType: "Var",
   ratePermValue: "0.00",
+  milyemPermType: "Var",
+  milyemPermValue: "0.00",
   iscilikGirisSekli: 0,
 
   menuPerms: {
@@ -388,11 +391,17 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
   const normalizedRateValue = (u.ratePermValue !== undefined && u.ratePermValue !== null)
     ? String(u.ratePermValue)
     : "0.00";
+  const normalizedMilyemType = u.milyemPermType === "Limitli" ? "Yüzde" : (u.milyemPermType || "Var");
+  const normalizedMilyemValue = (u.milyemPermValue !== undefined && u.milyemPermValue !== null)
+    ? String(u.milyemPermValue)
+    : "0.00";
 
   return {
     ...u,
     ratePermType: normalizedRateType,
     ratePermValue: normalizedRateValue,
+    milyemPermType: normalizedMilyemType,
+    milyemPermValue: normalizedMilyemValue,
     appearance: {
       ...defaultNewUserTemplate.appearance,
       ...currentApp,
@@ -425,6 +434,59 @@ const UserDefinitionsPage: React.FC = () => {
 
 
   const autoSaveTimerRef = useRef<any>(null);
+  const autoSavePermTimerRef = useRef<any>(null);
+
+  const autoSavePermissions = useCallback(
+    (patch: Partial<Pick<UserProfile, "ratePermType" | "ratePermValue" | "milyemPermType" | "milyemPermValue">>) => {
+      const updatedUser: UserProfile = {
+        ...currentUser,
+        ...patch,
+      };
+      // 1. Anında localStorage ve AuthContext senkronizasyonu
+      try {
+        const storedUser = AuthService.getUser();
+        if (storedUser) {
+          if (patch.ratePermType !== undefined) (storedUser as any).ratePermType = patch.ratePermType;
+          if (patch.ratePermValue !== undefined) (storedUser as any).ratePermValue = patch.ratePermValue;
+          if (patch.milyemPermType !== undefined) (storedUser as any).milyemPermType = patch.milyemPermType;
+          if (patch.milyemPermValue !== undefined) (storedUser as any).milyemPermValue = patch.milyemPermValue;
+          localStorage.setItem("kuyumcu_erp_user", JSON.stringify(storedUser));
+          window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
+        }
+      } catch { }
+
+      // 2. Mevcut kayıtlı kullanıcıysa veritabanına (TODVZ_KULLANICI) otomatik kaydet
+      if (autoSavePermTimerRef.current) {
+        clearTimeout(autoSavePermTimerRef.current);
+      }
+      if (!isNewRecord && updatedUser.id) {
+        autoSavePermTimerRef.current = setTimeout(async () => {
+          try {
+            const toSave = {
+              ...updatedUser,
+              ratePermType: updatedUser.ratePermType === "Limitli" ? "Yüzde" : (updatedUser.ratePermType || "Var"),
+              ratePermValue: (updatedUser.ratePermType === "Yüzde" || updatedUser.ratePermType === "Limitli")
+                ? String(updatedUser.ratePermValue || "0").replace(/,/g, ".")
+                : "0.00",
+              milyemPermType: updatedUser.milyemPermType === "Limitli" ? "Yüzde" : (updatedUser.milyemPermType || "Var"),
+              milyemPermValue: (updatedUser.milyemPermType === "Yüzde" || updatedUser.milyemPermType === "Limitli")
+                ? String(updatedUser.milyemPermValue || "0").replace(/,/g, ".")
+                : "0.00",
+            };
+            await UserService.updateUser(updatedUser.id, toSave);
+            setUsers((prev) =>
+              prev.map((u) => (String(u.id) === String(updatedUser.id) ? ensureUserSidebarStyle(toSave) : u))
+            );
+            await refreshUser().catch(() => { });
+            window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
+          } catch (err) {
+            console.warn("Otomatik yetki kaydı hatası:", err);
+          }
+        }, 250);
+      }
+    },
+    [currentUser, isNewRecord, refreshUser]
+  );
 
   const autoSaveAppearance = useCallback(
     (newAppearance: UserProfile["appearance"], userToSave?: UserProfile) => {
@@ -678,12 +740,14 @@ const UserDefinitionsPage: React.FC = () => {
         if (selectIndex !== undefined && selectIndex >= 0) {
           targetIdx = Math.min(selectIndex, dbUsers.length - 1);
         } else {
-          // Giriş yapmış kullanıcıyı bul veya ilk kullanıcıyı getir
-          const authIdx = dbUsers.findIndex(
-            (u) =>
-              (authUser?.id && String(u.id) === String(authUser.id)) ||
-              (authUser?.username && u.username?.toLowerCase() === authUser.username.toLowerCase())
-          );
+          // Giriş yapmış kullanıcıyı bul (önce kullanıcı adına göre, yoksa ID'ye göre) veya ilk kullanıcıyı getir
+          const byUsernameIdx = authUser?.username
+            ? dbUsers.findIndex((u) => u.username?.toLowerCase().trim() === authUser.username.toLowerCase().trim())
+            : -1;
+          const byIdIdx = authUser?.id
+            ? dbUsers.findIndex((u) => String(u.id) === String(authUser.id))
+            : -1;
+          const authIdx = byUsernameIdx !== -1 ? byUsernameIdx : byIdIdx;
           targetIdx = authIdx !== -1 ? authIdx : 0;
         }
 
@@ -854,6 +918,12 @@ const UserDefinitionsPage: React.FC = () => {
                 ? String(currentUser.ratePermValue).replace(/,/g, ".")
                 : "0.00")
             : "0.00",
+          milyemPermType: currentUser.milyemPermType === "Limitli" ? "Yüzde" : (currentUser.milyemPermType || "Var"),
+          milyemPermValue: (currentUser.milyemPermType === "Yüzde" || currentUser.milyemPermType === "Limitli")
+            ? (currentUser.milyemPermValue !== undefined && currentUser.milyemPermValue !== null && String(currentUser.milyemPermValue).trim() !== ""
+                ? String(currentUser.milyemPermValue).replace(/,/g, ".")
+                : "0.00")
+            : "0.00",
         };
 
         const updated = await UserService.updateUser(currentUser.id, toSaveUser);
@@ -868,25 +938,38 @@ const UserDefinitionsPage: React.FC = () => {
         } else if (updated) {
           setCurrentUser(ensureUserSidebarStyle(updated));
         }
-        const isCurrentAuthUser =
+        const storedUserStr = localStorage.getItem("kuyumcu_erp_user");
+        let isMatchingAuth =
           (authUser?.id && String(currentUser.id) === String(authUser.id)) ||
           (authUser?.username && currentUser.username && currentUser.username.toLowerCase().trim() === authUser.username.toLowerCase().trim());
-        if (isCurrentAuthUser) {
-          const storedUserStr = localStorage.getItem("kuyumcu_erp_user");
+        if (!isMatchingAuth && storedUserStr) {
+          try {
+            const parsed = JSON.parse(storedUserStr);
+            if ((parsed.id && String(parsed.id) === String(currentUser.id)) ||
+                (parsed.username && currentUser.username && parsed.username.toLowerCase().trim() === currentUser.username.toLowerCase().trim())) {
+              isMatchingAuth = true;
+            }
+          } catch { }
+        }
+        if (isMatchingAuth) {
           if (storedUserStr) {
             try {
               const parsed = JSON.parse(storedUserStr);
               const merged = {
                 ...parsed,
                 ...currentUser,
-                ratePermType: currentUser.ratePermType,
-                ratePermValue: currentUser.ratePermValue,
+                ratePermType: toSaveUser.ratePermType,
+                ratePermValue: toSaveUser.ratePermValue,
+                milyemPermType: toSaveUser.milyemPermType,
+                milyemPermValue: toSaveUser.milyemPermValue,
                 iscilikGirisSekli: currentUser.iscilikGirisSekli,
               };
               localStorage.setItem("kuyumcu_erp_user", JSON.stringify(merged));
             } catch { }
           }
           await refreshUser().catch(() => { });
+          window.dispatchEvent(new Event("storage"));
+          window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
         }
         setTimeout(() => setAlertSuccess(null), 4000);
       } else {
@@ -907,6 +990,12 @@ const UserDefinitionsPage: React.FC = () => {
           ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
             ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
                 ? String(currentUser.ratePermValue).replace(/,/g, ".")
+                : "0.00")
+            : "0.00",
+          milyemPermType: currentUser.milyemPermType === "Limitli" ? "Yüzde" : (currentUser.milyemPermType || "Var"),
+          milyemPermValue: (currentUser.milyemPermType === "Yüzde" || currentUser.milyemPermType === "Limitli")
+            ? (currentUser.milyemPermValue !== undefined && currentUser.milyemPermValue !== null && String(currentUser.milyemPermValue).trim() !== ""
+                ? String(currentUser.milyemPermValue).replace(/,/g, ".")
                 : "0.00")
             : "0.00",
         };
@@ -1549,10 +1638,12 @@ const UserDefinitionsPage: React.FC = () => {
                               }
                               onChange={(e) => {
                                 const val = e.target.value;
+                                const nextVal = (val !== "Yüzde" && val !== "Limitli") ? "0.00" : currentUser.ratePermValue;
                                 updateField("ratePermType", val);
                                 if (val !== "Yüzde" && val !== "Limitli") {
                                   updateField("ratePermValue", "0.00");
                                 }
+                                autoSavePermissions({ ratePermType: val, ratePermValue: nextVal });
                               }}
                               style={{ width: "95px", minWidth: "95px" }}
                               className="bg-light border fw-medium flex-shrink-0"
@@ -1575,12 +1666,71 @@ const UserDefinitionsPage: React.FC = () => {
                                   value={currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null ? String(currentUser.ratePermValue) : ""}
                                   onFocus={(e) => handleInputFocusOrClick(e, "ratePermValue")}
                                   onClick={(e) => handleInputFocusOrClick(e, "ratePermValue")}
-                                  onChange={(e) =>
-                                    updateField("ratePermValue", onlyDecimal(e.target.value))
-                                  }
+                                  onChange={(e) => {
+                                    const clean = onlyDecimal(e.target.value);
+                                    updateField("ratePermValue", clean);
+                                    autoSavePermissions({ ratePermValue: clean });
+                                  }}
                                   className="bg-light border text-end flex-grow-1"
                                   style={{ minWidth: "50px" }}
                                   title="Kur tolerans yüzdesi (%)"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Milyem Yetkisi */}
+                        <div className="p-2 bg-white rounded border">
+                          <div className="d-flex align-items-center gap-1 flex-wrap">
+                            <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0 me-1">
+                              <IconPercentage size={16} /> Milyem yetkisi:
+                            </span>
+                            <Form.Select
+                              size="sm"
+                              disabled={!kartYoneticisi}
+                              value={
+                                currentUser.milyemPermType === "Limitli"
+                                  ? "Yüzde"
+                                  : currentUser.milyemPermType || "Var"
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const nextVal = (val !== "Yüzde" && val !== "Limitli") ? "0.00" : currentUser.milyemPermValue;
+                                updateField("milyemPermType", val);
+                                if (val !== "Yüzde" && val !== "Limitli") {
+                                  updateField("milyemPermValue", "0.00");
+                                }
+                                autoSavePermissions({ milyemPermType: val, milyemPermValue: nextVal });
+                              }}
+                              style={{ width: "95px", minWidth: "95px" }}
+                              className="bg-light border fw-medium flex-shrink-0"
+                            >
+                              <option value="Var">Var</option>
+                              <option value="Yok">Yok</option>
+                              <option value="Yüzde">Yüzde</option>
+                            </Form.Select>
+                            {(currentUser.milyemPermType === "Yüzde" || currentUser.milyemPermType === "Limitli") && (
+                              <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: "75px", maxWidth: "120px" }}>
+                                <span className="small text-secondary fw-bold">%</span>
+                                <Form.Control
+                                  type="text"
+                                  inputMode="decimal"
+                                  data-decimal="true"
+                                  size="sm"
+                                  placeholder="0.00"
+                                  disabled={!kartYoneticisi}
+                                  value={currentUser.milyemPermValue !== undefined && currentUser.milyemPermValue !== null ? String(currentUser.milyemPermValue) : ""}
+                                  onFocus={(e) => handleInputFocusOrClick(e, "milyemPermValue")}
+                                  onClick={(e) => handleInputFocusOrClick(e, "milyemPermValue")}
+                                  onChange={(e) => {
+                                    const clean = onlyDecimal(e.target.value);
+                                    updateField("milyemPermValue", clean);
+                                    autoSavePermissions({ milyemPermValue: clean });
+                                  }}
+                                  className="bg-light border text-end flex-grow-1"
+                                  style={{ minWidth: "50px" }}
+                                  title="Milyem tolerans yüzdesi (%)"
                                 />
                               </div>
                             )}

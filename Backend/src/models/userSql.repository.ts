@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { kurYetkisiKoda, kurYetkisiKoddan, menuDegeriYaz } from "../services/yetki/kullaniciYetkiKural.js";
+import { kurYetkisiKoda, kurYetkisiKoddan, milyemYetkisiKoda, milyemYetkisiKoddan, menuDegeriYaz } from "../services/yetki/kullaniciYetkiKural.js";
 import { getDbPool } from "../config/mssql.config.js";
 import { TodvzKullaniciEntity, UserModel, UserResponseDto } from "../types/user.types.js";
 import { logger } from "../utils/logger.js";
@@ -129,6 +129,8 @@ const toStatId = (val: any): number | null => {
 // önceden 0 "Yok", 1 "Var" okunup yazılıyordu.
 const kurYetkisiToDb = (val: any): number => kurYetkisiKoda(val);
 const kurYetkisiFromDb = (val: any): string => kurYetkisiKoddan(val);
+const milyemYetkisiToDb = (val: any): number => milyemYetkisiKoda(val);
+const milyemYetkisiFromDb = (val: any): string => milyemYetkisiKoddan(val);
 
 /**
  * Menü yetkisi kolonu: kartta NULL olan menü ekrana "" gelir ve dokunulmadan geri gelirse NULL kalır (NULL tam yetkidir,
@@ -156,6 +158,16 @@ export class UserSqlRepository {
         IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'KUR_TOLERANS_ORANI') IS NULL
         BEGIN
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [KUR_TOLERANS_ORANI] FLOAT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_KUR_TOLERANS_ORANI DEFAULT 0;
+        END;
+
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'MILYEM_YETKISI') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [MILYEM_YETKISI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_MILYEM_YETKISI DEFAULT 0;
+        END;
+
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'MILYEM_TOLERANS_ORANI') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [MILYEM_TOLERANS_ORANI] FLOAT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_MILYEM_TOLERANS_ORANI DEFAULT 0;
         END;
       `);
     } catch (e) {
@@ -212,6 +224,8 @@ export class UserSqlRepository {
       commissionRate: entity.KOMISYON_ORANI ?? 0,
       ratePermType: kurYetkisiFromDb(entity.KUR_YETKISI),
       ratePermValue: entity.KUR_TOLERANS_ORANI ?? 0,
+      milyemPermType: milyemYetkisiFromDb(entity.MILYEM_YETKISI),
+      milyemPermValue: entity.MILYEM_TOLERANS_ORANI ?? 0,
       iscilikGirisSekli: Number(entity.ISCILIK_GIRIS_SEKLI ?? 0),
 
       // Right menu permissions
@@ -488,6 +502,8 @@ export class UserSqlRepository {
 
       request.input("KUR_YETKISI", sql.TinyInt, kurYetkisiToDb(user.ratePermType));
       request.input("KUR_TOLERANS_ORANI", sql.Float, (kurYetkisiKoddan(user.ratePermType) === "Yüzde") ? toFloat(user.ratePermValue, 0.0) : 0.0);
+      request.input("MILYEM_YETKISI", sql.TinyInt, milyemYetkisiToDb(user.milyemPermType));
+      request.input("MILYEM_TOLERANS_ORANI", sql.Float, (milyemYetkisiKoddan(user.milyemPermType) === "Yüzde") ? toFloat(user.milyemPermValue, 0.0) : 0.0);
       request.input("KOMISYON_ALMA_YETKISI", sql.Bit, toBit(user.hasCommissionPerm));
       request.input("PROGRAM_ZEMIN_RENGI", sql.Int, colorToDb(app?.programBgColor, 16316664));
       request.input("PROGRAM_YAZI_RENGI", sql.Int, colorToDb(app?.programTextColor, 0));
@@ -573,7 +589,7 @@ export class UserSqlRepository {
           [ENTEGRATOR_KULLANICI_ADI], [ENTEGRATOR_KULLANICI_SIFRESI], [E_BELGE_KULLANILIYOR],
           [MASAK_KULLANICI_ADI], [MASAK_KULLANICI_SIFRESI], [MASAK_UYARISI_VERSIN], [SUPHELI_ISLEMLER_YETKILISI],
           [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK], [SIDEBAR_GORUNUM],
-          [ISCILIK_GIRIS_SEKLI]
+          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI]
         )
         VALUES (
           @AD, @SIFRE, @SISTEM_YONETICISI, @YAZICI_ID, @VEZNE_ID, @KUR_YETKISI,
@@ -592,7 +608,7 @@ export class UserSqlRepository {
           @ENTEGRATOR_KULLANICI_ADI, @ENTEGRATOR_KULLANICI_SIFRESI, @E_BELGE_KULLANILIYOR,
           @MASAK_KULLANICI_ADI, @MASAK_KULLANICI_SIFRESI, @MASAK_UYARISI_VERSIN, @SUPHELI_ISLEMLER_YETKILISI,
           @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK, @SIDEBAR_GORUNUM,
-          @ISCILIK_GIRIS_SEKLI
+          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI
         );
 
         DECLARE @NEW_ID INT = SCOPE_IDENTITY();
@@ -634,6 +650,8 @@ export class UserSqlRepository {
       request.input("VEZNE_ID", sql.Int, validVezneId);
       request.input("KUR_YETKISI", sql.TinyInt, kurYetkisiToDb(user.ratePermType));
       request.input("KUR_TOLERANS_ORANI", sql.Float, (kurYetkisiKoddan(user.ratePermType) === "Yüzde") ? toFloat(user.ratePermValue, 0.0) : 0.0);
+      request.input("MILYEM_YETKISI", sql.TinyInt, milyemYetkisiToDb(user.milyemPermType));
+      request.input("MILYEM_TOLERANS_ORANI", sql.Float, (milyemYetkisiKoddan(user.milyemPermType) === "Yüzde") ? toFloat(user.milyemPermValue, 0.0) : 0.0);
       request.input("KOMISYON_ALMA_YETKISI", sql.Bit, toBit(user.hasCommissionPerm));
 
       request.input("PROGRAM_ZEMIN_RENGI", sql.Int, colorToDb(app?.programBgColor, 16316664));
@@ -768,7 +786,9 @@ export class UserSqlRepository {
           [GISE_KURU_DISINDA_OLABILIR] = @GISE_KURU_DISINDA_OLABILIR,
           [CAPRAZ_KUR_KONTROLU_YOK] = @CAPRAZ_KUR_KONTROLU_YOK,
           [SIDEBAR_GORUNUM] = @SIDEBAR_GORUNUM,
-          [ISCILIK_GIRIS_SEKLI] = @ISCILIK_GIRIS_SEKLI
+          [ISCILIK_GIRIS_SEKLI] = @ISCILIK_GIRIS_SEKLI,
+          [MILYEM_YETKISI] = @MILYEM_YETKISI,
+          [MILYEM_TOLERANS_ORANI] = @MILYEM_TOLERANS_ORANI
         WHERE [KULLANICI_ID] = @userId;
 
         ${UserSqlRepository.BASE_SELECT}

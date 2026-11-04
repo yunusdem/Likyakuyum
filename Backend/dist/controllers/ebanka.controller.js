@@ -3,6 +3,7 @@ import { EBankaAktarimService } from "../services/ebankaAktarim.service.js";
 import { EBankaDenetimService } from "../services/ebankaDenetim.service.js";
 import { EBankaEsitlemeService } from "../services/ebankaEsitleme.service.js";
 import { EBankaMutabakatService } from "../services/ebankaMutabakat.service.js";
+import { EBankaBelgeService } from "../services/ebankaBelge.service.js";
 import { EBankaPosService } from "../services/ebankaPos.service.js";
 import { EBankaVposService } from "../services/ebankaVpos.service.js";
 import { DONUS_SAYFASI, EBankaVposOdemeService } from "../services/ebankaVposOdeme.service.js";
@@ -54,6 +55,20 @@ export class EBankaController {
     });
     static mutabakatFaturaGerekmez = asyncHandler(async (req, res) => {
         return ApiResponse.ok(res, "İşaret kaydedildi.", await EBankaMutabakatService.faturaGerekmez(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
+    });
+    // ─── Kuyum: hareketten doğrudan belge (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF4) ─────────────
+    static kullaniciAdi(req) {
+        const u = req.user;
+        return u?.username || String(u?.userId || "") || "bilinmiyor";
+    }
+    static belgeHazirla = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Belge hazırlandı.", await EBankaBelgeService.hazirla(req.body || {}, EBankaController.kullaniciAdi(req), EBankaController.getDbContext(req)));
+    });
+    static belgeGonder = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Belge gönderildi.", await EBankaBelgeService.gonder(req.body || {}, EBankaController.kullaniciAdi(req), EBankaController.getDbContext(req)));
+    });
+    static belgeBagKaldir = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Belgenin bağı kaldırıldı.", await EBankaBelgeService.bagKaldir(req.body || {}, EBankaController.kullaniciId(req), EBankaController.getDbContext(req)));
     });
     // ─── Sistem denetimi ───────────────────────────────────────────────────────
     static denetim = asyncHandler(async (req, res) => {

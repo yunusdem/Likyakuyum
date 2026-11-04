@@ -33,6 +33,8 @@ const initialUsers = [
         commissionRate: 0.0,
         ratePermType: "Var",
         ratePermValue: 0.0,
+        milyemPermType: "Var",
+        milyemPermValue: 0.0,
         menuPerms: {
             mainMenu: "Tam Yetki",
             cashier: "Tam Yetki",
@@ -107,6 +109,8 @@ const initialUsers = [
         commissionRate: 1.5,
         ratePermType: "Var",
         ratePermValue: 0.5,
+        milyemPermType: "Var",
+        milyemPermValue: 0.0,
         menuPerms: {
             mainMenu: "Kısıtlı",
             cashier: "Tam Yetki",
