@@ -25,9 +25,14 @@ const anahtar = (f) => `${f.fisTuru}:${f.fisId}`;
  * Tek bir hareketin durumu. Saf fonksiyon: veritabanına dokunmaz.
  * Öncelik: virman → "fatura gerektirmez" → eşlenmiş fiş(ler) → aday → fişsiz.
  */
-export const durumBelirle = (h, virman, fisler, adaySayisi) => {
+export const durumBelirle = (h, virman, fisler, adaySayisi, belgeler = []) => {
     if (virman)
         return { durum: "virman", fark: null };
+    // Kuyum: hareketten doğrudan kesilen belge (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF4, EF26) faturalanmış sayılır
+    if (belgeler.length) {
+        const fark = yuvarla(Math.abs(h.tutar) - belgeler.reduce((t, b) => t + b.tutar, 0));
+        return { durum: "faturalandi", fark: Math.abs(fark) < KURUS ? 0 : fark };
+    }
     if (fisler.length) {
         const fark = yuvarla(Math.abs(h.tutar) - fisler.reduce((t, f) => t + f.tutar, 0));
         return { durum: fisler.every((f) => f.faturali) ? "faturalandi" : "faturasiz", fark: Math.abs(fark) < KURUS ? 0 : fark };
@@ -92,9 +97,18 @@ export class EBankaMutabakatService {
         };
         // Eşlenmiş fişler
         let eslesmeler = await EBankaMutabakatSqlRepository.eslesmeler(hareketler.map((h) => h.vomsisId), dbContext);
-        // Adaylar: carisi belli, virman değil, fişi olmayan, "fatura gerektirmez" işaretlenmemiş hareketler için
+        // Kuyum: hareketten doğrudan kesilen belgeler (U1); bağı kullanıcıca kaldırılanlar sayılmaz (U2)
+        const kaldirilan = new Map(hareketler.map((h) => [h.vomsisId, new Set(h.kaldirilanBelgeler)]));
+        const tumBelgeler = await EBankaMutabakatSqlRepository.belgeler(hareketler.map((h) => h.vomsisId), dbContext).catch(() => []);
+        const belgelerByHareket = new Map();
+        for (const b of tumBelgeler) {
+            if (kaldirilan.get(b.vomsisId)?.has(b.uuid.toLowerCase()))
+                continue;
+            belgelerByHareket.set(b.vomsisId, [...(belgelerByHareket.get(b.vomsisId) || []), b]);
+        }
+        // Adaylar: carisi belli, virman değil, fişi / belgesi olmayan, "fatura gerektirmez" işaretlenmemiş hareketler için
         const eslenenHareketler = new Set(eslesmeler.map((e) => e.vomsisId));
-        const aranacak = hareketler.filter((h) => !planlar.get(h.vomsisId).virman && !eslenenHareketler.has(h.vomsisId) && !h.faturaGerekmez && cariBul(h));
+        const aranacak = hareketler.filter((h) => !planlar.get(h.vomsisId).virman && !eslenenHareketler.has(h.vomsisId) && !belgelerByHareket.has(h.vomsisId) && !h.faturaGerekmez && cariBul(h));
         const adaylarByHareket = new Map();
         if (aranacak.length) {
             const gunler = aranacak.map((h) => (h.sistemTarihi || "").slice(0, 10)).sort();
@@ -174,7 +188,8 @@ export class EBankaMutabakatService {
             const adaylar = fisler.length ? [] : adaylarByHareket.get(h.vomsisId) || [];
             const tl = bankaTl(h);
             // Yalnız tam / ±%1 tutan aday "Eşleşme bekliyor" yapar; uzak fişler elle seçilebilir (M14). Fark TL karşılığıyla (M15).
-            const { durum, fark } = durumBelirle({ ...h, tutar: tl ?? Math.abs(h.tutar) }, p.virman, fisler, adaylar.filter((a) => a.uyum !== "uzak").length);
+            const belgeler = belgelerByHareket.get(h.vomsisId) || [];
+            const { durum, fark } = durumBelirle({ ...h, tutar: tl ?? Math.abs(h.tutar) }, p.virman, fisler, adaylar.filter((a) => a.uyum !== "uzak").length, belgeler);
             const c = cariBul(h);
             return {
                 vomsisId: h.vomsisId,
@@ -201,6 +216,7 @@ export class EBankaMutabakatService {
                 fisleKarsilandi: fisleKarsilanan.has(h.vomsisId),
                 fisler,
                 adaylar,
+                belgeler,
             };
         });
         const say = (d) => satirlar.filter((x) => x.durum === d).length;

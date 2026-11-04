@@ -81,6 +81,8 @@ export interface UserModel {
   commissionRate: number | string;
   ratePermType: string;
   ratePermValue: number | string;
+  milyemPermType?: string;
+  milyemPermValue?: number | string;
   iscilikGirisSekli?: number;
 
   menuPerms: UserMenuPermissions;
@@ -126,6 +128,8 @@ export interface TodvzKullaniciEntity {
   VEZNE_ID?: number | string | null;
   KUR_YETKISI?: number | string | null;
   KUR_TOLERANS_ORANI?: number | null;
+  MILYEM_YETKISI?: number | string | null;
+  MILYEM_TOLERANS_ORANI?: number | null;
   KOMISYON_ALMA_YETKISI?: number | boolean | null;
   PROGRAM_ZEMIN_RENGI?: number | string | null;
   PROGRAM_YAZI_RENGI?: number | string | null;

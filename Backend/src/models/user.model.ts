@@ -38,6 +38,8 @@ const initialUsers: UserModel[] = [
     commissionRate: 0.0,
     ratePermType: "Var",
     ratePermValue: 0.0,
+    milyemPermType: "Var",
+    milyemPermValue: 0.0,
 
     menuPerms: {
       mainMenu: "Tam Yetki",
@@ -121,6 +123,8 @@ const initialUsers: UserModel[] = [
     commissionRate: 1.5,
     ratePermType: "Var",
     ratePermValue: 0.5,
+    milyemPermType: "Var",
+    milyemPermValue: 0.0,
 
     menuPerms: {
       mainMenu: "Kısıtlı",

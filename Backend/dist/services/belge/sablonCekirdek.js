@@ -143,7 +143,7 @@ export function ogeKutusu(o, varsayilanBoyut) {
         case "satirlar": return { ust: o.y, h: o.satirlar.length * (boyut * SATIR_ORANI + (o.aralik ?? 2)) };
         case "tablo": return { ust: o.y, h: o.satirlar.length * (o.satirH ?? 15) };
         case "liste": return { ust: o.y, h: Array.isArray(o.sutunlar) && o.sutunlar.length
-                ? (o.baslikSatiri ? 2 : 1) * (o.satirH ?? 15)
+                ? (o.baslikSatiri ? (o.baslikH ?? o.satirH ?? 15) : 0) + (o.satirH ?? 15)
                 : Math.max(1, (o.satirlar || []).length) * (o.satirH ?? 15) };
         case "kutu": return { ust: o.y, h: o.h };
         case "cizgi": return { ust: Math.min(o.y1, o.y2), h: Math.abs(o.y2 - o.y1) };
@@ -277,19 +277,24 @@ function sutunluListe(o, dizi, veri, varsayilanBoyut, yt, c) {
     sutunlar.reduce((x, s) => { xler.push(x); return x + s.g; }, o.x);
     const toplamG = sutunlar.reduce((t, s) => t + s.g, 0);
     const metinY = (y, h, b) => y + (h - b * SATIR_ORANI) / 2;
+    const cRenk = renkGecerli(o.cizgiRenk) ? { renk: o.cizgiRenk } : {};
+    const cK = (v) => (typeof o.cizgiKalinlik === "number" && Number.isFinite(o.cizgiKalinlik) ? o.cizgiKalinlik : v);
     let y = o.y;
     if (o.baslikSatiri) {
         const bb = o.baslikBoyut ?? boyut;
+        const bh = typeof o.baslikH === "number" && Number.isFinite(o.baslikH) && o.baslikH > 0 ? o.baslikH : satirH;
+        const bRenk = renkGecerli(o.baslikRenk) ? o.baslikRenk : "#000";
         if (renkGecerli(o.baslikZemin))
-            c.push({ tip: "kutu", x: o.x, y, g: toplamG, h: satirH, kalinlik: 0, zemin: o.baslikZemin });
+            c.push({ tip: "kutu", x: o.x, y, g: toplamG, h: bh, kalinlik: 0, zemin: o.baslikZemin });
         sutunlar.forEach((s, i) => {
             if (hucre)
-                c.push({ tip: "kutu", x: xler[i], y, g: s.g, h: satirH, kalinlik: 0.5 });
-            c.push({ tip: "metin", x: xler[i] + ic, y: metinY(y, satirH, bb), g: s.g - 2 * ic, metin: doldur(s.baslik || "", veri), boyut: bb, kalin: true, hiza: s.hiza || "left", renk: "#000", altCizgi: false, tekSatir: true });
+                c.push({ tip: "kutu", x: xler[i], y, g: s.g, h: bh, kalinlik: cK(0.5), ...cRenk });
+            const bk = typeof s.baslikKaydir === "number" && Number.isFinite(s.baslikKaydir) ? Math.max(-10, Math.min(10, s.baslikKaydir)) : 0;
+            c.push({ tip: "metin", x: xler[i] + ic + bk, y: metinY(y, bh, bb), g: s.g - 2 * ic, metin: doldur(s.baslik || "", veri), boyut: bb, kalin: true, hiza: s.baslikHiza || s.hiza || "left", renk: bRenk, altCizgi: false, tekSatir: true });
         });
         if (!hucre)
-            c.push({ tip: "cizgi", x1: o.x, y1: y + satirH, x2: o.x + toplamG, y2: y + satirH, kalinlik: 0.6, kesikli: false });
-        y += satirH;
+            c.push({ tip: "cizgi", x1: o.x, y1: y + bh, x2: o.x + toplamG, y2: y + bh, kalinlik: 0.6, kesikli: false });
+        y += bh;
     }
     if (dizi.length === 0 && o.bosMetin) {
         c.push({ tip: "metin", x: o.x, y: metinY(y, satirH, boyut), g: toplamG, metin: doldur(o.bosMetin, veri), boyut, kalin: false, hiza: "center", renk: "#000", altCizgi: false, tekSatir: true });
@@ -304,7 +309,7 @@ function sutunluListe(o, dizi, veri, varsayilanBoyut, yt, c) {
             // Kayıtlar arası ayraç: aralığın ortasına, liste genişliğinde
             if (o.satirAyraci && !hucre) {
                 const ay = y + aralik / 2;
-                c.push({ tip: "cizgi", x1: o.x, y1: ay, x2: o.x + toplamG, y2: ay, kalinlik: 0.5, kesikli: o.satirAyraci === "kesikli", ...(o.satirAyraci === "noktali" ? { noktali: true } : {}) });
+                c.push({ tip: "cizgi", x1: o.x, y1: ay, x2: o.x + toplamG, y2: ay, kalinlik: cK(0.5), kesikli: o.satirAyraci === "kesikli", ...(o.satirAyraci === "noktali" ? { noktali: true } : {}), ...cRenk });
             }
             y += aralik;
         }
@@ -329,8 +334,9 @@ function sutunluListe(o, dizi, veri, varsayilanBoyut, yt, c) {
         const satirToplam = anaH + (altToplam ? altToplam + 1 : 0);
         for (const h of hucreler) {
             if (hucre)
-                c.push({ tip: "kutu", x: xler[h.i], y, g: h.s.g, h: satirToplam, kalinlik: 0.5 });
-            c.push({ tip: "metin", x: xler[h.i] + ic, y: y + ustBosluk, g: h.s.g - 2 * ic, metin: h.metin, boyut, kalin: !!h.s.kalin, hiza: h.s.hiza || "left", renk: "#000", altCizgi: false, tekSatir: h.tahmini <= 1 });
+                c.push({ tip: "kutu", x: xler[h.i], y, g: h.s.g, h: satirToplam, kalinlik: cK(0.5), ...cRenk });
+            const kay = typeof h.s.kaydir === "number" && Number.isFinite(h.s.kaydir) ? Math.max(-10, Math.min(10, h.s.kaydir)) : 0;
+            c.push({ tip: "metin", x: xler[h.i] + ic + kay, y: y + ustBosluk, g: h.s.g - 2 * ic, metin: h.metin, boyut, kalin: !!h.s.kalin, hiza: h.s.hiza || "left", renk: "#000", altCizgi: false, tekSatir: h.tahmini <= 1 });
         }
         sutunAltlari.forEach((liste, i) => {
             let ay = y + anaH;
@@ -427,10 +433,10 @@ function ogeyiHazirla(o, veri, varsayilanBoyut, icG, yt, rulo) {
             break;
         }
         case "kutu":
-            c.push({ tip: "kutu", x: o.x, y: o.y, g: o.g, h: o.h, kalinlik: o.kalinlik ?? 0.6, ...(renkGecerli(o.zemin) ? { zemin: o.zemin } : {}) });
+            c.push({ tip: "kutu", x: o.x, y: o.y, g: o.g, h: o.h, kalinlik: o.kalinlik ?? 0.6, ...(renkGecerli(o.zemin) ? { zemin: o.zemin } : {}), ...(renkGecerli(o.renk) ? { renk: o.renk } : {}) });
             break;
         case "cizgi":
-            c.push({ tip: "cizgi", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, kalinlik: o.kalinlik ?? 0.8, kesikli: !!o.kesikli, ...(o.noktali ? { noktali: true } : {}) });
+            c.push({ tip: "cizgi", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, kalinlik: o.kalinlik ?? 0.8, kesikli: !!o.kesikli, ...(o.noktali ? { noktali: true } : {}), ...(renkGecerli(o.renk) ? { renk: o.renk } : {}) });
             break;
         case "resim":
             c.push({ tip: "resim", dosya: o.dosya, x: o.x, y: o.y, g: o.g ?? 60, h: o.h ?? 60 });
@@ -589,7 +595,7 @@ export function sahneKur(sablon, veri) {
             enAlt = Math.max(enAlt, altKenar(h, sira));
     });
     const yukseklik = kh > 0 ? kh : Math.ceil(enAlt + 2 * kenar + 4);
-    return { genislik: kg, yukseklik, kenar, yaziTipi: yt, cizimler, ogeKutulari, cizimOgesi };
+    return { genislik: kg, yukseklik, kenar, yaziTipi: yt, ...(sablon.yaziGorunumu === "standart" ? { standart: true } : {}), cizimler, ogeKutulari, cizimOgesi };
 }
 /**
  * Üst üste binen öğe çiftleri (bölüm 11, K17): farklı öğelerin basılan içerikleri (yazının gerçek genişliği,

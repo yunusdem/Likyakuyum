@@ -19,6 +19,8 @@ export const TAM_YETKI = {
     caprazKurKontroluYok: true,
     kurYetkisi: "Var",
     kurTolerans: 0,
+    milyemYetkisi: "Var",
+    milyemTolerans: 0,
     giseKuruDisinda: true,
     sapmaUyarisiYok: true,
     masakUyarisi: true,
@@ -26,6 +28,10 @@ export const TAM_YETKI = {
 };
 const evet = (v) => v === true || v === 1 || v === "1" || v === "true";
 const sayi = (v) => {
+    if (typeof v === "string") {
+        const n = Number(v.trim().replace(/,/g, "."));
+        return Number.isFinite(n) ? n : 0;
+    }
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
 };
@@ -48,6 +54,23 @@ export const kurYetkisiKoda = (v) => {
     const t = kurYetkisiKoddan(v);
     return t === "Yok" ? 1 : t === "Esnek" ? 2 : (t === "Yüzde" || t === "Limitli") ? 3 : 0;
 };
+/** MILYEM_YETKISI kodu (0: Var, 1: Yok, 2: Yüzde) */
+export const milyemYetkisiKoddan = (v) => {
+    const s = String(v ?? "").trim();
+    if (s === "Var" || s === "Yok" || s === "Yüzde")
+        return s;
+    if (s === "Limitli")
+        return "Yüzde";
+    if (s === "1")
+        return "Yok";
+    if (s === "2" || s === "3")
+        return "Yüzde";
+    return "Var";
+};
+export const milyemYetkisiKoda = (v) => {
+    const t = milyemYetkisiKoddan(v);
+    return t === "Yok" ? 1 : t === "Yüzde" ? 2 : 0;
+};
 /** Oturum profilindeki kullanıcı (UserProfileDto) → yetki */
 export const yetkiProfilden = (u) => {
     if (!u)
@@ -56,6 +79,8 @@ export const yetkiProfilden = (u) => {
     const base = isAdmin ? TAM_YETKI : null;
     const kurYetkisi = kurYetkisiKoddan(u.ratePermType);
     const kurTolerans = Math.max(0, sayi(u.ratePermValue));
+    const milyemYetkisi = milyemYetkisiKoddan(u.milyemPermType);
+    const milyemTolerans = Math.max(0, sayi(u.milyemPermValue));
     return {
         yonetici: isAdmin,
         menu: { ...(u.menuPerms || (base ? base.menu : {})) },
@@ -72,6 +97,8 @@ export const yetkiProfilden = (u) => {
         caprazKurKontroluYok: u.noCrossRateCheck !== undefined ? evet(u.noCrossRateCheck) : (base ? base.caprazKurKontroluYok : false),
         kurYetkisi,
         kurTolerans,
+        milyemYetkisi,
+        milyemTolerans,
         giseKuruDisinda: evet(u.canBeOutsideCounterRate),
         sapmaUyarisiYok: evet(u.noDeviationWarning),
         masakUyarisi: evet(u.hasMasakWarning),
@@ -85,6 +112,8 @@ export const yetkiSatirdan = (r) => {
     const yonetici = evet(r.SISTEM_YONETICISI);
     const kurYetkisi = kurYetkisiKoddan(r.KUR_YETKISI);
     const kurTolerans = Math.max(0, sayi(r.KUR_TOLERANS_ORANI));
+    const milyemYetkisi = milyemYetkisiKoddan(r.MILYEM_YETKISI);
+    const milyemTolerans = Math.max(0, sayi(r.MILYEM_TOLERANS_ORANI));
     return {
         yonetici,
         menu: {
@@ -112,6 +141,8 @@ export const yetkiSatirdan = (r) => {
         caprazKurKontroluYok: evet(r.CAPRAZ_KUR_KONTROLU_YOK) || yonetici,
         kurYetkisi,
         kurTolerans,
+        milyemYetkisi,
+        milyemTolerans,
         giseKuruDisinda: evet(r.GISE_KURU_DISINDA_OLABILIR) || yonetici,
         sapmaUyarisiYok: evet(r.SAPMA_UYARISI_VERILMESIN) || yonetici,
         masakUyarisi: evet(r.MASAK_UYARISI_VERSIN),
@@ -395,6 +426,95 @@ export const kurDegeriniSinirla = (y, gise, girilen, basamak = 4) => {
 };
 /** Kur alanı ekranda değiştirilebilir mi */
 export const kurDegistirilebilir = (y) => y.kurYetkisi !== "Yok";
+/**
+ * Girilen milyem, kullanıcının milyem yetkisine ve ürünün referans milyemine göre geçerli mi.
+ */
+export const milyemDenetle = (y, refMilyem, girilen, etiket = "Milyem", pay = 0) => {
+    const ref = Number(refMilyem) || 0;
+    const m = Number(girilen) || 0;
+    if (!(ref > 0) || !(m > 0))
+        return { hata: null, sapma: 0, uyari: null };
+    const sapma = ((m - ref) / ref) * 100;
+    const fark = Math.abs(sapma) > 1e-9;
+    if (!fark)
+        return { hata: null, sapma, uyari: null };
+    // 1. Yok: Milyemi değiştiremez
+    if (y.milyemYetkisi === "Yok") {
+        if (Math.abs(sapma) > pay + 1e-9) {
+            return { hata: `${etiket} değiştirme yetkiniz yok (tanımlı milyem: ${ref}).`, sapma, uyari: null };
+        }
+        return { hata: null, sapma: 0, uyari: null };
+    }
+    // 2. Var: İstediğini yazar
+    if (y.milyemYetkisi === "Var") {
+        return { hata: null, sapma, uyari: null };
+    }
+    // 3. Yüzde: Milyemi maksimum bu yüzde kadar değiştirebilir (örn: yüzde 5, milyem 0.995 ise)
+    if (y.milyemYetkisi === "Yüzde" || y.milyemYetkisi === "Limitli") {
+        if (Math.abs(sapma) > y.milyemTolerans + pay + 1e-9) {
+            const alt = parseFloat((ref * (1 - y.milyemTolerans / 100)).toFixed(5));
+            const ust = parseFloat((ref * (1 + y.milyemTolerans / 100)).toFixed(5));
+            return {
+                hata: `${etiket} tanımlı milyemden en çok %${yuzde(y.milyemTolerans)} farklı olabilir (İzin verilen aralık: ${alt} – ${ust}, tanımlı: ${ref}, girilen: ${m}).`,
+                sapma,
+                uyari: null,
+            };
+        }
+        return { hata: null, sapma, uyari: null };
+    }
+    return { hata: null, sapma, uyari: null };
+};
+/**
+ * Kullanıcı yetkisine göre girilen milyem değerini denetler ve sınırlandırır (clamp):
+ * - "Yok": referans milyemi döner (değiştirilemez)
+ * - "Var": girilen değeri olduğu gibi döner (serbest)
+ * - "Yüzde": Tanımlı milyem ± tolerans% aralığı dışındaysa sınıra çeker
+ */
+export const milyemDegeriniSinirla = (y, refMilyem, girilen, basamak = 5) => {
+    const m = Number(girilen) || 0;
+    if (m <= 0)
+        return { milyem: m, degisti: false };
+    // 1. Yok: Milyem değiştirilemez
+    if (y.milyemYetkisi === "Yok") {
+        const ref = Number(refMilyem) || m;
+        return {
+            milyem: ref,
+            degisti: Math.abs(ref - m) > 1e-9,
+            mesaj: "Milyem değiştirme yetkiniz yok.",
+        };
+    }
+    // 2. Var: İstediğini yazar
+    if (y.milyemYetkisi === "Var") {
+        return { milyem: m, degisti: false };
+    }
+    // 3. Yüzde: Tanımlı milyemden en çok tolerans % kadar farklı olabilir
+    if (y.milyemYetkisi === "Yüzde" || y.milyemYetkisi === "Limitli") {
+        const ref = sayi(refMilyem);
+        const tolerans = Math.max(0, sayi(y.milyemTolerans));
+        if (ref > 0 && tolerans >= 0) {
+            const alt = Number((ref * (1 - tolerans / 100)).toFixed(basamak));
+            const ust = Number((ref * (1 + tolerans / 100)).toFixed(basamak));
+            if (m < alt) {
+                return {
+                    milyem: alt,
+                    degisti: true,
+                    mesaj: `Milyem %${tolerans} toleransının altında. Alt sınıra (${alt}) getirildi.`,
+                };
+            }
+            if (m > ust) {
+                return {
+                    milyem: ust,
+                    degisti: true,
+                    mesaj: `Milyem %${tolerans} toleransının üzerinde. Üst sınıra (${ust}) getirildi.`,
+                };
+            }
+        }
+        return { milyem: m, degisti: false };
+    }
+    return { milyem: m, degisti: false };
+};
+/** Milyem alanı ekranda değiştirilebilir mi */
+export const milyemDegistirilebilir = (y) => y.milyemYetkisi !== "Yok";
 /** Menü harfine ek olarak bir yetki kutusu isteyen sayfalar (adres, baştaki "/" olmadan) */
 export const SAYFA_YETKI_KUTULARI = {
     "raporlar/cari-ekstre": "cariBakiye",

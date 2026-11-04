@@ -83,17 +83,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (e.key === "kuyumcu_erp_access_token" && !e.newValue && user) {
         // Token was removed externally or cleared
         triggerSessionExpired();
+      } else if (e.key === "kuyumcu_erp_user" && e.newValue) {
+        try {
+          setUser(JSON.parse(e.newValue));
+        } catch { }
+      }
+    };
+
+    const handleLocalUserSync = () => {
+      const localUser = AuthService.getUser();
+      if (localUser) {
+        setUser(localUser);
       }
     };
 
     window.addEventListener("kuyumcu_session_expired", handleSessionExpiredEvent);
     window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("likya_kullanici_yetki_degisti", handleLocalUserSync);
 
     return () => {
       window.removeEventListener("kuyumcu_session_expired", handleSessionExpiredEvent);
       window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("likya_kullanici_yetki_degisti", handleLocalUserSync);
     };
-  }, [triggerSessionExpired, user]);
+  }, [triggerSessionExpired, user, setUser]);
 
   // Açık modül listesi değişmiş olabilir (sunucu MODUL_KAPALI döndü / lisans yüklendi): profil sorulur, yalnız modül ya da
   // ürün listesi gerçekten değiştiyse kullanıcı güncellenir (her yenilemede açık fiş ekranlarının formu etkilenmesin)
@@ -105,7 +118,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const profil = await AuthService.getMe();
         setUser((eski) => {
-          const anahtar = (u: any) => JSON.stringify([u?.merkez?.moduller ?? null, u?.merkez?.urunler ?? null, u?.gorunumKapali ?? []]);
+          const anahtar = (u: any) => JSON.stringify([
+            u?.merkez?.moduller ?? null,
+            u?.merkez?.urunler ?? null,
+            u?.gorunumKapali ?? [],
+            u?.ratePermType ?? null,
+            u?.ratePermValue ?? null,
+            u?.milyemPermType ?? null,
+            u?.milyemPermValue ?? null,
+          ]);
           return eski && anahtar(eski) === anahtar(profiliGorunumeGoreHazirla(profil)) ? eski : profil;
         });
       } catch {
@@ -115,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const dinle = () => void yenile();
     window.addEventListener("likya_moduller_degisti", dinle);
     return () => window.removeEventListener("likya_moduller_degisti", dinle);
-  }, []);
+  }, [setUser]);
 
   const login = async (credentials: LoginCredentials) => {
     setIsLoading(true);
@@ -138,7 +159,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     if (AuthService.isAuthenticated()) {
       try {
         const profile = await AuthService.getMe();
@@ -147,7 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("Kullanıcı profili yenilenemedi:", err);
       }
     }
-  };
+  }, [setUser]);
 
   return (
     <AuthContext.Provider

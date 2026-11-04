@@ -3,7 +3,7 @@ import { SarrafFisService } from "../services/sarrafFis.service.js";
 import { logger } from "../utils/logger.js";
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
-import { bankaHesabiDenetle, sarrafKurDenetle } from "../services/yetki/fisIcerikYetkisi.js";
+import { bankaHesabiDenetle, sarrafKurDenetle, sarrafMilyemDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 
 export const SarrafFisController = {
@@ -80,9 +80,10 @@ export const SarrafFisController = {
       dto.vezneId = await fisVeznesi(dto.kullaniciId, dbContext, { tur: "sarraf", id: dto.sarrafFisiId });
       // Gün sınırı, tarih ve fiş numarası yetkisi: numara yetkisi yoksa yenide numaratör, düzeltmede kaydın numarası
       const { nolar, yetki } = await fisKayitYetkisi(req, "sarraf", dto.sarrafFisiId, dto.tarih);
-      // Banka hesabı ödemesi ve kur yetkisi (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+      // Banka hesabı ödemesi ve kur / milyem yetkisi (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
       bankaHesabiDenetle(yetki, dto.odemeSatirlari);
       await sarrafKurDenetle(req, yetki, dto);
+      await sarrafMilyemDenetle(req, yetki, dto);
       if (nolar) {
         dto.seriNo = nolar.FIS_NO ?? null;
         dto.fisNo = dto.belgeNo = dto.irsaliyeNo = nolar.IRSALIYE_NO ?? null;

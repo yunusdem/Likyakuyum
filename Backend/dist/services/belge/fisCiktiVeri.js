@@ -6,6 +6,9 @@
  * Alan adları şablondaki `{{...}}` yer tutucularıdır; kılavuzdaki alan listesi buradan üretilir.
  */
 import { ticariFisHesapla, yuvarla2 } from "../ticari/ticariHesap.js";
+import { hesapla } from "../ice/ubl/invoiceBuilder.js";
+import { iscilikSizSatir, kuyumSatirAdi, kuyumUblSatirlari, sarrafKuyumCoz, yalnizYazisi } from "../kuyumFatura.js";
+import { kuyumFaturaTipi, kuyumKodAdi } from "../kuyumKodlari.js";
 const yazi = (v) => (v === null || v === undefined ? "" : String(v).trim());
 export const sayiOku = (v) => {
     if (v === null || v === undefined || v === "")
@@ -234,6 +237,63 @@ function saatYaz(v) {
     const d = v ? new Date(yazi(v)) : null;
     return d && !Number.isNaN(d.getTime()) ? d.toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" }) : "";
 }
+/**
+ * Sarraf fişinin Kütükçü düzenindeki görünümü (EF36): e-Belge'ye gidecek satırlarla AYNI hesap (kuyumFatura.ts). Satışta altın
+ * satırları KDV %0 + kod, işçilik (İşçilik (TL) sütunu) ayrı satırda KDV'li; alışta altın satırları ödenen tutarla. Hesap
+ * kurulamazsa (eksik / tutarsız satır) satırlar fişteki tutarla düz yazılır; çıktı hiçbir zaman durmaz.
+ */
+const miktarTr = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 3 });
+const fiyatTr = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+const oranTr = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+const BIRIM_ADI = { GRM: "Gram", C62: "Adet", KGM: "Kg" };
+export function sarrafFaturaGorunumu(g) {
+    const satim = Number(g.tip) === 1;
+    const ham = (Array.isArray(g.satirlar) ? g.satirlar : [])
+        .filter((l) => sayiOku(l.tutar) > 0)
+        .map((l) => ({ URUN_ADI: yazi(l.urunAdi) || yazi(l.urunKodu), URUN_TIPI: sayiOku(l.urunTipi), MIKTAR: sayiOku(l.miktar), ADET: sayiOku(l.adet),
+        TUTAR: sayiOku(l.tutar), MILYEM: sayiOku(l.milyem), ISCILIK_TUTARI: satim ? sayiOku(l.iscilikTutari) : 0 }));
+    const duz = (h) => {
+        const gramli = h.MIKTAR > 0;
+        const ad = gramli ? kuyumSatirAdi({ ad: h.URUN_ADI, milyem: h.MILYEM, urunTipi: h.URUN_TIPI }) : h.URUN_ADI || "Ürün";
+        const miktar = gramli ? h.MIKTAR : h.ADET || 1;
+        // Alış: gider pusulasındaki gibi gram × (tutar ÷ gram, 6 hane); satış: faturadaki gibi (2 haneli fiyat tutmazsa 1 adet)
+        if (!satim)
+            return { ad, miktar, birimKodu: gramli ? "GRM" : "C62", birimFiyat: Math.round((h.TUTAR / miktar) * 1e6) / 1e6, kdvOrani: 0 };
+        const a = iscilikSizSatir({ ad, miktar, birimKodu: gramli ? "GRM" : "C62", birimFiyat: 0 }, h.TUTAR);
+        return { ad: a.ad, miktar: a.miktar, birimKodu: a.birimKodu, birimFiyat: a.birimFiyat, kdvOrani: 0 };
+    };
+    let ubl;
+    try {
+        ubl = !ham.length ? [] : satim ? kuyumUblSatirlari(sarrafKuyumCoz(ham, ham.map(() => 0), sayiOku(g.kdvOrani), yazi(g.istisnaKodu) || null)) : ham.map(duz);
+    }
+    catch {
+        ubl = ham.map(duz);
+    }
+    const oz = hesapla(ubl);
+    const tl = (n) => `${tr(n)} TL`;
+    return {
+        faturaSatirlari: ubl.map((s, i) => ({
+            sira: i + 1, ad: s.ad, miktarYazi: miktarTr(s.miktar), birim: BIRIM_ADI[s.birimKodu || "C62"] || s.birimKodu || "Adet",
+            fiyatYazi: `${fiyatTr(s.birimFiyat)} TL`, kdvOraniYazi: `%${tr(s.kdvOrani)}`, kdvTutariYazi: tl(oz.satirlar[i].kdvTutari), tutarYazi: tl(oz.satirlar[i].matrah),
+            // Belge Tasarımı'nda hesaplı kolon için sayısal hâlleri
+            miktar: s.miktar, fiyat: s.birimFiyat, kdvOrani: s.kdvOrani, kdvTutari: oz.satirlar[i].kdvTutari, tutar: oz.satirlar[i].matrah,
+        })),
+        toplamSatirlari: [
+            { etiket: "Mal/Hizmet Toplam Tutarı", deger: tl(oz.malHizmetToplam) },
+            ...oz.kdvGruplari.map((k) => ({ etiket: `KDV(${tr(k.matrah)} %${oranTr(k.oran)})`, deger: tl(k.vergi) })),
+            { etiket: "Vergiler Dahil Toplam Tutar", deger: tl(oz.malHizmetToplam + oz.kdvToplam) },
+            { etiket: "Ödenecek Tutar", deger: tl(oz.odenecekTutar) },
+        ],
+        // Kütükçü (GİB onaylı) faturasındaki gibi sebep, belge toplamı için bir kez + o kodu taşıyan her satır için bir kez yazılır
+        istisnalar: satim ? oz.kdvGruplari.filter((k) => k.istisnaKodu).flatMap((k) => {
+            const metin = `${k.istisnaKodu}-${k.istisnaGerekcesi || kuyumKodAdi(k.istisnaKodu)}`;
+            return Array.from({ length: 1 + ubl.filter((s) => s.istisnaKodu === k.istisnaKodu).length }, () => ({ metin }));
+        }) : [],
+        faturaYaziyla: yalnizYazisi(oz.odenecekTutar),
+        // Kütükçü'deki "Fatura Tipi": satışta koda göre (ÖZELMATRAH / İSTİSNA), alışta gider pusulası
+        faturaTipi: satim ? (oz.kdvGruplari.some((k) => k.istisnaKodu) ? kuyumFaturaTipi(oz.kdvGruplari.map((k) => k.istisnaKodu || "")) || "OZELMATRAH" : "SATIS") : "GIDERPUSULASI",
+    };
+}
 export function sarrafFisVerisi(g, firma) {
     const satim = Number(g.tip) === 1;
     const isTeklif = !g.fisId || (g.belgeNo && String(g.belgeNo).toUpperCase().includes("TEKLİF")) || (g.fisNo && String(g.fisNo).toUpperCase().includes("TEKLİF"));
@@ -274,6 +334,31 @@ export function sarrafFisVerisi(g, firma) {
         },
         satirlar, odemeler, odemeVar: odemeler.length > 0,
         toplam: { tutar, has, hasVar: has > 0, odenen, odenenVar: odenen > 0, kalan: Math.abs(kalan), kalanVar: kalan !== 0, yaziyla: fisYaziyla(tutar) },
+        // Kütükçü düzeni (EF36): satış / alış satırları faturadaki gibi, alıcı / satıcı etiketi, ödeme notu
+        ...sarrafFaturaGorunumu(g),
+        musteriEtiketi: satim ? "Alıcı Bilgileri" : "Satıcı Bilgileri",
+        musteriKimlikEtiketi: yazi(g.vergiKimlikNo).replace(/\D/g, "").length === 10 ? "VKN" : "TCKN",
+        firmaKimlikEtiketi: yazi(firma.vkn).replace(/\D/g, "").length === 11 ? "TCKN" : "VKN",
+        firmaIlceIl: [yazi(firma.ilce), yazi(firma.sehir)].filter(Boolean).join("/ "),
+        // Kütükçü yazımı: "DULKADIROGLU/ KAHRAMANMARAŞ /TÜRKİYE" ve "YAMAÇTEPE MAH.   ONİKİŞUBAT/ KAHRAMANMARAŞ"
+        firmaAdresSatiri: [yazi(firma.ilce), yazi(firma.sehir)].filter(Boolean).join("/ ") + (yazi(firma.sehir) || yazi(firma.ilce) ? " /TÜRKİYE" : ""),
+        musteriAdresSatiri: [yazi(g.detayAdres), [yazi(g.detayIlce), yazi(g.detayIl)].filter(Boolean).join("/ ")].filter(Boolean).join("   "),
+        firmaTelSatiri: ["Tel:", yazi(firma.telefon), "Fax:"].filter(Boolean).join(" "),
+        musteriTelSatiri: ["Tel:", yazi(g.detayTelefonNo), "Fax:"].filter(Boolean).join(" "),
+        tarihTire: tarih.replace(/\./g, " - "),
+        tarihTireBitisik: tarih.replace(/\./g, "-"),
+        // Kütükçü (satış faturası) imzasız; alış fişinde satıcının teslim imzası kalır
+        imzaGoster: !satim && !isTeklif,
+        odemeNotu: [
+            // Tek ödemede yalnız ödeme yolu (Kütükçü: "ziraat bankası"); birden çokta tutarlarıyla
+            ...odemeler.map((o) => {
+                const ad = ["TL", "TRY", "TRL"].includes(o.ad.toLocaleUpperCase("tr-TR")) ? "Nakit" : o.ad;
+                return odemeler.length === 1 ? ad : `${ad} ${tr(o.tutar)} TL`;
+            }),
+            ...(kalan !== 0 ? [`Kalan bakiye ${tr(Math.abs(kalan))} TL`] : []),
+        ].join(" · "),
+        // Alışta kod gider pusulasına yazılmaz; çıktıda da gösterilmez
+        kdvKodu: satim ? yazi(g.istisnaKodu) : "",
         qr: `VKN:${firma.vkn}|NO:${fisNo}|TAR:${yazi(g.tarih)}|TOP:${tutar.toFixed(2)}|HAS:${has.toFixed(4)}`,
         onizleme: false, iptal: false,
     };

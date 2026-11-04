@@ -87,6 +87,8 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
         hata("\"yaziBoyutu\" 3–72 arası olmalı.", undefined, "yaziBoyutu");
     if (sablon.yaziTipi !== undefined && !["sans", "mono"].includes(sablon.yaziTipi))
         hata("\"yaziTipi\" \"sans\" ya da \"mono\" olmalı.", undefined, "yaziTipi");
+    if (sablon.yaziGorunumu !== undefined && !["termal", "standart"].includes(sablon.yaziGorunumu))
+        hata("\"yaziGorunumu\" \"termal\" ya da \"standart\" olmalı.", undefined, "yaziGorunumu");
     const kenar = sayiMi(sablon.kenar) ? sablon.kenar : 28;
     const icG = kg - 2 * kenar;
     const icH = kh > 0 ? kh - 2 * kenar : Infinity;
@@ -134,6 +136,8 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
         sayisal("aralik", 0, 100);
         sayisal("kalinlik", 0, 10);
         sayisal("baslikBoyut", 3, 72);
+        sayisal("cizgiKalinlik", 0, 10);
+        sayisal("baslikH", 3, 200);
         if (["satirlar", "tablo", "liste", "kutu"].includes(o.tip))
             sayisal("g", 1, icG + 0.5, true);
         else
@@ -156,7 +160,7 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
             if (sayiMi(genislik) && o.x + genislik > icG + 0.5)
                 hata(`Öğe kâğıdın sağından taşıyor (x + genişlik = ${Math.round(o.x + genislik)} > ${Math.round(icG)}).`, ad, "x");
         }
-        for (const r of ["renk", "zemin", "baslikZemin"])
+        for (const r of ["renk", "zemin", "baslikZemin", "cizgiRenk", "baslikRenk"])
             if (o[r] !== undefined && !renkGecerli(o[r]))
                 hata(`"${r}" #rgb ya da #rrggbb biçiminde renk olmalı.`, ad, r);
         if (o.font !== undefined && !(typeof o.font === "string" && YAZI_TIPLERI[o.font]))
@@ -241,6 +245,11 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
                         }
                         if (s.hiza !== undefined && !HIZALAR.includes(s.hiza))
                             hata("Sütun \"hiza\" left, center ya da right olmalı.", ad, "sutunlar");
+                        if (s.baslikHiza !== undefined && !HIZALAR.includes(s.baslikHiza))
+                            hata("Sütun \"baslikHiza\" left, center ya da right olmalı.", ad, "sutunlar");
+                        for (const a of ["kaydir", "baslikKaydir"])
+                            if (s[a] !== undefined && !(sayiMi(s[a]) && Math.abs(s[a]) <= 10))
+                                hata(`Sütun "${a}" -10 ile 10 arası sayı olmalı.`, ad, "sutunlar");
                         toplam += s.g;
                     }
                     if (sayiMi(o.x) && o.x + toplam > icG + 0.5)
@@ -298,6 +307,7 @@ export function sablonDenetle(ham, tur, varsayilan, gorselAdlari) {
     const temiz = {
         kod: varsayilan.kod, ad: typeof sablon.ad === "string" && sablon.ad.trim() ? sablon.ad.trim().slice(0, 120) : varsayilan.ad,
         kagit: sablon.kagit ?? varsayilan.kagit, kenar, yaziBoyutu: sablon.yaziBoyutu ?? varsayilan.yaziBoyutu, yaziTipi: sablon.yaziTipi ?? varsayilan.yaziTipi,
+        ...((sablon.yaziGorunumu ?? varsayilan.yaziGorunumu) ? { yaziGorunumu: sablon.yaziGorunumu ?? varsayilan.yaziGorunumu } : {}),
         ogeler,
     };
     return { gecerli: true, hatalar: [], sablon: temiz };

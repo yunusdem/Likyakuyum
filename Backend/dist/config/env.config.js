@@ -138,6 +138,11 @@ const envSchema = z.object({
     // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md). Firmanın POS modu admin panelinden gelir; bu değer yalnızca
     // admin veritabanı hiç yapılandırılmamış sunucuda (yerel geliştirme) kullanılır. Canlı mod buradan AÇILAMAZ.
     POS_MOD_YEDEK: z.enum(["kapali", "test"]).default("kapali"),
+    // Hugin PC Link (TSM Gateway). Yönetim panelindeki Hugin ayarı boşsa bunlar kullanılır (test sunucusunda panel kapalı).
+    HUGIN_GW_URL: z.string().default(""),
+    HUGIN_TSM_TOKEN: z.string().default(""),
+    HUGIN_YAZILIM_ID: z.string().default(""),
+    HUGIN_DONANIM_ID: z.string().default(""),
     // Mail gönderimi (firma e-posta doğrulaması). SMTP_HOST ya da SMTP_FROM boşsa mail özelliği kapalıdır.
     // Değerler sunucudaki Backend/.env.local dosyasına yazılır (git izlemez).
     SMTP_HOST: z.string().default(""),

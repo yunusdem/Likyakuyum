@@ -175,6 +175,8 @@ export class AuthService {
             commissionRate: 0,
             ratePermType: "Var",
             ratePermValue: 0,
+            milyemPermType: "Var",
+            milyemPermValue: 0,
             menuPerms: {
                 mainMenu: "Tam Yetki",
                 cashier: "Tam Yetki",
@@ -272,7 +274,14 @@ export class AuthService {
         await OturumService.bitir(sid);
     }
     static async getProfile(userId, dbContext) {
-        const user = await UserSqlRepository.findById(userId, dbContext);
+        let user = await UserSqlRepository.findById(userId, dbContext);
+        const oturumUsername = String(dbContext?.username || "").trim();
+        if (oturumUsername &&
+            (!user || String(user.username || "").trim().toLowerCase() !== oturumUsername.toLowerCase())) {
+            const byUsername = await UserSqlRepository.findByUsername(oturumUsername, dbContext);
+            if (byUsername)
+                user = byUsername;
+        }
         if (!user) {
             throw ApiError.notFound(ResponseMessages.USER_NOT_FOUND);
         }

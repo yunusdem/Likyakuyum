@@ -65,6 +65,8 @@ export interface UserProfileDto {
   commissionRate: number | string;
   ratePermType: string;
   ratePermValue: number | string;
+  milyemPermType?: string;
+  milyemPermValue?: number | string;
   iscilikGirisSekli?: number;
 
   // General Tab - Right Menu Perms

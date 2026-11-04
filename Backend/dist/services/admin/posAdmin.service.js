@@ -7,6 +7,7 @@ import { sifrele } from "../../utils/kripto.utils.js";
 import { PosService } from "../pos/pos.service.js";
 import { MODELLER } from "../pos/pos.types.js";
 import { PosMerkezService } from "../pos/posMerkez.service.js";
+import { HUGIN_VARSAYILAN_DONANIM, HUGIN_VARSAYILAN_GW, huginKimlikTesti } from "../pos/hugin.surucu.js";
 import { inposKimlikTesti, inposWebhookAdresi } from "../pos/inpos.surucu.js";
 import { tokenKimlikTesti } from "../pos/token.surucu.js";
 import { firmaDbContextHazirla } from "./firmaBaglanti.service.js";
@@ -34,6 +35,7 @@ export const POS_SENARYOLARI = [
 const MODEL_ENTEGRASYONU = [
     ...MODELLER.beko.map((model) => ({ model, entegrasyon: "beko", ad: `Beko ${model}` })),
     ...MODELLER.inpos.map((model) => ({ model, entegrasyon: "inpos", ad: `Inpos ${model}` })),
+    ...MODELLER.hugin.map((model) => ({ model, entegrasyon: "hugin", ad: `Hugin ${model}` })),
 ];
 const temiz = (v, azami) => {
     const s = typeof v === "string" ? v.trim() : "";
@@ -98,6 +100,13 @@ export class PosAdminService {
             inposWebhookSifreTanimli: Boolean(a?.inposWebhookSifreSifreli),
             /** Inpos portalına (Webhook Konfigürasyonu › Sipariş Durum Güncelleme) yazılacak adres */
             inposWebhookAdresi: inposWebhookAdresi(a?.donusKok) ?? "",
+            huginKurulu: a ? a.huginKurulu : false,
+            huginGwUrl: a?.huginGwUrl ?? "",
+            huginGwVarsayilan: HUGIN_VARSAYILAN_GW,
+            huginTsmTokenTanimli: Boolean(a?.huginTsmTokenSifreli),
+            huginYazilimId: a?.huginYazilimId ?? "",
+            huginDonanimId: a?.huginDonanimId ?? "",
+            huginDonanimVarsayilan: HUGIN_VARSAYILAN_DONANIM,
             guncellemeTarihi: a?.guncellemeTarihi ?? null,
         };
     }
@@ -108,6 +117,20 @@ export class PosAdminService {
         const inposSifre = temiz(g.inposSifre, 500);
         const inposWebhookKullanici = temiz(g.inposWebhookKullanici, 200);
         const inposWebhookSifre = temiz(g.inposWebhookSifre, 500);
+        const huginTsmToken = temiz(g.huginTsmToken, 8000);
+        const huginYazilimId = temiz(g.huginYazilimId, 20);
+        if (huginYazilimId && !/^\d{10,11}$/.test(huginYazilimId))
+            throw ApiError.badRequest("Hugin yazılım kimliği (X-SoftwareId) firmanızın 10 haneli VKN'si olmalıdır.");
+        const huginAyari = {
+            huginGwUrl: adres(g.huginGwUrl, "Hugin Gateway adresi"),
+            // Yazılım kimliği silindiyse tsmToken da silinir; yeni token girilmediyse kayıtlı olan korunur
+            huginTsmTokenSifreli: !huginYazilimId ? null : huginTsmToken ? sifrele(huginTsmToken) : undefined,
+            huginYazilimId,
+            huginDonanimId: temiz(g.huginDonanimId, 100),
+        };
+        const huginDegisti = Boolean(huginAyari.huginGwUrl || huginTsmToken || huginYazilimId || huginAyari.huginDonanimId);
+        if (huginTsmToken && !huginYazilimId)
+            throw ApiError.badRequest("Hugin tsmToken'ı yazılım kimliğiyle (VKN) birlikte girilmelidir.");
         await kurulu(() => PosAdminSqlRepository.ayarKaydet({
             tokenClientId,
             // Kimlik silindiyse şifresi de silinir; yeni şifre girilmediyse kayıtlı olan korunur
@@ -122,10 +145,22 @@ export class PosAdminService {
             inposWebhookKullanici,
             inposWebhookSifreSifreli: !inposWebhookKullanici ? null : inposWebhookSifre ? sifrele(inposWebhookSifre) : undefined,
         }, yapan.adminId));
+        const huginYazildi = await kurulu(() => PosAdminSqlRepository.huginAyarKaydet(huginAyari));
+        if (!huginYazildi && huginDegisti) {
+            throw ApiError.conflict("Hugin ayar kolonları merkezde kurulu değil. Sürümü yayınlayın (migrations-admin/003_pos_hugin.sql) ya da docs/sql/LIKYA_ADMIN_POS.sql betiğini yeniden çalıştırın.");
+        }
         await AdminLogSqlRepository.islemLogu({
             adminId: yapan.adminId,
             islem: "POS_AYAR_DEGISTI",
-            yeni: { tokenClientId, sifreDegisti: Boolean(secret), inposKullanici, inposSifreDegisti: Boolean(inposSifre), inposWebhookSifreDegisti: Boolean(inposWebhookSifre) },
+            yeni: {
+                tokenClientId,
+                sifreDegisti: Boolean(secret),
+                inposKullanici,
+                inposSifreDegisti: Boolean(inposSifre),
+                inposWebhookSifreDegisti: Boolean(inposWebhookSifre),
+                huginYazilimId,
+                huginTsmTokenDegisti: Boolean(huginTsmToken),
+            },
         });
         return this.ayarGetir();
     }
@@ -189,9 +224,9 @@ export class PosAdminService {
     static async konsolTerminaller(firmaId) {
         return PosEntegrasyonSqlRepository.terminalleriListele(await firmaBaglami(firmaId));
     }
-    /** saglayici: "token" (Beko) ya da "inpos" */
+    /** saglayici: "token" (Beko), "inpos" ya da "hugin" */
     static async kimlikTesti(saglayici) {
-        return { ayrinti: await kurulu(() => (saglayici === "inpos" ? inposKimlikTesti() : tokenKimlikTesti())) };
+        return { ayrinti: await kurulu(() => (saglayici === "inpos" ? inposKimlikTesti() : saglayici === "hugin" ? huginKimlikTesti() : tokenKimlikTesti())) };
     }
     /** gercek=false → sahte cihaz; gercek=true → firmanın modundan bağımsız, gerçek cihaz servisi. */
     static async konsolBaglantiTesti(firmaId, posTerminalId, gercek) {

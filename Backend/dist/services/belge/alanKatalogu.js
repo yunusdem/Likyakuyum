@@ -39,9 +39,11 @@ export function ornekVeri(tur, firma = ORNEK_FIRMA, satim = true) {
             fisId: 1, tip: satim ? 1 : 0, tarih: "2026-10-12", saat: "14:30", seriNo: "S", belgeNo: "000001", unvan: "AHMET YILMAZ", vergiKimlikNo: "11111111111",
             detayTelefonNo: "0532 000 00 00", detayAdres: "Cumhuriyet Mah. No: 1", detayIl: "Muğla", detayIlce: "Fethiye", detayPasaportNo: "U1234567",
             vezneKod: "01", kullaniciAdi: "Kasiyer",
-            satirlar: [{ urunKodu: "B22", urunAdi: "22 Ayar Bilezik", miktar: 12.5, milyem: 916, hasGram: 11.45, kur: 3950, tutar: 45230.5, aciklama: "Burgu model" }],
-            odemeSatirlari: [{ paraKodu: "TL", miktar: 45230.5, tutar: 45230.5 }],
-            toplamTutar: 45230.5, toplamHas: 11.45, odenenTutar: 45000, kalanTutar: 230.5,
+            // Örnek Kütükçü faturasının rakamları (EF36): 3,9 gr 22 ayar, İşçilik (TL) 346,60 → altın 22.253,40 + işçilik 346,60 + KDV 69,32
+            satirlar: [{ urunKodu: "B22", urunAdi: "22 Ayar Bilezik", miktar: 3.9, milyem: 916, hasGram: 3.5724, kur: 5812.65, tutar: 22669.32, aciklama: "Burgu model",
+                    iscilikTutari: satim ? 346.6 : 0, urunTipi: 1 }],
+            odemeSatirlari: [{ paraKodu: "TL", miktar: 22669.32, tutar: 22669.32 }],
+            toplamTutar: 22669.32, toplamHas: 3.5724, odenenTutar: 22669.32, kalanTutar: 0, istisnaKodu: "805",
         }, firma);
     }
     if (tur === "TICARI_FIS_80" || tur === "TICARI_FIS_A4") {
@@ -129,9 +131,18 @@ export const ALAN_ACIKLAMALARI = {
     islemEtiketi: "SATILAN / SATIN ALINAN", urunEtiketi: "\"Satılan Ürün\" / \"Satın Alınan Ürün\"", dosyaNo: "Yetkili müessese dosya no",
     qrBuyuk: "Büyük karekod içeriği", qrKucuk: "Erişim karekodu içeriği", hesapVkn: "ICE hesap VKN", kod: "Şablon kodu",
     sira: "Listede satır sırası (1, 2, …)",
+    // Sarraf fişi Kütükçü düzeni (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF36)
+    faturaSatirlari: "Faturadaki gibi satırlar (altın %0 + kod, işçilik KDV'li) — liste", "s.kdvOraniYazi": "\"%20,00\"",
+    "s.kdvTutariYazi": "\"69,32 TL\"", "s.tutarYazi": "\"22.253,40 TL\"", toplamSatirlari: "Mal/Hizmet, KDV(…), Vergiler Dahil, Ödenecek — liste",
+    "s.etiket": "Toplam satırı adı", "s.deger": "Toplam satırı tutarı", istisnalar: "Vergi istisna / özel matrah sebepleri — liste", "s.metin": "\"805-Altından mamül…\"",
+    faturaYaziyla: "\"YALNIZ … TÜRK LİRASI … KURUŞ\"", musteriEtiketi: "\"Alıcı Bilgileri\" / \"Satıcı Bilgileri\"", musteriKimlikEtiketi: "\"TCKN\" / \"VKN\"",
+    firmaKimlikEtiketi: "Firmanın \"TCKN\" / \"VKN\" etiketi", firmaIlceIl: "\"DULKADİROĞLU/ KAHRAMANMARAŞ\"", tarihTire: "\"31 - 10 - 2026\"",
+    odemeNotu: "Ödemeler ve kalan bakiye tek satırda", kdvKodu: "Fişin e-Belge KDV kodu (805 …)",
+    faturaTipi: "\"OZELMATRAH\" / \"ISTISNA\" / \"GIDERPUSULASI\"", firmaAdresSatiri: "\"İLÇE/ İL /TÜRKİYE\"", musteriAdresSatiri: "Adres + \"İLÇE/ İL\"",
+    firmaTelSatiri: "\"Tel: … Fax:\"", musteriTelSatiri: "\"Tel: … Fax:\"", tarihTireBitisik: "\"31-10-2026\"", imzaGoster: "Alışta dolu (imza alanları)",
     "s.kod": "Para / ürün kodu", "s.ad": "Ürün / para adı", "s.miktar": "Miktar", "s.kur": "Kur / birim fiyat", "s.tl": "TL karşılığı", "s.usd": "ABD doları karşılığı",
     "s.usdVar": "USD karşılığı varsa dolu", "s.sira": "Satır no", "s.aciklama": "Açıklama", "s.adet": "Adet", "s.milyem": "Milyem", "s.has": "Has gram",
-    "s.tutar": "Tutar", "s.hasVar": "Has gram varsa dolu", "s.miktarYazi": "\"12,50 gr\" / \"2 ad\"", "s.ayarKur": "Milyem ya da kur", "s.adetYazi": "Adet (yoksa -)",
+    "s.tutar": "Tutar", "s.fiyat": "Birim fiyat (sayı)", "s.hasVar": "Has gram varsa dolu", "s.miktarYazi": "\"12,50 gr\" / \"2 ad\"", "s.ayarKur": "Milyem ya da kur", "s.adetYazi": "Adet (yoksa -)",
     "s.miktarGr": "Gram (yoksa -)", "s.milyemYazi": "Milyem (yoksa -)", "s.hasYazi": "Has gram (yoksa -)", "s.kurYazi": "Birim fiyat (yoksa -)",
     "s.barkod": "Barkod", "s.ayar": "Ayar", "s.birim": "Birim", "s.gram": "Gram", "s.birimFiyat": "Birim fiyat", "s.kdvOrani": "KDV oranı", "s.kdvTutari": "KDV tutarı",
     "s.toplam": "Satır toplamı", "s.barkodAyar": "\"barkod | ayar\"", "s.gramYazi": "\"7,25g\"",
@@ -139,7 +150,7 @@ export const ALAN_ACIKLAMALARI = {
     kdvDokumu: "KDV oranlarına göre döküm (liste)", "s.oran": "KDV oranı", "s.matrah": "KDV hariç tutar (iskontolar düşülmüş)", "s.kdv": "KDV tutarı",
     "s.kdvDahilFiyat": "KDV dahil birim fiyat", "s.brut": "Miktar × fiyat (KDV dahil)", "s.iskontoYazi": "Satır iskontosu (\"%10\" / \"5,00 TL\")",
     "s.iskontoVar": "Satır iskontosu varsa dolu", "s.satirIskonto": "Satır iskontosu tutarı (KDV dahil)", "s.kodBarkod": "\"kod | barkod\"",
-    "s.fiyatYazi": "\"3 x 25,00\"", "s.tur": "Ödeme türü (Nakit, Kredi kartı …)",
+    "s.fiyatYazi": "\"3 x 25,00\" (Ticari) / \"5.706 TL\" (Sarraf)", "s.tur": "Ödeme türü (Nakit, Kredi kartı …)",
     "toplam.kalem": "Kalem sayısı", "toplam.miktar": "Toplam miktar", "toplam.brut": "Brüt toplam (KDV dahil, iskontosuz)", "toplam.satirIskonto": "Satır iskontoları toplamı",
     "toplam.fisIskonto": "Fiş iskontosu", "toplam.fisIskontoVar": "Fiş iskontosu varsa dolu", "toplam.paraUstu": "Para üstü", "toplam.paraUstuVar": "Para üstü varsa dolu",
 };

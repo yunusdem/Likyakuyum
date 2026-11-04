@@ -1,4 +1,4 @@
-import { GiseKuru, KullaniciYetkisi, kurDenetle } from "../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { GiseKuru, KullaniciYetkisi, kurDenetle, milyemDenetle } from "../../Backend/src/services/yetki/kullaniciYetkiKural";
 
 /**
  * Fiş kaydından önce satır kurlarının kullanıcının kur yetkisine göre denetimi (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2):
@@ -15,6 +15,22 @@ export const kurlariDenetle = (y: KullaniciYetkisi, satirlar: KurSatirDenetimi[]
   const uyarilar: string[] = [];
   for (const s of satirlar) {
     const d = kurDenetle(y, s.gise, s.kur, s.etiket);
+    if (d.hata) return { hata: d.hata, uyarilar: [] };
+    if (d.uyari) uyarilar.push(d.uyari);
+  }
+  return { hata: null, uyarilar };
+};
+
+export interface MilyemSatirDenetimi {
+  etiket: string;
+  refMilyem: number | null | undefined;
+  milyem: number;
+}
+
+export const milyemleriDenetle = (y: KullaniciYetkisi, satirlar: MilyemSatirDenetimi[]): { hata: string | null; uyarilar: string[] } => {
+  const uyarilar: string[] = [];
+  for (const s of satirlar) {
+    const d = milyemDenetle(y, s.refMilyem, s.milyem, s.etiket);
     if (d.hata) return { hata: d.hata, uyarilar: [] };
     if (d.uyari) uyarilar.push(d.uyari);
   }
