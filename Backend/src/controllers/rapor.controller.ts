@@ -5,6 +5,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { kopyaKaydet, zamanDamgasi } from "../services/firmaKlasoru.js";
+import { oturumModulleri } from "../middlewares/modul.middleware.js";
 
 const tarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-AA-GG olmalı").optional();
 const saat = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Saat SS:DD olmalı").transform(s => (s.length === 5 ? s + ":00" : s)).optional();
@@ -53,7 +54,11 @@ export class RaporController {
     };
   }
   private static kullanici(req: Request) { return req.user?.username || "rapor"; }
-  private static parametreler(req: Request) {
+  /** Sorgu parametreleri + oturumun açık modül listesi (sektörlü raporlar bölümleri lisansa göre süzer; kullanıcıdan gelmez) */
+  private static async parametreler(req: Request) {
+    return { ...RaporController.parametreleriDogrula(req), acikModuller: await oturumModulleri(req) };
+  }
+  private static parametreleriDogrula(req: Request) {
     const p = parametreSema.safeParse(req.query);
     if (!p.success) throw ApiError.badRequest(p.error.issues[0]?.message || "Rapor parametreleri geçersiz.", p.error.format());
     if (p.data.baslangic && p.data.bitis && p.data.baslangic > p.data.bitis) throw ApiError.badRequest("Başlangıç tarihi bitişten sonra olamaz.");
@@ -78,7 +83,7 @@ export class RaporController {
 
   /** GET /api/v1/rapor/:kod/veri?... — ekran grid'i */
   public static veri = asyncHandler(async (req: Request, res: Response) => {
-    const v = await RaporService.veri(RaporController.kod(req), RaporController.parametreler(req), RaporController.getDbContext(req));
+    const v = await RaporService.veri(RaporController.kod(req), await RaporController.parametreler(req),RaporController.getDbContext(req));
     return ApiResponse.ok(res, v.sinirAsildi ? `Rapor ${v.toplamKayit} satır üretiyor; üst sınır aşıldı. Tarih aralığını daraltın.` : "Rapor verisi.",
       { satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, ekDipnot: v.ekDipnot, sinirAsildi: !!v.sinirAsildi, toplamKayit: v.toplamKayit, tanim: v.tanim, ozetSatirlar: v.ozetSatirlar || [] });
   });
@@ -92,7 +97,7 @@ export class RaporController {
 
   /** GET /api/v1/rapor/:kod/pdf?...[&indir=1] */
   public static pdf = asyncHandler(async (req: Request, res: Response) => {
-    const { pdf, tanim } = await RaporService.pdf(RaporController.kod(req), RaporController.parametreler(req), RaporController.kullanici(req), RaporController.getDbContext(req));
+    const { pdf, tanim } = await RaporService.pdf(RaporController.kod(req), await RaporController.parametreler(req),RaporController.kullanici(req), RaporController.getDbContext(req));
     const indir = ["1", "true"].includes(String(req.query.indir || ""));
     // İndirilen çıktının kopyası firma klasörüne (docs/FIRMA_OZEL_AYARLAR_YOL_HARITASI.md, K8); önizleme kaydedilmez
     if (indir) void kopyaKaydet(RaporController.getDbContext(req), "Raporlar", `${tanim.kod}_${zamanDamgasi()}.pdf`, pdf);
@@ -125,7 +130,7 @@ export class RaporController {
 
   /** GET /api/v1/rapor/:kod/excel?... */
   public static excel = asyncHandler(async (req: Request, res: Response) => {
-    const { xlsx, tanim } = await RaporService.excel(RaporController.kod(req), RaporController.parametreler(req), RaporController.kullanici(req), RaporController.getDbContext(req));
+    const { xlsx, tanim } = await RaporService.excel(RaporController.kod(req), await RaporController.parametreler(req),RaporController.kullanici(req), RaporController.getDbContext(req));
     void kopyaKaydet(RaporController.getDbContext(req), "Raporlar", `${tanim.kod}_${zamanDamgasi()}.xlsx`, xlsx);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${tanim.kod}.xlsx"`);

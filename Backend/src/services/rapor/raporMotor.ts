@@ -55,6 +55,24 @@ export function bicimle(v: any, bicim?: RaporBicim): string {
   }
 }
 
+/**
+ * Satırları tanımdaki bölüme göre ardışık parçalara ayırır (PDF, Excel ve ekran aynı kuralı kullanır). Tanımda bölüm yoksa ya da veride
+ * tek bölüm varsa başlıksız tek parça döner → rapor bölümsüz görünür (docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md K10).
+ */
+export function bolumlereAyir(tanim: RaporTanim, satirlar: Record<string, any>[]): { baslik: string; satirlar: Record<string, any>[] }[] {
+  const b = tanim.bolum;
+  if (!b || !satirlar.length) return [{ baslik: "", satirlar }];
+  const parcalar: { baslik: string; satirlar: Record<string, any>[] }[] = [];
+  let i = 0;
+  while (i < satirlar.length) {
+    const anahtar = satirlar[i][b.anahtar];
+    const uyeler: Record<string, any>[] = [];
+    while (i < satirlar.length && satirlar[i][b.anahtar] === anahtar) uyeler.push(satirlar[i++]);
+    parcalar.push({ baslik: doldur(b.baslik, uyeler[0]).trim(), satirlar: uyeler });
+  }
+  return parcalar.length > 1 ? parcalar : [{ baslik: "", satirlar }];
+}
+
 export interface RaporPdfGirdi {
   tanim: RaporTanim;
   satirlar: Record<string, any>[];
@@ -189,16 +207,15 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
 
     sayfaBasligi();
 
-    if (!g.satirlar.length) {
-      N().fontSize(9).fillColor("#666").text("Seçilen ölçütlerde kayıt bulunamadı.", sol, y + 10, { width: genislik, align: "center" });
-      y += 30;
-    } else if (g.tanim.grup) {
+    /** Bir bölümün (ya da bölümsüz raporun tamamının) gövdesi: gruplu ise grup başlığı + satırlar + ara toplam, değilse düz satırlar */
+    const govde = (satirlar: Record<string, any>[]) => {
       const grup = g.tanim.grup;
+      if (!grup) { for (const s of satirlar) satirYaz(s); return; }
       let i = 0;
-      while (i < g.satirlar.length) {
-        const anahtar = g.satirlar[i][grup.anahtar];
+      while (i < satirlar.length) {
+        const anahtar = satirlar[i][grup.anahtar];
         const uyeler: Record<string, any>[] = [];
-        while (i < g.satirlar.length && g.satirlar[i][grup.anahtar] === anahtar) uyeler.push(g.satirlar[i++]);
+        while (i < satirlar.length && satirlar[i][grup.anahtar] === anahtar) uyeler.push(satirlar[i++]);
         const altBaslik = grup.altBaslik ? doldur(grup.altBaslik, uyeler[0]).trim() : "";
         yeniSayfaGerekliyse(satirH * (altBaslik ? 4 : 3));
         y += 6; zebra = 0;
@@ -209,10 +226,26 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
         for (const s of uyeler) satirYaz(s);
         if (grup.altToplam !== false && kolonlar.some(k => k.toplam)) toplamSatiri(uyeler, "Ara toplam", "#eef0f3");
       }
-      if (grup.genelToplam !== false && kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
+    };
+
+    if (!g.satirlar.length) {
+      N().fontSize(9).fillColor("#666").text("Seçilen ölçütlerde kayıt bulunamadı.", sol, y + 10, { width: genislik, align: "center" });
+      y += 30;
     } else {
-      for (const s of g.satirlar) satirYaz(s);
-      if (kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
+      // Bölümler (sektör): veride birden fazla bölüm varsa her biri başlık + gövde + bölüm toplamı; tek bölümde rapor bölümsüz çizilir
+      const bolumler = bolumlereAyir(g.tanim, g.satirlar);
+      for (const b of bolumler) {
+        if (b.baslik) {
+          yeniSayfaGerekliyse(satirH * 4);
+          y += 8; zebra = 0;
+          doc.rect(sol, y, genislik, satirH + 2).fillColor("#dde3ea").fill();
+          doc.fillColor("#111"); hucre(b.baslik, sol, y + 1, genislik, "left", true, boyut + 2);
+          y += satirH + 4;
+        }
+        govde(b.satirlar);
+        if (b.baslik && g.tanim.bolum?.altToplam !== false && kolonlar.some(k => k.toplam)) { y += 2; toplamSatiri(b.satirlar, `${b.baslik} toplamı`, "#e4e8ee"); }
+      }
+      if (g.tanim.grup?.genelToplam !== false && kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
     }
 
     // Özet bölümü (Crystal alt raporu karşılığı): başlık + kendi kolonları + satırlar + toplam

@@ -414,21 +414,37 @@ export const RaporPage: React.FC = () => {
   const kolonlar = veri?.tanim.kolonlar || tanim?.kolonlar || [];
   const doldur = (sablon: string, satir: Record<string, any>) => sablon.replace(/\{\{\s*([\w.]+)\s*(?:\|\w+)?\s*\}\}/g, (_m, yol) => String(satir[yol] ?? ""));
   const gridSatirlari = useMemo(() => {
-    type G = { tur: "grup" | "satir" | "araToplam" | "toplam"; satir: Record<string, any>; etiket?: string; altEtiket?: string };
+    type G = { tur: "bolum" | "grup" | "satir" | "araToplam" | "bolumToplam" | "toplam"; satir: Record<string, any>; etiket?: string; altEtiket?: string };
     if (!veri || !tanim) return [] as G[];
     const toplamli = kolonlar.some(k => k.toplam);
     const toplam = (s: Record<string, any>[]) => { const t: Record<string, any> = {}; for (const k of kolonlar) if (k.toplam) t[k.anahtar] = s.reduce((a, r) => a + (Number(r[k.anahtar]) || 0), 0); return t; };
     const cikti: G[] = [];
-    if (tanim.grup) {
+    const govde = (satirlar: Record<string, any>[]) => {
+      if (!tanim.grup) { for (const s of satirlar) cikti.push({ tur: "satir", satir: s }); return; }
       let i = 0; const g = tanim.grup;
-      while (i < veri.satirlar.length) {
-        const a = veri.satirlar[i][g.anahtar]; const uyeler: Record<string, any>[] = [];
-        while (i < veri.satirlar.length && veri.satirlar[i][g.anahtar] === a) uyeler.push(veri.satirlar[i++]);
+      while (i < satirlar.length) {
+        const a = satirlar[i][g.anahtar]; const uyeler: Record<string, any>[] = [];
+        while (i < satirlar.length && satirlar[i][g.anahtar] === a) uyeler.push(satirlar[i++]);
         cikti.push({ tur: "grup", satir: uyeler[0], etiket: doldur(g.baslik, uyeler[0]), altEtiket: g.altBaslik ? doldur(g.altBaslik, uyeler[0]).trim() : "" });
         for (const s of uyeler) cikti.push({ tur: "satir", satir: s });
         if (g.altToplam !== false && toplamli) cikti.push({ tur: "araToplam", satir: toplam(uyeler), etiket: `Ara toplam (${uyeler.length})` });
       }
-    } else for (const s of veri.satirlar) cikti.push({ tur: "satir", satir: s });
+    };
+    // Bölümler (sektör; sunucu motoruyla aynı kural): birden fazla bölüm varsa başlık + gövde + bölüm toplamı, tek bölümde bölümsüz
+    const bolumler: { baslik: string; satirlar: Record<string, any>[] }[] = [];
+    if (tanim.bolum && veri.satirlar.length) {
+      let i = 0; const b = tanim.bolum;
+      while (i < veri.satirlar.length) {
+        const a = veri.satirlar[i][b.anahtar]; const uyeler: Record<string, any>[] = [];
+        while (i < veri.satirlar.length && veri.satirlar[i][b.anahtar] === a) uyeler.push(veri.satirlar[i++]);
+        bolumler.push({ baslik: doldur(b.baslik, uyeler[0]).trim(), satirlar: uyeler });
+      }
+    }
+    if (bolumler.length > 1) for (const b of bolumler) {
+      cikti.push({ tur: "bolum", satir: b.satirlar[0], etiket: b.baslik });
+      govde(b.satirlar);
+      if (tanim.bolum?.altToplam !== false && toplamli) cikti.push({ tur: "bolumToplam", satir: toplam(b.satirlar), etiket: `${b.baslik} toplamı` });
+    } else govde(veri.satirlar);
     if (toplamli && veri.satirlar.length && tanim.grup?.genelToplam !== false) cikti.push({ tur: "toplam", satir: toplam(veri.satirlar), etiket: `GENEL TOPLAM (${veri.satirlar.length})` });
     return cikti;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -545,10 +561,11 @@ export const RaporPage: React.FC = () => {
                   </tr></thead>
                   <tbody>
                     {gridSatirlari.map((g, i) => {
+                      if (g.tur === "bolum") return <tr key={i} className="table-dark"><td colSpan={kolonlar.length}><span className="fw-bold">{g.etiket}</span></td></tr>;
                       if (g.tur === "grup") return <tr key={i} className="table-secondary"><td colSpan={kolonlar.length}>
                         <span className="fw-bold">{g.etiket}</span>{g.altEtiket && <small className="d-block text-muted fst-italic">{g.altEtiket}</small>}</td></tr>;
                       const kalin = g.tur !== "satir";
-                      return <tr key={i} className={g.tur === "toplam" ? "table-primary fw-bold" : g.tur === "araToplam" ? "table-light fw-semibold" : undefined}>
+                      return <tr key={i} className={g.tur === "toplam" ? "table-primary fw-bold" : g.tur === "bolumToplam" ? "table-info fw-bold" : g.tur === "araToplam" ? "table-light fw-semibold" : undefined}>
                         {kolonlar.map((k, ki) => {
                           const v = g.satir[k.anahtar];
                           const metin = kalin && !k.toplam ? (ki === 0 || (!raporSayisalMi(k.bicim) && !kolonlar.slice(0, ki).some(x => !raporSayisalMi(x.bicim))) ? g.etiket : "") : raporBicimle(v, k.bicim);

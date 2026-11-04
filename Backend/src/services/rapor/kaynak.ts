@@ -63,7 +63,7 @@ export const YEREL_GUN = (a: string) => `CAST(DATEADD(hour, 3, ${a}) AS date)`;
 const FATURA_ODEME_MIKTARI = `ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0))`;
 
 /** 01.10.2026 öncesi perakende satırlarının stok parası: kaydetme anındaki eşleştirmeyle aynı (ayar / ürün adı → TODVZ_PARA). `s` = TODVZ_FATURA_SATIRI */
-const PERAKENDE_SATIR_PARASI = (s: string) => `
+export const PERAKENDE_SATIR_PARASI = (s: string) => `
        OUTER APPLY (SELECT UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(${s}.AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', '')))) C) PA
        OUTER APPLY (SELECT TOP 1 P.PARA_ID FROM dbo.TODVZ_PARA P WHERE UPPER(LTRIM(RTRIM(P.KOD))) = UPPER(LTRIM(RTRIM(${s}.AYAR))) OR UPPER(LTRIM(RTRIM(P.KOD))) = PA.C
          OR UPPER(LTRIM(RTRIM(P.KOD))) = UPPER(LTRIM(RTRIM(ISNULL(${s}.URUN_ADI, '')))) OR UPPER(LTRIM(RTRIM(P.AD))) = UPPER(LTRIM(RTRIM(ISNULL(${s}.URUN_ADI, ''))))) P1

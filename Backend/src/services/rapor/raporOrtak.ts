@@ -30,6 +30,11 @@ export interface RaporParametreler {
   hedefParaId?: number;
   /** Barkodlu altın raporları (docs/BARKODLU_ALTIN_RAPORLARI.md): ürün kartındaki ayar / grup kodu / üretici firma / banko; boş = tümü */
   urunAyar?: string; urunGrup?: string; urunUretici?: string; urunBanko?: string;
+  /**
+   * Oturumun firmasına açık modül kodları (modul.middleware oturumModulleri); denetleyici doldurur, kullanıcıdan gelmez.
+   * null / undefined = kısıt yok. Sektörlü raporlar bölümleri buna göre süzer (docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md K10).
+   */
+  acikModuller?: string[] | null;
 }
 
 /** Seçim listesi filtresi: `kolon IN (…)`; liste boşsa boş metin. `onek` parametre adlarının çakışmaması içindir. */

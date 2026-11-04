@@ -71,6 +71,12 @@ export interface RaporTanim {
   kagit: "A4" | "A4-yatay";
   parametreler: RaporParametre[];
   kolonlar: RaporKolon[];
+  /**
+   * Bölüm: grubun üstünde ikinci seviye (sektörlü raporlar, docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md K1/K10). Satırlar bölüm anahtarına göre
+   * sıralı gelir; her bölümün başında başlık, sonunda `toplam:true` kolonların bölüm toplamı basılır. Veride tek bölüm varsa başlık ve bölüm
+   * toplamı çizilmez (rapor bölümsüz görünür). Tanımda `grup` varsa gruplar bölümün içinde çalışır.
+   */
+  bolum?: { anahtar: string; baslik: string; altToplam?: boolean };
   /** Grup anahtarı (satır alanı) ve grup başlığı biçimi: "{{vezneAd}} ({{vezneKod}})" */
   grup?: { anahtar: string; baslik: string; altToplam?: boolean;
     /** Grup başlığının altında ikinci satır (Cari Ekstre: adres · telefon · VKN) — {{alan}} yer tutucuları */
@@ -100,6 +106,10 @@ export interface RaporSonucVeri {
   /** Üst sınır aşıldıysa true → PDF/Excel üretilmez, ekrana uyarı */
   sinirAsildi?: boolean;
   toplamKayit: number;
+  /** Sorgunun seçime göre değiştirdiği kolon başlıkları (anahtar → başlık; ana ve özet kolonları): "Net kâr (USD)" gibi */
+  kolonBasliklari?: Record<string, string>;
+  /** Sorgunun bu çalıştırmada kaldırdığı kolonlar (anahtar; ana ve özet): karşılık parası seçilmemişken karşılık kolonları gibi */
+  kolonCikar?: string[];
 }
 
 export const RAPOR_UST_SINIR = 5000;

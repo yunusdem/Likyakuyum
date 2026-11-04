@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import type { RaporTanim, RaporFirma } from "./raporTanim.js";
-import { bicimle } from "./raporMotor.js";
+import { bicimle, bolumlereAyir } from "./raporMotor.js";
 import { raporIsiCalistir } from "./raporIsHavuzu.js";
 
 /**
@@ -64,11 +64,13 @@ export async function raporExcelUret(p: RaporExcelGirdi): Promise<Buffer> {
     yaz(t, true);
   };
 
-  if (p.tanim.grup) {
-    const grup = p.tanim.grup; let i = 0;
-    while (i < p.satirlar.length) {
-      const anahtar = p.satirlar[i][grup.anahtar]; const uyeler: Record<string, any>[] = [];
-      while (i < p.satirlar.length && p.satirlar[i][grup.anahtar] === anahtar) uyeler.push(p.satirlar[i++]);
+  const govde = (satirlar: Record<string, any>[]) => {
+    const grup = p.tanim.grup;
+    if (!grup) { for (const s of satirlar) yaz(s); return; }
+    let i = 0;
+    while (i < satirlar.length) {
+      const anahtar = satirlar[i][grup.anahtar]; const uyeler: Record<string, any>[] = [];
+      while (i < satirlar.length && satirlar[i][grup.anahtar] === anahtar) uyeler.push(satirlar[i++]);
       const row = ws.getRow(r++); ws.mergeCells(row.number, 1, row.number, kolonlar.length);
       row.getCell(1).value = grup.baslik.replace(/\{\{\s*([\w.]+)\s*(?:\|\w+)?\s*\}\}/g, (_m, yol) => String(uyeler[0][yol] ?? ""));
       row.getCell(1).font = { bold: true }; row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
@@ -79,7 +81,17 @@ export async function raporExcelUret(p: RaporExcelGirdi): Promise<Buffer> {
       for (const s of uyeler) yaz(s);
       if (grup.altToplam !== false && kolonlar.some(k => k.toplam)) toplam(uyeler, `Ara toplam (${uyeler.length})`);
     }
-  } else for (const s of p.satirlar) yaz(s);
+  };
+  // Bölümler (sektör): birden fazla bölüm varsa başlık satırı + gövde + bölüm toplamı (PDF ile aynı kural)
+  for (const b of bolumlereAyir(p.tanim, p.satirlar)) {
+    if (b.baslik) {
+      const row = ws.getRow(r++); ws.mergeCells(row.number, 1, row.number, kolonlar.length);
+      row.getCell(1).value = b.baslik; row.getCell(1).font = { bold: true, size: 12 };
+      row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDE3EA" } };
+    }
+    govde(b.satirlar);
+    if (b.baslik && p.tanim.bolum?.altToplam !== false && kolonlar.some(k => k.toplam)) toplam(b.satirlar, `${b.baslik} toplamı`);
+  }
   if (p.tanim.grup?.genelToplam !== false && kolonlar.some(k => k.toplam)) toplam(p.satirlar, `GENEL TOPLAM (${p.satirlar.length} kayıt)`);
 
   // Özet bölümü ayrı sayfada (kolonları farklı olduğu için ana sayfanın sütun biçimlerini bozmaz)

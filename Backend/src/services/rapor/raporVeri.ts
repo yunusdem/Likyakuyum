@@ -15,6 +15,7 @@ import { ANALIZ_SORGULARI } from "./veri/analiz.js";
 import { MASAK_SORGULARI } from "./veri/masak.js";
 import { YONETICI_SORGULARI } from "./veri/yonetici.js";
 import { ETIKET_SORGULARI } from "./veri/etiket.js";
+import { KARZAR_SORGULARI } from "./veri/karZarar.js";
 
 /**
  * Rapor veri katmanı — yalnızca SELECT. Hiçbir tabloya yazılmaz, SP çağrılmaz.
@@ -35,6 +36,7 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
   ...MASAK_SORGULARI,
   ...YONETICI_SORGULARI,
   ...ETIKET_SORGULARI,
+  ...KARZAR_SORGULARI,
 
   /** R1 Cari bakiye raporu — tarih aralığı (yönetici 14.09.2026): borç/alacak aralıktaki hareketler, bakiye bitiş tarihi itibarıyla; para ve has bazında; sıfır bakiyeliler hariç (kullanıcı kararı 19.09.2026) */
   async CARBAK1(pool, p, t) {
@@ -240,61 +242,6 @@ export const RAPOR_SORGULARI: Record<string, (pool: sql.ConnectionPool, p: Rapor
   },
 
   /** R6 Kâr/zarar faaliyet analizi — ağırlıklı ortalama maliyet */
-  async KARZAR1(pool, p, t) {
-    if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
-    const req = pool.request().input("bit", sql.Date, p.bitis);
-    const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
-    const res = await req.query(`
-      SELECT F.FIS_ID fisId, F.TARIH tarih, F.TIP tip, S.PARA_ID paraId, RTRIM(P.KOD) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo,
-        S.MIKTAR miktar, S.KUR kur, S.TUTAR tutar, S.KOMISYON komisyon, S.BMV bmv, S.KMV kmv, S.KDV kdv
-      FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
-      WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date)<=@bit ${f}
-        AND RTRIM(UPPER(P.KOD)) NOT IN ('TL','TRY')
-      ORDER BY ISNULL(P.SIRA_NO,99), P.KOD, F.TARIH, F.FIS_ID, S.SATIR_NO;`);
-    const bas = new Date(p.baslangic);
-    const ozet = new Map<number, any>();
-    const stok = new Map<number, { miktar: number; maliyet: number; sonOrt: number }>();
-    for (const r of res.recordset) {
-      const id = Number(r.paraId);
-      if (!ozet.has(id)) ozet.set(id, { paraId: id, paraKod: r.paraKod, paraAd: r.paraAd, devirMiktar: 0, alisMiktar: 0, alisTutar: 0, satisMiktar: 0, satisTutar: 0, satisMaliyeti: 0, brutKar: 0, komisyon: 0, vergiler: 0, netKar: 0, ortMaliyet: 0, kalanMiktar: 0 });
-      const o = ozet.get(id), s = stok.get(id) || { miktar: 0, maliyet: 0, sonOrt: 0 };
-      const miktar = Number(r.miktar) || 0, tutar = Number(r.tutar) || 0, kur = Number(r.kur) || 0;
-      const donemde = new Date(r.tarih) >= bas;
-      if (!donemde) o.devirMiktar += Number(r.tip) === 0 ? miktar : -miktar; // devir = dönem öncesi alışlar − satışlar
-      if (Number(r.tip) === 0) { // alış: stoka maliyetiyle girer
-        s.miktar += miktar; s.maliyet += tutar; if (s.miktar > 0) s.sonOrt = s.maliyet / s.miktar;
-        if (donemde) { o.alisMiktar += miktar; o.alisTutar += tutar; }
-      } else { // satış: ağırlıklı ortalama maliyetle stoktan düşer
-        const ort = s.miktar > 0 ? s.maliyet / s.miktar : (s.sonOrt || kur);
-        const maliyet = miktar * ort;
-        s.miktar -= miktar; s.maliyet -= maliyet; if (s.miktar <= 0.0000001) { s.miktar = Math.max(s.miktar, 0); s.maliyet = s.miktar * ort; } s.sonOrt = ort;
-        if (donemde) { o.satisMiktar += miktar; o.satisTutar += tutar; o.satisMaliyeti += maliyet; o.brutKar += tutar - maliyet; }
-      }
-      if (donemde) { o.komisyon += Number(r.komisyon) || 0; o.vergiler += (Number(r.bmv) || 0) + (Number(r.kmv) || 0) + (Number(r.kdv) || 0); }
-      stok.set(id, s);
-    }
-    const satirlar = [...ozet.entries()].map(([id, o]) => { const s = stok.get(id)!; return { ...o, ortMaliyet: s.miktar > 0 ? s.maliyet / s.miktar : s.sonOrt, kalanMiktar: s.miktar, netKar: o.brutKar + o.komisyon - o.vergiler,
-      ortAlisKuru: o.alisMiktar > 0 ? o.alisTutar / o.alisMiktar : 0, ortSatisKuru: o.satisMiktar > 0 ? o.satisTutar / o.satisMiktar : 0 }; })
-      .filter(o => o.alisMiktar || o.satisMiktar || o.komisyon || Math.abs(o.devirMiktar) > 0.000001);
-    // Eski "KÂR / ZARAR FAALİYET ANALİZİ" — para başına K (kur) / M (miktar) / T (TL) satırları × Devir, Alış, Satış, Kapanış ve E / F / T (Evalüasyon, Faaliyet, Toplam).
-    // Formüller eski rapordan birebir: @OrtalamaAlisKuru (alış yoksa devir kuru), @OrtalamaSatisKuru, @DevirTutar, @KapanisTutar, @Evaluasyon, @Faaliyet, @EvaluasyonFaaliyetToplami.
-    // Devir kuru = dönem başından önceki günün, kapanış kuru = son tarihin kur tablosundaki efektif alış kuru; mevcut = devir + alış − satış (fişlerden).
-    const devirKur = await kurTarihte(pool, gunOnce(p.baslangic)), kapanisKur = await kurTarihte(pool, p.bitis);
-    const kmt: Record<string, any>[] = []; let tE = 0, tF = 0, tDevir = 0, tAlis = 0, tSatis = 0, tKapanis = 0;
-    for (const o of satirlar as any[]) { const dk = devirKur.get(o.paraId) ?? 0, kk = kapanisKur.get(o.paraId) ?? 0, mevcut = o.devirMiktar + o.alisMiktar - o.satisMiktar;
-      const ortAlis = !o.alisMiktar || !o.alisTutar ? dk : o.alisTutar / o.alisMiktar, ortSatis = o.satisMiktar ? o.satisTutar / o.satisMiktar : 0;
-      const E = !o.alisMiktar ? o.devirMiktar * (kk - dk) : o.devirMiktar * (ortAlis - dk) + mevcut * (kk - ortAlis), F = o.satisMiktar * (ortSatis - ortAlis);
-      kmt.push({ para: o.paraKod, kmt: "K", devir: dk, alis: ortAlis, satis: ortSatis, kapanis: kk, eft: "E", sonuc: E },
-        { para: "", kmt: "M", devir: o.devirMiktar, alis: o.alisMiktar, satis: o.satisMiktar, kapanis: mevcut, eft: "F", sonuc: F },
-        { para: "", kmt: "T", devir: o.devirMiktar * dk, alis: o.alisTutar, satis: o.satisTutar, kapanis: mevcut * kk, eft: "T", sonuc: E + F });
-      tE += E; tF += F; tDevir += o.devirMiktar * dk; tAlis += o.alisTutar; tSatis += o.satisTutar; tKapanis += mevcut * kk; }
-    if (kmt.length) kmt.push({ para: "TOPLAM (TL)", kmt: "T", devir: tDevir, alis: tAlis, satis: tSatis, kapanis: tKapanis, eft: "E", sonuc: tE },
-      { para: "", kmt: "", devir: null, alis: null, satis: null, kapanis: null, eft: "F", sonuc: tF }, { para: "", kmt: "", devir: null, alis: null, satis: null, kapanis: null, eft: "T", sonuc: tE + tF });
-    return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm dövizler"}`,
-      "Rapor altındaki tablo — KMT: Kur, Miktar, TL · EFT: Evalüasyon, Faaliyet, Toplam. Faaliyet = satış miktarı × (ortalama satış − ortalama alış); evalüasyon = devrin ve mevcudun kur farkı (alış yoksa devir × (kapanış − devir kuru)). Üstteki satırlar ağırlıklı ortalama maliyet yöntemini kullanır; iki yöntemin kârı farklı olabilir.",
-      kmt);
-  },
-
   /**
    * R7 Vergiler ve komisyon — eski "VERGİLER VE KOMİSYON RAPORU" metrikleri. Rapor tipi (`birlestir`): "detay" (varsayılan) fiş satırı — tarih, seri no, vezne, belge no,
    * para, tutar, KMV, komisyon %, komisyon, BSMV, tip (A / S); "toplam" gün × para özeti (önceki düzen). Gruplama (`siralama`): vezne / para (eski "Döviz bazında") / gün

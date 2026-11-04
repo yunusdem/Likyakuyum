@@ -4,7 +4,7 @@
  * Çalıştır: cd Backend && npx tsx scripts/rapor-motor-test.ts
  * Çıktı: ../tmp/rapor-test/<KOD>.pdf / .xlsx
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { raporTanimOku, raporPdf, bicimle } from "../src/services/rapor/raporMotor.js";
 import { raporExcel } from "../src/services/rapor/raporExcel.js";
@@ -46,11 +46,13 @@ function ornekSatirlar(kod: string, adet: number) {
 // Tanım tutarlılığı: seed ↔ sorgu ↔ frontend menüsü; parametre tipleri ve zorunlu ekleri
 const TIPLER = ["tarih", "tarihAralik", "saatAralik", "vezne", "para", "cari", "fisTipi", "kurSecimi", "kmt", "cariAralik", "vezneAralik", "paraCoklu", "cariCoklu", "vezneCoklu", "hareketTipi", "secim", "sayi", "listeCoklu", "metin"];
 const KAYNAKLAR = ["hesap", "istatistik", "meslek", "sektor", "kullanici", "banka"];
-const menuMetni = readFileSync(path.resolve("../src/services/raporService.ts"), "utf8");
-const menuKodlari = [...menuMetni.matchAll(/\{ kod: "([A-Z0-9_]+)", yol: "([a-z0-9-]+)"/g)].map(m => m[1]);
+// Menü artık Backend/src/services/rapor/raporMenu.ts'te (ön yüz oradan dışa aktarır). Motor dışı kendi sayfası olan maddeler
+// (ör. XMLDOS1 — rapor/<kod>.json yok) seed ile karşılaştırmaya girmez.
+const { RAPOR_MENU } = await import("../src/services/rapor/raporMenu.js");
+const menuKodlari = RAPOR_MENU.map(m => m.kod).filter(kod => existsSync(path.resolve("rapor", `${kod}.json`)));
 esit("seed ↔ sorgu", RAPOR_SEED.map(r => r.kod).sort().join(), Object.keys(RAPOR_SORGULARI).sort().join());
 esit("seed ↔ menü", RAPOR_SEED.map(r => r.kod).sort().join(), [...menuKodlari].sort().join());
-esit("menü yolları benzersiz", new Set([...menuMetni.matchAll(/yol: "([a-z0-9-]+)"/g)].map(m => m[1])).size, menuKodlari.length);
+esit("menü yolları benzersiz", new Set(RAPOR_MENU.map(m => m.yol)).size, RAPOR_MENU.length);
 for (const seed of RAPOR_SEED) {
   const t = raporTanimOku(seed.kod);
   const sorunlar: string[] = [];
@@ -63,7 +65,8 @@ for (const seed of RAPOR_SEED) {
     if (p.tip === "secim" && !p.secenekler?.length) sorunlar.push(`${p.ad}: seçenek yok`);
     if (p.tip === "listeCoklu" && !KAYNAKLAR.includes(p.kaynak || "")) sorunlar.push(`${p.ad}: kaynak geçersiz`);
   }
-  const anahtarlar = t.kolonlar.map(k => k.anahtar);
+  // Aynı anahtar farklı koşullarda (kip:ozet / kip:detay) olabilir; kosulUygula sonrası tek kalır. Aynı koşulda yinelenirse sorun.
+  const anahtarlar = t.kolonlar.map(k => `${k.anahtar}|${k.kosul ?? ""}`);
   if (new Set(anahtarlar).size !== anahtarlar.length) sorunlar.push("yinelenen kolon anahtarı");
   if (!t.kolonlar.some(k => k.pdf !== false)) sorunlar.push("PDF'te kolon kalmıyor");
   esit(`${seed.kod} tanım tutarlı`, sorunlar.join("; "), "");
@@ -86,7 +89,8 @@ for (const seed of RAPOR_SEED) {
   const { kasaNakitSatirlari, yuruyenBakiye } = await import("../src/services/rapor/veri/kasa.js");
   const tl = { id: 1, kod: "TL" };
   const tlH = kasaNakitSatirlari({ paraId: 1, paraKod: "TL", meblag: 1000, kdv: 200, tip: 1, aciklama: "Kira" }, tl);
-  esit("kasa TL hareketi tek satır, KDV dahil", `${tlH.length}|${tlH[0].cikis}|${tlH[0].giris}`, "1|1200|0");
+  // 01.10.2026 denetimi: KDV, TL hareketinde de ayrı TL satırıdır (eski VODVZR_KASA_HAREKET_LISTESI gibi)
+  esit("kasa TL hareketi + ayrı KDV satırı", `${tlH.length}|${tlH[0].cikis}|${tlH[0].giris}|${tlH[1].paraKod}:${tlH[1].cikis}|${tlH[1].kdvSatiri}`, "2|1000|0|TL:200|true");
   const usdH = kasaNakitSatirlari({ paraId: 2, paraKod: "USD", meblag: 100, kdv: 50, tip: 0, aciklama: "Komisyon" }, tl);
   esit("kasa döviz hareketi + TL KDV satırı", usdH.map(x => `${x.paraKod}:${x.giris}`).join(","), "USD:100,TL:50");
   esit("kasa KDV satırı açıklaması", usdH[1].aciklama, "KDV — Komisyon");
@@ -125,6 +129,65 @@ for (const seed of RAPOR_SEED) {
   esit("ort. maliyet 1. satış", `${h[2].ortMaliyet}|${h[2].maliyet}`, "41|6150");
   esit("ort. maliyet 2. satış", `${h[4].ortMaliyet}|${h[4].maliyet}`, "43|4300");
   esit("stoksuz satışta maliyet = satış kuru", `${h[5].ortMaliyet}|${h[5].maliyet}`, "48|480");
+}
+// Sektörlü Kâr / Zarar (docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md): ortak havuz, sabit maliyetli satırlar, bölüm süzme, KMT/EFT + TL + seçilen para bloğu
+{
+  const { karZararHesapla, acikBolumler } = await import("../src/services/rapor/veri/karZarar.js");
+  const USD = { paraId: 2, paraKod: "USD", paraAd: "Amerikan Doları", siraNo: 1 }, HAS = { paraId: 5, paraKod: "HAS", paraAd: "Has altın", siraNo: 5 };
+  const bos = { komisyon: 0, vergiler: 0, iscilik: 0, zamanMs: 0 };
+  const h = [
+    { ...USD, ...bos, bolum: 1 as const, gun: "2026-10-20", tip: 0, miktar: 100, tutar: 4000, kur: 40 },     // dönem öncesi alış (devir)
+    { ...USD, ...bos, bolum: 1 as const, gun: "2026-10-25", tip: 1, miktar: 20, tutar: 820, kur: 41 },       // dönem öncesi satış (devir 80, havuz 80 @40)
+    { ...USD, ...bos, bolum: 2 as const, gun: "2026-11-02", tip: 0, miktar: 120, tutar: 5040, kur: 42 },     // sarraf fişiyle alış → havuz 200 @41,2
+    { ...USD, ...bos, bolum: 3 as const, gun: "2026-11-03", tip: 1, miktar: 150, tutar: 6450, kur: 43 },     // perakende barkodsuz satış → maliyet 6180, brüt 270
+    { ...HAS, ...bos, bolum: 2 as const, gun: "2026-11-04", tip: 1, miktar: 10, tutar: 45000, kur: 4500, iscilik: 500 }, // havuzda HAS yok → maliyet satış kuru, işçilik +500
+    { ...HAS, paraAd: "Has altın (barkodlu ürün)", siraNo: 0, ...bos, bolum: 3 as const, gun: "2026-11-05", tip: 1, miktar: 5, tutar: 25000, kur: 5000, maliyetSabit: 22000 }, // ürün kartı maliyeti
+    { paraId: -10, paraKod: "ST1", paraAd: "Ticari mal", siraNo: 999, ...bos, bolum: 4 as const, gun: "2026-11-05", tip: 1, miktar: 2, tutar: 1000, kur: 500, maliyetSabit: 700 },
+  ];
+  const ayar = { baslangic: "2026-11-01", devirKur: new Map([[1, 1], [2, 40.5], [5, 4400]]), kapanisKur: new Map([[1, 1], [2, 43], [5, 4600]]), tlId: 1, hedef: { id: 1, kod: "TL" }, tlDevir: 10000,
+    ticari: { devirTutar: 1400, alisTutar: 2100, satisTutar: 1000, satisMaliyeti: 700, kapanisTutar: 2800 } };
+  const s = karZararHesapla(h, ayar);
+  esit("kz satırlar (bölüm|para)", s.satirlar.map(r => `${r.bolum}|${r.paraKod}`).join(" "), "2|USD 2|HAS 3|HAS 3|USD 4|ST1");
+  const r = (b: number, k: string) => s.satirlar.find(x => x.bolum === b && x.paraKod === k)!;
+  esit("kz havuz ortak: perakende satış maliyeti sarraf alışından", `${r(3, "USD").satisMaliyeti}|${r(3, "USD").brutKar}|${r(3, "USD").ortMaliyet}|${r(3, "USD").kalanMiktar}`, "6180|270|41.2|50");
+  esit("kz sarraf alış satırı", `${r(2, "USD").alisMiktar}|${r(2, "USD").alisTutar}|${r(2, "USD").netKar}`, "120|5040|0");
+  esit("kz işçilik gelir, havuzsuz satış maliyeti = satış kuru", `${r(2, "HAS").brutKar}|${r(2, "HAS").iscilik}|${r(2, "HAS").netKar}`, "0|500|500");
+  esit("kz barkodlu ürün kart maliyeti", `${r(3, "HAS").satisMaliyeti}|${r(3, "HAS").brutKar}`, "22000|3000");
+  esit("kz ticari son alış maliyeti", `${r(4, "ST1").satisMaliyeti}|${r(4, "ST1").netKar}|${r(4, "ST1").netKarHedef}`, "700|300|300");
+  esit("kz dönem öncesi satırlar listede yok", s.satirlar.some(x => x.bolum === 1), false);
+  esit("kz KMT satır sayısı (USD 3 + HAS 3 + ticari + TL + seçilen 3)", s.kmt.length, 11);
+  // Para bloğu: K satırında para kodu, M / T satırlarında boş; TL satırı tek (eft boş); seçilen para bloğu son üç satır
+  const k = (para: string, kmt: string) => { if (para === "TL") return kmt === "M" ? s.kmt.find(x => x.para === "TL" && x.eft === "")! : s.kmt[s.kmt.length - 3 + ["K", "M", "T"].indexOf(kmt)];
+    const i = s.kmt.findIndex(x => x.para === para); return s.kmt[i + ["K", "M", "T"].indexOf(kmt) - ["K", "M", "T"].indexOf(s.kmt[i].kmt)]; };
+  esit("kz USD K satırı (devir|ort alış|ort satış|kapanış|E)", `${k("USD", "K").devir}|${k("USD", "K").alis}|${k("USD", "K").satis}|${k("USD", "K").kapanis}|${k("USD", "K").sonuc}`, "40.5|42|43|43|170");
+  esit("kz USD M satırı (devir|alış|satış|mevcut|F)", `${k("USD", "M").devir}|${k("USD", "M").alis}|${k("USD", "M").satis}|${k("USD", "M").kapanis}|${k("USD", "M").sonuc}`, "80|120|150|50|150");
+  esit("kz HAS: barkodlu satır havuza girmez, alış yoksa ort alış = devir kuru", `${k("HAS", "M").satis}|${k("HAS", "K").alis}|${k("HAS", "M").sonuc}`, "10|4400|1000");
+  esit("kz TİCARİ T satırı", `${k("TİCARİ (TL)", "T").devir}|${k("TİCARİ (TL)", "T").kapanis}|${k("TİCARİ (TL)", "T").sonuc}`, "1400|2800|300");
+  esit("kz TL satırı (devir | mevcut = devir + Σsatış − Σalış)", `${k("TL", "M").devir}|${k("TL", "M").kapanis}`, "10000|55310");
+  esit("kz seçilen para TL bloğu (devir|alış|satış|kapanış toplam TL|Toplam kâr)", `${k("TL", "T").devir}|${k("TL", "T").alis}|${k("TL", "T").satis}|${k("TL", "T").kapanis}|${k("TL", "T").sonuc}`, "4640|7140|52450|14260|9620");
+  esit("kz seçilen para TL E/F", `${s.kmt[s.kmt.length - 3].sonuc}|${s.kmt[s.kmt.length - 2].sonuc}`, "8170|1450");
+  const u = karZararHesapla(h, { ...ayar, hedef: { id: 2, kod: "USD" } });
+  const ku = (kmt: string) => u.kmt[u.kmt.length - 3 + ["K", "M", "T"].indexOf(kmt)];
+  esit("kz karşılık USD: net kâr kapanış kuruyla", `${u.satirlar.find(x => x.bolum === 3 && x.paraKod === "USD")!.netKarHedef}`, "6.28");
+  esit("kz seçilen USD bloğu kurları (devir|alış|satış|kapanış)", `${u.kmt[u.kmt.length - 3].devir}|${u.kmt[u.kmt.length - 3].alis}|${u.kmt[u.kmt.length - 3].satis}|${u.kmt[u.kmt.length - 3].kapanis}`, "40.5|42|43|43");
+  esit("kz seçilen USD M (devir|mevcut|F) ve T kâr", `${ku("M").devir.toFixed(2)}|${ku("M").kapanis.toFixed(2)}|${ku("M").sonuc.toFixed(2)}|${u.kmt[u.kmt.length - 1].sonuc.toFixed(2)}`, "114.57|331.63|33.72|217.06");
+  const l = karZararHesapla(h, { ...ayar, bolumler: new Set([2, 3]) });
+  esit("kz lisans süzmesi: ticari bölümü düşer, KMT kalır", `${l.satirlar.some(x => x.bolum === 4)}|${l.kmt.length}`, "false|11");
+  const d = { sarraf: true, perakende: true, ticariSatir: true };
+  esit("açık bölümler: kısıt yok", [...acikBolumler(null, d)].join(), "1,2,3,4");
+  esit("açık bölümler: Kuyum (döviz fişi yok)", [...acikBolumler(["vezne:vezne/sarraf-fisi-kayit", "vezne:vezne/perakende-fisi-kayit", "ticari:ticari/satis-fisi"], d)].join(), "2,3,4");
+  esit("açık bölümler: Döviz", [...acikBolumler(["vezne:vezne/doviz-fisi-kayit"], d)].join(), "1");
+  esit("açık bölümler: tablo yoksa bölüm yok", [...acikBolumler(null, { sarraf: false, perakende: false, ticariSatir: false })].join(), "1");
+  // Motor: bölümlere ayırma ve bölümlü PDF / Excel
+  const { bolumlereAyir } = await import("../src/services/rapor/raporMotor.js");
+  const { t, satirlar } = ornekSatirlar("KARZAR1", 9);
+  satirlar.forEach((x, i) => { x.bolumAd = ["Döviz fişi", "Sarraf fişi", "Perakende fişi"][Math.floor(i / 3)]; });
+  esit("bölümlere ayırma (3 bölüm)", bolumlereAyir(t, satirlar).map(b => `${b.baslik}:${b.satirlar.length}`).join(" "), "Döviz fişi:3 Sarraf fişi:3 Perakende fişi:3");
+  esit("tek bölüm → başlıksız", bolumlereAyir(t, satirlar.slice(0, 3)).map(b => `${b.baslik}:${b.satirlar.length}`).join(" "), ":3");
+  const pdf = await raporPdf({ tanim: t, satirlar, filtreOzeti: "bölüm testi", firma, kullanici: "test", ozetSatirlar: [{ para: "USD", kmt: "K", devir: 40.5, alis: 42, satis: 43, kapanis: 43, eft: "E", sonuc: 170 }] });
+  const xlsx = await raporExcel({ tanim: t, satirlar, filtreOzeti: "bölüm testi", firma, kullanici: "test" });
+  esit("bölümlü PDF ve Excel üretildi", pdf.length > 1000 && xlsx.length > 1000, true);
+  writeFileSync(path.join(dir, "KARZAR1-bolumlu.pdf"), pdf); writeFileSync(path.join(dir, "KARZAR1-bolumlu.xlsx"), xlsx);
 }
 // MASAK: yaş aralığı, fiş kontrol kuralları, grup özeti
 {

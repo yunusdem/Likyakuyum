@@ -17,6 +17,8 @@ export interface RaporKolon { anahtar: string; baslik: string; g: number; hiza?:
 export interface RaporTanim {
   kod: string; ad: string; aciklama?: string; kagit: "A4" | "A4-yatay";
   parametreler: RaporParametre[]; kolonlar: RaporKolon[];
+  /** Bölüm: grubun üstünde ikinci seviye (sektörlü raporlar); veride tek bölüm varsa çizilmez */
+  bolum?: { anahtar: string; baslik: string; altToplam?: boolean };
   grup?: { anahtar: string; baslik: string; altToplam?: boolean; altBaslik?: string; genelToplam?: boolean }; dipnot?: string; ustSinir?: number;
   /** Rapor sonundaki ikinci tablo (alt rapor karşılığı); satırları RaporVeri.ozetSatirlar */
   ozet?: { baslik: string; kolonlar: RaporKolon[] };

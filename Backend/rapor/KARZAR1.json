@@ -1,7 +1,7 @@
 {
   "kod": "KARZAR1",
   "ad": "Kâr / Zarar Faaliyet Analizi",
-  "aciklama": "Para bazında alış-satış özeti ve ağırlıklı ortalama maliyet yöntemiyle kâr.",
+  "aciklama": "Fiş türüne (Döviz / Sarraf / Perakende / Ticari) göre bölümlenmiş alış-satış özeti ve ağırlıklı ortalama maliyet yöntemiyle kâr; rapor altında KMT / EFT analizi, TL satırı ve karşılık parası bloğu.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -22,16 +22,26 @@
       "tip": "vezneCoklu"
     },
     {
+      "ad": "hedefParaId",
+      "etiket": "Karşılık parası",
+      "tip": "para",
+      "not": "Toplamların çevrileceği para (döviz ya da HAS); boş bırakılırsa TL"
+    },
+    {
       "ad": "kmt",
       "etiket": "Gösterim (KMT)",
       "tip": "kmt"
     }
   ],
+  "bolum": {
+    "anahtar": "bolumAd",
+    "baslik": "{{bolumAd}}"
+  },
   "kolonlar": [
     {
       "anahtar": "paraKod",
       "baslik": "Para",
-      "g": 1,
+      "g": 1.7,
       "hiza": "center"
     },
     {
@@ -88,6 +98,14 @@
       "kmt": "T"
     },
     {
+      "anahtar": "iscilik",
+      "baslik": "İşçilik (+)",
+      "g": 1.6,
+      "bicim": "sayi",
+      "toplam": true,
+      "kmt": "T"
+    },
+    {
       "anahtar": "komisyon",
       "baslik": "Komisyon (+)",
       "g": 1.7,
@@ -106,6 +124,22 @@
     {
       "anahtar": "netKar",
       "baslik": "Net kâr",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true,
+      "kmt": "T"
+    },
+    {
+      "anahtar": "brutKarHedef",
+      "baslik": "Brüt kâr (karşılık)",
+      "g": 1.9,
+      "bicim": "sayi",
+      "toplam": true,
+      "kmt": "T"
+    },
+    {
+      "anahtar": "netKarHedef",
+      "baslik": "Net kâr (karşılık)",
       "g": 1.9,
       "bicim": "sayi",
       "toplam": true,

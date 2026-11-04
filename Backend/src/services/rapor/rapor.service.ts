@@ -7,7 +7,7 @@ import { ApiError } from "../../utils/ApiError.js";
 import { raporTanimOku, raporPdf } from "./raporMotor.js";
 import { raporExcel } from "./raporExcel.js";
 import { RAPOR_SORGULARI, type RaporParametreler } from "./raporVeri.js";
-import type { RaporTanim, RaporSonucVeri, RaporFirma, RaporSecimKaynagi } from "./raporTanim.js";
+import type { RaporTanim, RaporKolon, RaporSonucVeri, RaporFirma, RaporSecimKaynagi } from "./raporTanim.js";
 
 export class RaporService {
   static async sablonlar(ctx?: DbContext) {
@@ -40,7 +40,7 @@ export class RaporService {
     await VezneBakiyeDuzeltmeSqlRepository.ensure(pool, `${ctx?.dbServer || ""}|${ctx?.dbName || ""}`)
       .catch((e: any) => logger.warn("Vezne bakiye düzeltme tablosu kurulamadı:", e?.message || e));
     const sonuc = await RAPOR_SORGULARI[tanim.kod](pool, p, tanim);
-    return { ...sonuc, tanim: kosulUygula(kmtUygula(tanim, p.kmt), p) };
+    return { ...sonuc, tanim: sorguDuzeltmesi(kosulUygula(kmtUygula(tanim, p.kmt), p), sonuc) };
   }
 
   /** Kayıtlı aramalar (kullanıcı × rapor) */
@@ -80,6 +80,14 @@ function kosulUygula(tanim: RaporTanim, p: RaporParametreler): RaporTanim {
   const kip = p.birlestir || String(tanim.parametreler.find(x => x.ad === "birlestir")?.varsayilan ?? "");
   return { ...tanim, grup: tanim.grup?.kosul && tanim.grup.kosul !== `kip:${kip}` ? undefined : tanim.grup,
     kolonlar: tanim.kolonlar.filter(k => !k.kosul || (k.kosul === "kurIkisi" ? p.kurAlani === "ikisi" : k.kosul === `kip:${kip}`)) };
+}
+
+/** Sorgunun çalıştırmaya göre bildirdiği kolon başlıkları ve kaldırılan kolonlar (ana tablo + özet): karşılık parası seçimi gibi */
+function sorguDuzeltmesi(tanim: RaporTanim, s: RaporSonucVeri): RaporTanim {
+  if (!s.kolonBasliklari && !s.kolonCikar?.length) return tanim;
+  const cikar = new Set(s.kolonCikar || []);
+  const duzelt = (ks: RaporKolon[]) => ks.filter(k => !cikar.has(k.anahtar)).map(k => (s.kolonBasliklari?.[k.anahtar] ? { ...k, baslik: s.kolonBasliklari[k.anahtar] } : k));
+  return { ...tanim, kolonlar: duzelt(tanim.kolonlar), ...(tanim.ozet ? { ozet: { ...tanim.ozet, kolonlar: duzelt(tanim.ozet.kolonlar) } } : {}) };
 }
 
 /** KMT (Kur / Miktar / TL) gösterimi: seçilince yalnızca o gruba ait ve etiketsiz kolonlar kalır (kâr-zarar, .rpt parametresi). */
