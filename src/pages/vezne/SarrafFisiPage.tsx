@@ -559,29 +559,17 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
 
   const totalRowHas = (parseDecimal(hasGram) || 0) + (parseDecimal(iscilikHasGram) || 0);
 
-  const urunInfo = getUrunTipiInfo(r);
-  const isTipAltin = !isParaOrZiynet && (r.urunTipi === 1 || urunInfo.label === "Altın");
-
-  // Tutar (TL) hesabı:
-  // Sadece Tip Altın olan ürünlerde: Adet sağında kalan Miktar * İşçilik (has) sağında kalan Kur ile çarpılır
+  // Tutar (TL) hesabı: (Has + İşçilik Has) * Kur
   let tutar: number | string = r.tutar;
   if (changedField !== "tutar") {
-    if (isTipAltin) {
-      const effectiveMiktar = miktar > 0 ? miktar : (adet > 0 ? adet : 0);
-      if (effectiveMiktar > 0 && effectiveKur > 0) {
-        tutar = parseFloat((effectiveMiktar * effectiveKur).toFixed(2));
-      } else if (effectiveMiktar > 0 && parseDecimal(r.tutar) > 0) {
-        tutar = r.tutar;
-      } else {
-        tutar = "";
-      }
+    if (totalRowHas > 0 && effectiveKur > 0) {
+      tutar = parseFloat((totalRowHas * effectiveKur).toFixed(2));
+    } else if (base > 0 && effectiveKur > 0) {
+      tutar = parseFloat((base * effectiveKur).toFixed(2));
+    } else if (base > 0 && parseDecimal(r.tutar) > 0) {
+      tutar = r.tutar;
     } else {
-      // Gümüş / Hurda / Diğer madenler: Tutar = Toplam Has * Has Fiyatı
-      if (totalRowHas > 0 && effectiveKur > 0) {
-        tutar = parseFloat((totalRowHas * effectiveKur).toFixed(2));
-      } else if (base > 0 && effectiveKur > 0) {
-        tutar = parseFloat((base * effectiveKur).toFixed(2));
-      }
+      tutar = "";
     }
     tutar = sabitTutariKoru(r, kur, tutar);
   }
@@ -1181,7 +1169,29 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const totalIscilikMiktari = lines.reduce((s, r) => s + (parseDecimal(formatIscilikGirisDegeri(r.iscilikiMiktari, userIscilikGirisSekli)) || 0), 0);
   const totalIscilikHasGram = lines.reduce((s, r) => s + (parseDecimal(r.iscilikHasGram) || 0), 0);
   const totalIscilikTutari = lines.reduce((s, r) => s + (parseDecimal(r.iscilikTutari) || 0), 0);
-  const totalTutar = lines.reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
+  const totalTutar = useMemo(() => {
+    const hasRows = lines.filter((r) => (parseDecimal(r.hasGram) || 0) > 0 || (parseDecimal(r.iscilikHasGram) || 0) > 0);
+    const nonHasRowsTutar = lines
+      .filter((r) => !((parseDecimal(r.hasGram) || 0) > 0 || (parseDecimal(r.iscilikHasGram) || 0) > 0))
+      .reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
+
+    if (hasRows.length === 0) {
+      return parseFloat(nonHasRowsTutar.toFixed(2));
+    }
+
+    const kurlar = hasRows.map((r) => parseDecimal(r.kur) || parseDecimal(altinHasKuru) || 0).filter((k) => k > 0);
+    const allSameKur = kurlar.length > 0 && kurlar.every((k) => Math.abs(k - kurlar[0]) < 0.0001);
+
+    const hasToplamTutar = allSameKur
+      ? (totalHasGram + totalIscilikHasGram) * kurlar[0]
+      : hasRows.reduce((s, r) => {
+          const rowHas = (parseDecimal(r.hasGram) || 0) + (parseDecimal(r.iscilikHasGram) || 0);
+          const rowKur = parseDecimal(r.kur) || parseDecimal(altinHasKuru) || 0;
+          return s + rowHas * rowKur;
+        }, 0);
+
+    return parseFloat((hasToplamTutar + nonHasRowsTutar).toFixed(2));
+  }, [lines, totalHasGram, totalIscilikHasGram, altinHasKuru]);
 
   // Totals (Ödeme / Tahsilat)
   const totalOdemeAdet = odemeRows.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
