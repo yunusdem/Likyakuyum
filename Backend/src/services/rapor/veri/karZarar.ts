@@ -18,6 +18,20 @@ type Sorgu = (pool: sql.ConnectionPool, p: RaporParametreler, t: RaporTanim) => 
 
 export const BOLUM_ADI: Record<number, string> = { 1: "Döviz fişi", 2: "Sarraf fişi", 3: "Perakende fişi", 4: "Ticari fiş" };
 
+/** Rapor altı KMT tablosunun grup başlıkları (kullanıcı kararı 05.11.2026): paralar Döviz / Kuyum diye ayrılır, ticari mallar Ticari'de kalır */
+export const KMT_GRUP_ADI = { doviz: "Döviz", kuyum: "Kuyum", ticari: "Ticari", toplam: "Toplam" } as const;
+
+/**
+ * Para kuyum (altın / gümüş / ziynet) parası mı? Para kartındaki ürün tipi altın ayarlarında 0 kalabildiği için (22 / 14 / 18 ayar kartları)
+ * has oranı, kod ve ad da okunur. Saf fonksiyon.
+ */
+export function kuyumParasiMi(x: { kod: string; ad: string; hasOrani?: number; urunTipi?: number | null }): boolean {
+  const kod = String(x.kod || "").trim().toLocaleUpperCase("tr"), metin = `${kod} ${String(x.ad || "").toLocaleUpperCase("tr")}`;
+  const ut = x.urunTipi == null ? 0 : Number(x.urunTipi);
+  return ut === 1 || ut === 2 || ut === 3 || (Number(x.hasOrani) || 0) > 0 || kod === "HAS"
+    || /ALTIN|AYAR|G[ÜU]M[ÜU][ŞS]|[ÇC]EYREK|YARIM|Z[İI]YNET|CUMHUR|RE[ŞS]AT|B[İI]LEZ[İI]K/.test(metin);
+}
+
 /** Tek alış / satış satırı (dört fiş türünden ortak biçim) */
 export interface KzHareket {
   bolum: 1 | 2 | 3 | 4;
@@ -51,6 +65,8 @@ export interface KzAyarlar {
   ticari?: { devirTutar: number; alisTutar: number; satisTutar: number; satisMaliyeti: number; kapanisTutar: number };
   /** Gösterilecek bölümler (lisans, K10); boş = hepsi */
   bolumler?: Set<number>;
+  /** Kuyum paraları (altın / gümüş / ziynet): KMT tablosunda "Kuyum" başlığı altına girer; listede olmayan para "Döviz" sayılır */
+  kuyumParalar?: Set<number>;
 }
 
 const y2 = (n: number) => Math.round(n * 100) / 100;
@@ -114,9 +130,15 @@ export function karZararHesapla(hareketler: KzHareket[], a: KzAyarlar) {
   // @DevirTLMiktari, @MevcutTLMiktari, @KapanisToplamTL, @SecilenPara*, @ToplamKar, @ToplamEvaluasyon). Para satırları havuzdan (bölümler toplamı).
   const kmt: Record<string, any>[] = [];
   let tDevir = 0, tAlis = 0, tSatis = 0, tKapanis = 0, tF = 0;
+  // Para kolonu gruplara ayrılır (kullanıcı kararı 05.11.2026): önce Döviz paraları, sonra Kuyum paraları, sonra Ticari; her grup bir başlık satırıyla
+  // başlar (`_stil: "baslik"`, motor kalın ve bantlı basar). Para blokları ve formüller değişmez.
+  const baslikSatiri = (ad: string) => ({ para: ad, kmt: "", devir: null, alis: null, satis: null, kapanis: null, eft: "", sonuc: null, _stil: "baslik" });
+  const kuyum = (id: number) => (a.kuyumParalar?.has(id) ? 1 : 0);
   const paraListesi = [...paralar.values()].filter(o => o.paraId !== a.tlId && (o.alisMiktar || o.satisMiktar || Math.abs(o.devirMiktar) > 0.000001))
-    .sort((x, y) => x.siraNo - y.siraNo || x.paraKod.localeCompare(y.paraKod, "tr"));
+    .sort((x, y) => kuyum(x.paraId) - kuyum(y.paraId) || x.siraNo - y.siraNo || x.paraKod.localeCompare(y.paraKod, "tr"));
+  let acikGrup = -1;
   for (const o of paraListesi) {
+    if (kuyum(o.paraId) !== acikGrup) { acikGrup = kuyum(o.paraId); kmt.push(baslikSatiri(acikGrup ? KMT_GRUP_ADI.kuyum : KMT_GRUP_ADI.doviz)); }
     const dk = a.devirKur.get(o.paraId) ?? 0, kk = a.kapanisKur.get(o.paraId) ?? 0, mevcut = o.devirMiktar + o.alisMiktar - o.satisMiktar;
     const ortAlis = !o.alisMiktar || !o.alisTutar ? dk : o.alisTutar / o.alisMiktar, ortSatis = o.satisMiktar ? o.satisTutar / o.satisMiktar : 0;
     const E = !o.alisMiktar ? o.devirMiktar * (kk - dk) : o.devirMiktar * (ortAlis - dk) + mevcut * (kk - ortAlis), F = o.satisMiktar * (ortSatis - ortAlis);
@@ -128,11 +150,13 @@ export function karZararHesapla(hareketler: KzHareket[], a: KzAyarlar) {
   if (a.ticari && (a.ticari.alisTutar || a.ticari.satisTutar || a.ticari.devirTutar || a.ticari.kapanisTutar)) {
     // Ticari mallar: stok kartı son alış fiyatıyla değerlenir (K6/K8); kur kavramı olmadığından yalnız T satırı, F = satış − satış maliyeti, E = 0
     const F = a.ticari.satisTutar - a.ticari.satisMaliyeti;
+    kmt.push(baslikSatiri(KMT_GRUP_ADI.ticari));
     kmt.push({ para: "TİCARİ (TL)", kmt: "T", devir: a.ticari.devirTutar, alis: a.ticari.alisTutar, satis: a.ticari.satisTutar, kapanis: a.ticari.kapanisTutar, eft: "F", sonuc: F });
     tDevir += a.ticari.devirTutar; tAlis += a.ticari.alisTutar; tSatis += a.ticari.satisTutar; tKapanis += a.ticari.kapanisTutar; tF += F;
   }
   if (kmt.length || a.tlDevir) {
     const mevcutTL = a.tlDevir + tSatis - tAlis; // @MevcutTLMiktari
+    kmt.push(baslikSatiri(KMT_GRUP_ADI.toplam));
     kmt.push({ para: "TL", kmt: "M", devir: a.tlDevir, alis: null, satis: null, kapanis: mevcutTL, eft: "", sonuc: null });
     // Seçilen para bloğu: kurlar devir / kapanış günü; alış ve satış kuru seçilen paranın dönem ortalaması (yoksa devir / kapanış kuru). TL seçiliyse hepsi 1.
     const sp = paralar.get(a.hedef.id), tl = a.hedef.id === a.tlId;
@@ -178,11 +202,18 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
       CASE WHEN COL_LENGTH('dbo.TODVZ_ALTIN_URUN','MALIYET_ISCILIK_TUTARI') IS NULL THEN 0 ELSE 1 END altinIscilik,
       CASE WHEN COL_LENGTH('dbo.TODVZ_OZEL_URUN','MALIYET_PARA_KODU') IS NULL THEN 0 ELSE 1 END ozelMaliyetPara,
       CASE WHEN OBJECT_ID('dbo.TODVZ_STOK_HAREKET','U') IS NULL OR OBJECT_ID('dbo.TODVZ_STOK_KART','U') IS NULL THEN 0 ELSE 1 END stok,
+      CASE WHEN COL_LENGTH('dbo.TODVZ_PARA','HAS_ORANI') IS NULL THEN 0 ELSE 1 END paraHasOrani,
+      CASE WHEN COL_LENGTH('dbo.TODVZ_PARA','URUN_TIPI') IS NULL THEN 0 ELSE 1 END paraUrunTipi,
       ${TL_PARA_SQL} tlId, (SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD))='HAS' ORDER BY PARA_ID) hasId`)).recordset[0] || {};
     const tlId = Number(kolon.tlId) || 1, hasId = Number(kolon.hasId) || 0;
     const paraSuzgeci = !!(p.paraId || p.paraIdler?.length);
     const bolumler = acikBolumler(p.acikModuller, d);
     const hareketler: KzHareket[] = [];
+    // Kuyum paraları (KMT tablosunun "Kuyum" başlığı): para kartından (has oranı / ürün tipi / ad) ve sarraf fişinde altın / gümüş / ziynet olarak işlem görenler
+    const kuyumParalar = new Set<number>();
+    for (const x of (await pool.request().query(`SELECT PARA_ID id, RTRIM(ISNULL(KOD,'')) kod, RTRIM(ISNULL(AD,'')) ad,
+      ${kolon.paraHasOrani ? "ISNULL(HAS_ORANI,0)" : "0"} hasOrani, ${kolon.paraUrunTipi ? "URUN_TIPI" : "NULL"} urunTipi FROM dbo.TODVZ_PARA`)).recordset)
+      if (kuyumParasiMi({ kod: String(x.kod), ad: String(x.ad), hasOrani: Number(x.hasOrani) || 0, urunTipi: x.urunTipi })) kuyumParalar.add(Number(x.id));
     const paraKolonlari = `RTRIM(P.KOD) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo`;
     const tlDegil = `RTRIM(UPPER(P.KOD)) NOT IN ('TL','TRY')`;
 
@@ -209,7 +240,7 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
         SELECT CONVERT(char(10), CAST(SF.TARIH AS date), 23) gun, SF.SAAT zaman, CAST(SF.TIP AS int) tip, SS.URUN_ID paraId, ${paraKolonlari},
           CASE WHEN ISNULL(SS.URUN_TIPI, P.URUN_TIPI) IN (1,2) THEN ISNULL(SS.MIKTAR,0)
                WHEN ISNULL(SS.URUN_TIPI, P.URUN_TIPI) IN (0,3) THEN CASE WHEN ISNULL(SS.ADET,0)>0 THEN SS.ADET ELSE CASE WHEN ISNULL(SS.MIKTAR,0)>0 THEN SS.MIKTAR ELSE 1 END END
-               ELSE ISNULL(SS.MIKTAR,0) END miktar,
+               ELSE ISNULL(SS.MIKTAR,0) END miktar, ISNULL(SS.URUN_TIPI, P.URUN_TIPI) urunTipi,
           ISNULL(SS.KUR,0) kur, ISNULL(SS.TUTAR,0) tutar,
           CASE WHEN ISNULL(SS.ISCILIK_TUTARI,0)>0 THEN SS.ISCILIK_TUTARI WHEN ISNULL(SS.ISCILIK_HAS_GRAM,0)>0 THEN SS.ISCILIK_HAS_GRAM*${hasKuru}
                WHEN ISNULL(SS.ISCILIK_MIKTARI,0)>0 THEN SS.ISCILIK_MIKTARI ELSE 0 END iscilik
@@ -218,6 +249,7 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
         WHERE SS.URUN_ID IS NOT NULL AND CAST(SF.TARIH AS date)<=@bit AND ${tlDegil} ${f}
         ORDER BY SF.TARIH, SF.SARRAF_FISI_ID, SS.SATIR_NO;`);
       for (const x of r.recordset) { const tip = Number(x.tip) === 0 ? 0 : 1, isc = Number(x.iscilik) || 0;
+        if ([1, 2, 3].includes(Number(x.urunTipi))) kuyumParalar.add(Number(x.paraId));
         hareketler.push({ bolum: 2, paraId: Number(x.paraId), paraKod: x.paraKod, paraAd: x.paraAd, siraNo: Number(x.siraNo), gun: gunMetni(x.gun), zamanMs: zamanMs(x.zaman),
           tip, miktar: Number(x.miktar), tutar: Number(x.tutar), kur: Number(x.kur), komisyon: 0, vergiler: 0, iscilik: tip === 1 ? isc : -isc }); }
     }
@@ -336,7 +368,7 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
     // Dönem başındaki TL mevcudu (eski "TL" satırı): vezne bakiyesi (vezne süzgeciyle)
     const tlDevir = (await vezneBakiyeleri(pool, gunOnce(p.baslangic), p)).filter(v => Number(v.paraId) === tlId).reduce((s, v) => s + (Number(v.miktar) || 0), 0);
 
-    const { satirlar, kmt } = karZararHesapla(hareketler, { baslangic: p.baslangic, devirKur, kapanisKur, tlId, hedef: { id: hedefId, kod: hedefKod }, tlDevir, ticari, bolumler });
+    const { satirlar, kmt } = karZararHesapla(hareketler, { baslangic: p.baslangic, devirKur, kapanisKur, tlId, hedef: { id: hedefId, kod: hedefKod }, tlDevir, ticari, bolumler, kuyumParalar });
     const hedefSecili = hedefId !== tlId;
     const bolumOzeti = [...bolumler].sort().map(b => BOLUM_ADI[b]).join(" / ");
     return {

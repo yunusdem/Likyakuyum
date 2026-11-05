@@ -109,7 +109,7 @@ export async function raporExcelUret(p: RaporExcelGirdi): Promise<Buffer> {
     let r2 = 4;
     const yaz2 = (satir: Record<string, any>, kalin = false) => { const row = ws2.getRow(r2++); oz.kolonlar.forEach((k, i) => { const v = satir[k.anahtar], c = row.getCell(i + 1);
       c.value = say(k.bicim) ? (v === null || v === undefined || v === "" ? null : Number(v)) : (v === null || v === undefined ? "" : String(v)); if (kalin) c.font = { bold: true }; }); };
-    for (const s of p.ozetSatirlar) yaz2(s);
+    for (const s of p.ozetSatirlar) yaz2(s, s._stil === "baslik");
     if (oz.kolonlar.some(k => k.toplam)) { const t: Record<string, any> = { [oz.kolonlar[0].anahtar]: "TOPLAM" };
       for (const k of oz.kolonlar) if (k.toplam) t[k.anahtar] = p.ozetSatirlar.reduce((a, x) => a + (Number(x[k.anahtar]) || 0), 0); yaz2(t, true); }
   }

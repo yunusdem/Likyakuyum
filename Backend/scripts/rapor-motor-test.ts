@@ -144,7 +144,7 @@ for (const seed of RAPOR_SEED) {
     { ...HAS, paraAd: "Has altın (barkodlu ürün)", siraNo: 0, ...bos, bolum: 3 as const, gun: "2026-11-05", tip: 1, miktar: 5, tutar: 25000, kur: 5000, maliyetSabit: 22000 }, // ürün kartı maliyeti
     { paraId: -10, paraKod: "ST1", paraAd: "Ticari mal", siraNo: 999, ...bos, bolum: 4 as const, gun: "2026-11-05", tip: 1, miktar: 2, tutar: 1000, kur: 500, maliyetSabit: 700 },
   ];
-  const ayar = { baslangic: "2026-11-01", devirKur: new Map([[1, 1], [2, 40.5], [5, 4400]]), kapanisKur: new Map([[1, 1], [2, 43], [5, 4600]]), tlId: 1, hedef: { id: 1, kod: "TL" }, tlDevir: 10000,
+  const ayar = { baslangic: "2026-11-01", devirKur: new Map([[1, 1], [2, 40.5], [5, 4400]]), kapanisKur: new Map([[1, 1], [2, 43], [5, 4600]]), tlId: 1, hedef: { id: 1, kod: "TL" }, tlDevir: 10000, kuyumParalar: new Set([5]),
     ticari: { devirTutar: 1400, alisTutar: 2100, satisTutar: 1000, satisMaliyeti: 700, kapanisTutar: 2800 } };
   const s = karZararHesapla(h, ayar);
   esit("kz satırlar (bölüm|para)", s.satirlar.map(r => `${r.bolum}|${r.paraKod}`).join(" "), "2|USD 2|HAS 3|HAS 3|USD 4|ST1");
@@ -155,7 +155,21 @@ for (const seed of RAPOR_SEED) {
   esit("kz barkodlu ürün kart maliyeti", `${r(3, "HAS").satisMaliyeti}|${r(3, "HAS").brutKar}`, "22000|3000");
   esit("kz ticari son alış maliyeti", `${r(4, "ST1").satisMaliyeti}|${r(4, "ST1").netKar}|${r(4, "ST1").netKarHedef}`, "700|300|300");
   esit("kz dönem öncesi satırlar listede yok", s.satirlar.some(x => x.bolum === 1), false);
-  esit("kz KMT satır sayısı (USD 3 + HAS 3 + ticari + TL + seçilen 3)", s.kmt.length, 11);
+  esit("kz KMT satır sayısı (4 başlık + USD 3 + HAS 3 + ticari + TL + seçilen 3)", s.kmt.length, 15);
+  // KMT tablosunda Para kolonu Döviz / Kuyum / Ticari diye ayrılır; para blokları değişmez
+  esit("kz KMT grupları (başlıklar ve sıra)", s.kmt.filter(x => x.para).map(x => (x._stil === "baslik" ? `[${x.para}]` : x.para)).join(" "), "[Döviz] USD [Kuyum] HAS [Ticari] TİCARİ (TL) [Toplam] TL TL");
+  esit("kz KMT başlık satırı boş ve stilli", `${s.kmt[0].para}|${s.kmt[0].kmt}|${s.kmt[0].devir}|${s.kmt[0].sonuc}|${s.kmt[0]._stil}|${s.kmt[1]._stil}`, "Döviz||null|null|baslik|undefined");
+  {
+    // Sıra numarası küçük olsa da kuyum parası dövizlerden sonra gelir; kuyum listesi yoksa hepsi Döviz
+    const karisik = h.map(x => (x.paraId === 5 ? { ...x, siraNo: 0 } : x));
+    esit("kz KMT: kuyum parası sıra no'ya bakmadan Kuyum grubunda", karZararHesapla(karisik, ayar).kmt.filter(x => x.para && x.kmt !== "").slice(0, 2).map(x => x.para).join(), "USD,HAS");
+    esit("kz KMT: kuyum listesi yoksa tek Döviz grubu", karZararHesapla(h, { ...ayar, kuyumParalar: undefined }).kmt.filter(x => x._stil === "baslik").map(x => x.para).join(), "Döviz,Ticari,Toplam");
+  }
+  const { kuyumParasiMi } = await import("../src/services/rapor/veri/karZarar.js");
+  esit("kuyum parası: 22 ayar kartı (ürün tipi 0, has oranı dolu)", kuyumParasiMi({ kod: "22", ad: "22 Ayar Altın", hasOrani: 0.916, urunTipi: 0 }), true);
+  esit("kuyum parası: HAS / çeyrek / yarım / gümüş / ziynet tipi", [kuyumParasiMi({ kod: "HAS", ad: "" }), kuyumParasiMi({ kod: "ÇEY", ad: "Çeyrek" }), kuyumParasiMi({ kod: "YAR", ad: "Yarım" }),
+    kuyumParasiMi({ kod: "GMS", ad: "Gümüş" }), kuyumParasiMi({ kod: "X", ad: "Ata", urunTipi: 3 })].join(), "true,true,true,true,true");
+  esit("kuyum parası değil: USD / CAD / EUR", [kuyumParasiMi({ kod: "USD", ad: "Amerikan Doları" }), kuyumParasiMi({ kod: "CAD", ad: "Kanada Doları", urunTipi: 0, hasOrani: 0 }), kuyumParasiMi({ kod: "EUR", ad: "Euro" })].join(), "false,false,false");
   // Para bloğu: K satırında para kodu, M / T satırlarında boş; TL satırı tek (eft boş); seçilen para bloğu son üç satır
   const k = (para: string, kmt: string) => { if (para === "TL") return kmt === "M" ? s.kmt.find(x => x.para === "TL" && x.eft === "")! : s.kmt[s.kmt.length - 3 + ["K", "M", "T"].indexOf(kmt)];
     const i = s.kmt.findIndex(x => x.para === para); return s.kmt[i + ["K", "M", "T"].indexOf(kmt) - ["K", "M", "T"].indexOf(s.kmt[i].kmt)]; };
@@ -172,7 +186,7 @@ for (const seed of RAPOR_SEED) {
   esit("kz seçilen USD bloğu kurları (devir|alış|satış|kapanış)", `${u.kmt[u.kmt.length - 3].devir}|${u.kmt[u.kmt.length - 3].alis}|${u.kmt[u.kmt.length - 3].satis}|${u.kmt[u.kmt.length - 3].kapanis}`, "40.5|42|43|43");
   esit("kz seçilen USD M (devir|mevcut|F) ve T kâr", `${ku("M").devir.toFixed(2)}|${ku("M").kapanis.toFixed(2)}|${ku("M").sonuc.toFixed(2)}|${u.kmt[u.kmt.length - 1].sonuc.toFixed(2)}`, "114.57|331.63|33.72|217.06");
   const l = karZararHesapla(h, { ...ayar, bolumler: new Set([2, 3]) });
-  esit("kz lisans süzmesi: ticari bölümü düşer, KMT kalır", `${l.satirlar.some(x => x.bolum === 4)}|${l.kmt.length}`, "false|11");
+  esit("kz lisans süzmesi: ticari bölümü düşer, KMT kalır", `${l.satirlar.some(x => x.bolum === 4)}|${l.kmt.length}`, "false|15");
   const d = { sarraf: true, perakende: true, ticariSatir: true };
   esit("açık bölümler: kısıt yok", [...acikBolumler(null, d)].join(), "1,2,3,4");
   esit("açık bölümler: Kuyum (döviz fişi yok)", [...acikBolumler(["vezne:vezne/sarraf-fisi-kayit", "vezne:vezne/perakende-fisi-kayit", "ticari:ticari/satis-fisi"], d)].join(), "2,3,4");

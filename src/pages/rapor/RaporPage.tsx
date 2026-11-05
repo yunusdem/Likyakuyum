@@ -600,7 +600,7 @@ export const RaporPage: React.FC = () => {
                   <div className="table-responsive"><Table size="sm" className="mb-0 align-middle" style={{ fontSize: "0.82rem" }}>
                     <thead className="table-light"><tr>{oz.kolonlar.map(k => <th key={k.anahtar} className={hizala(k)}>{k.baslik}</th>)}</tr></thead>
                     <tbody>
-                      {ozS.map((s, i) => <tr key={i}>{oz.kolonlar.map(k => <td key={k.anahtar} className={hizala(k)}>{raporBicimle(s[k.anahtar], k.bicim)}</td>)}</tr>)}
+                      {ozS.map((s, i) => <tr key={i} className={s._stil === "baslik" ? "table-secondary fw-bold" : undefined}>{oz.kolonlar.map(k => <td key={k.anahtar} className={hizala(k)}>{raporBicimle(s[k.anahtar], k.bicim)}</td>)}</tr>)}
                       {oz.kolonlar.some(k => k.toplam) && <tr className="table-primary fw-bold">{oz.kolonlar.map((k, ki) => <td key={k.anahtar} className={hizala(k)}>
                         {k.toplam ? raporBicimle(ozS.reduce((a, r) => a + (Number(r[k.anahtar]) || 0), 0), k.bicim) : ki === 0 ? "TOPLAM" : ""}</td>)}</tr>}
                     </tbody>

@@ -97,7 +97,7 @@ export interface RaporFirma { ad: string; vkn: string }
 
 export interface RaporSonucVeri {
   satirlar: Record<string, any>[];
-  /** `tanim.ozet` bölümünün satırları (yoksa bölüm basılmaz) */
+  /** `tanim.ozet` bölümünün satırları (yoksa bölüm basılmaz). Satır `_stil: "baslik"` taşıyorsa grup başlığı olarak kalın basılır. */
   ozetSatirlar?: Record<string, any>[];
   /** Filtre özeti (PDF başlığı altına): "01.09.2026 – 12.09.2026 · Vezne: 01 · Para: USD" */
   filtreOzeti: string;

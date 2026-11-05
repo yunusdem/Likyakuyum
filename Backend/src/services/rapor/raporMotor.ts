@@ -255,7 +255,11 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
       if (y + satirH * 5 > altSinir) { doc.addPage(); ozetSayfasi = true; sayfaBasligi(); }
       else { y += 14; doc.fillColor("#111"); hucre(oz.baslik, sol, y, genislik, "left", true, boyut + 1.5); y += satirH; zebra = 0; kolonBasliklari(); }
       ozetSayfasi = true;
-      for (const s of g.ozetSatirlar) satirYaz(s);
+      // Satır `_stil: "baslik"` taşıyorsa grup başlığıdır (kâr/zarar KMT tablosunda Döviz / Kuyum / Ticari): kalın ve bantlı basılır
+      for (const s of g.ozetSatirlar) {
+        if (s._stil === "baslik") { y += 3; satirYaz(s, true, "#e4e8ee"); zebra = 0; }
+        else satirYaz(s);
+      }
       if (kolonlar.some(k => k.toplam)) toplamSatiri(g.ozetSatirlar, "Toplam", "#dfe3e8");
     }
 
