@@ -12,9 +12,12 @@ import { raporExcel } from "../src/services/rapor/raporExcel.js";
 import { RaporService } from "../src/services/rapor/rapor.service.js";
 import { paraBasliklariEkle, paraGrupKur } from "../src/services/rapor/paraGrup.js";
 import {
-  type KurSeti, cevrimOzeti, cevrimSecimi, dengeKalemleri, ekDeger, kurSetiKur, longShortTl, longShortUygun, lsDurumu, lsSembolu, onayAcik, secileneCevir, sonDurumKalemleri,
+  type KurSeti, FIRSON1_BOS_NOT, LONSHO1_BOS_NOT, degerlemeFarki, MALIYET_BOLUMLERI, longShortBilesenleri, lsGorunenSembol, cevrimOzeti, cevrimSecimi, dengeKalemleri, ekDeger, kurSetiKur, longShortTl, longShortUygun, lsDurumu, lsSembolu, onayAcik, secileneCevir, sonDurumKalemleri,
 } from "../src/services/rapor/veri/yonetici.js";
-import { grubaGoreDiz, varlikCinsi, varlikKapsami, varlikOzetiKur } from "../src/services/rapor/veri/firmaVarlik.js";
+import PDFDocument from "pdfkit";
+import { yaziTipleri } from "../src/services/belge/belgeMotor.js";
+import { maliyetYurut } from "../src/services/rapor/veri/analiz.js";
+import { FIRVAR1_BOS_NOT, grubaGoreDiz, varlikCinsi, varlikKapsami, varlikOzetiKur } from "../src/services/rapor/veri/firmaVarlik.js";
 
 let hata = 0;
 const esit = (ad: string, a: unknown, b: unknown) => { if (a !== b) { hata++; console.error(`✗ ${ad}: beklenen ${JSON.stringify(b)}, gelen ${JSON.stringify(a)}`); } else console.log(`✓ ${ad}`); };
@@ -79,8 +82,13 @@ const kalemMetni = (k: any[]) => k.map(x => `${x.kalem}:${y6(x.borc, x.alacak, x
   esit("FIRSON1 kalemleri (USD, TL → Döviz satış, Döviz → Döviz alış)", kalemMetni(u), "Kasa:42|10|32B ; Banka:10|2.2|7.8B ; Cari:10|19|9A ; Toplam (Kasa + Cari):52|29|23B ; Toplam (Kasa + Banka + Cari):62|31.2|30.8B");
   // Banka hareketi yoksa Banka satırı basılmaz; iki toplam eşittir
   const b = sonDurumKalemleri(pozisyon.map(o => ({ ...o, banka: 0 })), (id, m) => c(m, id, TL, "kur", "kur"), "TL");
-  esit("FIRSON1 banka yokken", kalemMetni(b), "Kasa:1700|400|1300B ; Cari:405|768|363A ; Toplam (Kasa + Cari):2105|1168|937B ; Toplam (Kasa + Banka + Cari):2105|1168|937B");
-  esit("FIRSON1 sıfır bakiye → B/A boş", sonDurumKalemleri([{ paraId: TL, vezne: 0, banka: 0, cariAlacak: 5, cariBorc: 5 }], (_id, m) => m, "TL").map(x => `${x.kalem}=${x.bakiye}${x.bakiyeTipi}`).join(), "Kasa=0,Cari=0,Toplam (Kasa + Cari)=0,Toplam (Kasa + Banka + Cari)=0");
+  // Banka hareketi yoksa ne Banka satırı ne de "Toplam (Kasa + Banka + Cari)" basılır (canlı test 05.11.2026)
+  esit("FIRSON1 banka yokken: banka satırı ve bankalı toplam yok", kalemMetni(b), "Kasa:1700|400|1300B ; Cari:405|768|363A ; Toplam (Kasa + Cari):2105|1168|937B");
+  esit("FIRSON1 sıfır bakiye → B/A boş", sonDurumKalemleri([{ paraId: TL, vezne: 0, banka: 0, cariAlacak: 5, cariBorc: 5 }], (_id, m) => m, "TL").map(x => `${x.kalem}=${x.bakiye}${x.bakiyeTipi}`).join(), "Kasa=0,Cari=0,Toplam (Kasa + Cari)=0");
+  // Yalnız bankada eksi bakiye: Banka 0 / 50 → 50 A; bankalı toplam basılır, bankasız toplam bankayı içermez
+  const yb = sonDurumKalemleri([{ paraId: TL, vezne: 100, banka: -50, cariAlacak: 0, cariBorc: 0 }], (_id, m) => m, "TL");
+  esit("FIRSON1 eksi banka: iki toplam ayrışır", kalemMetni(yb), "Kasa:100|0|100B ; Banka:0|50|50A ; Cari:0|0|0 ; Toplam (Kasa + Cari):100|0|100B ; Toplam (Kasa + Banka + Cari):100|50|50B");
+  esit("FIRSON1 boş rapor notu tek kısa cümle", `${FIRSON1_BOS_NOT}|${FIRSON1_BOS_NOT.split(". ").length}|${FIRSON1_BOS_NOT.length < 80}`, "Seçilen tarihe kadar vezne, banka ya da cari hareketi yok.|1|true");
 }
 
 // ── FIRVAR1 varlık cinsi
@@ -102,20 +110,23 @@ const ozetMetni = (s: Record<string, any>[]) => s.map(x => (x._stil ? `[${x.kale
   // Borç değeri = 50×40 = 2000 · Alacak değeri = 205 · Devreden = 11025 + 2000 − 205 = 12820 · Net = 12820 − 10725 = 2095 (kâr)
   const o = varlikOzetiKur(varlik, { ...ortak, hedefId: TL, hedefKod: "TL", tlDoviz: "kur", dovizDoviz: "kur", toplamSatiri: true });
   esit("FIRVAR1 özet (TL, kur seçimi)", ozetMetni(o), "TL:1025|0|205|820|820 ; HAS:2|0|0|2|6000 ; USD:100|50|0|150|6000 ; Devir değeri (TL, 30.09.2026 kuruyla)=10725 ; Kapanış / açılış evalüasyonu (TL)=300 ; "
-    + "Açılış devri değeri (TL)=11025 ; Borç değeri (TL)=2000 ; Alacak değeri (TL)=205 ; Devreden değeri (TL)=12820 ; Toplam Net Kâr (TL)=2095 ; Toplam Net Kâr / Zarar (TL)=2095");
+    + "Açılış devri değeri (TL)=11025 ; Borç değeri (TL)=2000 ; Alacak değeri (TL)=205 ; Devreden değeri (TL)=12820 ; Toplam Net Kâr / Zarar (TL)=2095");
   // Karşılık USD, iki çevrim de satış: TL 820÷41 = 20, HAS 2×3075÷41 = 150, USD 150
   // Devir değeri = 1025÷40 + 2×2950÷40 + 100 = 25,625 + 147,5 + 100 = 273,125 · Açılış = 1025÷41 + 150 + 100 = 275 · Evalüasyon = 1,875
   // Borç = 50 · Alacak = 205÷41 = 5 · Devreden = 275 + 50 − 5 = 320 · Net = 46,875
   const u = varlikOzetiKur(varlik, { ...ortak, hedefId: USD, hedefKod: "USD", tlDoviz: "satis", dovizDoviz: "satis", toplamSatiri: true });
   esit("FIRVAR1 özet (USD, satış / satış)", ozetMetni(u), "TL:1025|0|205|820|20 ; HAS:2|0|0|2|150 ; USD:100|50|0|150|150 ; Devir değeri (USD, 30.09.2026 kuruyla)=273.125 ; Kapanış / açılış evalüasyonu (USD)=1.875 ; "
-    + "Açılış devri değeri (USD)=275 ; Borç değeri (USD)=50 ; Alacak değeri (USD)=5 ; Devreden değeri (USD)=320 ; Toplam Net Kâr (USD)=46.875 ; Toplam Net Kâr / Zarar (USD)=46.875");
+    + "Açılış devri değeri (USD)=275 ; Borç değeri (USD)=50 ; Alacak değeri (USD)=5 ; Devreden değeri (USD)=320 ; Toplam Net Kâr / Zarar (USD)=46.875");
   // Karışık: TL → Döviz alış (TL ÷40; devir günü ÷39), Döviz → Döviz satış: TL 820÷40 = 20,5; devir değeri = 1025÷39 + 147,5 + 100; açılış = 1025÷40 + 250 = 275,625
   const k = varlikOzetiKur(varlik, { ...ortak, hedefId: USD, hedefKod: "USD", tlDoviz: "alis", dovizDoviz: "satis", toplamSatiri: true });
   const al = (s: Record<string, any>[], ad: string) => Number(s.find(x => String(x.kalem).startsWith(ad))?.deger);
   esit("FIRVAR1 özet (USD, alış / satış)", y6(k[0].deger, al(k, "Devir değeri"), al(k, "Açılış devri değeri"), al(k, "Alacak değeri"), al(k, "Devreden değeri")), y6(20.5, 1025 / 39 + 247.5, 275.625, 5.125, 320.5));
   // Zarar: devir 1000 TL → devreden 400 TL: mutlak 600 + "Zarar" etiketi; işaretli kalem −600
   const z = varlikOzetiKur([{ paraId: TL, paraKod: "TL", devir: 1000, devreden: 400 }], { ...ortak, hedefId: TL, hedefKod: "TL", tlDoviz: "kur", dovizDoviz: "kur", toplamSatiri: true });
-  esit("FIRVAR1 zarar: mutlak + etiket ve işaretli kalem", ozetMetni(z.slice(-2)), "Toplam Net Zarar (TL)=600 ; Toplam Net Kâr / Zarar (TL)=-600");
+  // Net kâr / zarar tek satır, işaretli (canlı test 05.11.2026: iki satır aynı değeri gösteriyordu)
+  esit("FIRVAR1 zarar: tek işaretli satır", ozetMetni(z.slice(-2)), "Devreden değeri (TL)=400 ; Toplam Net Kâr / Zarar (TL)=-600");
+  esit("FIRVAR1 boş rapor notu tek kısa cümle", `${FIRVAR1_BOS_NOT.split(". ").length}|${FIRVAR1_BOS_NOT.length < 80}`, "1|true");
+  esit("FIRVAR1 net kâr / zarar satırı bir kez", [o, u, z].map(x => x.filter(s => /Net/.test(String(s.kalem))).length).join(), "1,1,1");
   // "Toplam satırı" işaretsiz → yalnız para satırları
   const t = varlikOzetiKur(varlik, { ...ortak, hedefId: TL, hedefKod: "TL", tlDoviz: "kur", dovizDoviz: "kur", toplamSatiri: false });
   esit("FIRVAR1 toplam satırı kapalı", ozetMetni(t), "TL:1025|0|205|820|820 ; HAS:2|0|0|2|6000 ; USD:100|50|0|150|6000");
@@ -188,6 +199,41 @@ const dMetni = (k: any[]) => k.map(x => `${x.kalem}=${y6(x.deger)}`).join(" ; ")
   esit("LONSHO1 Short seçeneği", dMetni(s), "Devir değeri (31.08.2026 kuruyla)=1290 ; Mevcut değeri (01.10.2026 kuruyla)=440 ; Denge farkı=-880 ; Toplam Net Zarar=850");
   // Denge parasının kuru yoksa değerler 0 (rpt: "= 0.0 then 0.0")
   esit("LONSHO1 denge parası kursuz → 0", y6(...dengeKalemleri(pozLS, { ...dOrtak, hedefId: 9, hedefKod: "XXX", long: "alis", short: "alis", denge: "alis" }).map(x => x.deger)), "0|0|0|0");
+}
+
+// ── LONSHO1 canlı test düzeltmeleri (05.11.2026)
+{
+  // (b) Long / Short bileşen bazında: eksi vezne mevcudu Short kolonuna mutlak değeriyle; net = vezne + cari alacak − cari borç değişmez
+  const ls = (vezne: number, cariAlacak: number, cariBorc: number) => { const b = longShortBilesenleri({ vezne, cariAlacak, cariBorc }); return `${b.longMiktar}/${b.shortMiktar}/${lsDurumu(b.longMiktar, b.shortMiktar).net}`; };
+  esit("Long/Short: SAR vezne −10.000 → Short 10.000", ls(-10000, 0, 0), "0/10000/-10000");
+  esit("Long/Short: HAS vezne −10 → Short 10", ls(-10, 0, 0), "0/10/-10");
+  esit("Long/Short: artı vezne + cari (USD 285 + 100 − 50)", ls(285, 100, 50), "385/50/335");
+  esit("Long/Short: eksi vezne + cari alacak + cari borç (−5 + 3 − 2)", ls(-5, 3, 2), "3/7/-4");
+  esit("Long/Short: hiçbir kolonda eksi yok", [ls(-10000, 0, 0), ls(-10, 0, 0), ls(-5, 3, 2), ls(7, -2, 0)].every(x => !x.split("/").slice(0, 2).some(v => Number(v) < 0)), true);
+  // (a) L/S = devirden mevcuda değişim yönü (eski @LongShortSembol); değişim yoksa boş. Pozisyon (net işareti) ayrı kolondur.
+  esit("L/S görünen sembol: artış L, azalış S, değişim yok boş", [lsGorunenSembol(100, 150), lsGorunenSembol(150, 100), lsGorunenSembol(-30.92, -30.92), lsGorunenSembol(-10000, -10000), lsGorunenSembol(0, 0)].join(","), "L,S,,,");
+  // Canlı örnek: USD devir 500 → mevcut 335 (azaldı) → L/S "S", pozisyon LONG (net artı): iki kolon farklı şeyi gösterir, ikisi de doğru
+  esit("USD 500 → 335: L/S S, pozisyon LONG", `${lsGorunenSembol(500, 335)}|${lsDurumu(335, 0).durum}`, "S|LONG");
+  // Süzgeç eski sembolle: değişimsiz para Long seçeneğinde kalır (eski rpt else → "L")
+  esit("Long seçeneği değişimsiz parayı içerir, Short içermez", `${longShortUygun("long", lsSembolu(-5, -5))}|${longShortUygun("short", lsSembolu(-5, -5))}`, "true|false");
+  // (c) Maliyet: birleşik fiş kaynağı (Döviz + Sarraf + Perakende) — maliyetYurut aynı. HAS: sarraf alış 10 g / 30.000 TL, perakende alış 5 g / 16.000 TL → ort 46.000 ÷ 15;
+  // döviz satış 3 g → ort değişmez; USD yalnız döviz fişi: alış 100 / 4.000 → 40
+  esit("maliyet bölümleri: Döviz, Sarraf, Perakende (Ticari yok)", MALIYET_BOLUMLERI.join(), "1,2,3");
+  const m = maliyetYurut([{ paraId: HAS, tip: 0, miktar: 10, tutar: 30000, kur: 3000 }, { paraId: HAS, tip: 0, miktar: 5, tutar: 16000, kur: 3200 }, { paraId: HAS, tip: 1, miktar: 3, tutar: 9900, kur: 3300 },
+    { paraId: USD, tip: 0, miktar: 100, tutar: 4000, kur: 40 }]);
+  const son = new Map<number, number>(); for (const h of m) son.set(h.paraId, h.ortMaliyet);
+  esit("ortalama maliyet: HAS sarraf + perakende alışları, USD döviz", y6(son.get(HAS)!, son.get(USD)!, m[2].maliyet), y6(46000 / 15, 40, 3 * 46000 / 15));
+  // Değerleme farkı: USD net 335 × (46,9 − 41) = 1976,5; kur yoksa (B22: kur 0, maliyet 2750) ve maliyet yoksa 0
+  esit("değerleme farkı: normal / kursuz / maliyetsiz", y6(degerlemeFarki(335, 46.9, 41), degerlemeFarki(10, 0, 2750), degerlemeFarki(100, 62.5, 0)), y6(1976.5, 0, 0));
+  // (d) Toplam etiketi ilk metin kolonuna (Para) düşer: PDF'te 8 punto kalın yazı küçültülmeden ve kırpılmadan sığmalı
+  const t = raporTanimOku("LONSHO1"), pdfK = t.kolonlar.filter(k => k.pdf !== false && !k.kosul), tg = pdfK.reduce((a, k) => a + (k.g || 1), 0);
+  const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 28 }), genislik = doc.page.width - 56;
+  const etiketKolonu = pdfK.find(k => !k.toplam && !["sayi", "sayi4", "kur", "tam"].includes(k.bicim || ""))!;
+  const yer = (etiketKolonu.g / tg) * genislik - 6, olc = (metin: string) => doc.font(yaziTipleri().kalin).fontSize(8).widthOfString(metin);
+  esit("toplam etiketi Para kolonuna düşer", etiketKolonu.anahtar, "paraKod");
+  esit("Genel toplam ve GENEL TOPLAM (17) Para kolonuna sığar", `${olc("Genel toplam") <= yer}|${olc("GENEL TOPLAM (17)") <= yer}`, "true|true");
+  esit("LONSHO1 kolon başlıkları: L/S (değişim), Pozisyon", t.kolonlar.filter(k => ["lsSembol", "durum"].includes(k.anahtar)).map(k => k.baslik).join("|"), "L/S (değişim)|Pozisyon");
+  esit("LONSHO1 boş rapor notu tek kısa cümle", `${LONSHO1_BOS_NOT.split(". ").length}|${LONSHO1_BOS_NOT.length < 80}`, "1|true");
 }
 
 // ── Tanımlar: yeni parametreler var, varsayılanları bugünkü sonucu verir; eski parametre ve kolonların hiçbiri silinmedi

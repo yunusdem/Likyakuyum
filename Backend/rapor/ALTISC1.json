@@ -37,7 +37,7 @@
     {
       "anahtar": "belge",
       "baslik": "Belge",
-      "g": 1.3
+      "g": 1.8
     },
     {
       "anahtar": "seriNo",
@@ -58,7 +58,7 @@
     {
       "anahtar": "unvan",
       "baslik": "Ünvan",
-      "g": 2.8,
+      "g": 2.2,
       "pdf": false
     },
     {
@@ -111,7 +111,7 @@
       "anahtar": "iscilikMiktari",
       "baslik": "İşçilik (milyem)",
       "g": 1.4,
-      "bicim": "tam",
+      "bicim": "sayi",
       "pdf": false
     },
     {

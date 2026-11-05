@@ -129,7 +129,7 @@ export async function raporExcelUret(p: RaporExcelGirdi): Promise<Buffer> {
       govde(uyeler, seviye + 1);
       const gat = p.tanim.grupAltTablo;
       if (gat && (gat.seviye ?? 0) === seviye) { const alt = p.grupAltSatirlar?.[String(anahtar)]; if (alt?.length) altTablo(gat, alt); }
-      if (grup.altToplam !== false && toplamVar) toplam(uyeler, `${doldur(grup.toplamEtiketi || "Ara toplam", ornek)} (${veriSatirlari(uyeler).length})`);
+      if (grup.altToplam !== false && toplamVar) { const e = doldur(grup.toplamEtiketi || "Ara toplam", ornek); toplam(uyeler, /\(\d/.test(e) ? e : `${e} (${veriSatirlari(uyeler).length})`); } // etiket sayı taşıyorsa ("(1 fiş)") satır sayısı eklenmez
       if (grup.net) tamSatir(netMetni(grup.net, uyeler), { hiza: "right" });
     }
   };

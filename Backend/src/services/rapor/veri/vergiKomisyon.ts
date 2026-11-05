@@ -37,7 +37,7 @@ export const VERGI_KOMISYON_SORGULARI: Record<string, Sorgu> = {
     const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" }) + idFiltre(req, p.istatistikIdler, "F.ISTATISTIK_ID", "is");
     const sira = grupTuru === "para" ? "ISNULL(P.SIRA_NO,99), P.KOD, " : grupTuru === "gun" ? "" : "V.KOD, ";
     const res = await req.query(`
-      SELECT F.FIS_ID fisId, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, CAST(F.TARIH AS date) gun, ISNULL(F.ZAMAN,F.TARIH) zaman, F.TIP tipKod,
+      SELECT F.FIS_ID fisId, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, CAST(F.TARIH AS date) gun, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, F.TIP tipKod,
         RTRIM(ISNULL(F.SERI_NO,'')) seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
         ISNULL(S.MIKTAR,0) miktar, ISNULL(S.TUTAR,0) tutar, ISNULL(S.KOMISYON_ORANI,0) komisyonOrani, ISNULL(S.KOMISYON,0) komisyon, ISNULL(S.BMV,0) bmv, ISNULL(S.KMV,0) kmv, ISNULL(S.KDV,0) kdv
       FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
@@ -46,7 +46,7 @@ export const VERGI_KOMISYON_SORGULARI: Record<string, Sorgu> = {
     const ham = res.recordset.map((r: any) => { const bmv = Number(r.bmv) || 0, kmv = Number(r.kmv) || 0, kdv = Number(r.kdv) || 0;
       const gunAnahtar = new Date(r.gun).toISOString().slice(0, 10), gunBaslik = tarihTr(gunAnahtar);
       const grupBaslik = grupTuru === "para" ? `Para birimi: ${r.paraKod}` : grupTuru === "gun" ? gunBaslik : `Vezne ${r.vezneKod} — ${r.vezneAd}`;
-      return { ...r, saat: r.zaman, tip: Number(r.tipKod) === 1 ? "S" : "A", miktar: Number(r.miktar) || 0, tutar: Number(r.tutar) || 0, komisyonOrani: Number(r.komisyonOrani) || 0, komisyon: Number(r.komisyon) || 0, bmv, kmv, kdv,
+      return { ...r, saat: r.saatZaman, tip: Number(r.tipKod) === 1 ? "S" : "A", miktar: Number(r.miktar) || 0, tutar: Number(r.tutar) || 0, komisyonOrani: Number(r.komisyonOrani) || 0, komisyon: Number(r.komisyon) || 0, bmv, kmv, kdv,
         toplamVergi: bmv + kmv + kdv, adet: 1, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}`, gunAnahtar, gunBaslik, grupAnahtar: grupBaslik, grupBaslik }; });
     let satirlar: any[] = ham;
     if (toplam) { const m = new Map<string, any>();

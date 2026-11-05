@@ -142,7 +142,7 @@
     {
       "anahtar": "unvan",
       "baslik": "Ünvan",
-      "g": 2.6
+      "g": 3.6
     },
     {
       "anahtar": "vergiDairesi",
@@ -255,7 +255,7 @@
     {
       "anahtar": "kmv",
       "baslik": "KMV",
-      "g": 1.4,
+      "g": 1.8,
       "bicim": "sayi",
       "toplam": true,
       "pdf": false

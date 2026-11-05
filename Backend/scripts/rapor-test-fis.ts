@@ -12,7 +12,7 @@ import { kosulSaglandi, parametreDegeri, RaporService } from "../src/services/ra
 import { paraBasliklariEkle, paraGrupKur } from "../src/services/rapor/paraGrup.js";
 import {
   metinAraliginda, isimBeyanEdilmemis, paraOzeti, paraGruplayici, fisSirala, gunlukToplamlar, gunToplamlari, istatistikGruplari, istatistikSirala,
-  kmvGruplari, kmvKirilimAnahtari, kmvKirilimla, kmvSirala, fisCinsiBolumleri, VERGI_NO_CINSI, fisSayilariEkle, kimlikOzetiBaslikli,
+  kmvGruplari, kmvKirilimAnahtari, kmvKirilimla, kmvSirala, fisCinsiBolumleri, gecerliKimlikNo, vergiNoGrupla, vergiNoCinsi, vergiNoBosNotu, fisSayilariEkle, kimlikOzetiBaslikli, paraOzetiSirala, tekParali, fisListeGruplari, vezneBasligi, gunlukFisGruplari, istatistikParaOzeti,
 } from "../src/services/rapor/veri/fis.js";
 import { netMetni } from "../src/services/rapor/raporMotor.js";
 import { vergiKomisyonGruplari } from "../src/services/rapor/veri/vergiKomisyon.js";
@@ -62,7 +62,18 @@ const grupla = paraGruplayici(pg);
   // 25.09 döviz: 120 + 50 + 40 = 210 miktar, 4920 + 2400 + 1660 = 8980 lira, KMV 4,80, ödeme 4920 + 2400 + 1663,32 = 8983,32, 3 fiş
   const t = gunlukToplamlar(s);
   esit("gün toplamları: satır sayısı (bölüm × gün)", t.map(x => `${x.bolumAd}/${x.gunBaslik}`).join(" "), "Döviz fişi/25.09.2026 Döviz fişi/26.09.2026 Sarraf fişi/25.09.2026");
-  esit("gün toplamları: 25.09 (fiş|miktar|lira|kmv|ödeme)", `${t[0].adet}|${t[0].miktar}|${t[0].tutar}|${t[0].kmv}|${t[0].odemeTutari.toFixed(2)}`, "3|210|8980|4.8|8983.32");
+  // 25.09 döviz günü USD + EUR → miktar toplanmaz (boş); 26.09 yalnız USD → 10
+  esit("gün toplamları: 25.09 (fiş|miktar|lira|kmv|ödeme)", `${t[0].adet}|${t[0].miktar}|${t[0].tutar}|${t[0].kmv}|${t[0].odemeTutari.toFixed(2)}`, "3|null|8980|4.8|8983.32");
+  esit("gün toplamları: tek paralı gün miktarı (26.09 USD, 25.09 sarraf 22)", `${t[1].miktar}|${t[2].miktar}`, "10|5");
+  esit("tek paralı: karışık / tek / ticari TL ≠ döviz TL", `${tekParali(s)}|${tekParali(s.filter(x => x.paraKod === "USD"))}|${tekParali([{ paraKod: "TL", bolum: 1 }, { paraKod: "TL", bolum: 4 }])}`, "false|true|false");
+  esit("FISLIS1 grupları: detay tek para → miktar satırı; karışık → yok; toplam kipi → grupsuz", `${fisListeGruplari(false, true)[0].net?.arti}|${fisListeGruplari(false, false)[0].net}|${fisListeGruplari(true, true).length}`, "miktar|undefined|0");
+  // Ortak düzeltme sonrası: TL satırında miktar = TL tutar → ort. kur 1; ticari USD faturası 100 USD × 41,25 = 4125 TL → ort. kur 41,25 (fatura kuru)
+  const kurlar = paraOzeti([{ fisId: 1, paraKod: "TL", tip: "Satış", miktar: 750, tutar: 750 }, { fisId: 2, paraKod: "TL", tip: "Satış", miktar: 250, tutar: 250 },
+    { fisId: 3, paraKod: "USD", tip: "Satış", miktar: 60, tutar: 2475, ticari: true }, { fisId: 4, paraKod: "USD", tip: "Satış", miktar: 40, tutar: 1650, ticari: true }]);
+  esit("ort. kur: TL 1, ticari fatura kuru", `${kurlar[0].ortKur}|${kurlar[1].ortKur}|${kurlar[1].ticari}`, "1|41.25|true");
+  // Para özeti sırası: sıra no (USD 1, EUR 2, 22 40), her parada Alış sonra Satış; sıra no eşitse kod
+  esit("para özeti sırası", paraOzetiSirala([{ paraKod: "USD", tip: "Satış", siraNo: 1 }, { paraKod: "EUR", tip: "Satış", siraNo: 2 }, { paraKod: "USD", tip: "Alış", siraNo: 1 }, { paraKod: "22", tip: "Alış", siraNo: 40 },
+    { paraKod: "EUR", tip: "Alış", siraNo: 2 }, { paraKod: "GBP", tip: "Alış", siraNo: 2 }]).map(x => `${x.paraKod}/${x.tip[0]}`).join(" "), "USD/A USD/S EUR/A EUR/S GBP/A 22/A");
   esit("gün toplamları: genel toplam değişmez", t.reduce((a, x) => a + x.tutar, 0), s.reduce((a, x) => a + x.tutar, 0));
 }
 
@@ -71,7 +82,7 @@ const gunSatirlari = (() => {
   const g = (bolum: number, gunIso: string, fisId: number, vezneKod: string, tipKod: number, paraKod: string, miktar: number, kur: number) => {
     const gunBaslik = gunIso.split("-").reverse().join("."), tip = tipKod === 1 ? "Satış" : "Alış";
     return { bolum, bolumAd: "Döviz fişi", fisId, zaman: `${gunIso}T07:00:00.000Z`, saat: `${gunIso}T07:00:00.000Z`, gunIso, gunBaslik, gunAnahtar: `${bolum}|${gunIso}`, vezneKod, tipKod, tip, seriNo: `S${fisId}`, belgeNo: `B${fisId}`, unvan: "",
-      paraKod, miktar, kur, tutar: miktar * kur, komisyon: 0, bmv: 0, kmv: 0, kdv: 0, grupAnahtar: `${vezneKod}|${tipKod}`, grupBaslik: `${vezneKod} — Vezne ${vezneKod} · ${tip}` };
+      paraKod, siraNo: ({ USD: 1, EUR: 2, CEY: 51 } as Record<string, number>)[paraKod] ?? 99, miktar, kur, tutar: miktar * kur, komisyon: 0, bmv: 0, kmv: 0, kdv: 0, grupAnahtar: `${vezneKod}|${tipKod}`, grupBaslik: `${vezneKod} — Vezne ${vezneKod} · ${tip}` };
   };
   return [g(1, "2026-09-28", 1, "00", 0, "USD", 20, 41), g(1, "2026-09-28", 2, "00", 0, "USD", 30, 42), g(1, "2026-09-28", 3, "00", 1, "EUR", 10, 48.5), g(1, "2026-09-28", 3, "00", 1, "CEY", 2, 4500),
     g(1, "2026-09-30", 4, "01", 1, "USD", 5, 41)];
@@ -86,6 +97,11 @@ const gunSatirlari = (() => {
   esit("gün toplamı 28.09: lira toplamı", g28.reduce((t, s) => t + (Number(s.tutar) || 0), 0), 2080 + 485 + 9000);
   esit("gün toplamı 30.09", gt["1|2026-09-30"].map(s => `${s.paraKod}:${s.tutar ?? ""}`).join(" "), "Döviz: USD:205");
   esit("gün toplamı: başlıksız (gruplayıcı verilmezse)", gunToplamlari(gunSatirlari)["1|2026-09-28"].length, 3);
+  esit("vezne başlığı: kod = ad → tek; farklı → kod — ad; ad boş → kod", `${vezneBasligi("01", "01")}|${vezneBasligi("00", "Ana kasa")}|${vezneBasligi("02", " ")}`, "01|00 — Ana kasa|02");
+  esit("GUNFIS1 grupları: karışık para → miktar satırı yok; tek para → iki seviyede", `${gunlukFisGruplari(false).map(g => g.net?.arti ?? "-").join()}|${gunlukFisGruplari(true).map(g => g.net?.arti ?? "-").join()}`, "-,-|miktar,miktar");
+  // 28.09 gün grubu USD 50 + EUR 10 + CEY 2: farklı paralar → tek paralı değil; yalnız USD satırları → tek paralı, miktar 20 + 30 = 50
+  esit("GUNFIS1 tek paralı kontrolü", `${tekParali(gunSatirlari)}|${tekParali(gunSatirlari.filter(x => x.paraKod === "USD"))}|${netMetni(gunlukFisGruplari(true)[0].net!, gunSatirlari.filter(x => x.paraKod === "USD" && x.gunIso === "2026-09-28")).trim()}`,
+    "false|true|Miktar : 50,00");
 }
 
 // ── ISTRAP1: gruplama ve sıra ──────────────────────────────────────────────────────────────────────────────────────────
@@ -97,8 +113,17 @@ const gunSatirlari = (() => {
   esit("istatistik grupları: tek paralı raporda istatistik grubunda da miktar", `${istatistikGruplari("para", true, true)[0].net?.arti}|${istatistikGruplari("seri", true, true)[0].net?.arti}|${istatistikGruplari("seri", true)[0].net}`, "miktar|miktar|undefined");
   esit("istatistik grupları: detay + seri no → tek seviye", istatistikGruplari("seri", true).length, 1);
   {
-    const ss = fisSayilariEkle(istatistikSirala([r(1, "10285", "USD", 1, "2026-09-26", "S3"), r(1, "10285", "USD", 1, "2026-09-28", "S1"), r(1, "10285", "EUR", 2, "2026-09-25", "S2"), r(1, "9249", "USD", 1, "2026-09-25", "A1")], "para"));
-    esit("fiş sayıları (istatistik | para alt grubu)", ss.map(x => `${x.istFisSayisi}/${x.altFisSayisi}`).join(" "), "3/2 3/2 3/1 1/1");
+    // Fiş 13 iki satırlı (USD + EUR), sarraf fişi 500000007 üç satırlı (aynı fiş no'lu başka sarraf fişi 500000008 ayrı sayılır)
+    const fs_ = (fisId: number, x: ReturnType<typeof r>) => ({ ...x, fisId });
+    const ss = fisSayilariEkle(istatistikSirala([fs_(11, r(1, "10285", "USD", 1, "2026-09-26", "S3")), fs_(13, r(1, "10285", "USD", 1, "2026-09-28", "S1")), fs_(13, r(1, "10285", "EUR", 2, "2026-09-28", "S1")),
+      fs_(10, r(1, "9249", "USD", 1, "2026-09-25", "A1")), fs_(500000007, r(2, "10285", "22", 40, "2026-09-25", "")), fs_(500000007, r(2, "10285", "22", 40, "2026-09-25", "")),
+      fs_(500000007, r(2, "10285", "HAS", 41, "2026-09-25", "")), fs_(500000008, r(2, "10285", "22", 40, "2026-09-25", ""))], "para"));
+    esit("fiş sayıları = farklı fiş (istatistik / para alt grubu)", ss.map(x => `${x.istFisSayisi}/${x.altFisSayisi}`).join(" "), "2/2 2/2 2/1 1/1 2/2 2/2 2/2 2/1");
+    // Para özeti: USD (sıra 1) önce, EUR sonra; GENEL başlıksız, miktarlar boş, fiş sayıları verildiği gibi (farklı fiş)
+    const po = istatistikParaOzeti([{ paraKod: "EUR", siraNo: 2, girisMiktar: 50, girisFis: 1 }, { paraKod: "USD", siraNo: 1, girisMiktar: 240, girisFis: 3 }],
+      { paraKod: "GENEL", girisMiktar: 290, cikisMiktar: 65, girisFis: 4, cikisFis: 4, adet: 8 }, grupla);
+    esit("ISTRAP1 para özeti: sıra, tek GENEL (başlıksız), miktar boş", po.map(x => (x._stil ? `[${x.paraKod}]` : `${x.paraKod}:${x.girisMiktar}:${x.girisFis}`)).join(" "), "[Döviz] USD:240:3 EUR:50:1 GENEL:null:4");
+    esit("ISTRAP1 para özeti: tek parada GENEL yok", istatistikParaOzeti([{ paraKod: "USD", siraNo: 1 }], { paraKod: "GENEL" }, grupla).filter(x => x.paraKod === "GENEL").length, 0);
     // Miktar net satırı: 10285 USD alt grubu 40 + 10 = 50 → "Miktar : 50,00"
     esit("miktar net satırı metni", netMetni(istatistikGruplari("para", true)[1].net!, [{ miktar: 40 }, { miktar: 10 }]).trim(), "Miktar : 50,00");
   }
@@ -157,10 +182,25 @@ esit("fiş cinsi → bölümler", `${fisCinsiBolumleri("doviz")}|${fisCinsiBolum
 {
   // Kimlik özeti: kimlik A'nın satırları bir araya gelir; kimlik içinde Döviz → Kuyum → Ticari; toplam değişmez
   const o = kimlikOzetiBaslikli([{ kimlik: "A", paraKod: "CEY", tutar: 9000 }, { kimlik: "B", paraKod: "USD", tutar: 410 }, { kimlik: "A", paraKod: "USD", tutar: 4920 }, { kimlik: "A", paraKod: "TL", tutar: 500, ticari: true }], grupla);
-  esit("kimlik özeti başlıkları", o.map(s => `${s.kimlik}:${s._stil ? `[${s.paraKod}]` : s.paraKod}`).join(" "), "A:[Döviz] A:USD A:[Kuyum] A:CEY A:[Ticari] A:TL B:[Döviz] B:USD");
+  // Kimlik başlığı bir kez; para grubu başlığı ilk (kimlik) kolonunda, Para kolonu boş; para satırlarında kimlik boş
+  esit("kimlik özeti: kimlik bir kez, altında para grubu başlıkları", o.map(s => (s._stil ? `[${s._baslik}]` : s.paraKod)).join(" "), "[A] [Döviz] USD [Kuyum] CEY [Ticari] TL [B] [Döviz] USD");
+  esit("kimlik özeti: başlık metni Para kolonunda değil, satırda kimlik tekrarlanmaz", `${o.filter(s => s._stil).every(s => !s.paraKod)}|${o.filter(s => s._stil).map(s => s.kimlik).join(",")}|${o.filter(s => !s._stil).every(s => s.kimlik === "")}`,
+    "true|A,Döviz,Kuyum,Ticari,B,Döviz|true");
   esit("kimlik özeti toplamı değişmez", o.reduce((t, s) => t + (Number(s.tutar) || 0), 0), 14830);
 }
-esit("vergi no cins harfleri", `${VERGI_NO_CINSI[1]}${VERGI_NO_CINSI[2]}${VERGI_NO_CINSI[3]}${VERGI_NO_CINSI[4]}`, "DAPT");
+{
+  esit("geçerli kimlik no: yer tutucu sayılmaz", ["11111111111", "2222222222", " 12345678901 ", "", "1", "A1234567"].map(n => gecerliKimlikNo(n) || "-").join(), "-,-,12345678901,-,-,A1234567");
+  // Aynı TCKN, üç farklı ünvan yazımı → tek grup, başlıkta ilk ünvan; yer tutucu VKN'li iki fiş ünvana göre (büyük harf) birleşir; pasaport VKN yoksa kimliktir
+  const v = (unvan: string, vergiNo: string, pasaportNo = "", vergiDairesi = "") => ({ unvan, vergiNo, pasaportNo, vergiDairesi });
+  const g = vergiNoGrupla([v("yunus demirbas", "12345678901", "", "KONAK"), v("YUNUS DEMIRBAS", "12345678901"), v("OFİS BİLGİSAYAR YUNUS DEMİRBAŞ", "12345678901"),
+    v("ahmet  yılmaz", "11111111111"), v("AHMET YILMAZ", ""), v("John Smith", "", "P1234567"), v("", "")]);
+  esit("vergi no grupları (anahtar)", [...new Set(g.map(x => x.grupAnahtar))].join(" | "), "K|12345678901 | U|AHMET YILMAZ | K|P1234567 | U|");
+  esit("vergi no grup başlıkları", [...new Set(g.map(x => x.grupBaslik))].join(" | "), "TCKN 12345678901 — yunus demirbas | ahmet  yılmaz | Pasaport P1234567 — John Smith | Kimlik numarası girilmemiş fişler");
+  esit("detayda başlık tekrarlanmaz (ünvan yalnız farklı yazımda; no / pasaport / vergi dairesi boş)", g.slice(0, 3).map(x => `${x.unvan}|${x.vergiNo}|${x.vergiDairesi}`).join(" ; "), "|| ; || ; OFİS BİLGİSAYAR YUNUS DEMİRBAŞ||");
+  esit("asıl değerler saklanır", `${g[1].unvanAsil}|${g[1].vergiNoAsil}`, "YUNUS DEMIRBAS|12345678901");
+  esit("vergi no cinsi: para türüne göre (sarraf USD = D, 22 = A, ticari = T)", [vergiNoCinsi(2, "doviz"), vergiNoCinsi(2, "kuyum"), vergiNoCinsi(1, "kuyum"), vergiNoCinsi(3, "doviz"), vergiNoCinsi(4, "ticari")].join(""), "DAADT");
+  esit("boş rapor notu kısa", `${vergiNoBosNotu(true)}|${vergiNoBosNotu(false)}`, "Seçilen ölçütlerde vergi sınırına ulaşan işlem yok.|Seçilen ölçütlerde işlem yok.");
+}
 
 // ── Tanımlar: parametreler, koşullar, düzen ────────────────────────────────────────────────────────────────────────────
 {
@@ -173,10 +213,14 @@ esit("vergi no cins harfleri", `${VERGI_NO_CINSI[1]}${VERGI_NO_CINSI[2]}${VERGI_
   esit("FISLIS1 detay kolonları (eski sıra: tarih, para, vezne, seri, belge, miktar, kur, KMV, lira)", gorunen("FISLIS1", {}).split(",").filter(a => t.FISLIS1.kolonlar.find(k => k.anahtar === a)!.pdf !== false).join(),
     "zaman,saat,paraKod,vezneKod,seriNo,belgeNo,miktar,kur,kmv,tutar");
   esit("FISLIS1 toplam kolonları", gorunen("FISLIS1", { ek: { listeTipi: "toplam" } }), "zaman,adet,miktar,kmv,tutar,komisyon,bmv,kdv,toplamTutar,odemeTutari");
+  esit("FISLIS1 miktar hiçbir toplamda toplanmaz; özet ort. kur sabit 4 hane", `${t.FISLIS1.kolonlar.find(k => k.anahtar === "miktar")!.toplam}|${t.FISLIS1.ozet!.kolonlar.find(k => k.anahtar === "ortKur")!.bicim}`, "undefined|sayi4");
   esit("FISLIS1 gün grubu yalnız detayda; bölüm + sayfa toplamı", `${kosulSaglandi(t.FISLIS1.grup?.kosul, t.FISLIS1, {} as any)}|${kosulSaglandi(t.FISLIS1.grup?.kosul, t.FISLIS1, { ek: { listeTipi: "toplam" } } as any)}|${t.FISLIS1.bolum?.anahtar}|${t.FISLIS1.sayfaToplami}`, "true|false|bolumAd|true");
   esit("GUNFIS1 parametreleri (tarih aralığı)", `${adlar("GUNFIS1")}|${t.GUNFIS1.parametreler[0].tip}`, "baslangic,fisTipi,vezneIdler,paraIdler,iptal|tarihAralik");
   esit("GUNFIS1 gruplar: gün → vezne × tip; gün toplamı grup altında", `${(t.GUNFIS1.gruplar || []).map(g => g.anahtar).join()}|${t.GUNFIS1.grupAltTablo?.seviye}|${t.GUNFIS1.grupAltTablo?.baslik}|${t.GUNFIS1.grupAltTablo?.kolonlar.map(k => k.anahtar).join()}`,
     "gunAnahtar,grupAnahtar|0|GÜN TOPLAMI|paraKod,tip,miktar,ortKur,tutar");
+  const vergiSirasi = (ks: { anahtar: string }[]) => ks.map(k => k.anahtar).filter(a => ["kmv", "komisyon", "bmv", "kdv"].includes(a)).join();
+  esit("GUNFIS1 detay ve özet vergi kolon sırası aynı; miktar toplanmaz; ort. kur 4 hane", `${vergiSirasi(t.GUNFIS1.kolonlar)}|${vergiSirasi(t.GUNFIS1.ozet!.kolonlar)}|${t.GUNFIS1.kolonlar.find(k => k.anahtar === "miktar")!.toplam}|${t.GUNFIS1.ozet!.kolonlar.find(k => k.anahtar === "ortKur")!.bicim}|${t.GUNFIS1.grupAltTablo!.kolonlar.find(k => k.anahtar === "ortKur")!.bicim}`,
+    "kmv,komisyon,bmv,kdv|kmv,komisyon,bmv,kdv|undefined|sayi4|sayi4");
   esit("GUNFIS1 PDF kolonları (eski sıra + bizim ekler)", t.GUNFIS1.kolonlar.filter(k => k.pdf !== false).map(k => k.anahtar).join(), "zaman,saat,paraKod,seriNo,belgeNo,miktar,kur,tutar,kmv,komisyon,bmv");
   esit("ISTRAP1 detayda miktar toplanmaz (farklı paralar), tutar toplanır", `${t.ISTRAP1.kolonlar.find(k => k.anahtar === "miktar" && k.kosul === "kip:detay")!.toplam}|${t.ISTRAP1.kolonlar.find(k => k.anahtar === "tutar" && k.kosul === "kip:detay")!.toplam}`, "undefined|true");
   esit("ISTRAP1 sıralama + saat yalnız detayda", `${parametreDegeri(t.ISTRAP1, {} as any, "siralama")}|${gorunen("ISTRAP1", {}).includes("saat")}|${gorunen("ISTRAP1", { birlestir: "toplam" }).includes("saat")}|${t.ISTRAP1.sayfaToplami}|${t.ISTRAP1.bolum?.anahtar}`, "para|true|false|true|bolumAd");
@@ -186,10 +230,12 @@ esit("vergi no cins harfleri", `${VERGI_NO_CINSI[1]}${VERGI_NO_CINSI[2]}${VERGI_
   esit("VERNUM1 saat: varsayılan gizli, kutu kaldırılınca görünür", `${gorunen("VERNUM1", {}).includes("saat")}|${gorunen("VERNUM1", { ek: { saatGizle: "0" } }).includes("saat")}|${gorunen("VERNUM1", { ek: { saatGizle: "1" } }).includes("saat")}`, "false|true|false");
   const tutarli = (p: any) => ["kur", "tutar", "usdKarsiligi"].map(a => (gorunen("VERNUM1", p).split(",").includes(a) ? a : "-")).join();
   esit("VERNUM1 gösterim: ikisi / fiş tutarı / dolar karşılığı", `${tutarli({})} ${tutarli({ ek: { gosterim: "tutar" } })} ${tutarli({ ek: { gosterim: "dolar" } })}`, "kur,tutar,usdKarsiligi kur,tutar,- -,-,usdKarsiligi");
+  esit("VERNUM1 kolon genişlikleri: ünvan ve KMV genişledi", `${t.VERNUM1.kolonlar.find(k => k.anahtar === "unvan")!.g}|${t.VERNUM1.kolonlar.find(k => k.anahtar === "kmv")!.g}`, "3.6|1.8");
   esit("VERNUM1 PDF'te eski kolon seti (ünvan, vergi dairesi, vergi no, pasaport …)", t.VERNUM1.kolonlar.filter(k => k.pdf !== false).map(k => k.anahtar).join(),
     "unvan,vergiDairesi,vergiNo,pasaportNo,tip,zaman,saat,seriNo,belgeNo,paraKod,kur,miktar,tutar,usdKarsiligi,cins");
   esit("VERKOM1 parametreleri + sayfa toplamı + para bölümü", `${adlar("VERKOM1")}|${t.VERKOM1.sayfaToplami}|${t.VERKOM1.bolum?.anahtar}|${t.VERKOM1.bolum?.altToplam}`,
     "baslangic,vezneIdler,paraIdler,fisTipi,birlestir,siralama,istatistikIdler,tarihAraToplami,iptal|true|paraGrupAd|false");
+  esit("VERKOM1 tarih (iş günü) ve saat ayrı kolon", `${t.VERKOM1.kolonlar.find(k => k.anahtar === "zaman")!.bicim}|${t.VERKOM1.kolonlar.find(k => k.anahtar === "saat")!.bicim}`, "tarih|saat");
   esit("kâğıt yönü değişmedi", Object.values(t).map(x => x.kagit).join(), Array(6).fill("A4-yatay").join());
 
   // Çizim: GUNFIS1 gün grubu + gün toplamı + sayfa toplamı; özet Döviz / Kuyum başlıklarıyla

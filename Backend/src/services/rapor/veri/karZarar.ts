@@ -113,7 +113,8 @@ export function karZararHesapla(hareketler: KzHareket[], a: KzAyarlar) {
     .filter(r => r.alisMiktar || r.satisMiktar || r.komisyon || r.iscilik)
     .map(r => { const s = havuz.get(r.paraId);
       const netKar = r.brutKar + r.iscilik + r.komisyon - r.vergiler;
-      return { ...r, netKar, ortMaliyet: s ? (s.miktar > 0 ? s.maliyet / s.miktar : s.sonOrt) : 0, kalanMiktar: s ? s.miktar : 0,
+      return { ...r, netKar, ortMaliyet: s ? (s.miktar > 0 ? s.maliyet / s.miktar : s.sonOrt) : 0, // Kalan = gerçek miktar (devir + alış − satış; KMT M kapanışıyla aynı). Havuz miktarı eksi stokta maliyet için sıfıra çekildiğinden kullanılmaz.
+        kalanMiktar: (() => { const po = paralar.get(r.paraId); return po ? po.devirMiktar + po.alisMiktar - po.satisMiktar : 0; })(),
         ortAlisKuru: r.alisMiktar > 0 ? r.alisTutar / r.alisMiktar : 0, ortSatisKuru: r.satisMiktar > 0 ? r.satisTutar / r.satisMiktar : 0,
         brutKarHedef: y2(cevir(r.brutKar)), netKarHedef: y2(cevir(netKar)) }; })
     .sort((x, y) => x.bolum - y.bolum || x.siraNo - y.siraNo || x.paraKod.localeCompare(y.paraKod, "tr"));
@@ -156,15 +157,17 @@ export function karZararHesapla(hareketler: KzHareket[], a: KzAyarlar) {
     const sAlisK = tl ? 1 : sp && sp.alisMiktar && sp.alisTutar ? sp.alisTutar / sp.alisMiktar : sDevirK;
     const sSatisK = tl ? 1 : sp && sp.satisMiktar ? sp.satisTutar / sp.satisMiktar : sKapanisK;
     const kapanisToplamTL = tKapanis + mevcutTL; // @KapanisToplamTL
-    const sDevir = sDevirK ? tDevir / sDevirK : tDevir; // @SecilenParaDevirMiktar
+    // Devir toplamı TL devrini de içerir: eski raporda TL (PARA_ID 1) satırı Sum(@DevirTutar)'a girer; kapanış tarafı da TL mevcudunu içerdiği için ikisi tutarlı olmalı
+    const devirToplamTL = tDevir + a.tlDevir;
+    const sDevir = sDevirK ? devirToplamTL / sDevirK : devirToplamTL; // @SecilenParaDevirMiktar
     const sAlis = !sAlisK || !sDevirK ? 0 : tAlis / sDevirK; // @SecilenParaAlisMiktar (rpt'de devir kuruna bölünür)
     const sSatis = sSatisK ? tSatis / sSatisK : 0; // @SecilenParaSatisMiktar
     const sMevcut = sKapanisK ? kapanisToplamTL / sKapanisK : kapanisToplamTL; // @SecilenParaMevcutMiktar
     const sF = sKapanisK ? tF / sKapanisK : 0; // @SecilenParaFaaliyetKari
     const toplamKar = sMevcut - sDevir, toplamE = toplamKar - sF; // @ToplamKar, @ToplamEvaluasyon
-    kmt.push({ para: a.hedef.kod, kmt: "K", devir: sDevirK, alis: sAlisK, satis: sSatisK, kapanis: sKapanisK, eft: "E", sonuc: toplamE },
+    kmt.push({ para: `Toplam (${a.hedef.kod})`, kmt: "K", devir: sDevirK, alis: sAlisK, satis: sSatisK, kapanis: sKapanisK, eft: "E", sonuc: toplamE },
       { para: "", kmt: "M", devir: sDevir, alis: sAlis, satis: sSatis, kapanis: sMevcut, eft: "F", sonuc: sF },
-      { para: "", kmt: "T", devir: tDevir, alis: tAlis, satis: tSatis, kapanis: kapanisToplamTL, eft: "T", sonuc: toplamKar });
+      { para: "", kmt: "T", devir: devirToplamTL, alis: tAlis, satis: tSatis, kapanis: kapanisToplamTL, eft: "T", sonuc: toplamKar });
   }
   return { satirlar: cikti, kmt };
 }

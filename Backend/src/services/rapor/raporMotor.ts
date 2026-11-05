@@ -347,7 +347,8 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
 
     const veri = veriSatirlari(g.satirlar);
     if (!veri.length) {
-      N().fontSize(9).fillColor("#666").text("Seçilen ölçütlerde kayıt bulunamadı.", sol, y + 10, { width: genislik, align: "center" });
+      // Boş raporda tek mesaj: sorgunun nedeni varsa o, yoksa genel yazı (aşağıda ayrıca not basılmaz)
+      N().fontSize(9).fillColor("#666").text(g.ekDipnot || "Seçilen ölçütlerde kayıt bulunamadı.", sol, y + 10, { width: genislik, align: "center" });
       y += 30;
     } else {
       anaTablo = true;
@@ -386,7 +387,7 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
       if (toplamVar()) toplamSatiri(g.ozetSatirlar, "Toplam", "#dfe3e8");
     }
 
-    const dipnot = [g.tanim.dipnot, g.ekDipnot].filter(Boolean).join("\n");
+    const dipnot = [g.tanim.dipnot, veri.length ? g.ekDipnot : undefined].filter(Boolean).join("\n");
     if (dipnot) {
       const h = N().fontSize(7).heightOfString(dipnot, { width: genislik }) + 8;
       yeniSayfaGerekliyse(h);

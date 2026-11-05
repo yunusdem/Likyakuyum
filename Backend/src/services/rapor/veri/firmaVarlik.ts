@@ -26,7 +26,7 @@ export interface VarlikParasi { paraId: number; paraKod: string; devir: number; 
  * Eski "FİRMA VARLIKLARI" rapor altı. Para satırları: Devir (önceki günün kapanışı) → Borç / Alacak (günün net hareketi) → Devreden + devredenin seçilen paradaki değeri.
  * Kalemler (rpt formülleri): Devir değeri = Σ @SecilenKapanisDevri (devir × devir günü kuru); Açılış devri değeri = Σ @SecilenAcilisDevri (devir × günün kuru);
  * Kapanış / açılış evalüasyonu = açılış − devir değeri; Borç / Alacak değeri = Σ @SecilenBorc / @SecilenAlacak; Devreden değeri = açılış + borç − alacak;
- * Toplam Net Kâr / Zarar = devreden değeri − devir değeri (işaretli; ayrıca mutlak + Kâr / Zarar etiketiyle).
+ * Toplam Net Kâr / Zarar = devreden değeri − devir değeri, işaretli tek satır (eski @ToplamNetKarZarar; kâr artı, zarar eksi — canlı test 05.11.2026).
  * Çevrim: TL satırı "TL -> Döviz", döviz satırı "Döviz -> Döviz" seçimiyle (secileneCevir). `toplamSatiri` false → kalemler basılmaz (eski "Toplam satırı" kutusu).
  * `grupla` verilirse para satırları Döviz / Kuyum başlıkları altında dizilir (K11) ve kalemler "Toplam" başlığı altına girer. Saf fonksiyon.
  */
@@ -49,13 +49,15 @@ export function varlikOzetiKur(paralar: VarlikParasi[], a: { tlId: number; hedef
   if (a.grupla && cikti.length) cikti.push({ kalem: "Toplam", _baslik: "Toplam", _stil: "baslik" });
   cikti.push({ kalem: `Devir değeri (${a.hedefKod}, ${a.devirEtiketi} kuruyla)`, ...bos, deger: dDeger }, { kalem: `Kapanış / açılış evalüasyonu (${a.hedefKod})`, ...bos, deger: dBugun - dDeger },
     { kalem: `Açılış devri değeri (${a.hedefKod})`, ...bos, deger: dBugun }, { kalem: `Borç değeri (${a.hedefKod})`, ...bos, deger: bDeger }, { kalem: `Alacak değeri (${a.hedefKod})`, ...bos, deger: aDeger },
-    { kalem: `Devreden değeri (${a.hedefKod})`, ...bos, deger: vDeger }, { kalem: `${net < 0 ? "Toplam Net Zarar" : "Toplam Net Kâr"} (${a.hedefKod})`, ...bos, deger: Math.abs(net) },
-    { kalem: `Toplam Net Kâr / Zarar (${a.hedefKod})`, ...bos, deger: net });
+    { kalem: `Devreden değeri (${a.hedefKod})`, ...bos, deger: vDeger }, { kalem: `Toplam Net Kâr / Zarar (${a.hedefKod})`, ...bos, deger: net });
   return cikti;
 }
 
 /** Ana tablo satırlarını grup anahtarına (1-Vezneler / 2-Cari alacaklar / 3-Cari borçlar) göre ardışık dizer; grup içinde özgün sıra korunur. Saf fonksiyon. */
 export const grubaGoreDiz = <T extends { grup: string }>(satirlar: T[]): T[] => satirlar.map((s, n) => ({ s, n })).sort((x, y) => (x.s.grup < y.s.grup ? -1 : x.s.grup > y.s.grup ? 1 : x.n - y.n)).map(x => x.s);
+
+/** Rapor boşken basılan tek not (rapor doluyken sinirla hiç not basmaz; canlı test 05.11.2026) */
+export const FIRVAR1_BOS_NOT = "Seçilen tarihe kadar vezne ya da cari hareketi yok.";
 
 export const FIRMA_VARLIK_SORGULARI: Record<string, Sorgu> = {
   /** R5 Firma varlıkları — vezne bakiyeleri + cari alacak/borç, seçilen kurla TL */
@@ -108,7 +110,7 @@ export const FIRMA_VARLIK_SORGULARI: Record<string, Sorgu> = {
     const sirali = grubaGoreDiz(satirlar);
     const sonuc = sinirla(sirali, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p)} · ${kur.aciklama} · ${hedef.aciklama}${cins === "hepsi" ? "" : ` · Varlık cinsi: ${VARLIK_CINSI_ADI[cins]}`}`
       + `${cevrimOzeti("TL → Döviz", tlDoviz)}${cevrimOzeti("Döviz → Döviz", dovizDoviz)}`,
-      `${VEZNE_BAKIYE_DIPNOT} Cari borçlarımız eksi işaretle düşülür; banka hesapları kapsam dışıdır (yönetici kararı). ${kur.aciklama}. Rapor altı: Devir = önceki günün kapanış varlığı, Borç / Alacak = seçilen günün net hareketi, Devreden = gün sonu varlığı; evalüasyon = devrin bugünkü kurla değeri − devir günü kuruyla değeri; toplam net kâr / zarar = devreden değeri − devir değeri.`,
+      FIRVAR1_BOS_NOT,
       varlikOzeti);
     if (sonuc.sinirAsildi) return sonuc;
     return { ...sonuc, satirlar: paraBasliklariEkle(sirali, { grupla: s => pg.grup(s), alan: "paraKod", bolumle: ["grup"] }) };

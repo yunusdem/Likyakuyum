@@ -9,7 +9,7 @@ import ExcelJS from "exceljs";
 import { raporPdf, raporTanimOku, genelToplamVar, etkinGruplar } from "../src/services/rapor/raporMotor.js";
 import { raporExcel } from "../src/services/rapor/raporExcel.js";
 import { kosulSaglandi } from "../src/services/rapor/rapor.service.js";
-import { musteriSatirlari, masakLimitleri, yasUygunMu, yuksekTutar, kontrolNedenleri, kontrolSirasi, fisParalari, yasAraligi, type MasakSatiri } from "../src/services/rapor/veri/masak.js";
+import { musteriSatirlari, karaListeMetni, kontrolOzeti, meslekGrubu, sektorGrubu, musteriAnahtari, yerTutucuKimlik, gercekKimlik, unvanAnahtari, masakLimitleri, yasUygunMu, yuksekTutar, kontrolNedenleri, kontrolSirasi, fisParalari, yasAraligi, type MasakSatiri } from "../src/services/rapor/veri/masak.js";
 
 let hata = 0;
 const esit = (ad: string, a: unknown, b: unknown) => { if (a !== b) { hata++; console.error(`✗ ${ad}: beklenen ${JSON.stringify(b)}, gelen ${JSON.stringify(a)}`); } else console.log(`✓ ${ad}`); };
@@ -19,12 +19,12 @@ const dir = path.resolve("../tmp/rapor-test"); mkdirSync(dir, { recursive: true 
 /**
  * Örnek veri (elle hesap): USD kuru 40, EUR kuru 50.
  *  Döviz fişi bölümü (1):
- *   fiş 1  ALİ YILMAZ  (VKN 111, Kuyumcu, doğum 01.01.1990)  25.09  toplam 1.000 = USD 10 × 40 (400; 10 USD) + EUR 12 × 50 (600; 15 USD)
- *   fiş 2  ALİ YILMAZ  (VKN 111, Kuyumcu)                    25.09  toplam   500 = USD 12,5 × 40 (12,5 USD)
+ *   fiş 1  ALİ YILMAZ  (VKN 12345678901, Kuyumcu, doğum 01.01.1990)  25.09  toplam 1.000 = USD 10 × 40 (400; 10 USD) + EUR 12 × 50 (600; 15 USD)
+ *   fiş 2  ALİ YILMAZ  (VKN 12345678901, Kuyumcu)                    25.09  toplam   500 = USD 12,5 × 40 (12,5 USD)
  *   fiş 3  VELİ KAYA   (pasaport P222, Avukat, doğum 15.06.2010) 26.09  toplam 3.000 = USD 75 × 40 (75 USD)
  *   fiş 4  İSİMSİZ     (kimlik yok, meslek yok)              26.09  toplam   200 = EUR 4 × 50 (5 USD)
  *  Sarraf fişi bölümü (2):
- *   fiş 500000001  ALİ YILMAZ (VKN 111, Kuyumcu)             27.09  toplam 8.000 = 22 ayar 2 × 4.000 (200 USD)
+ *   fiş 500000001  ALİ YILMAZ (VKN 12345678901, Kuyumcu)             27.09  toplam 8.000 = 22 ayar 2 × 4.000 (200 USD)
  */
 const satir = (fisId: number, satirNo: number, bolum: number, gun: string, unvan: string, vkn: string, pasaport: string, meslek: string, dogum: string | null, fisTutar: number,
   paraKod: string, miktar: number, kur: number, usd: number, seriNo = "AA"): MasakSatiri => ({
@@ -32,12 +32,12 @@ const satir = (fisId: number, satirNo: number, bolum: number, gun: string, unvan
   tutar: miktar * kur, fisTutar, miktar, kur, paraKod, usdKarsiligi: usd, meslekId: meslek ? 5 : 0, meslek, sektor: "", dogumTarihi: dogum, masakListesinde: false,
   supheliYetkili: "", kaydeden: "ayşe", vezneKod: "01", paralar: "" });
 const veri: MasakSatiri[] = [
-  satir(1, 1, 1, "2026-09-25", "ALİ YILMAZ", "111", "", "Kuyumcu", "1990-01-01", 1000, "USD", 10, 40, 10),
-  satir(1, 2, 1, "2026-09-25", "ALİ YILMAZ", "111", "", "Kuyumcu", "1990-01-01", 1000, "EUR", 12, 50, 15),
-  satir(2, 1, 1, "2026-09-25", "ALİ YILMAZ", "111", "", "Kuyumcu", "1990-01-01", 500, "USD", 12.5, 40, 12.5),
+  satir(1, 1, 1, "2026-09-25", "ALİ YILMAZ", "12345678901", "", "Kuyumcu", "1990-01-01", 1000, "USD", 10, 40, 10),
+  satir(1, 2, 1, "2026-09-25", "ALİ YILMAZ", "12345678901", "", "Kuyumcu", "1990-01-01", 1000, "EUR", 12, 50, 15),
+  satir(2, 1, 1, "2026-09-25", "ALİ YILMAZ", "12345678901", "", "Kuyumcu", "1990-01-01", 500, "USD", 12.5, 40, 12.5),
   satir(3, 1, 1, "2026-09-26", "VELİ KAYA", "", "P222", "Avukat", "2010-06-15", 3000, "USD", 75, 40, 75),
   satir(4, 1, 1, "2026-09-26", "İSİMSİZ", "", "", "", null, 200, "EUR", 4, 50, 5),
-  satir(500000001, 1, 2, "2026-09-27", "ALİ YILMAZ", "111", "", "Kuyumcu", "1990-01-01", 8000, "22", 2, 4000, 200),
+  satir(500000001, 1, 2, "2026-09-27", "ALİ YILMAZ", "12345678901", "", "Kuyumcu", "1990-01-01", 8000, "22", 2, 4000, 200),
 ];
 const meslekAdi = (x: MasakSatiri) => x.meslek || "Meslek belirtilmemiş";
 const dok = (g: ReturnType<typeof musteriSatirlari>) => g.satirlar.map(m => `${m.bolum}/${m.ustGrup}/${m.unvan}:${m.islemSayisi}:${m.tutar}:${m.usdKarsiligi}:${m._alt.length}`).join(" | ");
@@ -48,7 +48,7 @@ const dok = (g: ReturnType<typeof musteriSatirlari>) => g.satirlar.map(m => `${m
   esit("meslek: müşteri satırları (bölüm → meslek → ünvan; işlem sayısı : tutar : USD : alt satır)", dok(g),
     "1/Avukat/VELİ KAYA:1:3000:75:1 | 1/Kuyumcu/ALİ YILMAZ:2:1500:37.5:3 | 1/Meslek belirtilmemiş/İSİMSİZ:1:200:5:1 | 2/Kuyumcu/ALİ YILMAZ:1:8000:200:1");
   const ali = g.satirlar[1];
-  esit("meslek: müşteri satırında kimlik ayrı kolonlarda", `${ali.vergiKimlikNo}|${ali.pasaportNo}|${g.satirlar[0].vergiKimlikNo}|${g.satirlar[0].pasaportNo}`, "111|||P222");
+  esit("meslek: müşteri satırında kimlik ayrı kolonlarda", `${ali.vergiKimlikNo}|${ali.pasaportNo}|${g.satirlar[0].vergiKimlikNo}|${g.satirlar[0].pasaportNo}`, "12345678901|||P222");
   esit("meslek: alt fişler (belge no · para · miktar · kur · tutar)", ali._alt.map(a => `${a.belgeNo}·${a.paraKod}·${a.miktar}·${a.kur}·${a.tutar}`).join(" "), "B1·USD·10·40·400 B1·EUR·12·50·600 B2·USD·12.5·40·500");
   esit("meslek: alt TOPLAM = satır tutarları (400 + 600 + 500)", ali._alt.reduce((t, a) => t + a.tutar, 0), 1500);
   esit("meslek: alt satırda tarih ve saat aynı zamandan, seri no ayrı", `${ali._alt[0].zaman === ali._alt[0].saat}|${ali._alt[0].seriNo}|${ali._alt[0].vezneKod}|${ali._alt[0].kaydeden}`, "true|AA|01|ayşe");
@@ -63,6 +63,47 @@ const dok = (g: ReturnType<typeof musteriSatirlari>) => g.satirlar.map(m => `${m
   const tek = musteriSatirlari(veri.filter(x => x.bolum === 1), meslekAdi);
   esit("meslek: yalnız döviz fişi", dok(tek), "1/Avukat/VELİ KAYA:1:3000:75:1 | 1/Kuyumcu/ALİ YILMAZ:2:1500:37.5:3 | 1/Meslek belirtilmemiş/İSİMSİZ:1:200:5:1");
   esit("meslek: bölüm alanı olmayan satır Döviz fişi sayılır", musteriSatirlari(veri.slice(0, 3).map(x => ({ ...x, bolum: undefined })), meslekAdi).satirlar.map(m => `${m.bolum}:${m.bolumAd}:${m.islemSayisi}`).join(), "1:Döviz fişi:2");
+}
+
+// Müşteri anahtarı (canlı geri bildirim): nihai tüketici yer tutucu numaraları kimlik sayılmaz, ünvan büyük harf + kırpılarak karşılaştırılır
+{
+  esit("yerTutucuKimlik", ["11111111111", "2222222222", "0000000000", " 33333 ", "12345678901", "P222", ""].map(yerTutucuKimlik).join(), "true,true,true,true,false,false,false");
+  esit("gercekKimlik", `${gercekKimlik("11111111111")}|${gercekKimlik(" 12345678901 ")}|${gercekKimlik(null)}`, "|12345678901|");
+  esit("unvanAnahtari", `${unvanAnahtari("  İsim beyan edilmemiştir ")}|${unvanAnahtari("ışık")}`, "İSİM BEYAN EDİLMEMİŞTİR|IŞIK");
+  esit("musteriAnahtari", [musteriAnahtari({ kimlikNo: "11111111111", unvan: "Ayşe Demir", fisId: 1 }), musteriAnahtari({ kimlikNo: "12345678901", unvan: "x", fisId: 2 }),
+    musteriAnahtari({ kimlikNo: "", unvan: " ", fisId: 3 })].join(), "~AYŞE DEMİR,12345678901,#3");
+  /*
+   * Elle hesap (hepsi Döviz fişi, meslek yok, aynı gün):
+   *  fiş 10 "NİHAİ TÜKETİCİ"          VKN 11111111111   700 TL
+   *  fiş 11 "Ayşe Demir"              VKN 11111111111   400 TL
+   *  fiş 12 "AYŞE DEMİR"              VKN —             300 TL
+   *  fiş 13 "İsim beyan edilmemiştir" VKN 2222222222    100 TL
+   *  fiş 14 "İSİM BEYAN EDİLMEMİŞTİR" VKN —             250 TL
+   * Eski anahtar: 11111111111 → fiş 10 + 11 (2 işlem, 1.100), ~AYŞE DEMİR 300, 2222222222 100, ~İSİM… 250.
+   * Yeni anahtar: NİHAİ TÜKETİCİ 1 işlem 700 · Ayşe Demir (ilk fişteki ünvan) 2 işlem 700 · İsim beyan edilmemiştir 2 işlem 350.
+   */
+  const nt = [satir(10, 1, 1, "2026-09-25", "NİHAİ TÜKETİCİ", "11111111111", "", "", null, 700, "USD", 17.5, 40, 17.5),
+    satir(11, 1, 1, "2026-09-25", "Ayşe Demir", "11111111111", "", "", null, 400, "USD", 10, 40, 10),
+    satir(12, 1, 1, "2026-09-25", "AYŞE DEMİR", "", "", "", null, 300, "USD", 7.5, 40, 7.5),
+    satir(13, 1, 1, "2026-09-25", "İsim beyan edilmemiştir", "2222222222", "", "", null, 100, "USD", 2.5, 40, 2.5),
+    satir(14, 1, 1, "2026-09-25", "İSİM BEYAN EDİLMEMİŞTİR", "", "", "", null, 250, "USD", 6.25, 40, 6.25)];
+  const liste = (g: ReturnType<typeof musteriSatirlari>) => g.satirlar.map(m => `${m.unvan}:${m.islemSayisi}:${m.tutar}`).join(", ");
+  esit("yer tutucu: müşteriler ünvana göre ayrılır, büyük / küçük harf farkı birleşir", liste(musteriSatirlari(nt, meslekAdi)), "Ayşe Demir:2:700, İsim beyan edilmemiştir:2:350, NİHAİ TÜKETİCİ:1:700");
+  esit("yer tutucu: alt fişler (Ayşe Demir)", musteriSatirlari(nt, meslekAdi).satirlar[0]._alt.map(a => a.belgeNo).join(), "B11,B12");
+  esit("yer tutucu: işlem sayısı alt limiti 2 (eskide yalnız 11111111111 grubu çıkardı)", liste(musteriSatirlari(nt, meslekAdi, masakLimitleri({ adet: 2 }))), "Ayşe Demir:2:700, İsim beyan edilmemiştir:2:350");
+  esit("yer tutucu: tutar alt limiti 700", liste(musteriSatirlari(nt, meslekAdi, masakLimitleri({ esik: 700 }))), "Ayşe Demir:2:700, NİHAİ TÜKETİCİ:1:700");
+  esit("yer tutucu: özet müşteri sayısı 3, işlem 5, tutar 1.750", musteriSatirlari(nt, meslekAdi).ozet.map(o => `${o.musteri}:${o.adet}:${o.tutar}`).join(), "3:5:1750");
+  const yuk = (esik: number, kip: "donem" | "gunluk" | "fis") => yuksekTutar(nt, esik, kip).satirlar.map(m => `${m.unvan}:${m.islemSayisi}:${m.tutar}`).join(", ");
+  esit("yer tutucu: yüksek tutar dönem ≥ 600", yuk(600, "donem"), "Ayşe Demir:2:700, NİHAİ TÜKETİCİ:1:700");
+  esit("yer tutucu: yüksek tutar günlük ≥ 600 (müşteri × gün)", yuk(600, "gunluk"), "Ayşe Demir:2:700, NİHAİ TÜKETİCİ:1:700");
+  esit("yer tutucu: yüksek tutar fiş ≥ 600", yuk(600, "fis"), "NİHAİ TÜKETİCİ:1:700");
+}
+
+// MSKSEK1: sektör grubu (Meslek'teki "Meslek belirtilmemiş" ile aynı biçim)
+{
+  esit("sektör / meslek grup adı", `${sektorGrubu({ sektor: "" })}|${sektorGrubu({ sektor: "Turizm" })}|${meslekGrubu({ meslek: "" })}`, "Sektör belirtilmemiş|Turizm|Meslek belirtilmemiş");
+  const sk = [satir(20, 1, 1, "2026-09-25", "A", "12345678901", "", "", null, 100, "USD", 2.5, 40, 2.5), satir(21, 1, 1, "2026-09-25", "B", "", "", "", null, 50, "USD", 1.25, 40, 1.25)].map((x, i) => ({ ...x, sektor: i ? "" : "Turizm" }));
+  esit("sektör: gruplar ve özet", musteriSatirlari(sk, sektorGrubu).ozet.map(o => `${o.grup}:${o.adet}:${o.tutar}`).join(", "), "Sektör belirtilmemiş:1:50, Turizm:1:100, GENEL TOPLAM:2:150");
 }
 
 // Limitler (eski @Gecerli): girilenlerin hepsi; girilmeyen / 0 uygulanmaz. Müşteri bölüm içinde değerlendirilir
@@ -122,6 +163,16 @@ const dok = (g: ReturnType<typeof musteriSatirlari>) => g.satirlar.map(m => `${m
   esit("kontrol sırası: bölüm, tarih, seri no; eşitlikte geliş sırası", sira.map(s => s.n).join(), "4,5,2,1,3");
   esit("fisParalari: fişin paraları kod sırasıyla, yinelemesiz", [...fisParalari([{ fisId: 1, paraKod: "USD" }, { fisId: 1, paraKod: "EUR" }, { fisId: 1, paraKod: "USD" }, { fisId: 2, paraKod: "" }])].map(([id, p]) => `${id}=${p}`).join(";"), "1=EUR, USD;2=");
 }
+
+// MSKKON1: kısa filtre özeti
+{
+  esit("kontrol özeti: kurallar", kontrolOzeti(240000, "kural", 2), "Eşik 240.000 TL · Parça ≥ 2");
+  esit("kontrol özeti: sınır üstü / tümü / eşiksiz", `${kontrolOzeti(185000, "sinirUstu", 2)}|${kontrolOzeti(185000, "tumu", 3)}|${kontrolOzeti(0, "kural", 3)}`, "Eşik 185.000 TL · Sınır üstü|Eşik 185.000 TL · Tümü|Eşik yok · Parça ≥ 3");
+  esit("kontrol özeti: 40 karakteri geçmez", kontrolOzeti(999999999, "kural", 10).length <= 40, true);
+}
+
+// KNSKLOG1: Kara listede kolonu
+esit("KNSK kara listede: EVET / HAYIR", [karaListeMetni(true), karaListeMetni(1), karaListeMetni(false), karaListeMetni(0), karaListeMetni(null)].join(), "EVET,EVET,HAYIR,HAYIR,HAYIR");
 
 // Tanımlar: alt tablo, gruplar, genel toplam, bölüm, ayrı kolonlar, "Saat gözükmesin"
 {

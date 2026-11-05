@@ -5,6 +5,7 @@ import { type RaporParametreler, ek, gunOnce, hedefPara, kurCoz, kurTarihte, oze
 import { maliyetYurut } from "./analiz.js";
 import { CARI_HAREKET_KOLONLARI, belgeTablolari, cariHareketleriSql } from "../kaynak.js";
 import { paraBasliklariEkle, paraGrupBilgisi } from "../paraGrup.js";
+import { fisKaynagi } from "../fisKaynak.js";
 
 /** Yönetici raporları — 2. dalga (docs/raporlar-faz2.md, Faz R2-Y): firma son durum, long / short denge analizi. Yalnızca SELECT. */
 
@@ -122,22 +123,49 @@ export const cevrimOzeti = (etiket: string, secim: CevrimSecimi, varsayilan: Cev
 /**
  * Eski "FİRMA SON DURUM" rapor altı (@SecilenKasaBorc … @ToplamBakiye): Kasa / Cari / Toplam — borç, alacak, |bakiye| + B/A, seçilen para cinsinden.
  * Kasa: vezne mevcudu pozitifse borç (varlık), negatifse alacak; Cari: carilerin bize borcu = borç, carilerin alacağı = alacak.
- * Banka eski raporda yoktur: ayrı satır olarak kalır (hareket varsa). "Toplam (Kasa + Cari)" eski raporun toplamıdır; "Toplam (Kasa + Banka + Cari)" bankayı da içerir. Saf fonksiyon.
+ * Banka eski raporda yoktur: ayrı satır olarak kalır (hareket varsa). "Toplam (Kasa + Cari)" eski raporun toplamıdır; "Toplam (Kasa + Banka + Cari)" bankayı da içerir
+ * ve yalnız Banka satırı varken basılır (banka yoksa iki toplam aynıdır). Saf fonksiyon.
  */
 export function sonDurumKalemleri(satirlar: { paraId: number; vezne: number; banka: number; cariAlacak: number; cariBorc: number }[], cevir: (paraId: number, miktar: number) => number, hedefKod: string) {
   const kalem = (ad: string, borc: number, alacak: number) => { const n = borc - alacak; return { kalem: ad, paraKod: hedefKod, borc, alacak, bakiye: Math.abs(n), bakiyeTipi: n > 0 ? "B" : n < 0 ? "A" : "" }; };
   const top = (f: (o: (typeof satirlar)[number]) => number) => satirlar.reduce((a, o) => a + cevir(o.paraId, f(o)), 0);
   const kasa = kalem("Kasa", top(o => Math.max(o.vezne, 0)), top(o => Math.max(-o.vezne, 0))), banka = kalem("Banka", top(o => Math.max(o.banka, 0)), top(o => Math.max(-o.banka, 0))),
     cariK = kalem("Cari", top(o => o.cariAlacak), top(o => o.cariBorc));
-  return [kasa, ...(banka.borc || banka.alacak ? [banka] : []), cariK,
+  const bankaVar = !!(banka.borc || banka.alacak);
+  return [kasa, ...(bankaVar ? [banka] : []), cariK,
     kalem("Toplam (Kasa + Cari)", kasa.borc + cariK.borc, kasa.alacak + cariK.alacak),
-    kalem("Toplam (Kasa + Banka + Cari)", kasa.borc + banka.borc + cariK.borc, kasa.alacak + banka.alacak + cariK.alacak)];
+    ...(bankaVar ? [kalem("Toplam (Kasa + Banka + Cari)", kasa.borc + banka.borc + cariK.borc, kasa.alacak + banka.alacak + cariK.alacak)] : [])];
 }
+
+/** Rapor boşken basılan tek not (rapor doluyken sinirla hiç not basmaz) */
+/** LONSHO1 boşken tek not */
+export const LONSHO1_BOS_NOT = "Seçilen tarih aralığında döviz ya da kıymetli maden pozisyonu yok.";
+export const FIRSON1_BOS_NOT = "Seçilen tarihe kadar vezne, banka ya da cari hareketi yok.";
 
 /* ───────── Long / short ───────── */
 
-/** Eski @LongShortSembol: devir mevcuttan büyükse "S", değilse "L". Saf fonksiyon. */
+/** Eski @LongShortSembol: devir mevcuttan büyükse "S", değilse "L" — devirden mevcuda DEĞİŞİMİN yönü (pozisyonun işareti değil). Süzgeç bunu kullanır. Saf fonksiyon. */
 export const lsSembolu = (devir: number, mevcut: number): "L" | "S" => (devir > mevcut ? "S" : "L");
+/**
+ * L/S kolonunda görünen sembol: değişim yoksa boş (eski rapor "L" basıyordu; hareketsiz parada "L" + Pozisyon SHORT çelişkisi canlı testte görüldü, 05.11.2026).
+ * Long / Short seçeneği yine eski sembolle (lsSembolu) süzer. Saf fonksiyon.
+ */
+export const lsGorunenSembol = (devir: number, mevcut: number): "L" | "S" | "" => (Math.abs(mevcut - devir) < 0.000001 ? "" : lsSembolu(devir, mevcut));
+/**
+ * Long / Short kolonları (bileşen bazında): vezne mevcudu artıysa long, eksiyse mutlak değeriyle short; cari alacaklarımız long, cari borçlarımız short.
+ * Net = long − short = vezne + cari alacak − cari borç (değişmez). Saf fonksiyon.
+ */
+export function longShortBilesenleri(o: { vezne: number; cariAlacak: number; cariBorc: number }) {
+  const ekle = (v: number) => ({ l: Math.max(v, 0), s: Math.max(-v, 0) });
+  const v = ekle(o.vezne), a = ekle(o.cariAlacak), b = ekle(-o.cariBorc);
+  return { longMiktar: v.l + a.l + b.l, shortMiktar: v.s + a.s + b.s };
+}
+
+/** Değerleme farkı = net × (kur − ortalama maliyet); maliyet ya da kur yoksa 0. Saf fonksiyon. */
+export const degerlemeFarki = (net: number, kur: number, ortMaliyet: number) => (ortMaliyet && kur ? net * (kur - ortMaliyet) : 0);
+
+/** Ağırlıklı ortalama maliyet hareketleri: birleşik fiş kaynağından (Döviz + Sarraf + Perakende; lisansa göre), alış tutarı TL */
+export const MALIYET_BOLUMLERI = [1, 2, 3];
 /** Eski "Long / Short seçeneği" (@Gecerli): hepsi → her satır; long → sembolü L olanlar; short → sembolü S olanlar. Saf fonksiyon. */
 export const longShortUygun = (secim: string, sembol: string) => (secim === "long" ? sembol === "L" : secim === "short" ? sembol === "S" : true);
 /** Eski @LongShortTLCevrimi: (mevcut − devir) × mevcut günü kuru; mevcut > devir (long) ise Long seçimi, değilse Short seçimi. Saf fonksiyon. */
@@ -181,8 +209,7 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
     const kurlar = await kurSetiKur([tlDoviz, dovizDoviz], kur.kurlar, () => gununKurlari(pool, p, kur.tlId));
     const sonDurum = sonDurumKalemleri(satirlar, (paraId, miktar) => secileneCevir(miktar, paraId, { tlId: kur.tlId, hedefId: hedef.id, kurlar, tlDoviz, dovizDoviz }), hedef.kod);
     const sonuc = sinirla(satirlar, t, `${tarihTr(p.tarih)} itibarıyla${ozetEk(p)} · ${kur.aciklama} · ${hedef.aciklama}${cevrimOzeti("TL → Döviz", tlDoviz)}${cevrimOzeti("Döviz → Döviz", dovizDoviz)}`,
-      `Net pozisyon = vezne mevcudu + banka hesapları + cari alacaklarımız − cari borçlarımız. ${VEZNE_BAKIYE_DIPNOT} Kasa hesap hareketleri vezne mevcudunun içindedir, ayrıca eklenmez. Banka: iptal edilmemiş banka hareketlerinin para bazında giriş − çıkış toplamı (hesap kartındaki devir tutarı hariç). Vezne seçimi yalnızca vezne mevcudunu süzer. ${kur.aciklama}.`,
-      sonDurum);
+      FIRSON1_BOS_NOT, sonDurum);
     if (sonuc.sinirAsildi) return sonuc;
     // Para ayrımı (K11): para satırları Döviz / Kuyum başlıkları altında; sıra grup içinde korunur, toplamlar ve kayıt sayısı değişmez
     const pg = await paraGrupBilgisi(pool);
@@ -196,11 +223,14 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
     if (!bit || !bas) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     p = { ...p, tarih: bit };
     const kur = await kurCoz(pool, { ...p, kurTarihi: p.kurTarihi || bit });
-    // Ortalama maliyet: kâr-zarar ile aynı ağırlıklı ortalama, kayıtların başından seçilen tarihe kadar
+    // Ortalama maliyet: kâr-zarar ile aynı ağırlıklı ortalama, kayıtların başından seçilen tarihe kadar. Kaynak birleşik fiş (canlı test 05.11.2026):
+    // döviz fişi + sarraf fişi + perakende fişi alış / satışları, lisansa göre (fisKaynagi). Ticari fiş girmez (satır miktarı tutardır, döviz / maden alışı değildir).
+    // Yalnız döviz bölümü açıkken kaynak TODVZ_FIS'in kendisidir → sonuç öncekiyle aynı.
+    const fk = await fisKaynagi(pool, p, { yalniz: MALIYET_BOLUMLERI });
     const fis = await pool.request().input("t", sql.Date, p.tarih).query(`
       SELECT S.PARA_ID paraId, F.TIP tip, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.TUTAR,0) tutar, ISNULL(S.KUR,0) kur
-      FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID
-      WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date)<=@t ORDER BY S.PARA_ID, F.TARIH, F.FIS_ID, S.SATIR_NO;`);
+      FROM ${fk.F} JOIN ${fk.S} ON S.FIS_ID=F.FIS_ID
+      WHERE ISNULL(F.IPTAL,0)=0 AND S.PARA_ID IS NOT NULL AND CAST(F.TARIH AS date)<=@t ORDER BY S.PARA_ID, F.TARIH, F.FIS_ID, S.SATIR_NO;`);
     const ortMaliyet = new Map<number, number>();
     for (const h of maliyetYurut(fis.recordset.map((r: any) => ({ paraId: Number(r.paraId), tip: Number(r.tip), miktar: Number(r.miktar), tutar: Number(r.tutar), kur: Number(r.kur) })))) ortMaliyet.set(h.paraId, h.ortMaliyet);
     const devirGun = gunOnce(bas), devirKur = await kurTarihte(pool, devirGun), mevcutKur = await kurTarihte(pool, bit);
@@ -208,14 +238,16 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
     // Eski "Long / Short seçeneği": Hepsi / Long (sembol L) / Short (sembol S) — satır süzgeci; rapor altı da süzülen satırlardan hesaplanır (rpt kayıt seçimi)
     const lsSecim = ekDeger(p, "longShort");
     const satirlar = (await pozisyonlar(pool, p, { banka: false, vadeli: true })).filter(o => o.paraId !== kur.tlId).map(o => {
-      const longM = o.vezne + o.cariAlacak, shortM = o.cariBorc, ls = lsDurumu(longM, shortM), vadeliNet = o.vadeliAlacak - o.vadeliBorc;
+      // Eksi vezne mevcudu Long'da değil, mutlak değeriyle Short'ta (canlı test 05.11.2026); net değişmez
+      const { longMiktar: longM, shortMiktar: shortM } = longShortBilesenleri(o), ls = lsDurumu(longM, shortM), vadeliNet = o.vadeliAlacak - o.vadeliBorc;
       const k = kur.kurlar.get(o.paraId) ?? 0, ks = kur.satisKurlari.get(o.paraId) ?? 0, om = ortMaliyet.get(o.paraId) ?? 0;
       return { ...o, longMiktar: longM, shortMiktar: shortM, net: ls.net, durum: ls.durum, vadeliNet, netVadeliDahil: ls.net + vadeliNet, kur: k, tlKarsiligi: ls.net * k, kurSatis: ks, tlSatis: ls.net * ks,
-        ortMaliyet: om, degerlemeFarki: om ? ls.net * (k - om) : 0,
+        // Kur tablosunda paranın kuru yoksa değerleme yapılamaz (maliyet sarraf / perakende alışından gelse de fark 0 kalır)
+        ortMaliyet: om, degerlemeFarki: degerlemeFarki(ls.net, k, om),
         // Eski "LONG / SHORT DENGE ANALİZİ": Devir, Mevcut, sembol (@LongShortSembol: devir > mevcut → S, değilse L) ve |mevcut − devir|
-        devir: devirler.get(o.paraId) ?? 0, mevcut: ls.net, lsSembol: lsSembolu(devirler.get(o.paraId) ?? 0, ls.net), lsMiktar: Math.abs(ls.net - (devirler.get(o.paraId) ?? 0)) };
+        devir: devirler.get(o.paraId) ?? 0, mevcut: ls.net, lsSembol: lsGorunenSembol(devirler.get(o.paraId) ?? 0, ls.net), lsMiktar: Math.abs(ls.net - (devirler.get(o.paraId) ?? 0)) };
     }).filter(o => [o.longMiktar, o.shortMiktar, o.vadeliAlacak, o.vadeliBorc, o.devir].some(v => Math.abs(v) > 0.000001))
-      .filter(o => longShortUygun(lsSecim, o.lsSembol));
+      .filter(o => longShortUygun(lsSecim, lsSembolu(o.devir, o.mevcut)));
     // Rapor altı (dengeKalemleri): devir devir günü kuruyla, mevcut son tarih kuruyla değerlenir ve denge parasına çevrilir. Çevrim seçimleri: Long / Short → döviz → TL
     // (denge farkı), Denge → TL → denge parası; hepsi Alış iken bugünkü sonuç (kurTarihte: efektif alış). Satış kurları yalnız seçilince okunur.
     const yLong = cevrimSecimi(ekDeger(p, "longCevrim"), "alis"), yShort = cevrimSecimi(ekDeger(p, "shortCevrim"), "alis"), yDenge = cevrimSecimi(ekDeger(p, "dengeCevrim"), "alis");
@@ -227,8 +259,7 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
       long: yLong, short: yShort, denge: yDenge, devirEtiketi: tarihTr(devirGun), mevcutEtiketi: tarihTr(bit) });
     const sonuc = sinirla(satirlar, t, `${tarihTr(bas)} – ${tarihTr(bit)}${ozetEk(p)} · ${kur.aciklama} · Denge parası: ${hedef.kod}${lsSecim === "long" ? " · Long" : lsSecim === "short" ? " · Short" : ""}`
       + `${cevrimOzeti("Long çevrimi", yLong, "alis")}${cevrimOzeti("Short çevrimi", yShort, "alis")}${cevrimOzeti("Denge çevrimi", yDenge, "alis")}`,
-      `Long = vezne mevcudu + cari alacaklarımız; short = cari borçlarımız; net = long − short (LONG: fazla pozisyon, SHORT: açık pozisyon). TL kapsam dışıdır. Vadeli = seçilen tarihte vadesi gelmemiş cari dekontların neti (emanet verme +, emanet alma −); cari bakiyelere dahil değildir, "Net (vadeli dahil)" kolonunda eklenir. Değerleme farkı = net × (seçilen kur − ağırlıklı ortalama maliyet kuru). ${kur.aciklama}. Devir = ilk tarihten önceki günün net pozisyonu, Mevcut = son tarihteki net pozisyon; L / S = mevcut devirden büyükse L, küçükse S. Devir ve mevcut değerleri ilgili günün kur tablosundaki efektif alış kuruyla hesaplanır.`,
-      dengeOzeti);
+      LONSHO1_BOS_NOT, dengeOzeti);
     if (sonuc.sinirAsildi) return sonuc;
     // Para ayrımı (K11): para satırları Döviz / Kuyum başlıkları altında; sıra grup içinde korunur, toplamlar ve kayıt sayısı değişmez
     const pg = await paraGrupBilgisi(pool);

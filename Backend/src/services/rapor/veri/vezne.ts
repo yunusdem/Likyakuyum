@@ -117,13 +117,13 @@ export const VEZNE_SORGULARI: Record<string, Sorgu> = {
       .input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null);
     const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
     const res = await req.query(`
-      SELECT F.FIS_ID fisId, ISNULL(F.ZAMAN,F.TARIH) zaman, F.ZAMAN fisZaman, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, F.TIP tipKod,
+      SELECT F.FIS_ID fisId, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, F.ZAMAN fisZaman, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, F.TIP tipKod,
         RTRIM(ISNULL(F.SERI_NO,''))+RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan, RTRIM(P.KOD) paraKod,
         ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, ISNULL(S.GISE_KURU,0) giseKuru, RTRIM(ISNULL(U.AD,'')) kaydeden
       FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID
         LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID LEFT JOIN dbo.TODVZ_KULLANICI U ON U.KULLANICI_ID=F.EKLEYEN_ID
       WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip) ${f}
-      ORDER BY V.KOD, ISNULL(F.ZAMAN,F.TARIH), F.FIS_ID, S.SATIR_NO;`);
+      ORDER BY V.KOD, CAST(F.TARIH AS date), ISNULL(F.ZAMAN,F.TARIH), F.FIS_ID, S.SATIR_NO;`);
     const esik = Number(p.sapma) || 0;
     let gisesiz = 0;
     const satirlar = res.recordset.map((r: any) => {

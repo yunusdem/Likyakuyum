@@ -176,7 +176,7 @@ for (const seed of RAPOR_SEED) {
   esit("kz dönem öncesi satırlar listede yok", s.satirlar.some(x => x.bolum === 1), false);
   esit("kz KMT satır sayısı (4 başlık + USD 3 + HAS 3 + ticari + TL + seçilen 3)", s.kmt.length, 15);
   // KMT tablosunda Para kolonu Döviz / Kuyum / Ticari diye ayrılır; para blokları değişmez
-  esit("kz KMT grupları (başlıklar ve sıra)", s.kmt.filter(x => x.para).map(x => (x._stil === "baslik" ? `[${x.para}]` : x.para)).join(" "), "[Döviz] USD [Kuyum] HAS [Ticari] TİCARİ (TL) [Toplam] TL TL");
+  esit("kz KMT grupları (başlıklar ve sıra)", s.kmt.filter(x => x.para).map(x => (x._stil === "baslik" ? `[${x.para}]` : x.para)).join(" "), "[Döviz] USD [Kuyum] HAS [Ticari] TİCARİ (TL) [Toplam] TL Toplam (TL)");
   esit("kz KMT başlık satırı boş ve stilli", `${s.kmt[0].para}|${s.kmt[0].kmt}|${s.kmt[0].devir}|${s.kmt[0].sonuc}|${s.kmt[0]._stil}|${s.kmt[1]._stil}`, "Döviz||null|null|baslik|undefined");
   {
     // Sıra numarası küçük olsa da kuyum parası dövizlerden sonra gelir; kuyum listesi yoksa hepsi Döviz
@@ -197,13 +197,16 @@ for (const seed of RAPOR_SEED) {
   esit("kz HAS: barkodlu satır havuza girmez, alış yoksa ort alış = devir kuru", `${k("HAS", "M").satis}|${k("HAS", "K").alis}|${k("HAS", "M").sonuc}`, "10|4400|1000");
   esit("kz TİCARİ T satırı", `${k("TİCARİ (TL)", "T").devir}|${k("TİCARİ (TL)", "T").kapanis}|${k("TİCARİ (TL)", "T").sonuc}`, "1400|2800|300");
   esit("kz TL satırı (devir | mevcut = devir + Σsatış − Σalış)", `${k("TL", "M").devir}|${k("TL", "M").kapanis}`, "10000|55310");
-  esit("kz seçilen para TL bloğu (devir|alış|satış|kapanış toplam TL|Toplam kâr)", `${k("TL", "T").devir}|${k("TL", "T").alis}|${k("TL", "T").satis}|${k("TL", "T").kapanis}|${k("TL", "T").sonuc}`, "4640|7140|52450|14260|9620");
-  esit("kz seçilen para TL E/F", `${s.kmt[s.kmt.length - 3].sonuc}|${s.kmt[s.kmt.length - 2].sonuc}`, "8170|1450");
+  // Devir toplamı TL devrini içerir (eski rpt: TL satırı Sum(@DevirTutar)'a girer): 4640 + 10000; kâr = kapanış 14260 − devir 14640 = −380 (= USD 320 + HAS −1000 + ticari 300)
+  esit("kz seçilen para TL bloğu (devir|alış|satış|kapanış toplam TL|Toplam kâr)", `${k("TL", "T").devir}|${k("TL", "T").alis}|${k("TL", "T").satis}|${k("TL", "T").kapanis}|${k("TL", "T").sonuc}`, "14640|7140|52450|14260|-380");
+  esit("kz seçilen para TL E/F", `${s.kmt[s.kmt.length - 3].sonuc}|${s.kmt[s.kmt.length - 2].sonuc}`, "-1830|1450");
+  // Kalan = gerçek miktar (devir + alış − satış), stok eksiye düşse de (havuz maliyet için sıfıra çekilir ama kalan çekilmez): HAS 0 − 10 = −10
+  esit("kz kalan: eksi stokta gerçek miktar", `${s.satirlar.find(x => x.bolum === 2 && x.paraKod === "HAS")!.kalanMiktar}|${s.satirlar.find(x => x.bolum === 3 && x.paraKod === "USD")!.kalanMiktar}`, "-10|50");
   const u = karZararHesapla(h, { ...ayar, hedef: { id: 2, kod: "USD" } });
   const ku = (kmt: string) => u.kmt[u.kmt.length - 3 + ["K", "M", "T"].indexOf(kmt)];
   esit("kz karşılık USD: net kâr kapanış kuruyla", `${u.satirlar.find(x => x.bolum === 3 && x.paraKod === "USD")!.netKarHedef}`, "6.28");
   esit("kz seçilen USD bloğu kurları (devir|alış|satış|kapanış)", `${u.kmt[u.kmt.length - 3].devir}|${u.kmt[u.kmt.length - 3].alis}|${u.kmt[u.kmt.length - 3].satis}|${u.kmt[u.kmt.length - 3].kapanis}`, "40.5|42|43|43");
-  esit("kz seçilen USD M (devir|mevcut|F) ve T kâr", `${ku("M").devir.toFixed(2)}|${ku("M").kapanis.toFixed(2)}|${ku("M").sonuc.toFixed(2)}|${u.kmt[u.kmt.length - 1].sonuc.toFixed(2)}`, "114.57|331.63|33.72|217.06");
+  esit("kz seçilen USD M (devir|mevcut|F) ve T kâr", `${ku("M").devir.toFixed(2)}|${ku("M").kapanis.toFixed(2)}|${ku("M").sonuc.toFixed(2)}|${u.kmt[u.kmt.length - 1].sonuc.toFixed(2)}`, "361.48|331.63|33.72|-29.85");
   const l = karZararHesapla(h, { ...ayar, bolumler: new Set([2, 3]) });
   esit("kz lisans süzmesi: ticari bölümü düşer, KMT kalır", `${l.satirlar.some(x => x.bolum === 4)}|${l.kmt.length}`, "false|15");
   const d = { sarraf: true, perakende: true, ticariSatir: true };

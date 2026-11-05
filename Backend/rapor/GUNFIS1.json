@@ -72,8 +72,7 @@
       "anahtar": "miktar",
       "baslik": "Miktar",
       "g": 1.9,
-      "bicim": "sayi",
-      "toplam": true
+      "bicim": "sayi"
     },
     {
       "anahtar": "kur",
@@ -161,7 +160,7 @@
         "anahtar": "ortKur",
         "baslik": "Ortalama kur",
         "g": 1.6,
-        "bicim": "kur"
+        "bicim": "sayi4"
       },
       {
         "anahtar": "tutar",
@@ -204,12 +203,19 @@
         "anahtar": "ortKur",
         "baslik": "Ort. kur",
         "g": 1.6,
-        "bicim": "kur"
+        "bicim": "sayi4"
       },
       {
         "anahtar": "tutar",
         "baslik": "Tutar (TL)",
         "g": 2.4,
+        "bicim": "sayi",
+        "toplam": true
+      },
+      {
+        "anahtar": "kmv",
+        "baslik": "KMV",
+        "g": 1.6,
         "bicim": "sayi",
         "toplam": true
       },
@@ -223,13 +229,6 @@
       {
         "anahtar": "bmv",
         "baslik": "BSMV",
-        "g": 1.6,
-        "bicim": "sayi",
-        "toplam": true
-      },
-      {
-        "anahtar": "kmv",
-        "baslik": "KMV",
         "g": 1.6,
         "bicim": "sayi",
         "toplam": true

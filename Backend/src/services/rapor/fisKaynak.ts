@@ -115,7 +115,7 @@ export async function fisKaynagi(pool: sql.ConnectionPool, p: RaporParametreler,
     const kosul = bolumler.has(3) && bolumler.has(4) ? "1=1" : bolumler.has(4) ? `${ticari}=1` : `${ticari}=0`;
     const kur = `CASE WHEN FA.PARA_ID IS NULL OR FA.PARA_ID=${tlId} OR ISNULL(FA.KUR,0)=0 THEN 1 ELSE FA.KUR END`;
     const yerel = `DATEADD(hour, 3, FA.TARIH)`;
-    fParcalar.push(`SELECT ${kayma}+FA.FATURA_ID, ${bolum}, FA.VEZNE_ID, CASE WHEN FA.FATURA_TIPI=1 THEN 1 ELSE 0 END, CAST(CAST(${yerel} AS date) AS datetime), ${yerel}, CAST('' AS char(20)), FA.FATURA_NO,
+    fParcalar.push(`SELECT ${kayma}+FA.FATURA_ID, ${bolum}, FA.VEZNE_ID, CASE WHEN FA.FATURA_TIPI=1 THEN 1 ELSE 0 END, CAST(CAST(${yerel} AS date) AS datetime), FA.TARIH, CAST('' AS char(20)), FA.FATURA_NO,
       ${k.faturaIstatistik ? "FA.ISTATISTIK_ID" : "CAST(NULL AS int)"}, FA.CARI_KART_ID, FA.ALICI_UNVAN, CAST(NULL AS tinyint),
       CAST(NULL AS int), CAST(NULL AS int), CAST(NULL AS int), FA.ALICI_VKN_TCKN, CAST(NULL AS varchar(200)), FA.ADRES, CAST(NULL AS char(20)),
       ISNULL(FA.GENEL_TOPLAM,0)*${kur}, ISNULL(FA.GENEL_TOPLAM,0)*${kur}, FA.EKLEYEN_ID, FA.EKLEME_ZAMANI,
@@ -125,11 +125,14 @@ export async function fisKaynagi(pool: sql.ConnectionPool, p: RaporParametreler,
     // Satır parası ve miktarı: ticari → fatura parası + adet; perakende barkodlu → HAS + has gramı; perakende barkodsuz → stok parası + stok miktarı
     const barkodlu = `(ISNULL(FS.ALTIN_URUN_ID,0)>0 OR LEN(LTRIM(RTRIM(ISNULL(FS.BARKOD,''))))>0)`;
     const stokKart = d.ticariSatir ? "FS.STOK_KART_ID IS NOT NULL" : "1=0";
-    const stokPara = `COALESCE(${d.perakendeStok ? "FS.STOK_PARA_ID, " : ""}P1.PARA_ID, P2.PARA_ID, ${tlId})`;
+    // Stok parası bulunamayan barkodsuz satır (aksesuar vb.): TL tutarı olarak girer (miktar = TL tutar, kur 1); gram TL'ye yazılmaz
+    const stokParaHam = `COALESCE(${d.perakendeStok ? "FS.STOK_PARA_ID, " : ""}P1.PARA_ID, P2.PARA_ID)`;
+    const stokPara = `ISNULL(${stokParaHam}, ${tlId})`;
     const stokMiktar = `COALESCE(${d.perakendeStok ? "FS.STOK_MIKTAR, " : ""}CASE WHEN ISNULL(FS.GRAM,0)>0 THEN FS.GRAM ELSE FS.MIKTAR END)`;
     sParcalar.push(`SELECT ${kayma}+FA.FATURA_ID, ${bolum}, FS.SATIR_NO,
       CASE WHEN ${ticari}=1 OR ${stokKart} THEN ISNULL(FA.PARA_ID, ${tlId}) WHEN ${barkodlu} THEN ${hasId} ELSE ${stokPara} END,
-      CASE WHEN ${ticari}=1 OR ${stokKart} THEN ISNULL(FS.MIKTAR,0) WHEN ${barkodlu} THEN ISNULL(NULLIF(FS.HAS_GRAM,0), ISNULL(FS.MIKTAR,0)) ELSE ISNULL(${stokMiktar},0) END,
+      CASE WHEN ${ticari}=1 OR ${stokKart} THEN ISNULL(FS.TUTAR,0) WHEN ${barkodlu} THEN ISNULL(NULLIF(FS.HAS_GRAM,0), ISNULL(FS.MIKTAR,0))
+           WHEN ${stokParaHam} IS NULL THEN ISNULL(FS.TUTAR,0)*${kur} ELSE ISNULL(${stokMiktar},0) END,
       ISNULL(FS.BIRIM_FIYAT,0)*${kur}, CAST(0 AS float), ISNULL(FS.TUTAR,0)*${kur}, CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float),
       ISNULL(FS.KDV_ORANI,0), ISNULL(FS.KDV_TUTARI,0)*${kur}, CAST(0 AS float), CAST(0 AS float)
       FROM dbo.TODVZ_FATURA_SATIRI FS JOIN dbo.TODVZ_FATURA FA ON FA.FATURA_ID=FS.FATURA_ID ${PERAKENDE_SATIR_PARASI("FS")}
@@ -138,7 +141,9 @@ export async function fisKaynagi(pool: sql.ConnectionPool, p: RaporParametreler,
 
   return {
     F: `(SELECT * FROM (\n${fParcalar.join("\n      UNION ALL\n")}\n) FX (${F_KOLONLARI})) F`,
-    S: `(SELECT * FROM (\n${sParcalar.join("\n      UNION ALL\n")}\n) SX2 (${S_KOLONLARI})) S`,
+    // Kur = satırın birim TL değeri: sarraf / perakende / ticari satırında tutar ÷ miktar (fişteki kur alanı has gramı ya da birim fiyatıdır, miktarla tutmaz)
+    S: `(SELECT FIS_ID, BOLUM, SATIR_NO, PARA_ID, MIKTAR, CASE WHEN BOLUM>1 AND ISNULL(MIKTAR,0)<>0 THEN TUTAR/MIKTAR ELSE KUR END KUR, GISE_KURU, TUTAR,
+      KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, ISCILIK, KDV_ORANI, KDV, KMV_ORANI, KMV FROM (\n${sParcalar.join("\n      UNION ALL\n")}\n) SX2 (${S_KOLONLARI})) S`,
     bolumler, d, bolumAd,
   };
 }

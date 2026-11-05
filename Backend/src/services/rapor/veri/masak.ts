@@ -8,7 +8,7 @@ import { BOLUM_ADI, fisKaynagi } from "../fisKaynak.js";
  * MASAK raporları (docs/raporlar-faz2.md, Faz R2-M; eski raporlarla eşitleme docs/RAPOR_ESITLEME_UYGULAMA.md) — yalnızca SELECT, fiş bazında.
  * Kaynak birleşik fiş kaynağıdır (fisKaynak.ts): Döviz fişi / Sarraf fişi / Perakende fişi / Ticari fiş bölümleri lisansa göre; iptal fişler hariç
  * (yalnız Fiş Kontrol Listesi iptalleri iptal tarihiyle listeler). Perakende / ticari fişte kimlik alanları (meslek, doğum tarihi, uyruk, pasaport …) boştur.
- * Meslek ve doğum tarihi fişten; sektör fişte tutulmadığı için cari kartından (carisiz fişler "Sektör yok").
+ * Meslek ve doğum tarihi fişten; sektör fişte tutulmadığı için cari kartından (carisiz fişler "Sektör belirtilmemiş").
  * MASAK modülünün (liste güncelleme / sorgu) dosyalarına dokunulmaz; yalnızca fişteki işaretler okunur.
  */
 
@@ -82,7 +82,7 @@ async function masakSatirlari(pool: sql.ConnectionPool, p: RaporParametreler, ek
     CASE WHEN COL_LENGTH('dbo.TODVZ_ISTATISTIK','ACIKLAMA') IS NULL THEN 0 ELSE 1 END istatistik`)).recordset[0] || {};
   const bildirimSql = var_.bildirim ? "CASE WHEN F.BOLUM=1 AND EXISTS (SELECT 1 FROM dbo.TODVZ_MASAK_ISLEM_BILDIRIMI B WHERE B.FIS_ID=F.FIS_ID) THEN 1 ELSE 0 END" : "0";
   const res = await req.query(`
-    SELECT F.FIS_ID fisId, F.BOLUM bolum, S.SATIR_NO satirNo, ISNULL(F.ZAMAN,F.TARIH) zaman, CONVERT(varchar(10), F.TARIH, 120) gun, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.SERI_NO,'')) seriNo,
+    SELECT F.FIS_ID fisId, F.BOLUM bolum, S.SATIR_NO satirNo, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CONVERT(varchar(10), F.TARIH, 120) gun, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.SERI_NO,'')) seriNo,
       RTRIM(ISNULL(F.UNVAN,'')) unvan, COALESCE(NULLIF(RTRIM(F.VERGI_KIMLIK_NO),''), NULLIF(RTRIM(F.PASAPORT_NO),''), '') kimlikNo, RTRIM(ISNULL(F.VERGI_KIMLIK_NO,'')) vergiKimlikNo, F.TIP tipKod,
       ISNULL(F.TOPLAM_TUTAR,0) fisTutar, ISNULL(S.TUTAR,0) tutar, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, RTRIM(ISNULL(P.KOD,'')) paraKod, ${FIS_USD_KOLON_SQL},
       RTRIM(ISNULL(F.PASAPORT_NO,'')) pasaportNo, RTRIM(ISNULL(F.BABA_ADI,'')) babaAdi, RTRIM(ISNULL(F.ANNE_ADI,'')) anneAdi, RTRIM(ISNULL(F.KIMLIK_SERI_NO,'')) kimlikSeriNo,
@@ -97,11 +97,11 @@ async function masakSatirlari(pool: sql.ConnectionPool, p: RaporParametreler, ek
       ${var_.istatistik ? "LEFT JOIN dbo.TODVZ_ISTATISTIK IST ON IST.ISTATISTIK_ID=F.ISTATISTIK_ID" : ""}
       LEFT JOIN dbo.TODVZ_KULLANICI U ON U.KULLANICI_ID=F.EKLEYEN_ID LEFT JOIN dbo.TODVZ_KULLANICI SY ON SY.KULLANICI_ID=F.SUPHELI_ISLEMLER_YETKILI_ID
     WHERE ${secenek.iptalDahil ? "1=1" : "ISNULL(F.IPTAL,0)=0"} AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip) ${f}
-    ORDER BY F.BOLUM, ISNULL(F.ZAMAN,F.TARIH), F.FIS_ID, S.SATIR_NO;`);
+    ORDER BY F.BOLUM, CAST(F.TARIH AS date), ISNULL(F.ZAMAN,F.TARIH), F.FIS_ID, S.SATIR_NO;`);
   const usdKuruBul = await usdKuruCozucu(pool, res.recordset);
   const paralar = fisParalari(res.recordset as any[]);
   return res.recordset.map((r: any) => { const tutar = Number(r.tutar) || 0, miktar = Number(r.miktar) || 0, usdKuru = Number(usdKuruBul(r)) || 0, bolum = Number(r.bolum) || 1;
-    return { ...r, bolum, bolumAd: k.bolumAd(bolum), saat: r.zaman, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", tutar, fisTutar: Number(r.fisTutar) || 0, miktar, kur: Number(r.kur) || 0,
+    return { ...r, bolum, bolumAd: k.bolumAd(bolum), saat: r.saatZaman, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", tutar, fisTutar: Number(r.fisTutar) || 0, miktar, kur: Number(r.kur) || 0,
       usdKarsiligi: String(r.paraKod).toUpperCase() === "USD" ? miktar : usdKuru > 0 ? tutar / usdKuru : 0, paralar: paralar.get(Number(r.fisId)) || "", iptal: !!r.iptal,
       meslekId: Number(r.meslekId) || 0, masakListesinde: !!r.masakListesinde, masakListesindeMetin: r.masakListesinde ? "EVET" : "", bildirimFormuMetin: r.bildirimFormu ? "VAR" : "" }; });
 }
@@ -117,10 +117,19 @@ function fislereIndir(satirlar: MasakSatiri[]): MasakFisi[] {
   for (const s of satirlar) { if (!m.has(s.fisId)) m.set(s.fisId, { ...s, tutar: s.fisTutar, usdKarsiligi: 0 }); m.get(s.fisId)!.usdKarsiligi += s.usdKarsiligi; }
   return [...m.values()];
 }
-/** Müşteri anahtarı: kimlik no (yoksa ünvan); ikisi de yoksa fiş tek başına müşteri sayılır. */
-const musteriAnahtari = (s: { kimlikNo: string; unvan: string; fisId: number }) => s.kimlikNo || (s.unvan ? `~${s.unvan}` : `#${s.fisId}`);
+/** Nihai tüketici yer tutucu kimlik numarası mı (11111111111, 2222222222 … — tek rakamın tekrarı). Saf fonksiyon. */
+export const yerTutucuKimlik = (k: any) => /^(\d)\1*$/.test(String(k ?? "").replace(/\s/g, ""));
+/** Müşteriyi ayırt eden kimlik: yer tutucu numara kimlik sayılmaz ("") */
+export const gercekKimlik = (k: any) => { const x = String(k ?? "").trim(); return yerTutucuKimlik(x) ? "" : x; };
+/** Ünvan karşılaştırma biçimi: kırpılmış, Türkçe büyük harf ("İsim beyan edilmemiştir" = "İSİM BEYAN EDİLMEMİŞTİR") */
+export const unvanAnahtari = (u: any) => String(u ?? "").trim().toLocaleUpperCase("tr");
+/** Müşteri anahtarı: gerçek kimlik no (yoksa ünvan, büyük harfle); ikisi de yoksa fiş tek başına müşteri sayılır. Saf fonksiyon. */
+export const musteriAnahtari = (s: { kimlikNo: string; unvan: string; fisId: number }) => { const k = gercekKimlik(s.kimlikNo), u = unvanAnahtari(s.unvan); return k || (u ? `~${u}` : `#${s.fisId}`); };
+/** Meslek / sektör grup adı; boşsa "… belirtilmemiş" (sektör cari karttan, carisiz fişte boş). Saf fonksiyon. */
+export const meslekGrubu = (s: { meslek?: string }) => s.meslek || "Meslek belirtilmemiş";
+export const sektorGrubu = (s: { sektor?: string }) => s.sektor || "Sektör belirtilmemiş";
 /** Müşteri satırının altındaki iç tablonun (eski alt rapor) satırı: fiş satırı */
-const altSatir = (s: MasakSatiri) => ({ fisId: s.fisId, satirNo: s.satirNo, zaman: s.zaman, saat: s.zaman, seriNo: s.seriNo, belgeNo: s.belgeNo, tip: s.tip, unvan: s.unvan,
+const altSatir = (s: MasakSatiri) => ({ fisId: s.fisId, satirNo: s.satirNo, zaman: s.zaman, saat: (s as any).saat ?? s.zaman, seriNo: s.seriNo, belgeNo: s.belgeNo, tip: s.tip, unvan: s.unvan,
   miktar: s.miktar, paraKod: s.paraKod, kur: s.kur, tutar: s.tutar, usdKarsiligi: s.usdKarsiligi, vezneKod: s.vezneKod, kaydeden: s.kaydeden });
 /**
  * Eski meslek / sektör / yaş / yüksek tutar raporlarının yapısı (B20): ana satır = müşteri (ünvan, kimlik, işlem sayısı, tutar [+ doğum tarihi / yaş / meslek / sektör]),
@@ -166,7 +175,7 @@ export const yasUygunMu = (yas: number | null | undefined, kucuk: number, buyuk:
 export type YuksekKip = "donem" | "gunluk" | "fis";
 /**
  * Yüksek tutarda işlemler: `esik` 0 ise sınır yok (eski rapordaki "0 = tümü") → bütün müşteriler. Değilse kipe göre: "donem" müşterinin dönem toplamı ≥ eşik (eski rapor),
- * "gunluk" aynı kimliğin (aynı bölümde) günlük fiş toplamı ≥ eşik olan günlerin fişleri, "fis" tek başına eşiği aşan fişler. Saf fonksiyon.
+ * "gunluk" aynı müşterinin (aynı bölümde; kimlik, yoksa ünvan) günlük fiş toplamı ≥ eşik olan günlerin fişleri, "fis" tek başına eşiği aşan fişler. Saf fonksiyon.
  */
 export function yuksekTutar<T extends MasakSatiri>(tum: T[], esik: number, kip: YuksekKip) {
   if (!(esik > 0)) return musteriSatirlari(tum, () => "");
@@ -174,7 +183,7 @@ export function yuksekTutar<T extends MasakSatiri>(tum: T[], esik: number, kip: 
   if (kip !== "donem") { // fiş ya da kimlik × gün toplamı eşiği aşan fişlerin satırları
     const fisler = fislereIndir(tum), gecen = new Set<number>();
     if (kip === "fis") fisler.filter(f => f.tutar >= esik).forEach(f => gecen.add(f.fisId));
-    else { const m = new Map<string, MasakFisi[]>(); for (const f of fisler) { const k = f.kimlikNo ? `${Number(f.bolum) || 1}|${f.kimlikNo}|${f.gun}` : `#${f.fisId}`; m.set(k, [...(m.get(k) || []), f]); }
+    else { const m = new Map<string, MasakFisi[]>(); for (const f of fisler) { const k = `${Number(f.bolum) || 1}|${musteriAnahtari(f)}|${f.gun}`; m.set(k, [...(m.get(k) || []), f]); }
       for (const gr of m.values()) if (gr.reduce((a, f) => a + f.tutar, 0) >= esik) gr.forEach(f => gecen.add(f.fisId)); }
     secili = tum.filter(x => gecen.has(x.fisId));
   }
@@ -189,6 +198,10 @@ export function kontrolNedenleri(fisler: (Parameters<typeof masakKontrol>[0][num
   const neden = masakKontrol(fisler.filter(f => !f.iptal), esik, n);
   for (const f of fisler) if (f.iptal) for (const [id, m] of masakKontrol([f], esik, Math.max(2, n))) neden.set(id, m);
   return neden;
+}
+/** Fiş Kontrol Listesi filtre özeti (kısa; başlık çubuğunu ikiye kırmasın): "Eşik 240.000 TL · Parça ≥ 2". Saf fonksiyon. */
+export function kontrolOzeti(esik: number, kapsam: "kural" | "sinirUstu" | "tumu", n: number): string {
+  return `Eşik ${esik > 0 ? tl(esik) + " TL" : "yok"} · ${kapsam === "kural" ? `Parça ≥ ${n}` : kapsam === "sinirUstu" ? "Sınır üstü" : "Tümü"}`;
 }
 /** Fiş Kontrol Listesi sırası (eski rapor): bölüm, tarih (gün), seri no; eşitlikte geliş sırası (zaman, fiş, satır) korunur. Saf fonksiyon. */
 export function kontrolSirasi<T extends { bolum?: number; gun: string; seriNo: string }>(satirlar: T[]): T[] {
@@ -211,6 +224,9 @@ export function knskOzeti(satirlar: { basarili: boolean; karaListede: boolean }[
   return [{ olcu: "Toplam sorgu", adet: satirlar.length }, { olcu: "Başarılı sorgu", adet: say(s => s.basarili) },
     { olcu: "Başarısız sorgu", adet: say(s => !s.basarili) }, { olcu: "Kara listede çıkan", adet: say(s => s.karaListede) }];
 }
+
+/** KNSK "Kara listede" kolonu: eşleşme varsa EVET, yoksa HAYIR. Saf fonksiyon. */
+export const karaListeMetni = (v: any) => (v ? "EVET" : "HAYIR");
 
 /** SORGULANAN_KISILIK_TURU kodları — eski rapordaki @CariTipi formülüyle birebir; tanımsız kod boş basılır. */
 const KNSK_CARI_TIPI: Record<number, string> = { 0: "Şahıs", 1: "Şahıs firması", 2: "Tüzel kişi", 3: "Yetkili Müessese", 4: "Banka" };
@@ -241,21 +257,21 @@ export const MASAK_SORGULARI: Record<string, Sorgu> = {
       WHERE CAST(L.ZAMAN AS date) BETWEEN @bas AND @bit AND (@arama IS NULL OR L.SORGULANAN_ADI LIKE @arama OR L.KARA_LISTE_ADI LIKE @arama) ${f}
       ORDER BY L.ZAMAN;`);
     const satirlar = res.recordset.map((r: any) => ({ ...r, saat: r.zaman, basarili: !!r.basarili, karaListede: !!r.karaListede, kisilik: Number(r.kisilikKod) === 1 && BIZIM_ESKI_KNSK_LOGU.test(r.aciklama) ? KNSK_CARI_TIPI[2] : KNSK_CARI_TIPI[Number(r.kisilikKod)] ?? "",
-      sonuc: r.basarili ? "Başarılı" : "BAŞARISIZ", karaListe: r.karaListede ? "EVET" : "" }));
+      sonuc: r.basarili ? "Başarılı" : "BAŞARISIZ", karaListe: karaListeMetni(r.karaListede) }));
     return sinirla(satirlar, t, ozet, undefined, knskOzeti(satirlar));
   },
 
   /** Meslek bazında işlem listesi — meslek grubu, müşteri satırı (işlem sayısı + tutar), altında fişleri; işlem sayısı / tutar alt limiti (eski rapordaki gibi) */
   async MSKMES1(pool, p, t) {
     const s = await masakSatirlari(pool, p, req => idFiltre(req, p.meslekIdler, "F.MESLEK_ID", "ms"));
-    const g = musteriSatirlari(s, x => x.meslek || "Meslek belirtilmemiş", limitler(p));
+    const g = musteriSatirlari(s, meslekGrubu, limitler(p));
     return musteriSonucu(g, t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p)}${adetOzeti(p.meslekIdler, "meslek")}${limitOzeti(p)}`);
   },
 
   /** Sektör bazında işlem listesi — sektör cari kartından; yapı meslek raporuyla aynı */
   async MSKSEK1(pool, p, t) {
     const s = await masakSatirlari(pool, p, req => idFiltre(req, p.sektorIdler, "C.SEKTOR_ID", "sk"));
-    const g = musteriSatirlari(s, x => x.sektor || "Sektör yok (carisiz fiş veya sektörü girilmemiş cari)", limitler(p));
+    const g = musteriSatirlari(s, sektorGrubu, limitler(p));
     return musteriSonucu(g, t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p)}${adetOzeti(p.sektorIdler, "sektör")}${limitOzeti(p)}`);
   },
 
@@ -282,7 +298,7 @@ export const MASAK_SORGULARI: Record<string, Sorgu> = {
     if (!tumu && !(esik > 0)) throw ApiError.badRequest("Eşik tutarı girilmelidir (firma tanımında TL vergi sınırı tanımlı değil).");
     const tum = (await masakSatirlari(pool, p)).map(x => ({ ...x, yas: yasAraligi(x.dogumTarihi, x.zaman).yas }));
     const kip: YuksekKip = p.birlestir === "gunluk" ? "gunluk" : p.birlestir === "fis" ? "fis" : "donem";
-    const kipAdi = { donem: "müşterinin dönem toplamı", gunluk: "aynı kimliğin günlük toplamı", fis: "fiş bazında" }[kip];
+    const kipAdi = { donem: "müşterinin dönem toplamı", gunluk: "müşterinin günlük toplamı", fis: "fiş bazında" }[kip];
     return musteriSonucu(yuksekTutar(tum, esik, kip), t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p)}${tumu ? " · Tutar alt limiti yok" : ` · Tutar alt limiti ${tl(esik)} TL · ${kipAdi}`}`);
   },
 
@@ -291,8 +307,7 @@ export const MASAK_SORGULARI: Record<string, Sorgu> = {
     const s = await masakSatirlari(pool, p, () => " AND F.SUPHELI_ISLEMLER_YETKILI_ID IS NOT NULL");
     const gorulen = new Set<number>();
     const satirlar = s.map(x => { const ilk = !gorulen.has(x.fisId); gorulen.add(x.fisId); return { ...x, fisTutar: ilk ? x.fisTutar : 0 }; });
-    return sinirla(satirlar, t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p)} · ${gorulen.size} fiş, ${satirlar.length} satır`,
-      "Her satır bir fiş satırıdır; fiş toplamı fişin ilk satırında gösterilir. USD karşılığı = satır tutarı ÷ fişin USD kuru (USD satırında miktarın kendisi). İptal fişler hariçtir.");
+    return sinirla(satirlar, t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p)} · ${gorulen.size} fiş, ${satirlar.length} satır`);
   },
 
   /**
@@ -307,8 +322,7 @@ export const MASAK_SORGULARI: Record<string, Sorgu> = {
     const kapsam = p.durum === "tumu" ? "tumu" : p.durum === "sinirUstu" ? "sinirUstu" : "kural";
     const satirlar = kontrolSirasi(s.filter(x => kapsam === "tumu" || (kapsam === "sinirUstu" ? esik > 0 && x.tutar > esik : neden.has(x.fisId))))
       .map(x => ({ ...x, neden: (neden.get(x.fisId) || []).join("; "), isaretli: x.supheliYetkili ? "EVET" : "" }));
-    const kapsamAdi = { kural: `Kontrol kuralları · Parça sayısı ≥ ${n}`, sinirUstu: "Satır tutarı TL vergi sınırının üstünde", tumu: "Tüm fiş satırları" }[kapsam];
-    return sinirla(satirlar, t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p)} · Eşik ${esik > 0 ? tl(esik) + " TL" : "yok"} · ${kapsamAdi}`,
+    return sinirla(satirlar, t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p)} · ${kontrolOzeti(esik, kapsam, n)}`,
       esik > 0 ? undefined : "Eşik tutarı girilmediği ve firma tanımında TL vergi sınırı olmadığı için yalnızca MASAK listesi eşleşmeleri kontrol edildi.");
   },
 };

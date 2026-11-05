@@ -154,8 +154,7 @@
       "anahtar": "miktar",
       "baslik": "Miktar",
       "g": 1.8,
-      "bicim": "sayi",
-      "toplam": true
+      "bicim": "sayi"
     },
     {
       "anahtar": "kur",
@@ -296,7 +295,7 @@
         "anahtar": "ortKur",
         "baslik": "Ort. kur",
         "g": 1.4,
-        "bicim": "kur"
+        "bicim": "sayi4"
       },
       {
         "anahtar": "tutar",

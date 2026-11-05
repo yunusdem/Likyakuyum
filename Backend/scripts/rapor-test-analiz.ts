@@ -13,8 +13,8 @@ import { kosulSaglandi } from "../src/services/rapor/rapor.service.js";
 import { paraGrupKur } from "../src/services/rapor/paraGrup.js";
 import { acikBolumler } from "../src/services/rapor/fisKaynak.js";
 import type { RaporTanim } from "../src/services/rapor/raporTanim.js";
-import { maliyetYurut, karlilikParaOzeti, karlilikGenelToplam, karlilikToplamTablosu, sarrafIscilikSatiri, dovizIscilikSatiri, altinIscilikDuzenle,
-  personelSatiri, personelSirala } from "../src/services/rapor/veri/analiz.js";
+import { maliyetYurut, karlilikParaOzeti, karlilikGenelToplam, karlilikToplamTablosu, sarrafIscilikSatiri, dovizIscilikSatiri, altinIscilikDuzenle, iscilikTabani, ISCILIK_SEKLI,
+  personelSatiri, personelSirala, personelOzetle } from "../src/services/rapor/veri/analiz.js";
 
 let hata = 0;
 const esit = (ad: string, a: unknown, b: unknown) => { if (a !== b) { hata++; console.error(`✗ ${ad}: beklenen ${JSON.stringify(b)}, gelen ${JSON.stringify(a)}`); } else console.log(`✓ ${ad}`); };
@@ -44,21 +44,36 @@ async function excelOku(xlsx: Buffer) {
   // Dönem 01.11.2026'dan başlar. USD: dönem öncesi 100 @40; dönemde 100 @42 alış, 150 @43 satış. HAS: dönem öncesi 10 @4000; dönemde 4 @4500 satış.
   // EUR: yalnız dönem öncesi hareket → tabloya girmez.
   const h = maliyetYurut([
-    { paraId: 2, paraKod: "USD", paraAd: "Amerikan Doları", tip: 0, miktar: 100, tutar: 4000, kur: 40, tarih: "2026-10-20T00:00:00Z" },
-    { paraId: 2, paraKod: "USD", paraAd: "Amerikan Doları", tip: 0, miktar: 100, tutar: 4200, kur: 42, tarih: "2026-11-02T00:00:00Z" },
-    { paraId: 2, paraKod: "USD", paraAd: "Amerikan Doları", tip: 1, miktar: 150, tutar: 6450, kur: 43, tarih: "2026-11-03T00:00:00Z" },
-    { paraId: 3, paraKod: "EUR", paraAd: "Euro", tip: 0, miktar: 50, tutar: 2400, kur: 48, tarih: "2026-10-21T00:00:00Z" },
-    { paraId: 5, paraKod: "HAS", paraAd: "Has Altın", tip: 0, miktar: 10, tutar: 40000, kur: 4000, tarih: "2026-10-25T00:00:00Z" },
-    { paraId: 5, paraKod: "HAS", paraAd: "Has Altın", tip: 1, miktar: 4, tutar: 18000, kur: 4500, tarih: "2026-11-04T00:00:00Z" },
+    { paraId: 2, paraKod: "USD", paraAd: "Amerikan Doları", tip: 0, miktar: 100, tutar: 4000, kur: 40, gun: "2026-10-20" },
+    { paraId: 2, paraKod: "USD", paraAd: "Amerikan Doları", tip: 0, miktar: 100, tutar: 4200, kur: 42, gun: "2026-11-02" },
+    { paraId: 2, paraKod: "USD", paraAd: "Amerikan Doları", tip: 1, miktar: 150, tutar: 6450, kur: 43, gun: "2026-11-03" },
+    { paraId: 3, paraKod: "EUR", paraAd: "Euro", tip: 0, miktar: 50, tutar: 2400, kur: 48, gun: "2026-10-21" },
+    { paraId: 5, paraKod: "HAS", paraAd: "Has Altın", tip: 0, miktar: 10, tutar: 40000, kur: 4000, gun: "2026-10-25" },
+    { paraId: 5, paraKod: "HAS", paraAd: "Has Altın", tip: 1, miktar: 4, tutar: 18000, kur: 4500, gun: "2026-11-04" },
   ]);
-  const bas = new Date("2026-11-01");
+  const bas = "2026-11-01";
   const para = karlilikParaOzeti(h, bas);
   esit("karlılık: para satırları (dönem öncesi EUR yok)", para.map(o => o.para).join(" | "), "USD — Amerikan Doları | HAS — Has Altın");
   // USD: ort. alış = 4200 ÷ 100 = 42 (dönem içi alış); ort. satış = 6450 ÷ 150 = 43; brüt kâr = 6450 − 150 × 42 = 150; kâr % = 150 ÷ 6450 × 100 = 2,3256
   esit("karlılık USD (alış mik|ort alış|ort satış|satış mik|satış tutarı|brüt kâr|kâr %)",
     `${para[0].alisMiktar}|${para[0].ortAlis}|${para[0].ortSatis}|${para[0].satisMiktar}|${para[0].satisTutar}|${para[0].brutKar}|${y(para[0].karYuzde)}`, "100|42|43|150|6450|150|2.3256");
-  // HAS: dönemde alış yok → ort. alış = yürüyen ortalama maliyet 4000; brüt kâr = 18000 − 4 × 4000 = 2000; kâr % = 2000 ÷ 18000 × 100 = 11,1111
-  esit("karlılık HAS (dönemde alış yok → yürüyen ortalama)", `${para[1].alisMiktar}|${para[1].ortAlis}|${para[1].ortSatis}|${para[1].satisTutar}|${para[1].brutKar}|${y(para[1].karYuzde)}`, "0|4000|4500|18000|2000|11.1111");
+  // HAS: dönemde alış yok → ort. alış boş; brüt kâr yürüyen ortalama maliyetle = 18000 − 4 × 4000 = 2000; kâr % = 2000 ÷ 18000 × 100 = 11,1111
+  esit("karlılık HAS (dönemde alış yok → ort. alış boş, brüt kâr yürüyen ortalamayla)", `${para[1].alisMiktar}|${para[1].ortAlis}|${para[1].ortSatis}|${para[1].satisTutar}|${para[1].brutKar}|${y(para[1].karYuzde)}`, "0|null|4500|18000|2000|11.1111");
+  {
+    // Yalnız alış (CAD 200 @30), yalnız satış ve hiç geçmişi yok (CHF 10 @52 → maliyet satış kuru, brüt 0), dönemin ilk günü (gün 2026-11-01) dahil;
+    // gün dönem başından önceyse (2026-10-31) girmez — karşılaştırma iş gününe göredir, saate / UTC kaymasına göre değil
+    const h2 = maliyetYurut([
+      { paraId: 8, paraKod: "CAD", paraAd: "Kanada Doları", tip: 0, miktar: 200, tutar: 6000, kur: 30, gun: "2026-11-01" },
+      { paraId: 9, paraKod: "CHF", paraAd: "İsviçre Frangı", tip: 1, miktar: 10, tutar: 520, kur: 52, gun: "2026-11-02" },
+      { paraId: 10, paraKod: "GBP", paraAd: "Sterlin", tip: 0, miktar: 5, tutar: 275, kur: 55, gun: "2026-10-31" },
+    ]);
+    const p2 = karlilikParaOzeti(h2, "2026-11-01");
+    esit("karlılık: yalnız alış / yalnız satış paralar listede, dönem öncesi gün yok", p2.map(o => o.paraKod).join(), "CAD,CHF");
+    esit("karlılık CAD yalnız alış (alış mik|ort alış|ort satış|satış mik|satış tutarı|brüt|kâr %)", `${p2[0].alisMiktar}|${p2[0].ortAlis}|${p2[0].ortSatis}|${p2[0].satisMiktar}|${p2[0].satisTutar}|${p2[0].brutKar}|${p2[0].karYuzde}`, "200|30|0|0|0|0|0");
+    esit("karlılık CHF yalnız satış (alış mik|ort alış|ort satış|satış tutarı|brüt)", `${p2[1].alisMiktar}|${p2[1].ortAlis}|${p2[1].ortSatis}|${p2[1].satisTutar}|${p2[1].brutKar}`, "0|null|52|520|0");
+    const g2 = karlilikGenelToplam(p2)!;
+    esit("karlılık genel toplam yalnız alış paralı (satış|brüt|kâr %)", `${g2.satisTutar}|${g2.brutKar}|${g2.karYuzde}`, "520|0|0");
+  }
   // GENEL TOPLAM: Σ satış 6450 + 18000 = 24450; Σ brüt kâr 150 + 2000 = 2150; toplam kâr % = 2150 ÷ 24450 × 100 = 8,7935
   const genel = karlilikGenelToplam(para)!;
   esit("karlılık genel toplam (satış|brüt kâr|kâr %|miktar kolonları boş)", `${genel.para}|${genel.satisTutar}|${genel.brutKar}|${y(genel.karYuzde)}|${genel.alisMiktar}|${genel.ortAlis}|${genel.satisMiktar}`, "GENEL TOPLAM|24450|2150|8.7935|null|null|null");
@@ -86,6 +101,8 @@ async function excelOku(xlsx: Buffer) {
   esit("KARLIL1 detay kipi: grup = para, kolonlar duruyor", `${etkinGruplar(tDetay).map(g => g.anahtar).join()}|${tDetay.kolonlar.length}`, "paraBaslik|16");
   esit("KARLIL1 detay kipi: tarih / saat ve seri no / belge no ayrı kolon (B8 / B9)", tDetay.kolonlar.slice(0, 4).map(k => `${k.anahtar}:${k.bicim || ""}`).join(), "zaman:tarih,saat:saat,seriNo:,belgeNo:");
   esit("KARLIL1 parametreler duruyor", t.parametreler.map(p => p.ad).join(), "baslangic,vezneIdler,paraIdler,siralama,birlestir");
+  // Toplam tablosu ana tabloyla (para bazında kip) aynı kolonlar ve aynı genişlikler → PDF'te hizalı
+  esit("KARLIL1 toplam tablosu kolonları ana tabloyla aynı genişlikte", t.ozet!.kolonlar.map(k => `${k.anahtar}:${k.g}`).join(), tOzet.kolonlar.map(k => `${k.anahtar}:${k.g}`).join());
   esit("KARLIL1 toplam tablosu kolonları duruyor", t.ozet!.kolonlar.map(k => k.anahtar).join(), "para,alisMiktar,ortAlis,ortSatis,satisMiktar,satisTutar,brutKar,karYuzde");
 
   // Çizim — para bazında kip: Döviz / Kuyum başlıkları, bölüm toplamı yok, GENEL TOPLAM "Özet" sayfasında
@@ -119,7 +136,25 @@ async function excelOku(xlsx: Buffer) {
   const sr = { fisId: 7, siraNo: 6, tarih: "2026-11-03T00:00:00Z", seriNo: "", belgeNo: "SRF-7", paraId: 6, paraKod: "22", paraAd: "22 Ayar", tipKod: 1, adet: 2, miktar: 10, milyem: 916, hasGram: 9.16, sekilKod: 2,
     iscilikMiktari: 30, iscilikHasGram: 0.3, hasKuru: 4000, kdvOrani: 20, fisKdv: 240, tutar: 37840 };
   const s1 = sarrafIscilikSatiri(sr, true), s2 = sarrafIscilikSatiri({ ...sr, paraId: 5, paraKod: "HAS", paraAd: "Has Altın", siraNo: 5, tarih: "2026-11-02T00:00:00Z", iscilikHasGram: 0.5, tutar: 2000 }, false);
-  esit("sarraf işçilik satırı (işçilik TL|KDV|matrah|tip|şekil|cins)", `${s1.iscilikTutari}|${s1.kdv}|${y(s1.kdvMatrahi, 2)}|${s1.tip}|${s1.sekil}|${s1.cins}`, "1200|240|1200.00|Satış|Gram başına|22");
+  esit("sarraf işçilik satırı (işçilik TL|KDV|matrah|tip|şekil|cins)", `${s1.iscilikTutari}|${s1.kdv}|${y(s1.kdvMatrahi, 2)}|${s1.tip}|${s1.sekil}|${s1.cins}`, "1200|240|1200.00|Satış|Toplam|22");
+  // İşçilik şekli kodları kaydeden ekrandaki gibi: 0 Gram, 1 Adet, 2 Toplam
+  esit("işçilik şekli eşlemesi (0|1|2)", `${ISCILIK_SEKLI[0]}|${ISCILIK_SEKLI[1]}|${ISCILIK_SEKLI[2]}`, "Gram başına|Adet başına|Toplam");
+  esit("işçilik tabanı: gram (gram var | gram yok adet var | ikisi yok)", `${iscilikTabani(0, 10, 2)}|${iscilikTabani(0, 0, 3)}|${iscilikTabani(0, 0, 0)}`, "10|3|0");
+  esit("işçilik tabanı: adet (adet var | adet 0 → 1) / toplam / bilinmeyen", `${iscilikTabani(1, 10, 4)}|${iscilikTabani(1, 10, 0)}|${iscilikTabani(2, 10, 4)}|${iscilikTabani(9, 10, 4)}`, "4|1|1|0");
+  // Toplam (2): işçilik 0,3 has × 4000 = 1200 TL; taban 1 → birim fiyat 1200, milyem 0,3 × 1000 = 300
+  esit("sarraf toplam şekli (birim fiyat|milyem)", `${s1.iscilikBirimFiyati}|${y(s1.iscilikMiktari, 2)}`, "1200|300.00");
+  // Gram (0): 10 gr, işçilik 0,3 has → 1200 TL; birim fiyat 1200 ÷ 10 = 120 TL/gr; milyem 0,3 ÷ 10 × 1000 = 30
+  const sg = sarrafIscilikSatiri({ ...sr, sekilKod: 0, adet: 0 }, true);
+  esit("sarraf gram şekli, adet 0 (şekil|birim fiyat|milyem)", `${sg.sekil}|${y(sg.iscilikBirimFiyati, 2)}|${y(sg.iscilikMiktari, 2)}`, "Gram başına|120.00|30.00");
+  // Adet (1): 2 adet → birim fiyat 1200 ÷ 2 = 600, milyem 0,3 ÷ 2 × 1000 = 150; adet 0 → taban 1
+  const sa = sarrafIscilikSatiri({ ...sr, sekilKod: 1 }, true), sa0 = sarrafIscilikSatiri({ ...sr, sekilKod: 1, adet: 0 }, true);
+  esit("sarraf adet şekli (birim|milyem / adet 0: birim|milyem)", `${sa.iscilikBirimFiyati}|${y(sa.iscilikMiktari, 2)}|${sa0.iscilikBirimFiyati}|${y(sa0.iscilikMiktari, 2)}`, "600|150.00|1200|300.00");
+  // Kayıtlı işçilik tutarı (ISCILIK_TUTARI) önceliklidir: 1500 TL, has gram 0, has kuru 3000, gram 5 → birim 300 TL/gr, milyem (1500 ÷ 3000) ÷ 5 × 1000 = 100
+  const st = sarrafIscilikSatiri({ ...sr, sekilKod: 0, miktar: 5, iscilikHasGram: 0, hasKuru: 3000, iscilikTutariKayit: 1500 }, true);
+  esit("sarraf kayıtlı işçilik tutarı (TL|birim|milyem|yardımcı alan silindi)", `${st.iscilikTutari}|${st.iscilikBirimFiyati}|${y(st.iscilikMiktari, 2)}|${"iscilikTutariKayit" in st}`, "1500|300|100.00|false");
+  // Hesaplanamayan: has gram ve tutar yok, yalnız girilen işçilik miktarı 500 → TL 0, birim boş, milyem girilen değer
+  const sb = sarrafIscilikSatiri({ ...sr, sekilKod: 0, iscilikHasGram: 0, iscilikMiktari: 500 }, true);
+  esit("sarraf işçilik hesaplanamıyor (TL|birim|milyem)", `${sb.iscilikTutari}|${sb.iscilikBirimFiyati}|${sb.iscilikMiktari}`, "0|null|500");
   esit("sarraf işçilik: fişin ikinci satırında KDV yinelenmez", `${s2.iscilikTutari}|${s2.kdv}|${s2.kdvMatrahi}`, "2000|0|0");
   esit("sarraf işçilik: KDV oranı 0 → matrah 0", sarrafIscilikSatiri({ ...sr, kdvOrani: 0, fisKdv: 50 }, true).kdvMatrahi, 0);
   esit("sarraf işçilik: bölüm / belge / seri-belge / para başlığı", `${s1.bolum}|${s1.bolumAd}|${s1.belge}|${s1.seriNo}|${s1.belgeNo}|${s1.paraBaslik}`, "2|Sarraf fişi|Sarraf fişi||SRF-7|22 — 22 Ayar");
@@ -184,6 +219,26 @@ async function excelOku(xlsx: Buffer) {
   const bos = personelSatiri({ bolum: 3, kullaniciId: 7, personel: "", alisAdet: 0, alisTutar: 0, satisAdet: 0, satisTutar: 0, iptalAdet: 2, gunSayisi: 0 });
   esit("personel satırı: gün 0 → oranlar 0, adsız kullanıcı, bölüm adı", `${bos.ciroGun}|${bos.hareketGun}|${bos.ortIslem}|${bos.personel}|${bos.bolumAd}`, "0|0|0|Kullanıcı 7|Perakende fişi");
   esit("personel satırı: bölüm gelmezse döviz fişi", personelSatiri({ kullaniciId: 1, personel: "A" }).bolumAd, "Döviz fişi");
+  // Hareket = farklı fiş: sarraf fişi 7 üç satırla gelse de 1 hareket, tutarı bir kez. Ali (bölüm 2): fiş 7 satış 5000 (3 kez), fiş 8 alış 2000,
+  // fiş 9 iptal (adet ve tutara girmez, İptal 1), günler 01 ve 02 → alış 1 / 2000, satış 1 / 5000, hareket 2, ciro 7000, gün 2, ciro/gün 3500, hareket/gün 1.
+  // Veli (bölüm 1): fiş 1 satış 100 (2 satır, komisyon 4 her satırda aynı fiş toplamı → bir kez), fiş 2 satış 300, aynı gün → satış 2 / 400, gün 1, komisyon 4 + 6 = 10.
+  const fisler = [
+    { bolum: 2, fisId: 500000007, kullaniciId: 5, personel: "Ali", tip: 1, iptal: 0, tutar: 5000, gun: "2026-11-01", komisyon: 0, sapma: 0 },
+    { bolum: 2, fisId: 500000007, kullaniciId: 5, personel: "Ali", tip: 1, iptal: 0, tutar: 5000, gun: "2026-11-01", komisyon: 0, sapma: 0 },
+    { bolum: 2, fisId: 500000007, kullaniciId: 5, personel: "Ali", tip: 1, iptal: 0, tutar: 5000, gun: "2026-11-01", komisyon: 0, sapma: 0 },
+    { bolum: 2, fisId: 500000008, kullaniciId: 5, personel: "Ali", tip: 0, iptal: 0, tutar: 2000, gun: "2026-11-02", komisyon: 0, sapma: 0 },
+    { bolum: 2, fisId: 500000009, kullaniciId: 5, personel: "Ali", tip: 1, iptal: 1, tutar: 9999, gun: "2026-11-03", komisyon: 0, sapma: 0 },
+    { bolum: 1, fisId: 1, kullaniciId: 6, personel: "Veli", tip: 1, iptal: 0, tutar: 100, gun: "2026-11-01", komisyon: 4, sapma: 1 },
+    { bolum: 1, fisId: 1, kullaniciId: 6, personel: "Veli", tip: 1, iptal: 0, tutar: 100, gun: "2026-11-01", komisyon: 4, sapma: 1 },
+    { bolum: 1, fisId: 2, kullaniciId: 6, personel: "Veli", tip: 1, iptal: false, tutar: 300, gun: "2026-11-01", komisyon: 6, sapma: 0 },
+  ];
+  const oz = personelOzetle(fisler).map(personelSatiri);
+  const ali = oz.find(x => x.personel === "Ali")!, veli = oz.find(x => x.personel === "Veli")!;
+  esit("personel özeti: çok satırlı fiş tek hareket (alış|satış adet/tutar|hareket|ciro|iptal|gün|ciro/gün|hareket/gün)",
+    `${ali.alisAdet}/${ali.alisTutar}|${ali.satisAdet}/${ali.satisTutar}|${ali.toplamAdet}|${ali.toplamTutar}|${ali.iptalAdet}|${ali.gunSayisi}|${ali.ciroGun}|${ali.hareketGun}`, "1/2000|1/5000|2|7000|1|2|3500|1");
+  esit("personel özeti: döviz fişi komisyon / sapma fiş başına bir kez (satış|hareket|gün|komisyon|sapma)", `${veli.satisAdet}/${veli.satisTutar}|${veli.toplamAdet}|${veli.gunSayisi}|${veli.komisyon}|${veli.sapmaAdet}`, "2/400|2|1|10|1");
+  esit("personel özeti: sıra ilk görünüşe göre, bölüm ayrı", oz.map(x => `${x.bolum}${x.personel}`).join(), "2Ali,1Veli");
+  esit("personel özeti: aynı kişi farklı bölümde ayrı satır", personelOzetle([{ ...fisler[0] }, { ...fisler[5], kullaniciId: 5, personel: "Ali" }]).map(x => `${x.bolum}:${x.satisAdet}`).join(), "2:1,1:1");
   // Sıralama bölümün içinde kalır; eşitlikte gelen sıra korunur
   const ss = [{ bolum: 1, personel: "A", toplamTutar: 100, toplamAdet: 5 }, { bolum: 1, personel: "B", toplamTutar: 300, toplamAdet: 2 }, { bolum: 2, personel: "A", toplamTutar: 50, toplamAdet: 1 },
     { bolum: 1, personel: "C", toplamTutar: 300, toplamAdet: 2 }, { bolum: 2, personel: "C", toplamTutar: 50, toplamAdet: 9 }];

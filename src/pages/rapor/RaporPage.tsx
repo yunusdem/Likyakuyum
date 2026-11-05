@@ -292,7 +292,11 @@ export const RaporPage: React.FC = () => {
   const ipucu = (not?: React.ReactNode) => (typeof not === "string" ? not : undefined);
   const ekNot = (not?: React.ReactNode) => (not && typeof not !== "string" ? <span className="small text-muted text-nowrap">{not}</span> : null);
   // Etiket uzunsa (ör. "Hareket tipi (seçilmezse tümü)") iki satıra kırılır; kutu dar ekranda küçülür (taşma olmaz)
-  const etiketYazi = (e: React.ReactNode, hizali = true) => <span className="small fw-semibold text-secondary" style={{ minWidth: hizali ? ETIKET_GENISLIGI : undefined, maxWidth: 170, flexShrink: 0 }}>{e}</span>;
+  // Etiket sütunu raporun en uzun tek satırlık etiketine göre (95–190 px): uzun etiketli raporlarda da bütün kutular aynı hizadan başlar
+  const etiketGenisligi = Math.min(190, Math.max(ETIKET_GENISLIGI, ...(tanim?.parametreler || [])
+    .filter(p => !["tarihAralik", "saatAralik", "cariAralik", "vezneAralik", "metinAralik", "sayiAralik", "kurSecimi"].includes(p.tip))
+    .map(p => p.etiket.length * 6.6 + (p.zorunlu ? 10 : 0) + 6)));
+  const etiketYazi = (e: React.ReactNode, hizali = true) => <span className="small fw-semibold text-secondary" style={{ minWidth: hizali ? etiketGenisligi : undefined, width: hizali ? etiketGenisligi : undefined, maxWidth: hizali ? etiketGenisligi : 190, flexShrink: 0 }}>{e}</span>;
   const kutu = (w: number | "auto", icerik: React.ReactNode, title?: string) => <div style={{ width: w, minWidth: 0, flexShrink: 1 }} title={title}>{icerik}</div>;
   const satir = (key: string, etiket: React.ReactNode, kontrol: React.ReactNode, not?: React.ReactNode, w: number | "auto" = GENISLIK.durbun) => (
     <div key={key} className="d-flex align-items-center gap-2" style={{ maxWidth: "100%" }} title={ipucu(not)}>
@@ -389,7 +393,9 @@ export const RaporPage: React.FC = () => {
         </div>, secili.length ? <>{secili.length} seçili · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(p.ad, "")}>Tümü</Button></> : "Hiçbiri seçilmezse tüm hareket tipleri", "auto");
       }
       case "kurSecimi": return [
-        satir("kurTuru", etiket, <Form.Select size="sm" value={String(degerler.kurTuru ?? 0)} onChange={e => set("kurTuru", Number(e.target.value))}>
+        satir("kurTuru", etiket, <Form.Select size="sm" value={String(degerler.kurTuru ?? 0)} onChange={e => { const tur = Number(e.target.value); set("kurTuru", tur);
+          // Saklanan kura geçilince kur tarihi raporun tarihinden başlar (tek tarihli raporda tarih, aralıkta son tarih)
+          if (tur === 2) { const t = String(degerler.tarih || degerler.bitis || ""); if (t) set("kurTarihi", t); } }}>
           <option value={0}>Anlık gişe kuru</option><option value={2}>Saklanan kur (tarihli)</option></Form.Select>, undefined, 175),
         ...(Number(degerler.kurTuru) === 2 ? [satir("kurTarihi", "Kur tarihi", tarihKutu("kurTarihi"), undefined, GENISLIK.tarih)] : []),
         satir("kurAlani", "Kur alanı", <Form.Select size="sm" value={String(degerler.kurAlani ?? "alis")} onChange={e => set("kurAlani", e.target.value)}>
@@ -423,7 +429,8 @@ export const RaporPage: React.FC = () => {
   };
 
   // Grid: grup başlıkları (+ alt başlık) + ara toplam + genel toplam (PDF ile aynı mantık). Kolonlar veriyle gelen tanımdan (KMT süzülmüş) okunur.
-  const kolonlar = veri?.tanim.kolonlar || tanim?.kolonlar || [];
+  // Kolonlar yalnız sunucunun bu çalıştırma için döndürdüğü tanımdan (koşullu / sorgunun kaldırdığı kolonlar ayıklanmış); veri gelmeden başlık çizilmez
+  const kolonlar = veri?.tanim.kolonlar || [];
   const doldur = (sablon: string, satir: Record<string, any>) => sablon.replace(/\{\{\s*([\w.]+)\s*(?:\|\w+)?\s*\}\}/g, (_m, yol) => String(satir[yol] ?? ""));
   /** Net satırı metni: "Bakiye : 1.250,00 B" (sunucudaki netMetni ile aynı kural) */
   const netMetni = (net: RaporNet, satirlar: Record<string, any>[]) => {
@@ -461,7 +468,7 @@ export const RaporPage: React.FC = () => {
         govde(uyeler, seviye + 1);
         const gat = vt.grupAltTablo;
         if (gat && (gat.seviye ?? 0) === seviye) { const alt = veri.grupAltSatirlar?.[String(a)]; if (alt?.length) cikti.push({ tur: "alt", satir: ornek, alt: { tanim: gat, satirlar: alt } }); }
-        if (g.altToplam !== false && toplamli) cikti.push({ tur: "araToplam", satir: toplam(uyeler), etiket: `${doldur(g.toplamEtiketi || "Ara toplam", ornek)} (${veriOlan(uyeler).length})` });
+        if (g.altToplam !== false && toplamli) cikti.push({ tur: "araToplam", satir: toplam(uyeler), etiket: ((e: string) => (/\(\d/.test(e) ? e : `${e} (${veriOlan(uyeler).length})`))(doldur(g.toplamEtiketi || "Ara toplam", ornek)) });
         if (g.net) cikti.push({ tur: "net", satir: {}, etiket: netMetni(g.net, uyeler) });
       }
     };
@@ -624,7 +631,9 @@ export const RaporPage: React.FC = () => {
                         {kolonlar.map((k, ki) => {
                           const v = g.satir[k.anahtar];
                           const metin = kalin && !k.toplam ? (ki === 0 || (!raporSayisalMi(k.bicim) && !kolonlar.slice(0, ki).some(x => !raporSayisalMi(x.bicim))) ? g.etiket : "") : raporBicimle(v, k.bicim);
-                          return <td key={k.anahtar} className={`${k.hiza === "center" ? "text-center" : raporSayisalMi(k.bicim) || k.hiza === "right" ? "text-end text-nowrap" : ""}`}>{metin}</td>;
+                          // Kısa metin kolonları ve toplam etiketleri tek satırda (dar kolonda 2–5 satıra kırılmasın); yalnız geniş metin kolonları (açıklama, ünvan …) kırılır
+                          const tekSatir = (k.g || 1) < 2.5 || kalin;
+                          return <td key={k.anahtar} className={`${k.hiza === "center" ? "text-center" : raporSayisalMi(k.bicim) || k.hiza === "right" ? "text-end" : ""}${tekSatir || raporSayisalMi(k.bicim) ? " text-nowrap" : ""}`}>{metin}</td>;
                         })}
                       </tr>;
                     })}
@@ -633,12 +642,13 @@ export const RaporPage: React.FC = () => {
                         <><Spinner size="sm" animation="border" className="me-2" /> Rapor verileri yükleniyor…</>
                       ) : veri ? (
                         <div>
-                          <div className="mb-2">Seçilen ölçütlerde kayıt bulunamadı.</div>
-                          <div className="small d-flex justify-content-center align-items-center gap-2 flex-wrap">
+                          {/* Boş raporda tek mesaj: sorgunun nedeni varsa o, yoksa genel yazı */}
+                          <div className="mb-2">{veri.ekDipnot || "Seçilen ölçütlerde kayıt bulunamadı."}</div>
+                          {tanim?.parametreler.some(p => p.tip === "tarihAralik" && p.ad === "baslangic") && <div className="small d-flex justify-content-center align-items-center gap-2 flex-wrap">
                             <span className="text-secondary">Farklı tarih görmek için:</span>
                             <Button variant="outline-primary" size="sm" className="py-0.5 px-2" style={{ fontSize: "11.5px" }} onClick={() => { set("baslangic", gun(-1)); set("bitis", gun(-1)); void uygula({ ...degerler, baslangic: gun(-1), bitis: gun(-1) }); }}>Dünün Kayıtları</Button>
                             <Button variant="outline-primary" size="sm" className="py-0.5 px-2" style={{ fontSize: "11.5px" }} onClick={() => { set("baslangic", gun(-7)); set("bitis", gun(0)); void uygula({ ...degerler, baslangic: gun(-7), bitis: gun(0) }); }}>Son 7 Gün</Button>
-                          </div>
+                          </div>}
                         </div>
                       ) : (
                         <><Spinner size="sm" animation="border" className="me-2" /> Rapor hazırlanıyor…</>
@@ -661,7 +671,7 @@ export const RaporPage: React.FC = () => {
                     </tbody>
                   </Table></div>
                 </div>; })()}
-              {(tanim?.dipnot || veri?.ekDipnot) && <div className="px-3 py-2 small text-muted border-top" style={{ whiteSpace: "pre-wrap" }}>{[tanim?.dipnot, veri?.ekDipnot].filter(Boolean).join("\n")}</div>}
+              {tanim?.dipnot && <div className="px-3 py-2 small text-muted border-top" style={{ whiteSpace: "pre-wrap" }}>{tanim.dipnot}</div>}
             </Card.Body>
           </Card>
         </Col>
