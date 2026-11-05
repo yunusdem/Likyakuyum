@@ -4,7 +4,7 @@ import path from "node:path";
 import { ApiError } from "../../utils/ApiError.js";
 import { RAPOR_DIZINI, yaziTipleri, doldur } from "../belge/belgeMotor.js";
 import { raporIsiCalistir } from "./raporIsHavuzu.js";
-import type { RaporTanim, RaporKolon, RaporFirma, RaporBicim } from "./raporTanim.js";
+import type { RaporTanim, RaporKolon, RaporFirma, RaporBicim, RaporGrup, RaporNet, RaporAltTablo } from "./raporTanim.js";
 
 /**
  * Rapor PDF motoru — bant tabanlı (Crystal mantığı):
@@ -41,6 +41,13 @@ const trSayi = (n: number, b = 2) => sayiBicimi(b, b).format(Number(n || 0));
 const tarihTr = (v: any) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? tarihBicimi.format(d) : ""; };
 const tarihSaatTr = (v: any) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? tarihSaatBicimi.format(d).replace(",", "") : ""; };
 
+const saatBicimi = new Intl.DateTimeFormat("tr-TR", { timeZone: "Europe/Istanbul", hour12: false, hour: "2-digit", minute: "2-digit" });
+/** Saat (SS:dd): tarih-saat değerinden; "14:35" gibi hazır metin aynen döner */
+const saatTr = (v: any) => {
+  if (typeof v === "string" && /^\d{1,2}:\d{2}/.test(v)) return v.slice(0, 5);
+  const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? saatBicimi.format(d) : "";
+};
+
 /** Hücre değerini kolon biçimine göre metne çevirir (PDF ve Excel görünüm metni). */
 export function bicimle(v: any, bicim?: RaporBicim): string {
   if (v === null || v === undefined || v === "") return "";
@@ -51,6 +58,7 @@ export function bicimle(v: any, bicim?: RaporBicim): string {
     case "tam": return sayiBicimi(undefined, 0).format(Number(v || 0));
     case "tarih": return tarihTr(v);
     case "tarihSaat": return tarihSaatTr(v);
+    case "saat": return saatTr(v);
     default: return String(v);
   }
 }
@@ -62,15 +70,38 @@ export function bicimle(v: any, bicim?: RaporBicim): string {
 export function bolumlereAyir(tanim: RaporTanim, satirlar: Record<string, any>[]): { baslik: string; satirlar: Record<string, any>[] }[] {
   const b = tanim.bolum;
   if (!b || !satirlar.length) return [{ baslik: "", satirlar }];
+  const ornek = (ss: Record<string, any>[]) => ss.find(s => s._stil !== "baslik") || ss[0];
   const parcalar: { baslik: string; satirlar: Record<string, any>[] }[] = [];
   let i = 0;
   while (i < satirlar.length) {
     const anahtar = satirlar[i][b.anahtar];
     const uyeler: Record<string, any>[] = [];
     while (i < satirlar.length && satirlar[i][b.anahtar] === anahtar) uyeler.push(satirlar[i++]);
-    parcalar.push({ baslik: doldur(b.baslik, uyeler[0]).trim(), satirlar: uyeler });
+    parcalar.push({ baslik: doldur(b.baslik, ornek(uyeler)).trim(), satirlar: uyeler });
   }
-  return parcalar.length > 1 ? parcalar : [{ baslik: "", satirlar }];
+  return parcalar.length > 1 || b.herZaman ? parcalar : [{ baslik: "", satirlar }];
+}
+
+/** Veri satırları: alt başlık (`_stil: "baslik"`) satırları hariç — toplam ve kayıt sayıları bunlarla hesaplanır */
+export const veriSatirlari = (satirlar: Record<string, any>[]) => (satirlar.some(s => s._stil === "baslik") ? satirlar.filter(s => s._stil !== "baslik") : satirlar);
+
+/** Alt başlık satırının metni: `_baslik` ya da kolonlardaki ilk dolu değer */
+export const baslikMetni = (s: Record<string, any>, kolonlar: { anahtar: string }[]) =>
+  String(s._baslik ?? kolonlar.map(k => s[k.anahtar]).find(v => v !== null && v !== undefined && v !== "") ?? "");
+
+/** Geçerli gruplar (dıştan içe): sorgunun seçtiği (`sonuc.gruplar`) → tanımdaki `gruplar` → tek `grup` */
+export function etkinGruplar(tanim: RaporTanim, sonucGruplar?: RaporGrup[]): RaporGrup[] {
+  return sonucGruplar ?? tanim.gruplar ?? (tanim.grup ? [tanim.grup] : []);
+}
+
+/** Genel toplam basılır mı (tanımda ya da herhangi bir grupta `genelToplam: false` yoksa) */
+export const genelToplamVar = (tanim: RaporTanim, gruplar: RaporGrup[]) => tanim.genelToplam !== false && tanim.grup?.genelToplam !== false && !gruplar.some(x => x.genelToplam === false);
+
+/** Net satırı metni: "Bakiye : 1.250,00 B" (|Σartı − Σeksi|; artı büyükse artı harfi, eksi büyükse eksi harfi; sıfırda harf yok) */
+export function netMetni(net: RaporNet, satirlar: Record<string, any>[]): string {
+  const topla = (alan: string) => satirlar.reduce((t, r) => t + (Number(r[alan]) || 0), 0);
+  const fark = topla(net.arti) - topla(net.eksi);
+  return `${net.etiket || "Bakiye"} : ${trSayi(Math.abs(fark))}${Math.abs(fark) < 0.005 ? "" : ` ${fark > 0 ? net.artiHarf || "B" : net.eksiHarf || "A"}`}`;
 }
 
 export interface RaporPdfGirdi {
@@ -82,6 +113,10 @@ export interface RaporPdfGirdi {
   ekDipnot?: string;
   /** `tanim.ozet` bölümünün satırları */
   ozetSatirlar?: Record<string, any>[];
+  /** Sorgunun seçtiği gruplar (tanımdakinin yerine) */
+  gruplar?: RaporGrup[];
+  /** `tanim.grupAltTablo` satırları (grup anahtar değeri → satırlar) */
+  grupAltSatirlar?: Record<string, Record<string, any>[]>;
 }
 
 const sayisal = (b?: RaporBicim) => b === "sayi" || b === "sayi4" || b === "kur" || b === "tam";
@@ -166,8 +201,38 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
       y += 2;
     };
 
+    // Sayfa toplamı / nakli yekün (tanim.sayfaToplami): yalnız ana tablo çizilirken, toplam:true kolonlar
+    let anaTablo = false;
+    const sayfaTop: Record<string, number> = {}, yekun: Record<string, number> = {};
+    const toplamVar = () => kolonlar.some(k => k.toplam);
+    const sayfaToplamli = () => anaTablo && !!g.tanim.sayfaToplami && toplamVar();
+
+    /** Hazır değerlerle toplam satırı (sayfa kontrolü yapmaz): etiket ilk sayısal olmayan kolonda, toplam:true kolonlarda değer */
+    const toplamCiz = (t: Record<string, any>, etiket: string, arka: string) => {
+      let etiketYeri = kolonlar.findIndex(k => !k.toplam && !sayisal(k.bicim));
+      if (etiketYeri < 0) etiketYeri = 0;
+      doc.rect(sol, y, genislik, satirH).fillColor(arka).fill();
+      let x = sol; K().fontSize(boyut).fillColor("#000");
+      kolonlar.forEach((k, i) => {
+        const metin = i === etiketYeri && !k.toplam ? etiket : k.toplam ? bicimle(t[k.anahtar] ?? 0, k.bicim) : "";
+        hucre(metin, x, y, kolonG[i], k.hiza || (sayisal(k.bicim) ? "right" : "left"), true);
+        x += kolonG[i];
+      });
+      y += satirH;
+      doc.moveTo(sol, y).lineTo(sol + genislik, y).lineWidth(0.5).strokeColor("#666").stroke();
+    };
+    const topla = (satirlar: Record<string, any>[]) => {
+      const t: Record<string, any> = {};
+      for (const k of kolonlar) if (k.toplam) t[k.anahtar] = satirlar.reduce((s, r) => s + (Number(r[k.anahtar]) || 0), 0);
+      return t;
+    };
+
     const yeniSayfaGerekliyse = (ihtiyac = satirH) => {
-      if (y + ihtiyac > altSinir) { doc.addPage(); sayfaBasligi(); }
+      const pay = sayfaToplamli() ? satirH + 2 : 0; // sayfa toplamı satırının yeri her zaman ayrılır
+      if (y + ihtiyac + pay <= altSinir) return;
+      if (sayfaToplamli()) { toplamCiz(sayfaTop, "Sayfa toplamı", "#f1f3f5"); for (const a of Object.keys(sayfaTop)) sayfaTop[a] = 0; }
+      doc.addPage(); sayfaBasligi();
+      if (sayfaToplamli()) toplamCiz(yekun, "Nakli yekün", "#f1f3f5");
     };
 
     const satirYaz = (satir: Record<string, any>, kalin = false, arka?: string) => {
@@ -185,54 +250,108 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
     };
 
     const toplamSatiri = (satirlar: Record<string, any>[], etiket: string, arka: string) => {
-      const t: Record<string, any> = {};
-      let etiketYazildi = false;
-      for (const k of kolonlar) {
-        if (k.toplam) t[k.anahtar] = satirlar.reduce((s, r) => s + (Number(r[k.anahtar]) || 0), 0);
-        else if (!etiketYazildi && !sayisal(k.bicim)) { t[k.anahtar] = etiket; etiketYazildi = true; }
-      }
-      if (!etiketYazildi) t[kolonlar[0].anahtar] = etiket;
-      // Toplam satırında sayısal olmayan kolonlar biçimsiz basılır
       yeniSayfaGerekliyse();
-      doc.rect(sol, y, genislik, satirH).fillColor(arka).fill();
-      let x = sol; K().fontSize(boyut).fillColor("#000");
-      kolonlar.forEach((k, i) => {
-        const v = t[k.anahtar];
-        hucre(v === undefined ? "" : (k.toplam ? bicimle(v, k.bicim) : String(v)), x, y, kolonG[i], k.hiza || (sayisal(k.bicim) ? "right" : "left"), true);
-        x += kolonG[i];
-      });
+      toplamCiz(topla(satirlar), etiket, arka);
+    };
+
+    /** Grup / rapor altı net satırı: "Bakiye : |Σartı − Σeksi| B/A" (eski raporlardaki net + borç/alacak harfi) */
+    const netSatiri = (satirlar: Record<string, any>[], net: RaporNet) => {
+      yeniSayfaGerekliyse();
+      doc.rect(sol, y, genislik, satirH).fillColor("#f6f7f9").fill();
+      doc.fillColor("#000"); hucre(netMetni(net, satirlar), sol, y, genislik, "right", true);
       y += satirH;
-      doc.moveTo(sol, y).lineTo(sol + genislik, y).lineWidth(0.5).strokeColor("#666").stroke();
+    };
+
+    /** Alt başlık bandı (`_stil: "baslik"` satırı: Döviz / Kuyum / Ticari gibi) */
+    const baslikBandi = (metin: string) => {
+      yeniSayfaGerekliyse(satirH * 2);
+      y += 3; zebra = 0;
+      doc.rect(sol, y, genislik, satirH).fillColor("#e4e8ee").fill();
+      doc.fillColor("#111"); hucre(metin, sol, y, genislik, "left", true);
+      y += satirH;
+    };
+
+    /** Alt tablo (Crystal alt raporu): girintili, kendi kolon başlıklarıyla; varsa toplam satırı */
+    const altTabloCiz = (alt: RaporAltTablo, altSatirlar: Record<string, any>[]) => {
+      const ks = alt.kolonlar.filter(k => k.pdf !== false);
+      if (!ks.length || !altSatirlar.length) return;
+      const gir = 18, gen = genislik - gir, tg = ks.reduce((t, k) => t + (k.g || 1), 0), gs = ks.map(k => ((k.g || 1) / tg) * gen), h = satirH - 3;
+      const ciz = (deger: (k: RaporKolon, i: number) => string, kalin: boolean, arka?: string, renk = "#222") => {
+        yeniSayfaGerekliyse(h);
+        if (arka) doc.rect(sol + gir, y, gen, h).fillColor(arka).fill();
+        let x = sol + gir; doc.fillColor(renk);
+        ks.forEach((k, i) => { hucre(deger(k, i), x, y - 1.5, gs[i], k.hiza || (sayisal(k.bicim) ? "right" : "left"), kalin, boyut - 0.5); x += gs[i]; });
+        y += h;
+      };
+      yeniSayfaGerekliyse(h * 3);
+      if (alt.baslik) { doc.fillColor("#333"); hucre(alt.baslik, sol + gir, y - 1.5, gen, "left", true, boyut - 0.5); y += h; }
+      ciz(k => k.baslik, true, "#eef0f3", "#444");
+      // Alt başlık satırı (`_stil: "baslik"`: Döviz / Kuyum) iç tabloda bantlı ve kalın; toplama girmez
+      for (const r of altSatirlar) {
+        if (r._stil === "baslik") ciz((_k, i) => (i === 0 ? baslikMetni(r, ks) : ""), true, "#e4e8ee", "#111");
+        else ciz(k => bicimle(r[k.anahtar], k.bicim), false);
+      }
+      const altVeri = veriSatirlari(altSatirlar);
+      if (ks.some(k => k.toplam)) {
+        let etiketYeri = ks.findIndex(k => !k.toplam && !sayisal(k.bicim)); if (etiketYeri < 0) etiketYeri = 0;
+        ciz((k, i) => (k.toplam ? bicimle(altVeri.reduce((s, r) => s + (Number(r[k.anahtar]) || 0), 0), k.bicim) : i === etiketYeri ? (alt.toplamEtiketi || "Toplam") : ""), true, "#f6f7f9");
+      }
+      y += 4; zebra = 0;
+    };
+
+    /** Ana tablo satırı: alt başlık / veri satırı (+ sayfa toplamı birikimi, + satır altı tablo) */
+    const veriSatiri = (s: Record<string, any>) => {
+      if (s._stil === "baslik") { baslikBandi(baslikMetni(s, g.tanim.kolonlar)); return; }
+      satirYaz(s);
+      if (g.tanim.sayfaToplami) for (const k of kolonlar) if (k.toplam) { const v = Number(s[k.anahtar]) || 0;
+        sayfaTop[k.anahtar] = (sayfaTop[k.anahtar] || 0) + v; yekun[k.anahtar] = (yekun[k.anahtar] || 0) + v; }
+      if (g.tanim.altTablo && Array.isArray(s._alt) && s._alt.length) altTabloCiz(g.tanim.altTablo, s._alt);
     };
 
     sayfaBasligi();
 
-    /** Bir bölümün (ya da bölümsüz raporun tamamının) gövdesi: gruplu ise grup başlığı + satırlar + ara toplam, değilse düz satırlar */
-    const govde = (satirlar: Record<string, any>[]) => {
-      const grup = g.tanim.grup;
-      if (!grup) { for (const s of satirlar) satirYaz(s); return; }
+    const gruplar = etkinGruplar(g.tanim, g.gruplar);
+    /** Bir bölümün (ya da bölümsüz raporun tamamının) gövdesi: gruplar iç içe (dıştan içe), her seviyede başlık + alt seviye + ara toplam (+ net satırı) */
+    const govde = (satirlar: Record<string, any>[], seviye = 0) => {
+      const grup = gruplar[seviye];
+      if (!grup) { for (const s of satirlar) veriSatiri(s); return; }
       let i = 0;
       while (i < satirlar.length) {
         const anahtar = satirlar[i][grup.anahtar];
         const uyeler: Record<string, any>[] = [];
         while (i < satirlar.length && satirlar[i][grup.anahtar] === anahtar) uyeler.push(satirlar[i++]);
-        const altBaslik = grup.altBaslik ? doldur(grup.altBaslik, uyeler[0]).trim() : "";
+        const ornek = uyeler.find(s => s._stil !== "baslik") || uyeler[0];
+        const altBaslik = grup.altBaslik ? doldur(grup.altBaslik, ornek).trim() : "";
         yeniSayfaGerekliyse(satirH * (altBaslik ? 4 : 3));
-        y += 6; zebra = 0;
-        doc.fillColor("#111"); hucre(doldur(grup.baslik, uyeler[0]), sol, y, genislik, "left", true, boyut + 1);
-        y += satirH;
-        if (altBaslik) { doc.fillColor("#555"); hucre(altBaslik, sol, y - 4, genislik, "left", false, boyut - 0.5); y += satirH - 4; }
-        doc.moveTo(sol, y - 2).lineTo(sol + genislik, y - 2).lineWidth(0.4).strokeColor("#999").stroke();
-        for (const s of uyeler) satirYaz(s);
-        if (grup.altToplam !== false && kolonlar.some(k => k.toplam)) toplamSatiri(uyeler, "Ara toplam", "#eef0f3");
+        zebra = 0;
+        if (seviye === 0) {
+          y += 6;
+          doc.fillColor("#111"); hucre(doldur(grup.baslik, ornek), sol, y, genislik, "left", true, boyut + 1);
+          y += satirH;
+          if (altBaslik) { doc.fillColor("#555"); hucre(altBaslik, sol, y - 4, genislik, "left", false, boyut - 0.5); y += satirH - 4; }
+          doc.moveTo(sol, y - 2).lineTo(sol + genislik, y - 2).lineWidth(0.4).strokeColor("#999").stroke();
+        } else {
+          // İç seviye: girintili, çizgisiz, bir punto küçük
+          y += 2;
+          doc.fillColor("#222"); hucre(doldur(grup.baslik, ornek), sol + 10 * seviye, y, genislik - 10 * seviye, "left", true, boyut + 0.3);
+          y += satirH - 2;
+          if (altBaslik) { doc.fillColor("#555"); hucre(altBaslik, sol + 10 * seviye, y - 4, genislik - 10 * seviye, "left", false, boyut - 0.5); y += satirH - 4; }
+        }
+        govde(uyeler, seviye + 1);
+        const gat = g.tanim.grupAltTablo;
+        if (gat && (gat.seviye ?? 0) === seviye) { const alt = g.grupAltSatirlar?.[String(anahtar)]; if (alt?.length) altTabloCiz(gat, alt); }
+        if (grup.altToplam !== false && toplamVar()) toplamSatiri(uyeler, doldur(grup.toplamEtiketi || "Ara toplam", ornek), seviye === 0 ? "#eef0f3" : "#f4f5f7");
+        if (grup.net) netSatiri(uyeler, grup.net);
       }
     };
 
-    if (!g.satirlar.length) {
+    const veri = veriSatirlari(g.satirlar);
+    if (!veri.length) {
       N().fontSize(9).fillColor("#666").text("Seçilen ölçütlerde kayıt bulunamadı.", sol, y + 10, { width: genislik, align: "center" });
       y += 30;
     } else {
-      // Bölümler (sektör): veride birden fazla bölüm varsa her biri başlık + gövde + bölüm toplamı; tek bölümde rapor bölümsüz çizilir
+      anaTablo = true;
+      // Bölümler (sektör / para grubu): veride birden fazla bölüm varsa her biri başlık + gövde + bölüm toplamı; tek bölümde rapor bölümsüz çizilir
       const bolumler = bolumlereAyir(g.tanim, g.satirlar);
       for (const b of bolumler) {
         if (b.baslik) {
@@ -243,9 +362,13 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
           y += satirH + 4;
         }
         govde(b.satirlar);
-        if (b.baslik && g.tanim.bolum?.altToplam !== false && kolonlar.some(k => k.toplam)) { y += 2; toplamSatiri(b.satirlar, `${b.baslik} toplamı`, "#e4e8ee"); }
+        if (b.baslik && g.tanim.bolum?.altToplam !== false && toplamVar()) { y += 2; toplamSatiri(b.satirlar, `${b.baslik} toplamı`, "#e4e8ee"); }
       }
-      if (g.tanim.grup?.genelToplam !== false && kolonlar.some(k => k.toplam)) { y += 6; toplamSatiri(g.satirlar, "Genel toplam", "#dfe3e8"); }
+      // Son sayfanın sayfa toplamı (yeri ayrılmıştı)
+      if (sayfaToplamli()) toplamCiz(sayfaTop, "Sayfa toplamı", "#f1f3f5");
+      anaTablo = false;
+      if (genelToplamVar(g.tanim, gruplar) && toplamVar()) { y += 6; toplamSatiri(veri, "Genel toplam", "#dfe3e8"); }
+      if (g.tanim.net) netSatiri(veri, g.tanim.net);
     }
 
     // Özet bölümü (Crystal alt raporu karşılığı): başlık + kendi kolonları + satırlar + toplam
@@ -255,12 +378,12 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
       if (y + satirH * 5 > altSinir) { doc.addPage(); ozetSayfasi = true; sayfaBasligi(); }
       else { y += 14; doc.fillColor("#111"); hucre(oz.baslik, sol, y, genislik, "left", true, boyut + 1.5); y += satirH; zebra = 0; kolonBasliklari(); }
       ozetSayfasi = true;
-      // Satır `_stil: "baslik"` taşıyorsa grup başlığıdır (kâr/zarar KMT tablosunda Döviz / Kuyum / Ticari): kalın ve bantlı basılır
+      // Satır `_stil: "baslik"` taşıyorsa grup başlığıdır (Döviz / Kuyum / Ticari): kalın ve bantlı basılır
       for (const s of g.ozetSatirlar) {
-        if (s._stil === "baslik") { y += 3; satirYaz(s, true, "#e4e8ee"); zebra = 0; }
+        if (s._stil === "baslik") baslikBandi(baslikMetni(s, oz.kolonlar));
         else satirYaz(s);
       }
-      if (kolonlar.some(k => k.toplam)) toplamSatiri(g.ozetSatirlar, "Toplam", "#dfe3e8");
+      if (toplamVar()) toplamSatiri(g.ozetSatirlar, "Toplam", "#dfe3e8");
     }
 
     const dipnot = [g.tanim.dipnot, g.ekDipnot].filter(Boolean).join("\n");

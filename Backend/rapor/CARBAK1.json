@@ -17,9 +17,72 @@
       "tip": "cariCoklu"
     },
     {
+      "ad": "cariAd",
+      "etiket": "Cari adı",
+      "tip": "metinAralik"
+    },
+    {
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "hesapTipi",
+      "etiket": "Hesap tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "borc",
+          "ad": "Borç"
+        },
+        {
+          "deger": "alacak",
+          "ad": "Alacak"
+        }
+      ],
+      "varsayilan": "hepsi"
+    },
+    {
+      "ad": "limit",
+      "etiket": "Limit",
+      "tip": "sayiAralik",
+      "not": "Bakiye tutarı aralığı (boş = sınırsız)"
+    },
+    {
+      "ad": "listeSekli",
+      "etiket": "Liste şekli",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "kart",
+          "ad": "Kart bazında"
+        },
+        {
+          "deger": "para",
+          "ad": "Para bazında"
+        }
+      ],
+      "varsayilan": "kart"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "kod",
+          "ad": "Kod"
+        },
+        {
+          "deger": "ad",
+          "ad": "Ad"
+        }
+      ],
+      "varsayilan": "kod"
     },
     {
       "ad": "kurTuru",
@@ -48,13 +111,31 @@
       "anahtar": "borcBakiye",
       "baslik": "Borç bakiye",
       "g": 2.2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "kosul": "p:listeSekli=kart"
+    },
+    {
+      "anahtar": "borcBakiye",
+      "baslik": "Borç bakiye",
+      "g": 2.2,
+      "bicim": "sayi",
+      "kosul": "p:listeSekli=para",
+      "toplam": true
     },
     {
       "anahtar": "alacakBakiye",
       "baslik": "Alacak bakiye",
       "g": 2.2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "kosul": "p:listeSekli=kart"
+    },
+    {
+      "anahtar": "alacakBakiye",
+      "baslik": "Alacak bakiye",
+      "g": 2.2,
+      "bicim": "sayi",
+      "kosul": "p:listeSekli=para",
+      "toplam": true
     },
     {
       "anahtar": "borc",
@@ -129,6 +210,11 @@
       "kosul": "kurIkisi"
     }
   ],
+  "bolum": {
+    "anahtar": "paraGrupAd",
+    "baslik": "{{paraGrupAd}}",
+    "altToplam": false
+  },
   "grup": {
     "anahtar": "cariKod",
     "baslik": "{{cariBaslik}}",

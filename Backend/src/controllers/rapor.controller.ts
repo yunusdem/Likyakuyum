@@ -56,7 +56,15 @@ export class RaporController {
   private static kullanici(req: Request) { return req.user?.username || "rapor"; }
   /** Sorgu parametreleri + oturumun açık modül listesi (sektörlü raporlar bölümleri lisansa göre süzer; kullanıcıdan gelmez) */
   private static async parametreler(req: Request) {
-    return { ...RaporController.parametreleriDogrula(req), acikModuller: await oturumModulleri(req) };
+    const p = RaporController.parametreleriDogrula(req);
+    // Ek parametreler: raporun tanımında olup sabit şemada bulunmayanlar `ek` altında metin olarak taşınır (docs/RAPOR_ESITLEME_UYGULAMA.md 1.1)
+    const ek: Record<string, string> = {};
+    for (const ad of RaporService.ekParametreAdlari(RaporController.kod(req))) {
+      if (ad in p || ad in parametreSema.shape) continue;
+      const v = req.query[ad];
+      if (typeof v === "string" && v.trim() !== "") ek[ad] = v.trim().slice(0, 100);
+    }
+    return { ...p, ek, acikModuller: await oturumModulleri(req) };
   }
   private static parametreleriDogrula(req: Request) {
     const p = parametreSema.safeParse(req.query);
@@ -79,13 +87,14 @@ export class RaporController {
 
   /** GET /api/v1/rapor/:kod/tanim — parametre şeması + kolonlar (ekran filtre şeridi ve grid için) */
   public static tanim = asyncHandler(async (req: Request, res: Response) =>
-    ApiResponse.ok(res, "Rapor tanımı.", await RaporService.tanimSecenekli(RaporController.kod(req), RaporController.getDbContext(req))));
+    ApiResponse.ok(res, "Rapor tanımı.", await RaporService.tanimSecenekli(RaporController.kod(req), RaporController.getDbContext(req), await oturumModulleri(req))));
 
   /** GET /api/v1/rapor/:kod/veri?... — ekran grid'i */
   public static veri = asyncHandler(async (req: Request, res: Response) => {
     const v = await RaporService.veri(RaporController.kod(req), await RaporController.parametreler(req),RaporController.getDbContext(req));
     return ApiResponse.ok(res, v.sinirAsildi ? `Rapor ${v.toplamKayit} satır üretiyor; üst sınır aşıldı. Tarih aralığını daraltın.` : "Rapor verisi.",
-      { satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, ekDipnot: v.ekDipnot, sinirAsildi: !!v.sinirAsildi, toplamKayit: v.toplamKayit, tanim: v.tanim, ozetSatirlar: v.ozetSatirlar || [] });
+      { satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, ekDipnot: v.ekDipnot, sinirAsildi: !!v.sinirAsildi, toplamKayit: v.toplamKayit, tanim: v.tanim, ozetSatirlar: v.ozetSatirlar || [],
+        gruplar: v.gruplar, grupAltSatirlar: v.grupAltSatirlar });
   });
 
   /** GET /api/v1/rapor/secim/:kaynak — dürbün listeleri (hesap | istatistik | meslek | sektor | kullanici | banka) */

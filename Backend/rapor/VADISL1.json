@@ -1,7 +1,7 @@
 {
   "kod": "VADISL1",
   "ad": "Vadeli İşlem Listesi",
-  "aciklama": "Vadesi girilmiş cari dekontlar; vade ve işlem tarihi aralığı, cari, para ve vade durumuna göre; para bazında gruplu.",
+  "aciklama": "Vadesi girilmiş cari dekontlar; vade ve işlem tarihi aralığı, cari, vezne, para, hesap tipi ve vade durumuna göre; sıralamaya göre para / gün / cari gruplu.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -44,9 +44,39 @@
       "tip": "cariCoklu"
     },
     {
+      "ad": "cariAd",
+      "etiket": "Cari adı",
+      "tip": "metinAralik"
+    },
+    {
+      "ad": "vezneIdler",
+      "etiket": "Vezne (dürbünden seçin)",
+      "tip": "vezneCoklu"
+    },
+    {
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "hesapTipi",
+      "etiket": "Hesap tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "borc",
+          "ad": "Borç"
+        },
+        {
+          "deger": "alacak",
+          "ad": "Alacak"
+        }
+      ],
+      "varsayilan": "hepsi"
     },
     {
       "ad": "siralama",
@@ -55,18 +85,28 @@
       "secenekler": [
         {
           "deger": "vade",
-          "ad": "Vade tarihi"
+          "ad": "Vade tarihi (para grubu)"
+        },
+        {
+          "deger": "tarih",
+          "ad": "İşlem tarihi"
         },
         {
           "deger": "ad",
-          "ad": "Cari adı"
+          "ad": "Ad"
         },
         {
           "deger": "kod",
-          "ad": "Cari kodu"
+          "ad": "Kod"
         }
       ],
-      "varsayilan": "vade"
+      "varsayilan": "vade",
+      "not": "Sıralama grubu da belirler: para / gün / cari"
+    },
+    {
+      "ad": "iptaller",
+      "etiket": "İptal edilenler",
+      "tip": "onay"
     }
   ],
   "kolonlar": [
@@ -95,6 +135,13 @@
       "hiza": "center"
     },
     {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9,
+      "hiza": "center",
+      "kosul": "p:siralama!=vade"
+    },
+    {
       "anahtar": "tip",
       "baslik": "Tür",
       "g": 1.6,
@@ -113,15 +160,19 @@
     {
       "anahtar": "aciklama",
       "baslik": "Açıklama",
-      "g": 3,
-      "pdf": false
+      "g": 3
     },
     {
       "anahtar": "vezneKod",
       "baslik": "Vezne",
       "g": 0.9,
-      "hiza": "center",
-      "pdf": false
+      "hiza": "center"
+    },
+    {
+      "anahtar": "islemDurumu",
+      "baslik": "Durum",
+      "g": 0.7,
+      "hiza": "center"
     },
     {
       "anahtar": "meblag",
@@ -129,6 +180,12 @@
       "g": 2,
       "bicim": "sayi",
       "toplam": true
+    },
+    {
+      "anahtar": "tipHarf",
+      "baslik": "B/A",
+      "g": 0.6,
+      "hiza": "center"
     },
     {
       "anahtar": "kur",
@@ -145,10 +202,25 @@
       "toplam": true
     }
   ],
+  "bolum": {
+    "anahtar": "paraGrupAd",
+    "baslik": "{{paraGrupAd}}",
+    "altToplam": false
+  },
   "grup": {
     "anahtar": "paraKod",
     "baslik": "Para birimi: {{paraKod}}",
     "altToplam": true,
-    "genelToplam": false
+    "genelToplam": false,
+    "net": {
+      "arti": "borcMeblag",
+      "eksi": "alacakMeblag",
+      "etiket": "Net toplam"
+    }
+  },
+  "net": {
+    "arti": "borcMeblag",
+    "eksi": "alacakMeblag",
+    "etiket": "Genel net toplam"
   }
 }

@@ -112,9 +112,22 @@
     },
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 2.1,
-      "bicim": "tarihSaat",
+      "baslik": "Tarih",
+      "g": 1.4,
+      "bicim": "tarih",
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "bicim": "saat",
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "seriNo",
+      "baslik": "Seri no",
+      "g": 1.4,
       "kosul": "kip:detay"
     },
     {
@@ -218,6 +231,12 @@
       "kosul": "kip:detay"
     }
   ],
+  "bolum": {
+    "anahtar": "paraGrupAd",
+    "baslik": "{{paraGrupAd}}",
+    "altToplam": false,
+    "herZaman": true
+  },
   "grup": {
     "anahtar": "paraBaslik",
     "baslik": "{{paraBaslik}}",

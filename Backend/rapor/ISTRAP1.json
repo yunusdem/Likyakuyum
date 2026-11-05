@@ -47,6 +47,26 @@
         }
       ],
       "varsayilan": "detay"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "para",
+          "ad": "Para"
+        },
+        {
+          "deger": "tarih",
+          "ad": "Tarih"
+        },
+        {
+          "deger": "seri",
+          "ad": "Seri no"
+        }
+      ],
+      "varsayilan": "para"
     }
   ],
   "kolonlar": [
@@ -58,9 +78,16 @@
     },
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 1.9,
-      "bicim": "tarihSaat",
+      "baslik": "Tarih",
+      "g": 1.3,
+      "bicim": "tarih",
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "bicim": "saat",
       "kosul": "kip:detay"
     },
     {
@@ -87,7 +114,6 @@
       "baslik": "Miktar",
       "g": 1.8,
       "bicim": "sayi",
-      "toplam": true,
       "kosul": "kip:detay"
     },
     {
@@ -211,11 +237,16 @@
       "pdf": false
     }
   ],
+  "bolum": {
+    "anahtar": "bolumAd",
+    "baslik": "{{bolumAd}}"
+  },
   "grup": {
     "anahtar": "istatistikBaslik",
     "baslik": "{{istatistikBaslik}}",
     "altToplam": true
   },
+  "sayfaToplami": true,
   "ozet": {
     "baslik": "Toplam — para bazında giriş / çıkış",
     "kolonlar": [

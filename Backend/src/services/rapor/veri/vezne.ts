@@ -2,11 +2,19 @@ import sql from "mssql";
 import { maliyetYurut } from "./analiz.js";
 import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
-import { type RaporParametreler, aralikOzeti, filtreler, hedefPara, kurCoz, ozetEk, paraKumesi, sinirla, tarihTr } from "../raporOrtak.js";
+import { type RaporParametreler, aralikOzeti, ek, filtreler, hedefPara, kurCoz, ozetEk, paraKumesi, sinirla, tarihTr } from "../raporOrtak.js";
+import { saatTr } from "../kaynak.js";
+import { paraBasliklariEkle, paraGrupBilgisi } from "../paraGrup.js";
+import { LISTELEME_ADI, bakiyeListele, baslikliSonuc, listelemeSekli, secimDegeri } from "./vezneTemel.js";
 
 /** Vezne raporları (docs/raporlar-faz2.md, Faz R2-V) — yalnızca SELECT. */
 
 type Sorgu = (pool: sql.ConnectionPool, p: RaporParametreler, t: RaporTanim) => Promise<RaporSonucVeri>;
+
+/** Kur kontrolü kipleri: eski rapor tipleri (genel / vezne / kullanici) + bizim ayrıntı ve gün kipleri */
+export const KUR_KONTROL_KIPLERI = ["genel", "vezne", "kullanici", "ayrinti", "gun"] as const;
+/** Kur kontrolü kipi: seçilmemiş / geçersiz değerde eski raporun varsayılanı "genel" (B13). Saf fonksiyon. */
+export const kurKontrolKipi = (v?: string | null): (typeof KUR_KONTROL_KIPLERI)[number] => ((KUR_KONTROL_KIPLERI as readonly string[]).includes(String(v || "")) ? (v as any) : "genel");
 
 /** Kur sapması: fiş kuru ile o andaki gişe kuru arasındaki fark ve yüzdesi. Gişe kuru yoksa (0) sapma hesaplanmaz. Saf fonksiyon. */
 export function kurSapmasi(fisKuru: number, giseKuru: number, miktar: number) {
@@ -18,7 +26,10 @@ export function kurSapmasi(fisKuru: number, giseKuru: number, miktar: number) {
 
 export const VEZNE_SORGULARI: Record<string, Sorgu> = {
 
-  /** Vezne bakiye raporu (anlık) — TODVZ_VEZNE_BAKIYE tablosundan; Döviz Fişi ekranının gösterdiği bakiye */
+  /**
+   * Vezne bakiye raporu (anlık) — TODVZ_VEZNE_BAKIYE tablosundan; Döviz Fişi ekranının gösterdiği bakiye.
+   * Listeleme şekli (eski pCB_ListelemeSekli): vezne bazında (varsayılan) / para bazında / genel. "Birim maliyet göster" kutusu tanımdaki kolon koşuludur.
+   */
   async VEZANL1(pool, p, t) {
     const kur = await kurCoz(pool, p);
     const req = pool.request();
@@ -26,7 +37,7 @@ export const VEZNE_SORGULARI: Record<string, Sorgu> = {
     const sira = p.siralama === "ad" ? "P.AD" : "ISNULL(P.SIRA_NO,99), P.KOD";
     const res = await req.query(`
       SELECT B.VEZNE_ID vezneId, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, B.PARA_ID paraId,
-        RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(B.MIKTAR,0) miktar
+        RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(B.MIKTAR,0) miktar
       FROM dbo.TODVZ_VEZNE_BAKIYE B LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=B.VEZNE_ID LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=B.PARA_ID
       WHERE ABS(ISNULL(B.MIKTAR,0))>0.000001 ${f}
       ORDER BY V.KOD, ${sira};`);
@@ -40,8 +51,13 @@ export const VEZNE_SORGULARI: Record<string, Sorgu> = {
       const id = Number(r.paraId), m = Number(r.miktar) || 0, k = kur.kurlar.get(id) ?? 0, ks = kur.satisKurlari.get(id) ?? 0;
       return { ...r, miktar: m, kur: k, tlKarsiligi: m * k, birimMaliyet: id === kur.tlId ? 1 : birimMaliyet.get(id) ?? 0, hedefKarsiligi: hedef.cevir(m * k), hedefParaKod: hedef.kod, kurSatis: ks, tlSatis: m * ks, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` };
     });
-    return sinirla(satirlar, t, `Anlık bakiye${ozetEk(p) || " · Tüm vezneler"} · ${kur.aciklama} · ${hedef.aciklama}`,
-      `Anlık bakiye tablosundan (her kayıtta güncellenen vezne bakiyesi) okunur; Döviz Fişi ekranındaki bakiyeyle aynıdır. Geçmiş bir tarih için "Vezne Bakiye Raporu (Tarih Bazlı)" kullanılır; o rapor hareketlerden hesapladığı için küçük farklar olabilir. ${kur.aciklama}.`);
+    // Listeleme şekli + para ayrımı (K11: Döviz / Kuyum başlıkları); para bazında ve genelde para sırası seçilen sıralamayla aynıdır
+    const pg = await paraGrupBilgisi(pool), sekil = listelemeSekli(secimDegeri(p, "listeleme"));
+    const duzen = bakiyeListele(satirlar, sekil, { grupla: s => pg.grup(s), vezneAnahtar: "vezneBaslik", sifirAt: true,
+      ...(p.siralama === "ad" ? { paraSirala: (a: any, b: any) => String(a.paraAd || "").localeCompare(String(b.paraAd || ""), "tr") } : {}) });
+    return baslikliSonuc(duzen, t, `Anlık bakiye${ozetEk(p) || " · Tüm vezneler"}${sekil === "vezne" ? "" : ` · ${LISTELEME_ADI[sekil]}`} · ${kur.aciklama} · ${hedef.aciklama}`,
+      `Anlık bakiye tablosundan (her kayıtta güncellenen vezne bakiyesi) okunur; Döviz Fişi ekranındaki bakiyeyle aynıdır. Geçmiş bir tarih için "Vezne Bakiye Raporu (Tarih Bazlı)" kullanılır; o rapor hareketlerden hesapladığı için küçük farklar olabilir. ${kur.aciklama}.`,
+      { kolonBasliklari: p.hedefParaId ? { hedefKarsiligi: hedef.kod } : undefined });
   },
 
   /**
@@ -51,7 +67,8 @@ export const VEZNE_SORGULARI: Record<string, Sorgu> = {
   async KURKON2(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     // Kırılım: "ayrinti" gün × para × vezne × kullanıcı · "gun" gün × para · eski rapor tipleri: "genel" dönem × para · "vezne" dönem × para × vezne · "kullanici" dönem × para × kullanıcı
-    const kip = ["gun", "genel", "vezne", "kullanici"].includes(p.birlestir || "") ? p.birlestir! : "ayrinti";
+    // Varsayılan eski rapordaki "Genel" (kullanıcı kararı B13); "ayrinti" ve "gun" bizim ek kiplerimizdir
+    const kip = kurKontrolKipi(p.birlestir || ek(p, "birlestir"));
     const gunlu = kip === "ayrinti" || kip === "gun", vezneli = kip === "ayrinti" || kip === "vezne", kullanicili = kip === "ayrinti" || kip === "kullanici";
     const sorgu = async (kaynak: "fis" | "dekont") => {
       const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
@@ -80,14 +97,16 @@ export const VEZNE_SORGULARI: Record<string, Sorgu> = {
     if (dekontVar) for (const r of await sorgu("dekont")) { const o = al(r); o.borcMeblag = Number(r.m0) || 0; o.borcTutar = Number(r.t0) || 0; o.alacakMeblag = Number(r.m1) || 0; o.alacakTutar = Number(r.t1) || 0; }
     const bol = (a: number, b: number) => (b ? a / b : 0);
     const donem = `${tarihTr(p.baslangic)} – ${tarihTr(p.bitis)}`;
-    const satirlar = [...m.values()].sort((x, y) => x.gun.localeCompare(y.gun) || x.siraNo - y.siraNo || x.paraKod.localeCompare(y.paraKod) || x.vezneKod.localeCompare(y.vezneKod) || x.kullanici.localeCompare(y.kullanici, "tr"))
+    const veri = [...m.values()].sort((x, y) => x.gun.localeCompare(y.gun) || x.siraNo - y.siraNo || x.paraKod.localeCompare(y.paraKod) || x.vezneKod.localeCompare(y.vezneKod) || x.kullanici.localeCompare(y.kullanici, "tr"))
       .map(o => { const oa = bol(o.alisTutar, o.alisMiktar), os = bol(o.satisTutar, o.satisMiktar);
         return { ...o, ortAlisKuru: oa, ortSatisKuru: os, makas: oa && os ? os - oa : 0, ortBorcKuru: bol(o.borcTutar, o.borcMeblag), ortAlacakKuru: bol(o.alacakTutar, o.alacakMeblag),
           // Eski @GenelOrtalamaKur1 / @GenelOrtalamaKur2: vezne + cari işlemlerin birleşik ortalaması
           genelOrtKur1: bol(o.alisTutar + o.borcTutar, o.alisMiktar + o.borcMeblag), genelOrtKur2: bol(o.satisTutar + o.alacakTutar, o.satisMiktar + o.alacakMeblag),
           gunBaslik: o.gun ? tarihTr(o.gun) : donem }; });
     const kipAdi: Record<string, string> = { ayrinti: "vezne ve kullanıcı ayrıntılı", gun: "gün × para", genel: "Genel", vezne: "Vezne bazında", kullanici: "Kullanıcı bazında" };
-    return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm vezneler"} · ${kipAdi[kip]}`,
+    // Para ayrımı (K11): her gün / dönem grubunun içinde Döviz / Kuyum başlıkları (yalnız başlık)
+    const pg = await paraGrupBilgisi(pool);
+    return baslikliSonuc({ satirlar: paraBasliklariEkle(veri, { grupla: s => pg.grup(s), alan: "paraKod", bolumle: ["gunBaslik"] }) }, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm vezneler"} · ${kipAdi[kip]}`,
       "Ortalama kur = tutar / miktar. Makas = ortalama satış kuru − ortalama alış kuru (aynı satırda hem alış hem satış varsa). Cari işlem kolonları kur cinsinden girilmiş, iptal edilmemiş cari emanet / dekont satırlarından gelir (borç ve alacak meblağı, ortalama kur = Σ meblağ × kur ÷ Σ meblağ); genel ortalama kur vezne ve cari işlemlerin birleşik ortalamasıdır. TL satırlarında kur 1'dir. İptal fişler hariçtir.");
   },
 
@@ -98,7 +117,7 @@ export const VEZNE_SORGULARI: Record<string, Sorgu> = {
       .input("tip", sql.Int, p.fisTipi === 0 || p.fisTipi === 1 ? p.fisTipi : null);
     const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
     const res = await req.query(`
-      SELECT F.FIS_ID fisId, ISNULL(F.ZAMAN,F.TARIH) zaman, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, F.TIP tipKod,
+      SELECT F.FIS_ID fisId, ISNULL(F.ZAMAN,F.TARIH) zaman, F.ZAMAN fisZaman, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, F.TIP tipKod,
         RTRIM(ISNULL(F.SERI_NO,''))+RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan, RTRIM(P.KOD) paraKod,
         ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, ISNULL(S.GISE_KURU,0) giseKuru, RTRIM(ISNULL(U.AD,'')) kaydeden
       FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID
@@ -109,7 +128,8 @@ export const VEZNE_SORGULARI: Record<string, Sorgu> = {
     let gisesiz = 0;
     const satirlar = res.recordset.map((r: any) => {
       const s = kurSapmasi(r.kur, r.giseKuru, r.miktar); if (!s.giseVar) gisesiz++;
-      return { ...r, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", miktar: Number(r.miktar), kur: Number(r.kur), giseKuru: Number(r.giseKuru),
+      // Tarih ve saat ayrı kolon (B8): saat fişin kayıt saatidir (İstanbul); kayıt saati yoksa boş
+      return { ...r, saat: saatTr(r.fisZaman), tip: Number(r.tipKod) === 1 ? "Satış" : "Alış", miktar: Number(r.miktar), kur: Number(r.kur), giseKuru: Number(r.giseKuru),
         fark: s.fark, sapmaYuzde: s.sapmaYuzde, tlEtkisi: s.tlEtkisi, giseVar: s.giseVar, vezneBaslik: `${r.vezneKod} — ${r.vezneAd}` };
     }).filter((r: any) => r.giseVar && Math.abs(r.sapmaYuzde) >= esik && (esik > 0 || Math.abs(r.fark) > 0.0000001));
     return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm vezneler"}${p.fisTipi === 0 ? " · Alış" : p.fisTipi === 1 ? " · Satış" : ""} · Sapma ≥ %${esik.toLocaleString("tr-TR")}`,

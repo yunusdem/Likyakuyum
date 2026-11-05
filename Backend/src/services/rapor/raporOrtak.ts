@@ -35,7 +35,24 @@ export interface RaporParametreler {
    * null / undefined = kısıt yok. Sektörlü raporlar bölümleri buna göre süzer (docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md K10).
    */
   acikModuller?: string[] | null;
+  /**
+   * Ek parametreler (docs/RAPOR_ESITLEME_UYGULAMA.md 1.1): tanımda olup sabit şemada bulunmayan parametrelerin değerleri (metin).
+   * `onay` → "1"; `metinAralik` → `<ad>Ilk` / `<ad>Son`; `sayiAralik` → `<ad>Alt` / `<ad>Ust`. Okumak için ek / ekOnay / ekSayi.
+   */
+  ek?: Record<string, string>;
 }
+
+/** Ek parametre değeri (metin; yoksa "") */
+export const ek = (p: RaporParametreler, ad: string): string => String(p.ek?.[ad] ?? "").trim();
+/** Ek onay kutusu işaretli mi ("1" / "true" / "evet") */
+export const ekOnay = (p: RaporParametreler, ad: string): boolean => ["1", "true", "evet"].includes(ek(p, ad).toLowerCase());
+/** Ek sayısal parametre (virgüllü yazım kabul edilir); boş / geçersizse undefined */
+export const ekSayi = (p: RaporParametreler, ad: string): number | undefined => {
+  const m = ek(p, ad).replace(",", ".");
+  if (!m) return undefined;
+  const n = Number(m);
+  return Number.isFinite(n) ? n : undefined;
+};
 
 /** Seçim listesi filtresi: `kolon IN (…)`; liste boşsa boş metin. `onek` parametre adlarının çakışmaması içindir. */
 export function idFiltre(req: sql.Request, idler: number[] | undefined, kolon: string, onek: string): string {
@@ -192,9 +209,11 @@ export async function hedefPara(pool: sql.ConnectionPool, p: RaporParametreler, 
 
 export function sinirla(satirlar: any[], tanim: RaporTanim, filtreOzeti: string, ekDipnot?: string, ozetSatirlar?: Record<string, any>[]): RaporSonucVeri {
   const sinir = tanim.ustSinir || RAPOR_UST_SINIR;
-  if (satirlar.length > sinir) return { satirlar: [], filtreOzeti, ekDipnot, sinirAsildi: true, toplamKayit: satirlar.length };
+  // Kayıt sayısı ve üst sınır yalnız veri satırlarıyla (Döviz / Kuyum alt başlık satırları sayılmaz)
+  const kayit = satirlar.filter(s => s?._stil !== "baslik").length;
+  if (kayit > sinir) return { satirlar: [], filtreOzeti, ekDipnot, sinirAsildi: true, toplamKayit: kayit };
   // Hesap açıklamaları basılmaz (kullanıcı kararı 19.09.2026: eski raporlardaki gibi sade çıktı); not yalnızca rapor boşken, nedenini söylemek için gösterilir
-  return { satirlar, filtreOzeti, ekDipnot: satirlar.length ? undefined : ekDipnot, toplamKayit: satirlar.length, ...(ozetSatirlar?.length ? { ozetSatirlar } : {}) };
+  return { satirlar, filtreOzeti, ekDipnot: kayit ? undefined : ekDipnot, toplamKayit: kayit, ...(ozetSatirlar?.length ? { ozetSatirlar } : {}) };
 }
 
 export const aralikOzeti = (p: RaporParametreler) => `${tarihTr(p.baslangic)} – ${tarihTr(p.bitis)}`;

@@ -5,6 +5,26 @@
   "kagit": "A4",
   "parametreler": [
     {
+      "ad": "listeleme",
+      "etiket": "Listeleme şekli",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "vezne",
+          "ad": "Vezne bazında"
+        },
+        {
+          "deger": "para",
+          "ad": "Para bazında"
+        },
+        {
+          "deger": "genel",
+          "ad": "Genel"
+        }
+      ],
+      "varsayilan": "vezne"
+    },
+    {
       "ad": "vezneIdler",
       "etiket": "Vezne (dürbünden seçin)",
       "tip": "vezneCoklu"
@@ -36,6 +56,12 @@
       "varsayilan": "sira"
     },
     {
+      "ad": "maliyetGoster",
+      "etiket": "Birim maliyet göster",
+      "tip": "onay",
+      "not": "İşaretlenince birim maliyet PDF'te de basılır"
+    },
+    {
       "ad": "hedefParaId",
       "etiket": "Karşılık parası",
       "tip": "para",
@@ -44,14 +70,22 @@
   ],
   "kolonlar": [
     {
+      "anahtar": "vezneBaslik",
+      "baslik": "Vezne",
+      "g": 3,
+      "kosul": "p:listeleme=para"
+    },
+    {
       "anahtar": "paraKod",
       "baslik": "Para",
-      "g": 1.2
+      "g": 1.2,
+      "kosul": "p:listeleme!=para"
     },
     {
       "anahtar": "paraAd",
       "baslik": "Para adı",
-      "g": 3.2
+      "g": 3.2,
+      "kosul": "p:listeleme!=para"
     },
     {
       "anahtar": "miktar",
@@ -70,7 +104,15 @@
       "baslik": "Birim maliyet",
       "g": 1.4,
       "bicim": "kur",
-      "pdf": false
+      "kosul": "p:maliyetGoster=1"
+    },
+    {
+      "anahtar": "birimMaliyet",
+      "baslik": "Birim maliyet",
+      "g": 1.4,
+      "bicim": "kur",
+      "pdf": false,
+      "kosul": "p:maliyetGoster!=1"
     },
     {
       "anahtar": "tlKarsiligi",
@@ -109,6 +151,11 @@
       "kosul": "kurIkisi"
     }
   ],
+  "bolum": {
+    "anahtar": "paraGrupAd",
+    "baslik": "{{paraGrupAd}}",
+    "altToplam": false
+  },
   "grup": {
     "anahtar": "vezneBaslik",
     "baslik": "{{vezneBaslik}}",

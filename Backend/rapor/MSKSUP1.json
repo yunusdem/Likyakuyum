@@ -25,9 +25,20 @@
   "kolonlar": [
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 2.1,
-      "bicim": "tarihSaat"
+      "baslik": "Tarih",
+      "g": 1.4,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "bicim": "saat"
+    },
+    {
+      "anahtar": "seriNo",
+      "baslik": "Seri no",
+      "g": 1.4
     },
     {
       "anahtar": "belgeNo",
@@ -46,9 +57,14 @@
       "g": 3.4
     },
     {
-      "anahtar": "kimlikNo",
+      "anahtar": "vergiKimlikNo",
       "baslik": "Kimlik no",
       "g": 1.7
+    },
+    {
+      "anahtar": "pasaportNo",
+      "baslik": "Pasaport no",
+      "g": 1.5
     },
     {
       "anahtar": "uyruk",
@@ -71,12 +87,6 @@
       "anahtar": "meslek",
       "baslik": "Meslek",
       "g": 2,
-      "pdf": false
-    },
-    {
-      "anahtar": "seriNo",
-      "baslik": "Seri no",
-      "g": 1.4,
       "pdf": false
     },
     {
@@ -156,5 +166,11 @@
       "toplam": true,
       "pdf": false
     }
-  ]
+  ],
+  "bolum": {
+    "anahtar": "bolumAd",
+    "baslik": "{{bolumAd}}",
+    "altToplam": false
+  },
+  "genelToplam": false
 }

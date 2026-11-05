@@ -1,13 +1,39 @@
 {
   "kod": "CARKRT1",
   "ad": "Cari Kart Listesi",
-  "aciklama": "Tanımlı cari kartlar; kod, ad veya vergi numarasıyla arama.",
+  "aciklama": "Tanımlı cari kartlar; kod / ad aralığı, sıralama ve kod, ad veya vergi numarasıyla arama.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
       "ad": "arama",
       "etiket": "Ara (kod / ad / vergi no)",
       "tip": "metin"
+    },
+    {
+      "ad": "cariIdler",
+      "etiket": "Cari (dürbünden seçin)",
+      "tip": "cariCoklu"
+    },
+    {
+      "ad": "cariAd",
+      "etiket": "Cari adı",
+      "tip": "metinAralik"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "kod",
+          "ad": "Kod"
+        },
+        {
+          "deger": "ad",
+          "ad": "Ad"
+        }
+      ],
+      "varsayilan": "kod"
     }
   ],
   "kolonlar": [
@@ -34,11 +60,6 @@
       "g": 1.4
     },
     {
-      "anahtar": "vergiNo",
-      "baslik": "VKN / TCKN",
-      "g": 1.8
-    },
-    {
       "anahtar": "yetkili",
       "baslik": "Yetkili",
       "g": 2
@@ -46,6 +67,11 @@
     {
       "anahtar": "vergiDairesi",
       "baslik": "Vergi dairesi",
+      "g": 1.8
+    },
+    {
+      "anahtar": "vergiNo",
+      "baslik": "VKN / TCKN",
       "g": 1.8
     },
     {

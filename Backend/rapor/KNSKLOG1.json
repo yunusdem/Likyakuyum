@@ -56,9 +56,15 @@
   "kolonlar": [
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 2.1,
-      "bicim": "tarihSaat"
+      "baslik": "Tarih",
+      "g": 1.4,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.9,
+      "bicim": "saat"
     },
     {
       "anahtar": "kullanici",

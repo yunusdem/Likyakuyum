@@ -3,6 +3,10 @@ import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
 import { type RaporParametreler, TL_PARA_SQL, aralikOzeti, filtreler, gunOnce, kurTarihlerde, kurTarihte, ozetEk, sinirla, vezneBakiyeleri } from "../raporOrtak.js";
 import { PERAKENDE_SATIR_PARASI, YEREL_GUN, belgeTablolari } from "../kaynak.js";
+import { BOLUM_ADI, acikBolumler } from "../fisKaynak.js";
+import { kuyumParasiMi } from "../paraGrup.js";
+
+export { BOLUM_ADI, acikBolumler, kuyumParasiMi };
 
 /**
  * Sektörlü Kâr / Zarar Faaliyet Analizi (KARZAR1) — docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md bölüm A (K1–K10). Yalnızca SELECT.
@@ -16,21 +20,9 @@ import { PERAKENDE_SATIR_PARASI, YEREL_GUN, belgeTablolari } from "../kaynak.js"
 
 type Sorgu = (pool: sql.ConnectionPool, p: RaporParametreler, t: RaporTanim) => Promise<RaporSonucVeri>;
 
-export const BOLUM_ADI: Record<number, string> = { 1: "Döviz fişi", 2: "Sarraf fişi", 3: "Perakende fişi", 4: "Ticari fiş" };
 
 /** Rapor altı KMT tablosunun grup başlıkları (kullanıcı kararı 05.11.2026): paralar Döviz / Kuyum diye ayrılır, ticari mallar Ticari'de kalır */
 export const KMT_GRUP_ADI = { doviz: "Döviz", kuyum: "Kuyum", ticari: "Ticari", toplam: "Toplam" } as const;
-
-/**
- * Para kuyum (altın / gümüş / ziynet) parası mı? Para kartındaki ürün tipi altın ayarlarında 0 kalabildiği için (22 / 14 / 18 ayar kartları)
- * has oranı, kod ve ad da okunur. Saf fonksiyon.
- */
-export function kuyumParasiMi(x: { kod: string; ad: string; hasOrani?: number; urunTipi?: number | null }): boolean {
-  const kod = String(x.kod || "").trim().toLocaleUpperCase("tr"), metin = `${kod} ${String(x.ad || "").toLocaleUpperCase("tr")}`;
-  const ut = x.urunTipi == null ? 0 : Number(x.urunTipi);
-  return ut === 1 || ut === 2 || ut === 3 || (Number(x.hasOrani) || 0) > 0 || kod === "HAS"
-    || /ALTIN|AYAR|G[ÜU]M[ÜU][ŞS]|[ÇC]EYREK|YARIM|Z[İI]YNET|CUMHUR|RE[ŞS]AT|B[İI]LEZ[İI]K/.test(metin);
-}
 
 /** Tek alış / satış satırı (dört fiş türünden ortak biçim) */
 export interface KzHareket {
@@ -177,17 +169,6 @@ export function karZararHesapla(hareketler: KzHareket[], a: KzAyarlar) {
   return { satirlar: cikti, kmt };
 }
 
-/** Lisansa göre bölümler (K10): modül listesi null = kısıt yok; tablo yoksa bölüm zaten yok */
-export function acikBolumler(moduller: string[] | null | undefined, d: { sarraf: boolean; perakende: boolean; ticariSatir: boolean }): Set<number> {
-  const acik = (kod: string) => moduller == null || moduller.includes(kod);
-  const b = new Set<number>();
-  if (acik("vezne:vezne/doviz-fisi-kayit")) b.add(1);
-  if (d.sarraf && acik("vezne:vezne/sarraf-fisi-kayit")) b.add(2);
-  if (d.perakende && acik("vezne:vezne/perakende-fisi-kayit")) b.add(3);
-  if (d.ticariSatir && (moduller == null || moduller.some(m => m === "ticari" || m.startsWith("ticari:")))) b.add(4);
-  return b;
-}
-
 const zamanMs = (v: any) => { if (!v) return 0; const d = new Date(v); return Number.isNaN(d.getTime()) ? 0 : d.getTime() % 86400000; };
 const gunMetni = (v: any) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v || "").slice(0, 10));
 
@@ -202,6 +183,7 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
       CASE WHEN COL_LENGTH('dbo.TODVZ_ALTIN_URUN','MALIYET_ISCILIK_TUTARI') IS NULL THEN 0 ELSE 1 END altinIscilik,
       CASE WHEN COL_LENGTH('dbo.TODVZ_OZEL_URUN','MALIYET_PARA_KODU') IS NULL THEN 0 ELSE 1 END ozelMaliyetPara,
       CASE WHEN OBJECT_ID('dbo.TODVZ_STOK_HAREKET','U') IS NULL OR OBJECT_ID('dbo.TODVZ_STOK_KART','U') IS NULL THEN 0 ELSE 1 END stok,
+      CASE WHEN COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI','ISCILIK_TUTARI') IS NULL THEN 0 ELSE 1 END sarrafIscilikTutari,
       CASE WHEN COL_LENGTH('dbo.TODVZ_PARA','HAS_ORANI') IS NULL THEN 0 ELSE 1 END paraHasOrani,
       CASE WHEN COL_LENGTH('dbo.TODVZ_PARA','URUN_TIPI') IS NULL THEN 0 ELSE 1 END paraUrunTipi,
       ${TL_PARA_SQL} tlId, (SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD))='HAS' ORDER BY PARA_ID) hasId`)).recordset[0] || {};
@@ -242,7 +224,7 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
                WHEN ISNULL(SS.URUN_TIPI, P.URUN_TIPI) IN (0,3) THEN CASE WHEN ISNULL(SS.ADET,0)>0 THEN SS.ADET ELSE CASE WHEN ISNULL(SS.MIKTAR,0)>0 THEN SS.MIKTAR ELSE 1 END END
                ELSE ISNULL(SS.MIKTAR,0) END miktar, ISNULL(SS.URUN_TIPI, P.URUN_TIPI) urunTipi,
           ISNULL(SS.KUR,0) kur, ISNULL(SS.TUTAR,0) tutar,
-          CASE WHEN ISNULL(SS.ISCILIK_TUTARI,0)>0 THEN SS.ISCILIK_TUTARI WHEN ISNULL(SS.ISCILIK_HAS_GRAM,0)>0 THEN SS.ISCILIK_HAS_GRAM*${hasKuru}
+          CASE ${kolon.sarrafIscilikTutari ? "WHEN ISNULL(SS.ISCILIK_TUTARI,0)>0 THEN SS.ISCILIK_TUTARI " : ""}WHEN ISNULL(SS.ISCILIK_HAS_GRAM,0)>0 THEN SS.ISCILIK_HAS_GRAM*${hasKuru}
                WHEN ISNULL(SS.ISCILIK_MIKTARI,0)>0 THEN SS.ISCILIK_MIKTARI ELSE 0 END iscilik
         FROM dbo.TODVZ_SARRAF_FISI SF JOIN dbo.TODVZ_SARRAF_FISI_SATIRI SS ON SS.SARRAF_FISI_ID=SF.SARRAF_FISI_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=SS.URUN_ID
           LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=SF.VEZNE_ID

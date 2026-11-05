@@ -1,7 +1,7 @@
 {
   "kod": "VERKOM1",
   "ad": "Vergiler ve Komisyon",
-  "aciklama": "Vezne → gün → para bazında komisyon, BSMV, KMV ve KDV toplamları (iptal fişler hariç); alış/satış filtresi.",
+  "aciklama": "Fiş satırı ya da gün × para bazında komisyon, BSMV, KMV ve KDV; vezne / döviz / gün gruplaması, isteğe bağlı tarih ara toplamı; alış / satış ve istatistik süzgeci.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -57,10 +57,28 @@
         },
         {
           "deger": "gun",
-          "ad": "Gün bazında (tarih ara toplamı)"
+          "ad": "Gün bazında"
         }
       ],
       "varsayilan": "vezne"
+    },
+    {
+      "ad": "istatistikIdler",
+      "etiket": "İstatistik kodu (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "istatistik"
+    },
+    {
+      "ad": "tarihAraToplami",
+      "etiket": "Tarih ara toplamı",
+      "tip": "onay",
+      "not": "Seçilen grubun içinde gün alt grubu ve gün toplamı"
+    },
+    {
+      "ad": "iptal",
+      "etiket": "İptal edilenler",
+      "tip": "onay",
+      "not": "İşaretlenirse yalnızca iptal edilen fişler listelenir"
     }
   ],
   "kolonlar": [
@@ -73,9 +91,16 @@
     },
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 1.9,
-      "bicim": "tarihSaat",
+      "baslik": "Tarih",
+      "g": 1.3,
+      "bicim": "tarih",
+      "kosul": "kip:detay"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "bicim": "saat",
       "kosul": "kip:detay"
     },
     {
@@ -175,9 +200,15 @@
       "toplam": true
     }
   ],
+  "bolum": {
+    "anahtar": "paraGrupAd",
+    "baslik": "{{paraGrupAd}}",
+    "altToplam": false
+  },
   "grup": {
     "anahtar": "grupAnahtar",
     "baslik": "{{grupBaslik}}",
     "altToplam": true
-  }
+  },
+  "sayfaToplami": true
 }

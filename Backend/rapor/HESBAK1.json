@@ -18,6 +18,11 @@
       "kaynak": "hesap"
     },
     {
+      "ad": "hesapAd",
+      "etiket": "Hesap adı (ilk – son)",
+      "tip": "metinAralik"
+    },
+    {
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
@@ -26,20 +31,50 @@
       "ad": "kurTuru",
       "etiket": "Kur",
       "tip": "kurSecimi"
+    },
+    {
+      "ad": "listeSekli",
+      "etiket": "Liste şekli",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "hesap",
+          "ad": "Hesap bazında"
+        },
+        {
+          "deger": "para",
+          "ad": "Para bazında"
+        }
+      ],
+      "varsayilan": "hesap"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "kod",
+          "ad": "Kod"
+        },
+        {
+          "deger": "ad",
+          "ad": "Ad"
+        }
+      ],
+      "varsayilan": "kod"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "hesapKod",
       "baslik": "Kod",
-      "g": 1.2,
-      "pdf": false
+      "g": 1.8
     },
     {
       "anahtar": "hesapAd",
       "baslik": "Ad",
-      "g": 3,
-      "pdf": false
+      "g": 2.6
     },
     {
       "anahtar": "paraKod",
@@ -69,13 +104,15 @@
       "anahtar": "borcBakiye",
       "baslik": "Borç bakiye",
       "g": 2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "toplam": true
     },
     {
       "anahtar": "alacakBakiye",
       "baslik": "Alacak bakiye",
       "g": 2,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "toplam": true
     },
     {
       "anahtar": "kur",
@@ -110,7 +147,8 @@
   "grup": {
     "anahtar": "hesapBaslik",
     "baslik": "{{hesapBaslik}}",
-    "altToplam": true
+    "altToplam": true,
+    "toplamEtiketi": "Toplam"
   },
   "ozet": {
     "baslik": "Para bazında toplam ve net bakiye",

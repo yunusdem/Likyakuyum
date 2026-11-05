@@ -1,14 +1,18 @@
 {
   "kod": "CAREKS1",
   "ad": "Cari Ekstre",
-  "aciklama": "Cari aralığındaki carilerin tarih aralığındaki hareketleri; cari × para grubu, cari bilgisi, devir, yürüyen bakiye, fiş no ve has karşılığı.",
+  "aciklama": "Carilerin (seçilmezse tümü) tarih aralığındaki hareketleri; cari ve para grubu, cari bilgisi, devir, yürüyen bakiye, fiş no ve has karşılığı.",
   "kagit": "A4",
   "parametreler": [
     {
       "ad": "cariIdler",
       "etiket": "Cari (dürbünden seçin)",
-      "tip": "cariCoklu",
-      "zorunlu": true
+      "tip": "cariCoklu"
+    },
+    {
+      "ad": "cariAd",
+      "etiket": "Cari adı",
+      "tip": "metinAralik"
     },
     {
       "ad": "baslangic",
@@ -21,6 +25,58 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "hesapTipi",
+      "etiket": "Hesap tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "borc",
+          "ad": "Borç"
+        },
+        {
+          "deger": "alacak",
+          "ad": "Alacak"
+        }
+      ],
+      "varsayilan": "hepsi"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "kod",
+          "ad": "Kod"
+        },
+        {
+          "deger": "ad",
+          "ad": "Ad"
+        }
+      ],
+      "varsayilan": "kod"
+    },
+    {
+      "ad": "devir",
+      "etiket": "Devir",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "degil",
+          "ad": "Değil (tek devir satırı)"
+        },
+        {
+          "deger": "dahil",
+          "ad": "Dahil (dönem öncesi satır satır)"
+        }
+      ],
+      "varsayilan": "degil"
     }
   ],
   "kolonlar": [
@@ -39,13 +95,19 @@
     {
       "anahtar": "fisNo",
       "baslik": "Fiş no",
-      "g": 1.0,
+      "g": 1,
       "hiza": "center"
     },
     {
       "anahtar": "hareketTipi",
       "baslik": "Hareket",
       "g": 1.6
+    },
+    {
+      "anahtar": "hareketHarf",
+      "baslik": "Tip",
+      "g": 0.5,
+      "hiza": "center"
     },
     {
       "anahtar": "aciklama",
@@ -58,6 +120,12 @@
       "g": 1,
       "hiza": "center",
       "pdf": false
+    },
+    {
+      "anahtar": "emanet",
+      "baslik": "Emanet",
+      "g": 1.6,
+      "bicim": "sayi"
     },
     {
       "anahtar": "borc",
@@ -92,11 +160,63 @@
       "bicim": "sayi4"
     }
   ],
-  "grup": {
-    "anahtar": "grupAnahtar",
-    "baslik": "{{grupBaslik}}",
-    "altBaslik": "{{grupAltBaslik}}",
-    "altToplam": true
+  "gruplar": [
+    {
+      "anahtar": "cariAnahtar",
+      "baslik": "{{cariBaslik}}",
+      "altBaslik": "{{grupAltBaslik}}",
+      "altToplam": false
+    },
+    {
+      "anahtar": "grupAnahtar",
+      "baslik": "Para birimi: {{paraKod}}",
+      "altToplam": true,
+      "net": {
+        "arti": "borc",
+        "eksi": "alacak"
+      }
+    }
+  ],
+  "net": {
+    "arti": "borc",
+    "eksi": "alacak",
+    "etiket": "Genel bakiye"
+  },
+  "grupAltTablo": {
+    "seviye": 0,
+    "baslik": "Para toplamı",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "borc",
+        "baslik": "Borç",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "alacak",
+        "baslik": "Alacak",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "bakiye",
+        "baslik": "Bakiye",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "yon",
+        "baslik": "B/A",
+        "g": 0.6,
+        "hiza": "center"
+      }
+    ]
   },
   "ozet": {
     "baslik": "Cari ve para bazında toplam — kapanış bakiyesi",

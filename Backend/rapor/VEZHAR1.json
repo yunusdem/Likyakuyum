@@ -27,6 +27,78 @@
       "tip": "paraCoklu"
     },
     {
+      "ad": "belgeTipi",
+      "etiket": "Belge tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "fis",
+          "ad": "Fiş",
+          "modul": "vezne:vezne/doviz-fisi-kayit"
+        },
+        {
+          "deger": "transfer",
+          "ad": "Transfer"
+        },
+        {
+          "deger": "cari",
+          "ad": "Cari"
+        },
+        {
+          "deger": "hesap",
+          "ad": "Hesap"
+        },
+        {
+          "deger": "dekont",
+          "ad": "Dekont"
+        },
+        {
+          "deger": "sarraf",
+          "ad": "Sarraf",
+          "modul": "vezne:vezne/sarraf-fisi-kayit"
+        },
+        {
+          "deger": "perakende",
+          "ad": "Perakende",
+          "modul": "vezne:vezne/perakende-fisi-kayit"
+        },
+        {
+          "deger": "ticari",
+          "ad": "Ticari",
+          "modul": "ticari"
+        },
+        {
+          "deger": "urun",
+          "ad": "Ürün tanımı"
+        }
+      ],
+      "varsayilan": "hepsi"
+    },
+    {
+      "ad": "islemTipi",
+      "etiket": "İşlem tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "giris",
+          "ad": "Giriş"
+        },
+        {
+          "deger": "cikis",
+          "ad": "Çıkış"
+        }
+      ],
+      "varsayilan": "hepsi"
+    },
+    {
       "ad": "fisTipi",
       "etiket": "Tip",
       "tip": "fisTipi"
@@ -35,6 +107,27 @@
       "ad": "kurTuru",
       "etiket": "Kur",
       "tip": "kurSecimi"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "bas",
+          "ad": "Baştan sona"
+        },
+        {
+          "deger": "son",
+          "ad": "Sondan başa"
+        }
+      ],
+      "varsayilan": "bas"
+    },
+    {
+      "ad": "saatGizle",
+      "etiket": "Saat gözükmesin",
+      "tip": "onay"
     }
   ],
   "kolonlar": [
@@ -48,7 +141,8 @@
       "anahtar": "saat",
       "baslik": "Saat",
       "g": 0.8,
-      "hiza": "center"
+      "hiza": "center",
+      "kosul": "p:saatGizle!=1"
     },
     {
       "anahtar": "belgeTipi",

@@ -1,7 +1,7 @@
 {
   "kod": "FISLIS1",
   "ad": "Fiş Listeleme",
-  "aciklama": "Tarih aralığındaki fiş satırları: para, vezne, seri / belge no, miktar, kur, KMV ve lira tutarı; gün bazında ara toplam, rapor sonunda para bazında toplam.",
+  "aciklama": "Tarih aralığındaki fiş satırları: tarih, saat, para, vezne, seri / belge no, miktar, kur, KMV ve lira tutarı; gün bazında ara toplam, rapor sonunda para bazında toplam. Liste tipi Toplam seçilirse gün başına tek satır.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -36,43 +36,119 @@
       "etiket": "İstatistik kodu (dürbünden seçin)",
       "tip": "listeCoklu",
       "kaynak": "istatistik"
+    },
+    {
+      "ad": "listeTipi",
+      "etiket": "Liste tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "detay",
+          "ad": "Detay"
+        },
+        {
+          "deger": "toplam",
+          "ad": "Toplam"
+        }
+      ],
+      "varsayilan": "detay"
+    },
+    {
+      "ad": "seriNo",
+      "etiket": "Seri no",
+      "tip": "metinAralik"
+    },
+    {
+      "ad": "belgeNo",
+      "etiket": "Belge no",
+      "tip": "metinAralik"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "seri",
+          "ad": "Seri no"
+        },
+        {
+          "deger": "belge",
+          "ad": "Belge no"
+        },
+        {
+          "deger": "tarih",
+          "ad": "Tarih"
+        },
+        {
+          "deger": "para",
+          "ad": "Para"
+        }
+      ],
+      "varsayilan": "tarih"
+    },
+    {
+      "ad": "iptal",
+      "etiket": "İptal edilenler",
+      "tip": "onay",
+      "not": "İşaretlenirse yalnızca iptal edilen fişler listelenir"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 2.1,
-      "bicim": "tarihSaat"
+      "baslik": "Tarih",
+      "g": 1.3,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "bicim": "saat",
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "paraKod",
       "baslik": "Para",
       "g": 0.8,
-      "hiza": "center"
+      "hiza": "center",
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "vezneKod",
       "baslik": "Vezne",
       "g": 0.8,
-      "hiza": "center"
+      "hiza": "center",
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "seriNo",
       "baslik": "Seri no",
-      "g": 1.5
+      "g": 1.5,
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "belgeNo",
       "baslik": "Belge no",
-      "g": 2
+      "g": 2,
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "tip",
       "baslik": "Tip",
       "g": 0.8,
       "hiza": "center",
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi=detay"
+    },
+    {
+      "anahtar": "adet",
+      "baslik": "Fiş",
+      "g": 0.9,
+      "bicim": "tam",
+      "toplam": true,
+      "kosul": "p:listeTipi=toplam"
     },
     {
       "anahtar": "miktar",
@@ -85,7 +161,8 @@
       "anahtar": "kur",
       "baslik": "Kur",
       "g": 1.3,
-      "bicim": "kur"
+      "bicim": "kur",
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "kmv",
@@ -105,26 +182,30 @@
       "anahtar": "unvan",
       "baslik": "Ünvan",
       "g": 3.4,
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "kimlikNo",
       "baslik": "VKN / TCKN",
       "g": 1.6,
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "cariKod",
       "baslik": "Cari",
       "g": 1.1,
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "istatistikKod",
       "baslik": "İst.",
       "g": 0.8,
       "hiza": "center",
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi=detay"
     },
     {
       "anahtar": "komisyon",
@@ -167,11 +248,17 @@
       "pdf": false
     }
   ],
+  "bolum": {
+    "anahtar": "bolumAd",
+    "baslik": "{{bolumAd}}"
+  },
   "grup": {
     "anahtar": "gunBaslik",
     "baslik": "{{gunBaslik}}",
-    "altToplam": true
+    "altToplam": true,
+    "kosul": "p:listeTipi=detay"
   },
+  "sayfaToplami": true,
   "ozet": {
     "baslik": "GENEL TOPLAM — para bazında",
     "kolonlar": [

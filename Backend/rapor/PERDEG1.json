@@ -140,5 +140,11 @@
       "toplam": true,
       "pdf": false
     }
-  ]
+  ],
+  "bolum": {
+    "anahtar": "bolumAd",
+    "baslik": "{{bolumAd}}",
+    "altToplam": false
+  },
+  "genelToplam": false
 }

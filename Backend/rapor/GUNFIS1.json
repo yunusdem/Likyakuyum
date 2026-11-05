@@ -1,13 +1,13 @@
 {
   "kod": "GUNFIS1",
   "ad": "Günlük Fiş Detay Raporu",
-  "aciklama": "Seçilen günün fiş satırları; vezne ve fiş tipine göre gruplu, sonda para bazında genel toplam.",
+  "aciklama": "Tarih aralığındaki fiş satırları gün bazında; her günün altında gün toplamı (para bazında), gün içinde vezne ve fiş tipine göre gruplu, sonda para bazında genel toplam.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
-      "ad": "tarih",
-      "etiket": "Tarih",
-      "tip": "tarih",
+      "ad": "baslangic",
+      "etiket": "Tarih aralığı",
+      "tip": "tarihAralik",
       "zorunlu": true,
       "varsayilan": "bugun"
     },
@@ -25,14 +25,32 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "iptal",
+      "etiket": "İptal edilenler",
+      "tip": "onay",
+      "not": "İşaretlenirse yalnızca iptal edilen fişler listelenir"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "zaman",
+      "baslik": "Tarih",
+      "g": 1.3,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
       "baslik": "Saat",
-      "g": 1.9,
-      "bicim": "tarihSaat"
+      "g": 0.8,
+      "bicim": "saat"
+    },
+    {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9,
+      "hiza": "center"
     },
     {
       "anahtar": "seriNo",
@@ -49,12 +67,6 @@
       "baslik": "Ünvan",
       "g": 3.4,
       "pdf": false
-    },
-    {
-      "anahtar": "paraKod",
-      "baslik": "Para",
-      "g": 0.9,
-      "hiza": "center"
     },
     {
       "anahtar": "miktar",
@@ -77,6 +89,13 @@
       "toplam": true
     },
     {
+      "anahtar": "kmv",
+      "baslik": "KMV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true
+    },
+    {
       "anahtar": "komisyon",
       "baslik": "Komisyon",
       "g": 1.6,
@@ -91,13 +110,6 @@
       "toplam": true
     },
     {
-      "anahtar": "kmv",
-      "baslik": "KMV",
-      "g": 1.4,
-      "bicim": "sayi",
-      "toplam": true
-    },
-    {
       "anahtar": "kdv",
       "baslik": "KDV",
       "g": 1.4,
@@ -106,11 +118,61 @@
       "pdf": false
     }
   ],
-  "grup": {
-    "anahtar": "grupAnahtar",
-    "baslik": "{{grupBaslik}}",
-    "altToplam": true
+  "bolum": {
+    "anahtar": "bolumAd",
+    "baslik": "{{bolumAd}}"
   },
+  "gruplar": [
+    {
+      "anahtar": "gunAnahtar",
+      "baslik": "{{gunBaslik}}",
+      "altToplam": true,
+      "toplamEtiketi": "{{gunBaslik}} toplamı"
+    },
+    {
+      "anahtar": "grupAnahtar",
+      "baslik": "{{grupBaslik}}",
+      "altToplam": true
+    }
+  ],
+  "grupAltTablo": {
+    "seviye": 0,
+    "baslik": "GÜN TOPLAMI",
+    "toplamEtiketi": "Toplam",
+    "kolonlar": [
+      {
+        "anahtar": "paraKod",
+        "baslik": "Para",
+        "g": 1.2
+      },
+      {
+        "anahtar": "tip",
+        "baslik": "Tip",
+        "g": 1,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "miktar",
+        "baslik": "Miktar",
+        "g": 2,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "ortKur",
+        "baslik": "Ortalama kur",
+        "g": 1.6,
+        "bicim": "kur"
+      },
+      {
+        "anahtar": "tutar",
+        "baslik": "Lira",
+        "g": 2.2,
+        "bicim": "sayi",
+        "toplam": true
+      }
+    ]
+  },
+  "sayfaToplami": true,
   "ozet": {
     "baslik": "GENEL TOPLAM — para bazında",
     "kolonlar": [

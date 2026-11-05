@@ -23,7 +23,10 @@ export type RaporParametreTipi =
   | "secim"          // tek seçim; seçenekler tanımdaki `secenekler` listesinden (sıralama, durum …) — .rpt'lerdeki "Ad / Para adı" sıralama parametresi
   | "sayi"           // sayısal değer (eşik, sapma %, adet)
   | "listeCoklu"     // dürbünden çoklu seçim; liste `kaynak` ile /rapor/secim/:kaynak ucundan gelir (hesap, istatistik, meslek, sektor, kullanici, banka)
-  | "metin";         // serbest arama
+  | "metin"          // serbest arama
+  | "onay"           // işaret kutusu ("1" = işaretli); değer `p.ek[ad]` ile gelir (docs/RAPOR_ESITLEME_UYGULAMA.md 1.1)
+  | "metinAralik"    // ilk – son metin (ad aralığı, seri no / belge no aralığı): `<ad>Ilk`, `<ad>Son`
+  | "sayiAralik";    // alt – üst sayı (limit aralığı): `<ad>Alt`, `<ad>Ust`
 
 export type RaporSecimKaynagi = "hesap" | "istatistik" | "meslek" | "sektor" | "kullanici" | "banka";
 /** Barkodlu altın ürün kartındaki farklı değerler (docs/BARKODLU_ALTIN_RAPORLARI.md) */
@@ -37,7 +40,8 @@ export interface RaporParametre {
   /** Varsayılan: "bugun", "-30g" (30 gün önce), sabit değer */
   varsayilan?: string | number | null;
   /** tip "secim": seçenek listesi (ilk seçenek boş değerliyse "tümü" anlamına gelir) */
-  secenekler?: { deger: string; ad: string }[];
+  /** `modul`: seçenek yalnız bu modül firmaya açıksa listelenir (lisansa göre seçenek; "ticari" = ticari modüllerinden herhangi biri) */
+  secenekler?: { deger: string; ad: string; modul?: string }[];
   /** tip "listeCoklu": liste kaynağı ve dürbün başlığında kullanılan tekil ad ("hesap", "istatistik") */
   kaynak?: RaporSecimKaynagi;
   /** tip "secim": seçenekler tanım isteğinde veritabanından doldurulur (ilk seçenek "Tümü"); değer metin olarak saklanır */
@@ -46,7 +50,32 @@ export interface RaporParametre {
   not?: string;
 }
 
-export type RaporBicim = "metin" | "sayi" | "sayi4" | "kur" | "tarih" | "tarihSaat" | "tam";
+export type RaporBicim = "metin" | "sayi" | "sayi4" | "kur" | "tarih" | "tarihSaat" | "tam" | "saat";
+
+/** Koşul: "kurIkisi" · "kip:<değer>" (= `birlestir` parametresi) · "p:<ad>=<d1>|<d2>" · "p:<ad>!=<d>" (herhangi bir parametre; değer p.ek → p → tanım varsayılanı) */
+export type RaporKosul = "kurIkisi" | `kip:${string}` | `p:${string}`;
+
+/** Grup altı / rapor altı net satırı: "Bakiye : |Σartı − Σeksi| B/A" */
+export interface RaporNet { arti: string; eksi: string; etiket?: string; artiHarf?: string; eksiHarf?: string }
+
+/** Grup tanımı (bir seviye) */
+export interface RaporGrup {
+  /** Grup anahtarı (satır alanı) ve grup başlığı biçimi: "{{vezneAd}} ({{vezneKod}})" */
+  anahtar: string; baslik: string; altToplam?: boolean;
+  /** Grup başlığının altında ikinci satır (Cari Ekstre: adres · telefon · VKN) — {{alan}} yer tutucuları */
+  altBaslik?: string;
+  /** false → genel toplam basılmaz (gruplar farklı para birimlerindeyse toplamın anlamı yoktur: kasa defteri, hesap ekstresi) */
+  genelToplam?: boolean;
+  /** Ara toplam satırının etiketi ({{alan}} yer tutuculu); varsayılan "Ara toplam" */
+  toplamEtiketi?: string;
+  /** Ara toplamın altına net satırı (|Σartı − Σeksi| + B/A) */
+  net?: RaporNet;
+  /** Gruplama yalnızca koşul sağlanırken uygulanır */
+  kosul?: RaporKosul;
+}
+
+/** Alt tablo (Crystal alt raporu): satırın ya da grubun altında girintili iç tablo */
+export interface RaporAltTablo { baslik?: string; kolonlar: RaporKolon[]; toplamEtiketi?: string; kosul?: RaporKosul }
 
 export interface RaporKolon {
   anahtar: string;            // satır nesnesindeki alan
@@ -61,7 +90,7 @@ export interface RaporKolon {
   kmt?: "K" | "M" | "T";
   /** "kurIkisi": kolon yalnızca Kur alanı = Alış + Satış seçilince listelenir (satış kuru / TL kolonları).
    *  "kip:<değer>": kolon yalnızca `birlestir` parametresi (boşsa tanımdaki varsayılanı) bu değerdeyken listelenir — eski raporlardaki Detaylı / Toplam rapor tipleri. */
-  kosul?: "kurIkisi" | `kip:${string}`;
+  kosul?: RaporKosul;
 }
 
 export interface RaporTanim {
@@ -76,15 +105,23 @@ export interface RaporTanim {
    * sıralı gelir; her bölümün başında başlık, sonunda `toplam:true` kolonların bölüm toplamı basılır. Veride tek bölüm varsa başlık ve bölüm
    * toplamı çizilmez (rapor bölümsüz görünür). Tanımda `grup` varsa gruplar bölümün içinde çalışır.
    */
-  bolum?: { anahtar: string; baslik: string; altToplam?: boolean };
-  /** Grup anahtarı (satır alanı) ve grup başlığı biçimi: "{{vezneAd}} ({{vezneKod}})" */
-  grup?: { anahtar: string; baslik: string; altToplam?: boolean;
-    /** Grup başlığının altında ikinci satır (Cari Ekstre: adres · telefon · VKN) — {{alan}} yer tutucuları */
-    altBaslik?: string;
-    /** false → genel toplam basılmaz (gruplar farklı para birimlerindeyse toplamın anlamı yoktur: kasa defteri, hesap ekstresi) */
-    genelToplam?: boolean;
-    /** "kip:<değer>": gruplama yalnızca `birlestir` bu değerdeyken uygulanır (kolonlardaki `kosul` ile aynı kural) */
-    kosul?: `kip:${string}` };
+  bolum?: { anahtar: string; baslik: string; altToplam?: boolean;
+    /** true → tek bölüm olsa da başlık basılır (para grubu başlıkları: Döviz / Kuyum / Ticari) */
+    herZaman?: boolean };
+  /** Tek seviyeli grup (eski biçim; `gruplar` yoksa geçerli) */
+  grup?: RaporGrup;
+  /** Çok seviyeli gruplar, dıştan içe (eski raporlardaki iki / üç seviyeli gruplar). Sorgu çalışma anında `sonuc.gruplar` ile değiştirebilir. */
+  gruplar?: RaporGrup[];
+  /** false → genel toplam basılmaz */
+  genelToplam?: boolean;
+  /** Rapor sonu net satırı (genel toplamın altında) */
+  net?: RaporNet;
+  /** Satır altı iç tablo: satır `_alt` (dizi) taşıyorsa altında basılır (MASAK müşteri → fişler) */
+  altTablo?: RaporAltTablo;
+  /** Grup altı iç tablo: `sonuc.grupAltSatirlar[<grup anahtar değeri>]` satırları grubun sonunda basılır (gün toplamı para özeti, cari para toplamı) */
+  grupAltTablo?: RaporAltTablo & { seviye?: number };
+  /** true → PDF'te her sayfa sonunda "Sayfa toplamı", sonraki sayfa başında "Nakli yekün" (yalnız ana tablo) */
+  sayfaToplami?: boolean;
   /** Rapor sonunda ikinci küçük tablo (Crystal alt raporlarının karşılığı: "GENEL TOPLAM — para bazında", meslek özeti). Satırlar veriyle (`ozetSatirlar`) gelir. */
   ozet?: { baslik: string; kolonlar: RaporKolon[] };
   /** PDF altına basılan yöntem/uyarı notu (kâr-zarar: ağırlıklı ortalama açıklaması) */
@@ -110,6 +147,10 @@ export interface RaporSonucVeri {
   kolonBasliklari?: Record<string, string>;
   /** Sorgunun bu çalıştırmada kaldırdığı kolonlar (anahtar; ana ve özet): karşılık parası seçilmemişken karşılık kolonları gibi */
   kolonCikar?: string[];
+  /** Sorgunun seçtiği gruplama (sıralamaya / liste şekline bağlı gruplar); verilirse tanımdaki `grup` / `gruplar` yerine geçer (boş dizi = grupsuz) */
+  gruplar?: RaporGrup[];
+  /** `tanim.grupAltTablo` satırları: anahtar = o seviyedeki grup anahtar değeri (String) */
+  grupAltSatirlar?: Record<string, Record<string, any>[]>;
 }
 
 export const RAPOR_UST_SINIR = 5000;

@@ -91,6 +91,12 @@
       "pdf": false
     }
   ],
+  "bolum": {
+    "anahtar": "paraGrupAd",
+    "baslik": "{{paraGrupAd}}",
+    "altToplam": false,
+    "herZaman": true
+  },
   "grup": {
     "anahtar": "paraKod",
     "baslik": "{{grupBaslik}}",

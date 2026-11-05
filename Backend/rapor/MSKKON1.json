@@ -53,40 +53,79 @@
         }
       ],
       "varsayilan": "kural"
+    },
+    {
+      "ad": "saatGizle",
+      "etiket": "Saat gözükmesin",
+      "tip": "onay",
+      "varsayilan": "1"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 2.1,
-      "bicim": "tarihSaat"
+      "baslik": "Tarih",
+      "g": 1.6,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 1,
+      "bicim": "saat",
+      "kosul": "p:saatGizle!=1"
+    },
+    {
+      "anahtar": "iptalTarihi",
+      "baslik": "İptal tarihi",
+      "g": 1.6,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "belgeTipi",
+      "baslik": "Belge tipi",
+      "g": 2.2
+    },
+    {
+      "anahtar": "seriNo",
+      "baslik": "Seri no",
+      "g": 2
     },
     {
       "anahtar": "belgeNo",
       "baslik": "Belge no",
-      "g": 1.8
+      "g": 3
     },
     {
       "anahtar": "tip",
       "baslik": "Tip",
-      "g": 0.8,
+      "g": 1,
       "hiza": "center"
     },
     {
       "anahtar": "unvan",
       "baslik": "Ünvan",
-      "g": 3.4
+      "g": 3.5
     },
     {
-      "anahtar": "kimlikNo",
-      "baslik": "Kimlik no",
+      "anahtar": "pasaportNo",
+      "baslik": "Pasaport no",
       "g": 1.7
+    },
+    {
+      "anahtar": "vergiKimlikNo",
+      "baslik": "Vergi kimlik no",
+      "g": 1.9
     },
     {
       "anahtar": "vergiDairesi",
       "baslik": "Vergi dairesi",
-      "g": 1.6
+      "g": 1.9
+    },
+    {
+      "anahtar": "adres",
+      "baslik": "Adres",
+      "g": 3
     },
     {
       "anahtar": "uyruk",
@@ -94,30 +133,25 @@
       "g": 1.3
     },
     {
-      "anahtar": "pasaportNo",
-      "baslik": "Pasaport no",
-      "g": 1.5
-    },
-    {
       "anahtar": "babaAdi",
       "baslik": "Baba adı",
-      "g": 1.6
+      "g": 1.5
     },
     {
       "anahtar": "anneAdi",
       "baslik": "Anne adı",
-      "g": 1.6
+      "g": 1.5
     },
     {
       "anahtar": "kimlikSeriNo",
       "baslik": "Kimlik seri no",
-      "g": 1.5
+      "g": 1.7
     },
     {
-      "anahtar": "adres",
-      "baslik": "Adres",
-      "g": 3,
-      "pdf": false
+      "anahtar": "vezneKod",
+      "baslik": "Vezne",
+      "g": 0.9,
+      "hiza": "center"
     },
     {
       "anahtar": "miktar",
@@ -128,13 +162,13 @@
     {
       "anahtar": "paraKod",
       "baslik": "Para",
-      "g": 0.8,
+      "g": 0.9,
       "hiza": "center"
     },
     {
       "anahtar": "kur",
       "baslik": "Kur",
-      "g": 1.3,
+      "g": 1.4,
       "bicim": "kur"
     },
     {
@@ -144,15 +178,9 @@
       "pdf": false
     },
     {
-      "anahtar": "vezneKod",
-      "baslik": "Vezne",
-      "g": 0.9,
-      "hiza": "center"
-    },
-    {
       "anahtar": "neden",
       "baslik": "Kontrol nedeni",
-      "g": 4.5
+      "g": 3.9
     },
     {
       "anahtar": "isaretli",
@@ -164,7 +192,7 @@
     {
       "anahtar": "tutar",
       "baslik": "Satır tutarı (TL)",
-      "g": 2.1,
+      "g": 2,
       "bicim": "sayi",
       "toplam": true
     },
@@ -181,5 +209,11 @@
       "g": 1.5,
       "pdf": false
     }
-  ]
+  ],
+  "bolum": {
+    "anahtar": "bolumAd",
+    "baslik": "{{bolumAd}}",
+    "altToplam": false
+  },
+  "genelToplam": false
 }

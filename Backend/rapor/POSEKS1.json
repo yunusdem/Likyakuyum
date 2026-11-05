@@ -12,6 +12,16 @@
       "varsayilan": "bugun"
     },
     {
+      "ad": "posKod",
+      "etiket": "POS kodu",
+      "tip": "metinAralik"
+    },
+    {
+      "ad": "posAd",
+      "etiket": "POS adı",
+      "tip": "metinAralik"
+    },
+    {
       "ad": "cariIdler",
       "etiket": "Cari (dürbünden seçin)",
       "tip": "cariCoklu"
@@ -25,6 +35,27 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "devirSekli",
+      "etiket": "Devir satırı",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "toplu",
+          "ad": "Toplu (tek satır)"
+        },
+        {
+          "deger": "satir",
+          "ad": "Satır satır"
+        }
+      ],
+      "varsayilan": "toplu"
+    },
+    {
+      "ad": "devirsiz",
+      "etiket": "Devir olmadan göster",
+      "tip": "onay"
     }
   ],
   "kolonlar": [

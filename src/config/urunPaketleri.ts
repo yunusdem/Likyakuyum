@@ -136,9 +136,11 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
 
   // G- Raporlar
   [
-    ["raporlar:raporlar/fis-listeleme", "raporlar:raporlar/gunluk-fis-detay", "raporlar:raporlar/vergiler-komisyon", "raporlar:raporlar/vergi-numarasi-raporu", "raporlar:raporlar/xml-dosya"],
+    ["raporlar:raporlar/fis-listeleme", "raporlar:raporlar/gunluk-fis-detay", "raporlar:raporlar/vergi-numarasi-raporu", "raporlar:raporlar/xml-dosya"],
     [D, G, K, T],
   ],
+  // Vergiler ve Komisyon döviz fişine özgüdür (komisyon / BSMV / KMV yalnız döviz fişinde): Ticari paketinde yok (docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md B23)
+  [["raporlar:raporlar/vergiler-komisyon"], [D, G, K]],
   [
     ["raporlar:raporlar/istatistik-raporu", "raporlar:raporlar/istatistik-kmv", "raporlar:raporlar/karlilik", "raporlar:raporlar/personel-degerlendirme"],
     [D, G, K],

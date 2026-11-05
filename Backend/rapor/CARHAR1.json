@@ -17,6 +17,11 @@
       "tip": "cariCoklu"
     },
     {
+      "ad": "cariAd",
+      "etiket": "Cari adı",
+      "tip": "metinAralik"
+    },
+    {
       "ad": "vezneIdler",
       "etiket": "Vezne (dürbünden seçin)",
       "tip": "vezneCoklu"
@@ -25,6 +30,26 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "hesapTipi",
+      "etiket": "Hesap tipi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "borc",
+          "ad": "Borç"
+        },
+        {
+          "deger": "alacak",
+          "ad": "Alacak"
+        }
+      ],
+      "varsayilan": "hepsi"
     },
     {
       "ad": "hareketTipleri",
@@ -38,18 +63,27 @@
       "secenekler": [
         {
           "deger": "tarih",
-          "ad": "Tarih"
+          "ad": "Para (tarih sırasıyla)"
+        },
+        {
+          "deger": "sondan",
+          "ad": "Sondan başa"
+        },
+        {
+          "deger": "bastan",
+          "ad": "Baştan sona"
         },
         {
           "deger": "ad",
-          "ad": "Cari adı"
+          "ad": "Ad"
         },
         {
           "deger": "kod",
-          "ad": "Cari kodu"
+          "ad": "Kod"
         }
       ],
-      "varsayilan": "tarih"
+      "varsayilan": "tarih",
+      "not": "Sıralama grubu da belirler: para / gün / cari"
     }
   ],
   "kolonlar": [
@@ -67,9 +101,15 @@
       "bicim": "tarih"
     },
     {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "hiza": "center"
+    },
+    {
       "anahtar": "fisNo",
       "baslik": "Fiş no",
-      "g": 1.0,
+      "g": 1,
       "hiza": "center"
     },
     {
@@ -84,9 +124,22 @@
       "g": 4
     },
     {
+      "anahtar": "paraKod",
+      "baslik": "Para",
+      "g": 0.9,
+      "hiza": "center",
+      "kosul": "p:siralama!=tarih"
+    },
+    {
       "anahtar": "hareketTipi",
       "baslik": "Hareket",
       "g": 1.8
+    },
+    {
+      "anahtar": "hareketHarf",
+      "baslik": "Tip",
+      "g": 0.6,
+      "hiza": "center"
     },
     {
       "anahtar": "tip",
@@ -103,8 +156,7 @@
       "anahtar": "vezneKod",
       "baslik": "Vezne",
       "g": 1,
-      "hiza": "center",
-      "pdf": false
+      "hiza": "center"
     },
     {
       "anahtar": "meblag",
@@ -127,10 +179,25 @@
       "toplam": true
     }
   ],
+  "bolum": {
+    "anahtar": "paraGrupAd",
+    "baslik": "{{paraGrupAd}}",
+    "altToplam": false
+  },
   "grup": {
     "anahtar": "paraKod",
     "baslik": "Para birimi: {{paraKod}}",
-    "altToplam": true
+    "altToplam": true,
+    "net": {
+      "arti": "borc",
+      "eksi": "alacak",
+      "etiket": "Net toplam"
+    }
+  },
+  "net": {
+    "arti": "borc",
+    "eksi": "alacak",
+    "etiket": "Genel net toplam"
   },
   "ozet": {
     "baslik": "Para bazında net toplam",

@@ -1,8 +1,9 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
-import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
-import { type RaporParametreler, TL_PARA_SQL, adetOzeti, aralikOzeti, filtreler, idFiltre, kurCoz, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
+import type { RaporGrup, RaporSonucVeri, RaporTanim } from "../raporTanim.js";
+import { type RaporParametreler, TL_PARA_SQL, adetOzeti, aralikOzeti, ek, ekOnay, filtreler, idFiltre, kurCoz, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 import { ISCILIK_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketleriSql } from "../kaynak.js";
+import { type ParaGrubu, paraBasliklariEkle, paraGrubunaGoreSirala, paraGrupBilgisi } from "../paraGrup.js";
 import { KasaHesapSqlRepository } from "../../../models/kasaHesapSql.repository.js";
 
 /**
@@ -36,6 +37,161 @@ export function yuruyenBakiye<T extends { giris: number; cikis: number }>(
   }
   return satirlar;
 }
+
+/** Eski "Hesap tipi" süzgeci (Hepsi / Borç / Alacak): satırın TIP'ine uygulanır — Borç = kasadan çıkış (TIP 1), Alacak = kasaya giriş (TIP 0). Saf fonksiyon. */
+export const hesapTipiUygun = (tip: number, hesapTipi: string): boolean => (hesapTipi === "borc" ? Number(tip) === 1 : hesapTipi === "alacak" ? Number(tip) === 0 : true);
+
+/**
+ * Hesap bakiye raporunun satır düzeni (eski "Liste şekli" + "Sıralama"): satırlar hesap kodu → para sırasıyla gelir (KDV satırı sonda).
+ * Hesap bazında: hesaplar koda ya da ada göre; para bazında: paralar sıra numarasına göre, içinde hesaplar koda ya da ada göre.
+ * Hareketi olmayan hesaplar (parasız satır) para bazında en sonda, sentetik "KDV" satırı her durumda kendi kümesinin sonunda kalır. Saf fonksiyon.
+ */
+export function hesapBakiyeDuzeni<T extends { hesapId?: any; hesapKod: string; hesapAd: string; paraId?: any; paraKod: string; siraNo?: any }>(satirlar: T[], o: { listeSekli: string; siralama: string }): T[] {
+  const sentetik = (s: T) => (Number(s.hesapId) ? 0 : 1);
+  const hesap = (a: T, b: T) => sentetik(a) - sentetik(b)
+    || (o.siralama === "ad" ? String(a.hesapAd).localeCompare(String(b.hesapAd), "tr") || String(a.hesapKod).localeCompare(String(b.hesapKod), "tr") : 0);
+  const para = (a: T, b: T) => (a.paraId ? 0 : 1) - (b.paraId ? 0 : 1) || Number(a.siraNo ?? 99) - Number(b.siraNo ?? 99) || String(a.paraKod).localeCompare(String(b.paraKod));
+  return satirlar.map((s, i) => ({ s, i })).sort((x, y) => (o.listeSekli === "para" ? para(x.s, y.s) : 0) || hesap(x.s, y.s) || x.i - y.i).map(x => x.s);
+}
+/**
+ * Para ayrımı (K11) — her paranın ayrı grup olduğu kiplerde dış seviye: Döviz / Kuyum başlığı, ara toplamsız (yalnız başlık; rakam değişmez).
+ * Tanımdaki `bolum` yerine sorgunun döndürdüğü grup olarak verilir: bu raporlarda para grubu yalnız bir kipte (liste şekli / sıralama) vardır,
+ * diğer kiplerde bölüm başlığı boş kalırdı.
+ */
+export const PARA_GRUBU_SEVIYESI: RaporGrup = { anahtar: "paraGrupAd", baslik: "{{paraGrupAd}}", altToplam: false };
+const paraliMi = (s: Record<string, any>) => s.paraId != null || (!!s.paraKod && s.paraKod !== "-");
+/**
+ * Para grubu dış seviyesi için satırları Döviz → Kuyum → Ticari sırasına dizer ve `paraGrupAd` yazar (kendi içinde sıra korunur).
+ * Parasız satırlar (hareketi olmayan hesap) yerinde sonda kalır, bir önceki satırın grubuna yazılır (ayrı başlık açılmaz). Saf fonksiyon.
+ */
+export function paraGrubunaDiz<T extends Record<string, any>>(satirlar: T[], grupla: (s: T) => ParaGrubu): (T & { paraGrupAd: string })[] {
+  const parali = paraGrubunaGoreSirala(satirlar.filter(paraliMi), grupla);
+  const son = parali.length ? parali[parali.length - 1].paraGrupAd : "Döviz";
+  return [...parali, ...satirlar.filter(s => !paraliMi(s)).map(s => ({ ...s, paraGrupAd: son }))];
+}
+/**
+ * Hesap bazında hesap bakiye raporu: her hesabın altındaki para satırlarına Döviz / Kuyum başlık satırı (hesap grubunun içinde).
+ * Parasız satır (hareketi olmayan hesap) başlıksız kalır. Satırlar hesap grubu sırasıyla gelir. Saf fonksiyon.
+ */
+export function hesapIciParaBasliklari<T extends Record<string, any>>(satirlar: T[], grupla: (s: T) => ParaGrubu, anahtar = "hesapBaslik"): Record<string, any>[] {
+  const cikti: Record<string, any>[] = [];
+  let i = 0;
+  while (i < satirlar.length) {
+    const a = satirlar[i][anahtar], parca: T[] = [];
+    while (i < satirlar.length && satirlar[i][anahtar] === a) parca.push(satirlar[i++]);
+    const parali = parca.filter(paraliMi);
+    cikti.push(...(parali.length ? paraBasliklariEkle(parali, { grupla, alan: "paraKod", bolumle: [anahtar] }) : []), ...parca.filter(s => !paraliMi(s)));
+  }
+  return cikti;
+}
+
+/** Hesap bakiye raporunun grubu: hesap bazında hesap, para bazında Döviz / Kuyum → para (altında "Toplam" ve net "Bakiye : … B/A" satırı). Saf fonksiyon. */
+export function hesbakGruplari(listeSekli: string): RaporGrup[] {
+  return listeSekli === "para"
+    ? [PARA_GRUBU_SEVIYESI, { anahtar: "paraKod", baslik: "Para birimi: {{paraKod}}", altToplam: true, toplamEtiketi: "Toplam", genelToplam: false, net: { arti: "borcBakiye", eksi: "alacakBakiye", etiket: "Bakiye" } }]
+    : [{ anahtar: "hesapBaslik", baslik: "{{hesapBaslik}}", altToplam: true, toplamEtiketi: "Toplam" }];
+}
+
+export interface EkstreSecenek {
+  /** "kod" | "ad": hesap → para grupları; "tarih": hesap grubu olmadan para içinde tarih sırası */
+  siralama: string;
+  /** "hepsi" | "borc" | "alacak" */
+  hesapTipi: string;
+  /** Devir görünmesin: dönem öncesi hareketler rapora hiç girmez (bakiye dönem içinden yürür) */
+  devirGizle: boolean;
+  /** Dönem öncesi hareketler tek devir satırı yerine satır satır (eski rapordaki @Donem=0 grubu) */
+  devirAyrinti: boolean;
+  baslangic: string; bitis: string;
+}
+export type EkstreNakit = { hesapKod: string; hesapAd: string; paraKod: string; tip: number; meblag: number; kdv: number; kdvSatiri: boolean; onceki?: any; grupSira?: number; miktar?: number; hasTutari?: number; hasKuru?: number } & Record<string, any>;
+
+/** Hesap ekstresinin grupları: hesap → para (tarih sırasında Döviz / Kuyum → para); dönem öncesi satır satır isteniyorsa altında dönem seviyesi ("Devir" toplamıyla). Saf fonksiyon. */
+export function heseksGruplari(o: { siralama: string; devirGizle: boolean; devirAyrinti: boolean }): RaporGrup[] {
+  return [
+    ...(o.siralama === "tarih" ? [PARA_GRUBU_SEVIYESI] : [{ anahtar: "hesapBaslik", baslik: "{{hesapBaslik}}", altToplam: false, genelToplam: false }]),
+    { anahtar: "grupAnahtar", baslik: "Para birimi: {{paraKod}}", altToplam: true, genelToplam: false },
+    ...(o.devirAyrinti && !o.devirGizle ? [{ anahtar: "donem", baslik: "{{donemBaslik}}", altToplam: true, toplamEtiketi: "{{donemToplam}}", genelToplam: false }] : []),
+  ];
+}
+
+/**
+ * Hesap ekstresi satırları ve kapanış özeti. Girdi: kasadan geçen nakit satırları (kasaNakitSatirlari çıktısı; `onceki` = dönem öncesi,
+ * `grupSira` = paranın sıra numarası), hesap kodu → tarih (tarih sırasında yalnız tarih) sırasıyla.
+ * Borç = çıkış (TIP 1), Alacak = giriş (TIP 0), bakiye = Borç − Alacak → mutlak değer + B/A. Devir brüt tutulur (dönem öncesi borç ve alacak ayrı).
+ * Kapanış her zaman hesap × para bazındadır. Saf fonksiyon.
+ */
+export function hesapEkstresiKur(nakit: EkstreNakit[], o: EkstreSecenek): { satirlar: Record<string, any>[]; kapanis: Record<string, any>[] } {
+  const tarihSirali = o.siralama === "tarih", ayrinti = o.devirAyrinti && !o.devirGizle;
+  const bakiyeAlanlari = (b: number) => ({ bakiye: Math.abs(b), bakiyeTipi: b > 0 ? "B" : b < 0 ? "A" : "" });
+  type Grup = { anahtar: string; hesapKod: string; hesapAd: string; paraKod: string; siraNo: number; devirBorc: number; devirAlacak: number; devirHas: number; devirMiktar: number; oncekiler: any[]; hareketler: any[] };
+  const kur = (anahtarAl: (n: EkstreNakit) => string) => {
+    const m = new Map<string, Grup>();
+    for (const ham of nakit) {
+      if (!hesapTipiUygun(Number(ham.tip), o.hesapTipi) || (o.devirGizle && ham.onceki)) continue;
+      const { grupSira, ...n } = ham;
+      const k = anahtarAl(ham), meblag = Number(n.meblag) || 0, giris = Number(n.tip) === 0;
+      if (!m.has(k)) m.set(k, { anahtar: k, hesapKod: n.hesapKod, hesapAd: n.hesapAd, paraKod: n.paraKod, siraNo: Number(grupSira) || 0, devirBorc: 0, devirAlacak: 0, devirHas: 0, devirMiktar: 0, oncekiler: [], hareketler: [] });
+      const g = m.get(k)!;
+      const miktar = Number(n.miktar) || 0, hasTutari = Number(n.hasTutari) || 0, hasKuru = Number(n.hasKuru) || 0;
+      const satir = { ...n, borc: giris ? 0 : meblag, alacak: giris ? meblag : 0, miktar: miktar > 0 ? miktar : null, hasKuru: hasKuru > 0 ? hasKuru : null, hasTutari: hasTutari > 0 ? hasTutari : null,
+        kdv: n.kdvSatiri ? 0 : Number(n.kdv) || 0 };
+      if (n.onceki) {
+        if (giris) g.devirAlacak += meblag; else g.devirBorc += meblag;
+        g.devirHas += hasTutari; g.devirMiktar += miktar;
+        g.oncekiler.push(satir);
+      } else g.hareketler.push(satir);
+    }
+    return [...m.values()];
+  };
+  const kodSira = (a: Grup, b: Grup) => a.hesapKod.localeCompare(b.hesapKod) || a.siraNo - b.siraNo || a.paraKod.localeCompare(b.paraKod);
+  const adSira = (a: Grup, b: Grup) => String(a.hesapAd).localeCompare(String(b.hesapAd), "tr") || kodSira(a, b);
+  const hesapPara = kur(n => `${n.hesapKod}|${n.paraKod}`).sort(o.siralama === "ad" ? adSira : kodSira);
+  const cizim = tarihSirali ? kur(n => n.paraKod).sort((a, b) => a.siraNo - b.siraNo || a.paraKod.localeCompare(b.paraKod)) : hesapPara;
+
+  const satirlar: Record<string, any>[] = [];
+  const donemAlanlari = (donem: 0 | 1) => (ayrinti ? { donem, donemBaslik: donem ? `${tarihTr(o.baslangic)} – ${tarihTr(o.bitis)}` : `${tarihTr(o.baslangic)} öncesi`, donemToplam: donem ? "Dönem toplamı" : "Devir" } : {});
+  for (const g of cizim) {
+    const hesapBaslik = `${g.hesapKod} — ${g.hesapAd}`;
+    const ortak = tarihSirali
+      ? { grupAnahtar: g.anahtar, grupBaslik: `Para birimi: ${g.paraKod}`, hesapKod: "", hesapAd: "", hesapBaslik: "", paraKod: g.paraKod }
+      : { grupAnahtar: g.anahtar, grupBaslik: `${hesapBaslik} · ${g.paraKod}`, hesapKod: g.hesapKod, hesapAd: g.hesapAd, hesapBaslik, paraKod: g.paraKod };
+    let bakiye = 0;
+    const yaz = (h: any, donem: 0 | 1) => { bakiye += h.borc - h.alacak; satirlar.push({ ...ortak, ...h, giris: h.alacak, cikis: h.borc, ...bakiyeAlanlari(bakiye), ...donemAlanlari(donem) }); };
+    if (ayrinti) for (const h of g.oncekiler) yaz(h, 0);
+    else if (!o.devirGizle) {
+      bakiye = g.devirBorc - g.devirAlacak;
+      satirlar.push({ ...ortak, tarih: o.baslangic, aciklama: `${tarihTr(o.baslangic)} öncesi devir`, vezneKod: "", kdv: 0, kaydeden: "", devirSatiri: true,
+        miktar: g.devirMiktar > 0 ? g.devirMiktar : null, hasKuru: null, hasTutari: g.devirHas > 0 ? g.devirHas : null,
+        borc: g.devirBorc, alacak: g.devirAlacak, giris: g.devirAlacak, cikis: g.devirBorc, ...bakiyeAlanlari(bakiye) });
+    }
+    for (const h of g.hareketler) yaz(h, 1);
+  }
+  const kapanis = hesapPara.map(g => {
+    let bakiye = g.devirBorc - g.devirAlacak, borc = g.devirBorc, alacak = g.devirAlacak, toplamHas = g.devirHas, toplamMiktar = g.devirMiktar;
+    for (const h of g.hareketler) { bakiye += h.borc - h.alacak; borc += h.borc; alacak += h.alacak; toplamHas += Number(h.hasTutari) || 0; toplamMiktar += Number(h.miktar) || 0; }
+    return { hesap: `${g.hesapKod} — ${g.hesapAd}`, paraKod: g.paraKod, miktar: toplamMiktar > 0 ? toplamMiktar : null, hasTutari: toplamHas > 0 ? toplamHas : null, borc, alacak, ...bakiyeAlanlari(bakiye) };
+  });
+  return { satirlar, kapanis };
+}
+
+/** Eski "KASA HAREKET LİSTESİ" gün içi sırası: gün → para (PARA_ID) → tip azalan (çıkış önce, giriş sonra); eşitlerde geliş sırası korunur. Saf fonksiyon. */
+export function gunIciEskiSira<T extends { tarih: any; paraId: number; tip: number }>(satirlar: T[], gun: (tarih: any) => string): T[] {
+  return satirlar.map((s, i) => ({ s, i, g: gun(s.tarih) }))
+    .sort((a, b) => a.g.localeCompare(b.g) || Number(a.s.paraId) - Number(b.s.paraId) || Number(b.s.tip) - Number(a.s.tip) || a.i - b.i).map(x => x.s);
+}
+
+/** Parametre değeri: ek parametre → düz alan; geçerli değerlerden biri değilse ilki (varsayılan) */
+const secim = (p: RaporParametreler, ad: string, gecerli: string[]): string => { const v = ek(p, ad) || String((p as any)[ad] ?? "").trim(); return gecerli.includes(v) ? v : gecerli[0]; };
+/** Onay kutusu: ek parametre ya da düz alan ("1" / "true" / "evet") */
+const onay = (p: RaporParametreler, ad: string): boolean => ekOnay(p, ad) || ["1", "true", "evet"].includes(String((p as any)[ad] ?? "").trim().toLowerCase());
+/** İlk – son hesap adı aralığı (eski "İlk ad / Son ad"): SQL parçası + filtre özeti */
+function hesapAdAraligi(req: sql.Request, p: RaporParametreler, kolon: string) {
+  const ilk = ek(p, "hesapAdIlk") || String((p as any).hesapAdIlk ?? "").trim(), son = ek(p, "hesapAdSon") || String((p as any).hesapAdSon ?? "").trim();
+  req.input("hadIlk", sql.NVarChar(100), ilk || null).input("hadSon", sql.NVarChar(100), son || null);
+  return { var: !!(ilk || son), ozet: ilk || son ? ` · Ad ${ilk || "…"} → ${son || "…"}` : "",
+    sql: ` AND (@hadIlk IS NULL OR RTRIM(ISNULL(${kolon},''))>=@hadIlk) AND (@hadSon IS NULL OR RTRIM(ISNULL(${kolon},''))<=@hadSon)` };
+}
+const istanbulGunu = (v: any) => new Date(v).toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
 
 const tlPara = async (pool: sql.ConnectionPool) => {
   const r = await pool.request().query(`SELECT P.PARA_ID id, RTRIM(P.KOD) kod, ISNULL(P.SIRA_NO,0) siraNo FROM dbo.TODVZ_PARA P WHERE P.PARA_ID=${TL_PARA_SQL}`);
@@ -123,14 +279,14 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
             SELECT CAST(X.tarih AS date) gun, X.belgeTipi, X.fisTip tip, X.paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, SUM(X.giris) giris, SUM(X.cikis) cikis,
               MIN(X.aciklama) ilkSeri, MAX(X.aciklama) sonSeri, COUNT(DISTINCT X.belgeId) adet, CASE WHEN CAST(X.tarih AS date)<@bas THEN 1 ELSE 0 END onceki
             FROM X JOIN dbo.TODVZ_PARA P ON P.PARA_ID=X.paraId LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=X.vezneId
-            WHERE X.belgeTipi IN (5,6,7,8) AND CAST(X.tarih AS date)<=@bit ${f}
+            WHERE X.belgeTipi IN (5,6,7,8,9) AND CAST(X.tarih AS date)<=@bit ${f}
             GROUP BY CAST(X.tarih AS date), X.belgeTipi, X.fisTip, X.paraId, P.KOD, P.SIRA_NO;`);
-          const AD: Record<number, string> = { 5: "Sarraf fişi", 6: "Perakende fişi", 7: "Ürün tanımı", 8: "Bakiye düzeltme" };
+          const AD: Record<number, string> = { 5: "Sarraf fişi", 6: "Perakende fişi", 7: "Ürün tanımı", 8: "Bakiye düzeltme", 9: "Ticari fiş" };
           for (const r of res.recordset) { const bt = Number(r.belgeTipi), alis = Number(r.tip) === 0;
-            satirlarHam.push({ paraId: Number(r.paraId), paraKod: r.paraKod, siraNo: Number(r.siraNo), tarih: r.gun, hesapKod: AD[bt], hesapAd: bt >= 7 ? "" : alis ? "Alış" : "Satış",
+            satirlarHam.push({ paraId: Number(r.paraId), paraKod: r.paraKod, siraNo: Number(r.siraNo), tarih: r.gun, hesapKod: AD[bt], hesapAd: bt === 7 || bt === 8 ? "" : alis ? "Alış" : "Satış",
               aciklama: bt === 8 ? (Number(r.adet) === 1 ? r.ilkSeri : `${r.adet} düzeltme`) : bt === 7 ? `${r.adet} ürün` : `Seri : ${r.ilkSeri} - ${r.sonSeri}`,
               giris: Number(r.giris) || 0, cikis: Number(r.cikis) || 0, kdv: 0, vezneKod: "", kaydeden: "",
-              onceki: r.onceki, sira: bt === 8 ? 7.6 : bt === 7 ? 7.5 : bt === 6 ? (alis ? 7.2 : 7.1) : (alis ? 7 : 6) }); } } }
+              onceki: r.onceki, sira: bt === 8 ? 7.6 : bt === 7 ? 7.5 : bt === 9 ? (alis ? 7.4 : 7.3) : bt === 6 ? (alis ? 7.2 : 7.1) : (alis ? 7 : 6) }); } } }
     }
     const secili = paraSecimi(p);
     const paraAdlari = new Map<number, string>((await pool.request().query(`SELECT PARA_ID id, RTRIM(ISNULL(AD,'')) ad FROM dbo.TODVZ_PARA`)).recordset.map((x: any) => [Number(x.id), String(x.ad || "")]));
@@ -143,14 +299,19 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
       const g = gruplar.get(n.paraId)!;
       if (n.onceki) g.devir += (Number(n.giris) || 0) - (Number(n.cikis) || 0); else { const { onceki, sira, siraNo, ...h } = n; g.hareketler.push(h); }
     }
-    const sirali = [...gruplar.values()].sort((a, b) => a.siraNo - b.siraNo || a.anahtar.localeCompare(b.anahtar));
+    // Para ayrımı (K11): para grupları Döviz → Kuyum sırasına dizilir (kendi içinde sıra numarası), satıra bölüm başlığı için paraGrupAd yazılır; rakamlar değişmez
+    const pg = await paraGrupBilgisi(pool);
+    const paraGrubu = new Map<string, "doviz" | "kuyum" | "ticari">();
+    for (const [paraId, g] of gruplar) paraGrubu.set(g.ortak.paraKod, pg.grup({ paraId, paraKod: g.ortak.paraKod }));
+    const sirali = paraGrubunaGoreSirala([...gruplar.values()].sort((a, b) => a.siraNo - b.siraNo || a.anahtar.localeCompare(b.anahtar)), g => paraGrubu.get(g.ortak.paraKod) || "doviz")
+      .map(g => ({ ...g, ortak: { ...g.ortak, paraGrupAd: g.paraGrupAd } as Record<string, any> }));
     const satirlar = yuruyenBakiye(sirali, () => ({ tarih: p.baslangic, hesapKod: "Devir", hesapAd: "", aciklama: `${tarihTr(p.baslangic)} öncesi devir`, vezneKod: "", kdv: 0, kaydeden: "" }));
     // Eski "KASA DEFTERİ" kapanışı: "Devreden" dengeleme tutarı eksik kalan tarafa yazılır (@DevredenGiris / @DevredenCikis), iki kolon eşitlenmiş toplamı gösterir (@Toplam)
     const kapanis = sirali.map(g => { const gr = satirlar.filter(x => x.paraKod === g.ortak.paraKod); const giris = gr.reduce((a, x) => a + (Number(x.giris) || 0), 0), cikis = gr.reduce((a, x) => a + (Number(x.cikis) || 0), 0);
       return { paraKod: g.ortak.paraKod, giris, cikis, devredenGiris: giris > cikis ? 0 : cikis - giris, devredenCikis: cikis > giris ? 0 : giris - cikis, toplam: Math.max(giris, cikis) }; });
     return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p) || " · Tüm vezneler"}${adetOzeti(p.hesapIdler, "hesap")}`,
       "Seçilen aralıkta kasa defteri hareketi yok. Kasa defteri döviz, sarraf ve perakende fişlerini, ürün tanımlarını (gün ve fiş tipine göre toplu; komisyon, BSMV ve KMV ayrı satır), nakit cari hareketleri ve kasa hesap hareketlerini (KDV ayrı TL satırı) kapsar.",
-      kapanis);
+      paraBasliklariEkle(kapanis, { grupla: s => paraGrubu.get(s.paraKod) || "doviz", alan: "paraKod" }));
   },
 
   /** Kasa hareket listesi — hareket bazında; KDV ayrı TL satırı (eski VODVZR_KASA_HAREKET_LISTESI gibi); sıralama tarih / hesap / para (grup başlığı sıralamaya göre) */
@@ -171,98 +332,66 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
     let ham = res.recordset.flatMap((r: any) => kasaNakitSatirlari({ ...r, paraId: Number(r.paraId), tip: Number(r.tip), meblag: Number(r.meblag), kdv: Number(r.kdv) }, tl)
       .map(n => ({ ...n, siraNo: n.kdvSatiri ? tl.siraNo : Number(r.siraNo) }))).filter((n: any) => !secili.size || secili.has(n.paraId));
     if (p.siralama === "para") ham = ham.map((x: any, i: number) => ({ ...x, _i: i })).sort((a: any, b: any) => a.siraNo - b.siraNo || a.paraKod.localeCompare(b.paraKod) || a._i - b._i);
+    // Eski raporun gün içi sırası (para → tip azalan): gün grubu aynı kalır, yalnız gün içindeki sıra değişir
+    if (p.siralama === "gunpara") ham = gunIciEskiSira(ham, istanbulGunu);
     const satirlar = ham.map((r: any) => {
       const meblag = Number(r.meblag) || 0, giris = Number(r.tip) === 0;
-      const grupBaslik = p.siralama === "hesap" ? `${r.hesapKod} — ${r.hesapAd}` : p.siralama === "para" ? `Para birimi: ${r.paraKod}` : tarihTr(new Date(r.tarih).toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" }));
+      const grupBaslik = p.siralama === "hesap" ? `${r.hesapKod} — ${r.hesapAd}` : p.siralama === "para" ? `Para birimi: ${r.paraKod}` : tarihTr(istanbulGunu(r.tarih));
       // Eski "KASA HAREKET LİSTESİ": tek Meblağ + harf (TIP 0 → "B", diğer → "A"); @Meblag işaretli (TIP 0 +, diğer −) → net toplamların temeli
       return { ...r, hesapBaslik: `${r.hesapKod} — ${r.hesapAd}`, tip: giris ? "Giriş" : "Çıkış", giris: giris ? meblag : 0, cikis: giris ? 0 : meblag, meblag, ba: giris ? "B" : "A", net: giris ? meblag : -meblag,
         kdvOrani: r.kdvSatiri ? 0 : Number(r.kdvOrani) || 0, kdv: Number(r.kdv) || 0, grupAnahtar: grupBaslik, grupBaslik };
     });
     // Net toplam = |Σ(giriş − çıkış)| + B/A (eski @GenelToplam / @GenelHesapTipi) — para birimleri karışmasın diye para başına
-    const nt = new Map<string, { paraKod: string; giris: number; cikis: number }>();
-    for (const x of satirlar) { const o = nt.get(x.paraKod) || { paraKod: x.paraKod, giris: 0, cikis: 0 }; o.giris += x.giris; o.cikis += x.cikis; nt.set(x.paraKod, o); }
+    const nt = new Map<string, { paraKod: string; giris: number; cikis: number }>(), paraIdleri = new Map<string, number>();
+    for (const x of satirlar) { const o = nt.get(x.paraKod) || { paraKod: x.paraKod, giris: 0, cikis: 0 }; o.giris += x.giris; o.cikis += x.cikis; nt.set(x.paraKod, o); paraIdleri.set(x.paraKod, Number(x.paraId)); }
     const netToplamlar = [...nt.values()].map(o => { const n = o.giris - o.cikis; return { ...o, netToplam: Math.abs(n), netTipi: n > 0 ? "B" : n < 0 ? "A" : "" }; });
-    return sinirla(satirlar, t, `${aralikOzeti(p)}${ozetEk(p)}${adetOzeti(p.hesapIdler, "hesap")}${p.kasaTipi === 0 ? " · Giriş" : p.kasaTipi === 1 ? " · Çıkış" : ""}`,
+    // Para ayrımı (K11): özet tablosunda Döviz / Kuyum başlık satırları; "Para" sıralamasında ana tabloda Döviz / Kuyum dış grubu. Rakamlar değişmez
+    const pg = netToplamlar.length ? await paraGrupBilgisi(pool) : null;
+    const paraKipi = p.siralama === "para" && !!pg && !!t.grup;
+    const sonuc = sinirla(paraKipi ? paraGrubunaDiz(satirlar, s => pg!.grup(s)) : satirlar, t, `${aralikOzeti(p)}${ozetEk(p)}${adetOzeti(p.hesapIdler, "hesap")}${p.kasaTipi === 0 ? " · Giriş" : p.kasaTipi === 1 ? " · Çıkış" : ""}`,
       "Toplamlar farklı para birimlerini birlikte içerebilir; para bazında toplam için sıralamayı \"Para\" seçin. Net = giriş − çıkış; B/A: giriş B, çıkış A. KDV tutarı TL'dir.",
-      netToplamlar);
+      pg ? paraBasliklariEkle(netToplamlar, { grupla: s => pg.grup({ paraId: paraIdleri.get(s.paraKod), paraKod: s.paraKod }), alan: "paraKod" }) : netToplamlar);
+    return paraKipi ? { ...sonuc, gruplar: [PARA_GRUBU_SEVIYESI, t.grup!] } : sonuc;
   },
 
-  /** Hesap ekstresi — hesap × para grubu, devir + yürüyen bakiye (Cari Ekstre kalıbı); KDV hesabın TL grubunda ayrı satır (eski hesap ekstresi gibi) */
+  /**
+   * Hesap ekstresi — hesap → para grubu, devir + yürüyen bakiye (Cari Ekstre kalıbı); KDV hesabın TL grubunda ayrı satır (eski hesap ekstresi gibi).
+   * Eski rapor parametreleri: hesap seçimi isteğe bağlı (boş = tümü), ilk – son hesap adı, hesap tipi (satırın TIP'i), sıralama (Kod / Ad / Tarih:
+   * hesap grubu olmadan para içinde tarih sırası), "Devir görünmesin"; dönem öncesi hareketler istenirse satır satır (varsayılan tek devir satırı).
+   */
   async HESEKS1(pool, p, t) {
-    if (!p.hesapIdler?.length) throw ApiError.badRequest("En az bir hesap seçilmelidir.");
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     await KasaHesapSqlRepository.ensureTables(pool);
     const tl = await tlPara(pool);
+    const siralama = secim(p, "siralama", ["kod", "ad", "tarih"]), hesapTipi = secim(p, "hesapTipi", ["hepsi", "borc", "alacak"]);
+    const devirGizle = onay(p, "devirGizle"), devirAyrinti = onay(p, "devirAyrinti");
     const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
-    const f = idFiltre(req, p.hesapIdler, "H.HESAP_ID", "hs");
+    const ad = hesapAdAraligi(req, p, "K.AD");
+    const f = idFiltre(req, p.hesapIdler, "H.HESAP_ID", "hs") + ad.sql;
     const res = await req.query(`
       SELECT ${HAREKET_ALANLARI}, CASE WHEN CAST(H.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
       FROM ${HAREKET_JOIN}
       WHERE CAST(H.TARIH AS date)<=@bit ${f}
-      ORDER BY K.KOD, H.TARIH, H.HESAP_HAREKETI_ID;`);
+      ORDER BY ${siralama === "tarih" ? "" : "K.KOD, "}H.TARIH, H.HESAP_HAREKETI_ID;`);
     const secili = paraSecimi(p);
-    // Eski "HESAP EKSTRE" raporuyla aynı metrikler: Borç = çıkış (TIP 1), Alacak = giriş (TIP 0), bakiye = Borç − Alacak → mutlak değer + B/A.
-    // Devir brüt tutulur (dönem öncesi borç ve alacak ayrı): eski raporda ara toplam dönem öncesi hareketleri de böyle içerir.
-    const gruplar = new Map<string, { devirBorc: number; devirAlacak: number; devirHas: number; devirMiktar: number; siraNo: number; ortak: Record<string, any>; hareketler: any[] }>();
+    const nakit: EkstreNakit[] = [];
     for (const r of res.recordset) for (const n of kasaNakitSatirlari({ ...r, paraId: Number(r.paraId), tip: Number(r.tip), meblag: Number(r.meblag), kdv: Number(r.kdv), miktar: Number(r.miktar), hasTutari: Number(r.hasTutari), hasKuru: Number(r.hasKuru) }, tl)) {
       if (secili.size && !secili.has(n.paraId)) continue;
-      const k = `${n.hesapKod}|${n.paraKod}`, meblag = Number(n.meblag) || 0, giris = Number(n.tip) === 0;
-      if (!gruplar.has(k)) gruplar.set(k, { devirBorc: 0, devirAlacak: 0, devirHas: 0, devirMiktar: 0, siraNo: n.kdvSatiri ? tl.siraNo : Number(r.siraNo), hareketler: [],
-        ortak: { grupAnahtar: k, grupBaslik: `${n.hesapKod} — ${n.hesapAd} · ${n.paraKod}`, hesapKod: n.hesapKod, hesapAd: n.hesapAd, paraKod: n.paraKod } });
-      const g = gruplar.get(k)!;
-      const miktar = Number(n.miktar) || 0;
-      const hasTutari = Number(n.hasTutari) || 0;
-      const hasKuru = Number(n.hasKuru) || 0;
-      if (r.onceki) {
-        if (giris) g.devirAlacak += meblag; else g.devirBorc += meblag;
-        g.devirHas += hasTutari;
-        g.devirMiktar += miktar;
-      }
-      else {
-        g.hareketler.push({
-          ...n,
-          borc: giris ? 0 : meblag,
-          alacak: giris ? meblag : 0,
-          miktar: miktar > 0 ? miktar : null,
-          hasKuru: hasKuru > 0 ? hasKuru : null,
-          hasTutari: hasTutari > 0 ? hasTutari : null,
-          kdv: n.kdvSatiri ? 0 : Number(n.kdv) || 0
-        });
-      }
+      nakit.push({ ...n, grupSira: n.kdvSatiri ? tl.siraNo : Number(r.siraNo) });
     }
-    const bakiyeAlanlari = (b: number) => ({ bakiye: Math.abs(b), bakiyeTipi: b > 0 ? "B" : b < 0 ? "A" : "" });
-    const satirlar: Record<string, any>[] = [], kapanis: Record<string, any>[] = [];
-    for (const g of [...gruplar.values()].sort((a, b) => a.ortak.hesapKod.localeCompare(b.ortak.hesapKod) || a.siraNo - b.siraNo || a.ortak.paraKod.localeCompare(b.ortak.paraKod))) {
-      let bakiye = g.devirBorc - g.devirAlacak, borc = g.devirBorc, alacak = g.devirAlacak;
-      let toplamHas = g.devirHas, toplamMiktar = g.devirMiktar;
-      satirlar.push({ ...g.ortak, tarih: p.baslangic, aciklama: `${tarihTr(p.baslangic)} öncesi devir`, vezneKod: "", kdv: 0, kaydeden: "", devirSatiri: true,
-        miktar: g.devirMiktar > 0 ? g.devirMiktar : null, hasKuru: null, hasTutari: g.devirHas > 0 ? g.devirHas : null,
-        borc: g.devirBorc, alacak: g.devirAlacak, giris: g.devirAlacak, cikis: g.devirBorc, ...bakiyeAlanlari(bakiye) });
-      for (const h of g.hareketler) {
-        bakiye += h.borc - h.alacak; borc += h.borc; alacak += h.alacak;
-        toplamHas += Number(h.hasTutari) || 0;
-        toplamMiktar += Number(h.miktar) || 0;
-        satirlar.push({ ...g.ortak, ...h, giris: h.alacak, cikis: h.borc, ...bakiyeAlanlari(bakiye) });
-      }
-      kapanis.push({
-        hesap: `${g.ortak.hesapKod} — ${g.ortak.hesapAd}`,
-        paraKod: g.ortak.paraKod,
-        miktar: toplamMiktar > 0 ? toplamMiktar : null,
-        hasTutari: toplamHas > 0 ? toplamHas : null,
-        borc,
-        alacak,
-        bakiye: Math.abs(bakiye),
-        bakiyeTipi: bakiye > 0 ? "B" : bakiye < 0 ? "A" : ""
-      });
-    }
-    return sinirla(satirlar, t, `${aralikOzeti(p)}${adetOzeti(p.hesapIdler, "hesap")}${ozetEk(p)}`,
+    const { satirlar, kapanis } = hesapEkstresiKur(nakit, { siralama, hesapTipi, devirGizle, devirAyrinti, baslangic: p.baslangic, bitis: p.bitis });
+    // Para ayrımı (K11): kapanış tablosunda Döviz / Kuyum başlık satırları; "Tarih" sıralamasında (grup yalnız para) ana tabloda Döviz / Kuyum dış grubu. Rakamlar değişmez
+    const pg = kapanis.length ? await paraGrupBilgisi(pool) : null;
+    return { ...sinirla(pg && siralama === "tarih" ? paraGrubunaDiz(satirlar, s => pg.grup({ paraKod: s.paraKod })) : satirlar, t, `${aralikOzeti(p)}${adetOzeti(p.hesapIdler, "hesap") || (ad.var ? "" : " · Tüm hesaplar")}${ad.ozet}${ozetEk(p)}${hesapTipi === "borc" ? " · Borç" : hesapTipi === "alacak" ? " · Alacak" : ""}`,
       "Her hesap ve para birimi ayrı gruplanır. Borç = kasadan çıkış, Alacak = kasaya giriş; bakiye = Borç − Alacak (B: borç bakiyesi, A: alacak bakiyesi). İşçilik hareketlerinde miktar, has tutarı ve has kuru gösterilir. İlk satır başlangıç tarihinden önceki hareketlerin borç ve alacak toplamıdır ve ara toplama dahildir. KDV hesabın TL grubunda ayrı satırdır.",
-      kapanis);
+      pg ? paraBasliklariEkle(kapanis, { grupla: s => pg.grup({ paraKod: s.paraKod }), alan: "hesap" }) : kapanis),
+      gruplar: heseksGruplari({ siralama, devirGizle, devirAyrinti }) };
   },
 
   /**
    * Hesap bakiye raporu — giriş/çıkış aralıkta, bakiye bitiş tarihi itibarıyla (Cari Bakiye kararıyla aynı); seçilen kurla TL.
    * Eski VODVZR_HESAP_BAKIYE_RAPORU gibi hesap bakiyeleri KDV hariçtir; KDV'ler "KDV" adlı ayrı satırda (TL) toplanır (hesap seçilmemişse).
+   * Eski rapor parametreleri: liste şekli (hesap / para bazında — grup buna göre), ilk – son hesap adı, sıralama (kod / ad).
    */
   async HESBAK1(pool, p, t) {
     const bas = p.baslangic || p.tarih, bit = p.bitis || p.tarih;
@@ -270,7 +399,9 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
     const kur = await kurCoz(pool, { ...p, kurTarihi: p.kurTarihi || bit });
     const tl = await tlPara(pool), secili = paraSecimi(p);
     const req = pool.request().input("bas", sql.Date, bas).input("bit", sql.Date, bit);
-    const f = filtreler(req, p, { para: "B.PARA_ID" }) + idFiltre(req, p.hesapIdler, "K.HESAP_ID", "hs");
+    const listeSekli = secim(p, "listeSekli", ["hesap", "para"]), siralama = secim(p, "siralama", ["kod", "ad"]);
+    const ad = hesapAdAraligi(req, p, "K.AD");
+    const f = filtreler(req, p, { para: "B.PARA_ID" }) + idFiltre(req, p.hesapIdler, "K.HESAP_ID", "hs") + ad.sql;
     const res = await req.query(`
       ;WITH B AS (
         SELECT H.HESAP_ID, H.PARA_ID,
@@ -278,28 +409,33 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
           SUM(CASE WHEN H.TIP=1 AND CAST(H.TARIH AS date)>=@bas THEN H.MEBLAG ELSE 0 END) CIKIS,
           SUM(CASE WHEN H.TIP=0 THEN H.MEBLAG ELSE -H.MEBLAG END) BAKIYE
         FROM dbo.TODVZ_HESAP_HAREKETI H WHERE CAST(H.TARIH AS date)<=@bit GROUP BY H.HESAP_ID, H.PARA_ID)
-      SELECT K.HESAP_ID hesapId, RTRIM(ISNULL(K.KOD,'')) hesapKod, RTRIM(ISNULL(K.AD,'')) hesapAd, B.PARA_ID paraId, ISNULL(RTRIM(P.KOD),'-') paraKod,
+      SELECT K.HESAP_ID hesapId, RTRIM(ISNULL(K.KOD,'')) hesapKod, RTRIM(ISNULL(K.AD,'')) hesapAd, B.PARA_ID paraId, ISNULL(RTRIM(P.KOD),'-') paraKod, ISNULL(P.SIRA_NO,99) siraNo,
         ISNULL(B.GIRIS,0) giris, ISNULL(B.CIKIS,0) cikis, ISNULL(B.BAKIYE,0) bakiye
       FROM dbo.TODVZ_HESAP K LEFT JOIN B ON B.HESAP_ID=K.HESAP_ID LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=B.PARA_ID
       WHERE 1=1 ${f}
       ORDER BY K.KOD, ISNULL(P.SIRA_NO,99), P.KOD;`);
     const ham: any[] = [...res.recordset];
-    if (!p.hesapIdler?.length && (!secili.size || secili.has(tl.id))) {
+    if (!p.hesapIdler?.length && !ad.var && (!secili.size || secili.has(tl.id))) {
       const k = (await pool.request().input("bas", sql.Date, bas).input("bit", sql.Date, bit).query(`
         SELECT SUM(CASE WHEN H.TIP=0 AND CAST(H.TARIH AS date)>=@bas THEN H.KDV ELSE 0 END) giris, SUM(CASE WHEN H.TIP=1 AND CAST(H.TARIH AS date)>=@bas THEN H.KDV ELSE 0 END) cikis,
           SUM(CASE WHEN H.TIP=0 THEN H.KDV ELSE -H.KDV END) bakiye, COUNT(*) adet
         FROM dbo.TODVZ_HESAP_HAREKETI H WHERE ISNULL(H.KDV,0)<>0 AND CAST(H.TARIH AS date)<=@bit`)).recordset[0];
-      if (Number(k?.adet)) ham.push({ hesapId: 0, hesapKod: "KDV", hesapAd: "KDV", paraId: tl.id, paraKod: tl.kod, giris: k.giris, cikis: k.cikis, bakiye: k.bakiye });
+      if (Number(k?.adet)) ham.push({ hesapId: 0, hesapKod: "KDV", hesapAd: "KDV", paraId: tl.id, paraKod: tl.kod, siraNo: tl.siraNo, giris: k.giris, cikis: k.cikis, bakiye: k.bakiye });
     }
-    const satirlar = ham.map((r: any) => { const id = Number(r.paraId), b = Number(r.bakiye) || 0, k = kur.kurlar.get(id) ?? 0, ks = kur.satisKurlari.get(id) ?? 0;
+    const satirlar = hesapBakiyeDuzeni(ham, { listeSekli, siralama }).map((r: any) => { const id = Number(r.paraId), b = Number(r.bakiye) || 0, k = kur.kurlar.get(id) ?? 0, ks = kur.satisKurlari.get(id) ?? 0;
       // Eski "HESAP BAKİYE RAPORU": BAKIYE (= giriş − çıkış, canlıda doğrulandı 19.09.2026) < 0 → Borç bakiye, > 0 → Alacak bakiye
       return { ...r, giris: Number(r.giris) || 0, cikis: Number(r.cikis) || 0, bakiye: b, borcBakiye: b < 0 ? -b : 0, alacakBakiye: b > 0 ? b : 0, kur: k, tlKarsiligi: b * k, kurSatis: ks, tlSatis: b * ks, hesapBaslik: `${r.hesapKod} — ${r.hesapAd}` }; });
     // Para bazında "Toplam :" ve net "Bakiye :" (B/A) — eski rapordaki grup altlıklarının karşılığı
-    const pt = new Map<string, { paraKod: string; borcBakiye: number; alacakBakiye: number }>();
-    for (const x of satirlar) { if (!x.paraId) continue; const o = pt.get(x.paraKod) || { paraKod: x.paraKod, borcBakiye: 0, alacakBakiye: 0 }; o.borcBakiye += x.borcBakiye; o.alacakBakiye += x.alacakBakiye; pt.set(x.paraKod, o); }
+    const pt = new Map<string, { paraId: number; paraKod: string; borcBakiye: number; alacakBakiye: number }>();
+    for (const x of satirlar) { if (!x.paraId) continue; const o = pt.get(x.paraKod) || { paraId: Number(x.paraId), paraKod: x.paraKod, borcBakiye: 0, alacakBakiye: 0 }; o.borcBakiye += x.borcBakiye; o.alacakBakiye += x.alacakBakiye; pt.set(x.paraKod, o); }
     const paraToplamlari = [...pt.values()].map(o => { const n = o.borcBakiye - o.alacakBakiye; return { ...o, netBakiye: Math.abs(n), bakiyeTipi: n > 0 ? "B" : n < 0 ? "A" : "" }; });
-    return sinirla(satirlar, t, `${tarihTr(bas)} – ${tarihTr(bit)}${adetOzeti(p.hesapIdler, "hesap") || " · Tüm hesaplar"}${ozetEk(p)} · ${kur.aciklama}`,
+    // Para ayrımı (K11): özet tablosunda Döviz / Kuyum başlık satırları; rakamlar değişmez
+    // Ana tabloda: para bazında Döviz / Kuyum dış grubu, hesap bazında her hesabın para satırları üstünde başlık
+    const pg = paraToplamlari.length ? await paraGrupBilgisi(pool) : null;
+    const anaSatirlar = !pg ? satirlar : listeSekli === "para" ? paraGrubunaDiz(satirlar, s => pg.grup(s)) : hesapIciParaBasliklari(satirlar, s => pg.grup(s));
+    return { ...sinirla(anaSatirlar, t, `${tarihTr(bas)} – ${tarihTr(bit)}${adetOzeti(p.hesapIdler, "hesap") || (ad.var ? "" : " · Tüm hesaplar")}${ad.ozet}${ozetEk(p)} · ${kur.aciklama}`,
       `Giriş ve çıkış seçilen tarih aralığındaki hareketlerin toplamıdır; bakiye bitiş tarihi itibarıyla tüm hareketlerden hesaplanır (girişler − çıkışlar, KDV hariç; KDV'ler "KDV" satırında). Borç bakiye = bakiyenin negatif (çıkış fazlası), Alacak bakiye = pozitif (giriş fazlası) olduğu tutardır. Hareketi olmayan hesaplar da listelenir. ${kur.aciklama}.`,
-      paraToplamlari);
+      pg ? paraBasliklariEkle(paraToplamlari, { grupla: s => pg.grup(s), alan: "paraKod" }) : paraToplamlari),
+      gruplar: hesbakGruplari(listeSekli) };
   },
 };

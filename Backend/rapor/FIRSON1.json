@@ -31,6 +31,46 @@
       "etiket": "Karşılık parası",
       "tip": "para",
       "not": "Rapor altı toplamlarının çevrileceği para; boş bırakılırsa TL"
+    },
+    {
+      "ad": "tlDovizCevrim",
+      "etiket": "TL → Döviz çevrimi",
+      "tip": "secim",
+      "varsayilan": "kur",
+      "secenekler": [
+        {
+          "deger": "kur",
+          "ad": "Kur seçimine göre"
+        },
+        {
+          "deger": "alis",
+          "ad": "Alış"
+        },
+        {
+          "deger": "satis",
+          "ad": "Satış"
+        }
+      ]
+    },
+    {
+      "ad": "dovizDovizCevrim",
+      "etiket": "Döviz → Döviz çevrimi",
+      "tip": "secim",
+      "varsayilan": "kur",
+      "secenekler": [
+        {
+          "deger": "kur",
+          "ad": "Kur seçimine göre"
+        },
+        {
+          "deger": "alis",
+          "ad": "Alış"
+        },
+        {
+          "deger": "satis",
+          "ad": "Satış"
+        }
+      ]
     }
   ],
   "kolonlar": [

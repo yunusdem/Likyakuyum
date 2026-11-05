@@ -31,6 +31,72 @@
       "etiket": "Karşılık parası",
       "tip": "para",
       "not": "Rapor altı toplamlarının çevrileceği para; boş bırakılırsa TL"
+    },
+    {
+      "ad": "varlikCinsi",
+      "etiket": "Varlık cinsi",
+      "tip": "secim",
+      "varsayilan": "hepsi",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "kasa",
+          "ad": "Kasa"
+        },
+        {
+          "deger": "cari",
+          "ad": "Cari"
+        }
+      ]
+    },
+    {
+      "ad": "tlDovizCevrim",
+      "etiket": "TL → Döviz çevrimi",
+      "tip": "secim",
+      "varsayilan": "kur",
+      "secenekler": [
+        {
+          "deger": "kur",
+          "ad": "Kur seçimine göre"
+        },
+        {
+          "deger": "alis",
+          "ad": "Alış"
+        },
+        {
+          "deger": "satis",
+          "ad": "Satış"
+        }
+      ]
+    },
+    {
+      "ad": "dovizDovizCevrim",
+      "etiket": "Döviz → Döviz çevrimi",
+      "tip": "secim",
+      "varsayilan": "kur",
+      "secenekler": [
+        {
+          "deger": "kur",
+          "ad": "Kur seçimine göre"
+        },
+        {
+          "deger": "alis",
+          "ad": "Alış"
+        },
+        {
+          "deger": "satis",
+          "ad": "Satış"
+        }
+      ]
+    },
+    {
+      "ad": "toplamSatiri",
+      "etiket": "Toplam satırı",
+      "tip": "onay",
+      "varsayilan": "1"
     }
   ],
   "kolonlar": [

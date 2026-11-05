@@ -8,6 +8,7 @@ import { CariService, type CariKartItem } from "../../services/cariService";
 import {
   RAPOR_MENU, RaporService, raporBicimle, raporSayisalMi,
   type RaporParametre, type RaporParametreDegerleri, type RaporSecimKaydi, type RaporSecimKaynagi, type RaporTanim, type RaporVeri,
+  type RaporNet, type RaporGrup, type RaporAltTablo,
 } from "../../services/raporService";
 import { DurbunAlan, type SecimKolon } from "./RaporSecim";
 import { buildRaporWhatsAppMessage, openWhatsAppDirect, sharePdfToWhatsApp } from "../../utils/whatsAppMessageBuilder";
@@ -63,6 +64,10 @@ function baslangicDegerleri(parametreler: RaporParametre[]): RaporParametreDeger
       case "cariCoklu": d.cariIdler = ""; d.cariSonId = ""; break;
       case "vezneCoklu": d.vezneIdler = ""; break;
       case "tarih": d[p.ad] = varsayilanDeger(p.varsayilan ?? "bugun"); break;
+      // Onay kutusu: işaretli "1", işaretsiz "0" (boş değer sunucuya gitmediği için "0" açıkça yollanır)
+      case "onay": d[p.ad] = ["1", "true"].includes(String(p.varsayilan ?? "")) ? "1" : "0"; break;
+      case "metinAralik": d[`${p.ad}Ilk`] = ""; d[`${p.ad}Son`] = ""; break;
+      case "sayiAralik": d[`${p.ad}Alt`] = ""; d[`${p.ad}Ust`] = ""; break;
       default: d[p.ad] = varsayilanDeger(p.varsayilan);
     }
   }
@@ -190,7 +195,7 @@ export const RaporPage: React.FC = () => {
       if (p.tip === "paraCoklu" && !degerler.paraIdler) return "En az bir para seçin.";
       if (p.tip === "cariCoklu" && !degerler.cariIdler && !degerler.cariSonId) return "En az bir cari seçin.";
       if (p.tip === "vezneCoklu" && !degerler.vezneIdler) return "En az bir vezne seçin.";
-      if (!["saatAralik", "kurSecimi", "cariAralik", "vezneAralik", "paraCoklu", "cariCoklu", "vezneCoklu"].includes(p.tip) && !degerler[p.ad]) return `${p.etiket} zorunludur.`;
+      if (!["saatAralik", "kurSecimi", "cariAralik", "vezneAralik", "paraCoklu", "cariCoklu", "vezneCoklu", "onay", "metinAralik", "sayiAralik"].includes(p.tip) && !degerler[p.ad]) return `${p.etiket} zorunludur.`;
     }
     for (const p of tanim.parametreler) if (p.tip === "tarihAralik") { const [b, s] = aralikAnahtarlari(p);
       if (degerler[b] && degerler[s] && String(degerler[b]) > String(degerler[s])) return "Başlangıç tarihi bitişten sonra olamaz.";
@@ -404,6 +409,13 @@ export const RaporPage: React.FC = () => {
       case "cariCoklu": return ilkSon<CariKartItem>(p, "cari", "cariIdler", "cariSonId", cariler, cariKolonlar, cariArama, "Cari kodu, ünvan, telefon veya vergi no ile arayın…");
       case "vezneCoklu": return coklu<VezneItem>(p, "vezne", "vezneIdler", vezneler, vezneKolonlar, vezneArama, "Vezne kodu veya adıyla arayın…");
       case "paraCoklu": return coklu<ProductItem>(p, "para", "paraIdler", paralar, paraKolonlar, paraArama, "Para kodu veya adıyla arayın…");
+      case "onay": return satir(p.ad, etiket, <Form.Check type="checkbox" id={`rapor-onay-${p.ad}`} checked={String(degerler[p.ad] ?? "") === "1"} onChange={e => set(p.ad, e.target.checked ? "1" : "0")} />, p.not, "auto");
+      case "metinAralik": { const kucuk = p.etiket.toLocaleLowerCase("tr");
+        const kutu2 = (ad: string) => <Form.Control size="sm" value={String(degerler[ad] ?? "")} onChange={e => set(ad, e.target.value)} />;
+        return ciftSatir(`metinAralik-${p.ad}`, [`İlk ${kucuk}`, kutu2(`${p.ad}Ilk`), p.not], [`Son ${kucuk}`, kutu2(`${p.ad}Son`)], GENISLIK.metin); }
+      case "sayiAralik": { const kucuk = p.etiket.toLocaleLowerCase("tr");
+        const kutu2 = (ad: string) => <Form.Control size="sm" type="number" min={0} step="any" inputMode="decimal" value={String(degerler[ad] ?? "")} onChange={e => set(ad, e.target.value)} />;
+        return ciftSatir(`sayiAralik-${p.ad}`, [`Alt ${kucuk}`, kutu2(`${p.ad}Alt`), p.not], [`Üst ${kucuk}`, kutu2(`${p.ad}Ust`)], GENISLIK.sayi); }
       case "kmt": return satir(p.ad, etiket, <Form.Select size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} title="Kur / Miktar / TL gösterimi: yalnızca seçilen gruptaki kolonlar listelenir">
         <option value="">Kur + Miktar + TL</option><option value="K">Kur</option><option value="M">Miktar</option><option value="T">TL</option></Form.Select>, undefined, GENISLIK.kmt);
       default: return satir(p.ad, etiket, <Form.Control size="sm" value={String(degerler[p.ad] ?? "")} onChange={e => set(p.ad, e.target.value)} />, p.not, GENISLIK.metin);
@@ -413,39 +425,65 @@ export const RaporPage: React.FC = () => {
   // Grid: grup başlıkları (+ alt başlık) + ara toplam + genel toplam (PDF ile aynı mantık). Kolonlar veriyle gelen tanımdan (KMT süzülmüş) okunur.
   const kolonlar = veri?.tanim.kolonlar || tanim?.kolonlar || [];
   const doldur = (sablon: string, satir: Record<string, any>) => sablon.replace(/\{\{\s*([\w.]+)\s*(?:\|\w+)?\s*\}\}/g, (_m, yol) => String(satir[yol] ?? ""));
+  /** Net satırı metni: "Bakiye : 1.250,00 B" (sunucudaki netMetni ile aynı kural) */
+  const netMetni = (net: RaporNet, satirlar: Record<string, any>[]) => {
+    const topla = (alan: string) => satirlar.reduce((t, r) => t + (Number(r[alan]) || 0), 0);
+    const fark = topla(net.arti) - topla(net.eksi);
+    return `${net.etiket || "Bakiye"} : ${raporBicimle(Math.abs(fark), "sayi")}${Math.abs(fark) < 0.005 ? "" : ` ${fark > 0 ? net.artiHarf || "B" : net.eksiHarf || "A"}`}`;
+  };
+  type GridSatiri = { tur: "bolum" | "grup" | "satir" | "araToplam" | "bolumToplam" | "toplam" | "net" | "altBaslik" | "alt"; satir: Record<string, any>; etiket?: string; altEtiket?: string;
+    seviye?: number; alt?: { tanim: RaporAltTablo; satirlar: Record<string, any>[] } };
   const gridSatirlari = useMemo(() => {
-    type G = { tur: "bolum" | "grup" | "satir" | "araToplam" | "bolumToplam" | "toplam"; satir: Record<string, any>; etiket?: string; altEtiket?: string };
+    type G = GridSatiri;
     if (!veri || !tanim) return [] as G[];
+    // Düzen sunucunun koşulları uygulanmış tanımından okunur (gruplar, bölüm, alt tablo); gruplama sorgu tarafından seçilmişse o geçerlidir
+    const vt = veri.tanim;
+    const gruplar: RaporGrup[] = veri.gruplar ?? vt.gruplar ?? (vt.grup ? [vt.grup] : []);
+    const veriOlan = (s: Record<string, any>[]) => s.filter(x => x._stil !== "baslik");
+    const baslikMetni = (s: Record<string, any>) => String(s._baslik ?? kolonlar.map(k => s[k.anahtar]).find(v => v !== null && v !== undefined && v !== "") ?? "");
     const toplamli = kolonlar.some(k => k.toplam);
     const toplam = (s: Record<string, any>[]) => { const t: Record<string, any> = {}; for (const k of kolonlar) if (k.toplam) t[k.anahtar] = s.reduce((a, r) => a + (Number(r[k.anahtar]) || 0), 0); return t; };
     const cikti: G[] = [];
-    const govde = (satirlar: Record<string, any>[]) => {
-      if (!tanim.grup) { for (const s of satirlar) cikti.push({ tur: "satir", satir: s }); return; }
-      let i = 0; const g = tanim.grup;
+    const veriSatiri = (s: Record<string, any>) => {
+      if (s._stil === "baslik") { cikti.push({ tur: "altBaslik", satir: s, etiket: baslikMetni(s) }); return; }
+      cikti.push({ tur: "satir", satir: s });
+      if (vt.altTablo && Array.isArray(s._alt) && s._alt.length) cikti.push({ tur: "alt", satir: s, alt: { tanim: vt.altTablo, satirlar: s._alt } });
+    };
+    const govde = (satirlar: Record<string, any>[], seviye = 0) => {
+      const g = gruplar[seviye];
+      if (!g) { for (const s of satirlar) veriSatiri(s); return; }
+      let i = 0;
       while (i < satirlar.length) {
         const a = satirlar[i][g.anahtar]; const uyeler: Record<string, any>[] = [];
         while (i < satirlar.length && satirlar[i][g.anahtar] === a) uyeler.push(satirlar[i++]);
-        cikti.push({ tur: "grup", satir: uyeler[0], etiket: doldur(g.baslik, uyeler[0]), altEtiket: g.altBaslik ? doldur(g.altBaslik, uyeler[0]).trim() : "" });
-        for (const s of uyeler) cikti.push({ tur: "satir", satir: s });
-        if (g.altToplam !== false && toplamli) cikti.push({ tur: "araToplam", satir: toplam(uyeler), etiket: `Ara toplam (${uyeler.length})` });
+        const ornek = uyeler.find(s => s._stil !== "baslik") || uyeler[0];
+        cikti.push({ tur: "grup", satir: ornek, etiket: doldur(g.baslik, ornek), altEtiket: g.altBaslik ? doldur(g.altBaslik, ornek).trim() : "", seviye });
+        govde(uyeler, seviye + 1);
+        const gat = vt.grupAltTablo;
+        if (gat && (gat.seviye ?? 0) === seviye) { const alt = veri.grupAltSatirlar?.[String(a)]; if (alt?.length) cikti.push({ tur: "alt", satir: ornek, alt: { tanim: gat, satirlar: alt } }); }
+        if (g.altToplam !== false && toplamli) cikti.push({ tur: "araToplam", satir: toplam(uyeler), etiket: `${doldur(g.toplamEtiketi || "Ara toplam", ornek)} (${veriOlan(uyeler).length})` });
+        if (g.net) cikti.push({ tur: "net", satir: {}, etiket: netMetni(g.net, uyeler) });
       }
     };
-    // Bölümler (sektör; sunucu motoruyla aynı kural): birden fazla bölüm varsa başlık + gövde + bölüm toplamı, tek bölümde bölümsüz
+    // Bölümler (sektör / para grubu; sunucu motoruyla aynı kural): birden fazla bölüm varsa başlık + gövde + bölüm toplamı, tek bölümde bölümsüz
     const bolumler: { baslik: string; satirlar: Record<string, any>[] }[] = [];
-    if (tanim.bolum && veri.satirlar.length) {
-      let i = 0; const b = tanim.bolum;
+    if (vt.bolum && veri.satirlar.length) {
+      let i = 0; const b = vt.bolum;
       while (i < veri.satirlar.length) {
         const a = veri.satirlar[i][b.anahtar]; const uyeler: Record<string, any>[] = [];
         while (i < veri.satirlar.length && veri.satirlar[i][b.anahtar] === a) uyeler.push(veri.satirlar[i++]);
-        bolumler.push({ baslik: doldur(b.baslik, uyeler[0]).trim(), satirlar: uyeler });
+        bolumler.push({ baslik: doldur(b.baslik, uyeler.find(s => s._stil !== "baslik") || uyeler[0]).trim(), satirlar: uyeler });
       }
     }
-    if (bolumler.length > 1) for (const b of bolumler) {
+    if (bolumler.length > 1 || (bolumler.length === 1 && vt.bolum?.herZaman)) for (const b of bolumler) {
       cikti.push({ tur: "bolum", satir: b.satirlar[0], etiket: b.baslik });
       govde(b.satirlar);
-      if (tanim.bolum?.altToplam !== false && toplamli) cikti.push({ tur: "bolumToplam", satir: toplam(b.satirlar), etiket: `${b.baslik} toplamı` });
+      if (vt.bolum?.altToplam !== false && toplamli) cikti.push({ tur: "bolumToplam", satir: toplam(b.satirlar), etiket: `${b.baslik} toplamı` });
     } else govde(veri.satirlar);
-    if (toplamli && veri.satirlar.length && tanim.grup?.genelToplam !== false) cikti.push({ tur: "toplam", satir: toplam(veri.satirlar), etiket: `GENEL TOPLAM (${veri.satirlar.length})` });
+    const veriler = veriOlan(veri.satirlar);
+    const genelToplam = vt.genelToplam !== false && vt.grup?.genelToplam !== false && !gruplar.some(x => x.genelToplam === false);
+    if (toplamli && veriler.length && genelToplam) cikti.push({ tur: "toplam", satir: toplam(veriler), etiket: `GENEL TOPLAM (${veriler.length})` });
+    if (vt.net && veriler.length) cikti.push({ tur: "net", satir: {}, etiket: netMetni(vt.net, veriler) });
     return cikti;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [veri, tanim, kolonlar]);
@@ -562,8 +600,25 @@ export const RaporPage: React.FC = () => {
                   <tbody>
                     {gridSatirlari.map((g, i) => {
                       if (g.tur === "bolum") return <tr key={i} className="table-dark"><td colSpan={kolonlar.length}><span className="fw-bold">{g.etiket}</span></td></tr>;
-                      if (g.tur === "grup") return <tr key={i} className="table-secondary"><td colSpan={kolonlar.length}>
+                      if (g.tur === "grup") return <tr key={i} className={g.seviye ? "table-light" : "table-secondary"}><td colSpan={kolonlar.length} style={g.seviye ? { paddingLeft: 8 + 14 * g.seviye } : undefined}>
                         <span className="fw-bold">{g.etiket}</span>{g.altEtiket && <small className="d-block text-muted fst-italic">{g.altEtiket}</small>}</td></tr>;
+                      if (g.tur === "altBaslik") return <tr key={i} className="table-secondary"><td colSpan={kolonlar.length} className="fw-bold">{g.etiket}</td></tr>;
+                      if (g.tur === "net") return <tr key={i} className="table-light"><td colSpan={kolonlar.length} className="text-end fw-bold text-nowrap">{g.etiket}</td></tr>;
+                      if (g.tur === "alt" && g.alt) { const ak = g.alt.tanim.kolonlar; const as = g.alt.satirlar;
+                        const hz = (k: typeof ak[number]) => k.hiza === "center" ? "text-center" : raporSayisalMi(k.bicim) || k.hiza === "right" ? "text-end text-nowrap" : "";
+                        let etiketYeri = ak.findIndex(k => !k.toplam && !raporSayisalMi(k.bicim)); if (etiketYeri < 0) etiketYeri = 0;
+                        return <tr key={i}><td colSpan={kolonlar.length} className="py-1" style={{ paddingLeft: 28 }}>
+                          {g.alt.tanim.baslik && <div className="small fw-semibold text-secondary">{g.alt.tanim.baslik}</div>}
+                          <Table size="sm" bordered className="mb-1 w-auto align-middle" style={{ fontSize: "0.78rem" }}>
+                            <thead className="table-light"><tr>{ak.map(k => <th key={k.anahtar} className={hz(k)}>{k.baslik}</th>)}</tr></thead>
+                            <tbody>
+                              {as.map((s, si) => s._stil === "baslik"
+                                ? <tr key={si} className="table-secondary fw-bold"><td colSpan={ak.length}>{String(s._baslik ?? ak.map(k => s[k.anahtar]).find(v => v !== null && v !== undefined && v !== "") ?? "")}</td></tr>
+                                : <tr key={si}>{ak.map(k => <td key={k.anahtar} className={hz(k)}>{raporBicimle(s[k.anahtar], k.bicim)}</td>)}</tr>)}
+                              {ak.some(k => k.toplam) && <tr className="fw-bold table-light">{ak.map((k, ki) => <td key={k.anahtar} className={hz(k)}>
+                                {k.toplam ? raporBicimle(as.filter(s => s._stil !== "baslik").reduce((t, s) => t + (Number(s[k.anahtar]) || 0), 0), k.bicim) : ki === etiketYeri ? (g.alt!.tanim.toplamEtiketi || "Toplam") : ""}</td>)}</tr>}
+                            </tbody>
+                          </Table></td></tr>; }
                       const kalin = g.tur !== "satir";
                       return <tr key={i} className={g.tur === "toplam" ? "table-primary fw-bold" : g.tur === "bolumToplam" ? "table-info fw-bold" : g.tur === "araToplam" ? "table-light fw-semibold" : undefined}>
                         {kolonlar.map((k, ki) => {

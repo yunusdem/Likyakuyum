@@ -1,7 +1,7 @@
 {
   "kod": "VERNUM1",
   "ad": "Vergi Numarası Raporu",
-  "aciklama": "Müşteri kimlik numarası (VKN / TCKN / pasaport) bazında fiş satırları: tarih, seri / belge no, para, kur, miktar, TL tutarı ve USD karşılığı. Varsayılan olarak yalnızca döviz vergi sınırına ulaşan işlemler listelenir.",
+  "aciklama": "Müşteri kimlik numarası (VKN / TCKN / pasaport) bazında fiş satırları: ünvan, vergi dairesi, vergi no, pasaport no, tarih, seri / belge no, para, kur, miktar, TL tutarı ve USD karşılığı. Varsayılan olarak yalnızca döviz vergi sınırına ulaşan işlemler listelenir.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -40,6 +40,62 @@
       "not": "Numaranın veya ünvanın bir parçası yazılabilir"
     },
     {
+      "ad": "ad",
+      "etiket": "Ad",
+      "tip": "metinAralik"
+    },
+    {
+      "ad": "vergiNo",
+      "etiket": "Vergi no",
+      "tip": "metinAralik"
+    },
+    {
+      "ad": "gosterim",
+      "etiket": "Gösterim şekli",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "ikisi",
+          "ad": "Fiş tutarı ve dolar karşılığı"
+        },
+        {
+          "deger": "tutar",
+          "ad": "Fiş tutarını göster"
+        },
+        {
+          "deger": "dolar",
+          "ad": "Dolar karşılığını göster"
+        }
+      ],
+      "varsayilan": "ikisi"
+    },
+    {
+      "ad": "fisCinsi",
+      "etiket": "Fiş cinsi",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "doviz",
+          "ad": "Döviz"
+        },
+        {
+          "deger": "altin",
+          "ad": "Altın"
+        }
+      ],
+      "varsayilan": "hepsi"
+    },
+    {
+      "ad": "istatistikIdler",
+      "etiket": "İstatistik kodu (dürbünden seçin)",
+      "tip": "listeCoklu",
+      "kaynak": "istatistik"
+    },
+    {
       "ad": "vezneIdler",
       "etiket": "Vezne (dürbünden seçin)",
       "tip": "vezneCoklu"
@@ -68,32 +124,59 @@
         }
       ],
       "varsayilan": "kimlik"
+    },
+    {
+      "ad": "iptal",
+      "etiket": "İptal edilenler",
+      "tip": "onay",
+      "not": "İşaretlenirse yalnızca iptal edilen fişler listelenir"
+    },
+    {
+      "ad": "saatGizle",
+      "etiket": "Saat gözükmesin",
+      "tip": "onay",
+      "varsayilan": "1"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "unvan",
       "baslik": "Ünvan",
-      "g": 3,
-      "pdf": false
+      "g": 2.6
+    },
+    {
+      "anahtar": "vergiDairesi",
+      "baslik": "Vergi dairesi",
+      "g": 1.6
     },
     {
       "anahtar": "vergiNo",
       "baslik": "Vergi no",
-      "g": 1.6,
-      "pdf": false
+      "g": 1.5
+    },
+    {
+      "anahtar": "pasaportNo",
+      "baslik": "Pasaport no",
+      "g": 1.4
     },
     {
       "anahtar": "tip",
       "baslik": "Tip",
-      "g": 0.8,
+      "g": 0.7,
       "hiza": "center"
     },
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 1.9,
-      "bicim": "tarihSaat"
+      "baslik": "Tarih",
+      "g": 1.2,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "bicim": "saat",
+      "kosul": "p:saatGizle!=1"
     },
     {
       "anahtar": "seriNo",
@@ -115,7 +198,8 @@
       "anahtar": "kur",
       "baslik": "Kur",
       "g": 1.3,
-      "bicim": "kur"
+      "bicim": "kur",
+      "kosul": "p:gosterim!=dolar"
     },
     {
       "anahtar": "miktar",
@@ -128,14 +212,16 @@
       "baslik": "Tutar (TL)",
       "g": 2,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kosul": "p:gosterim!=dolar"
     },
     {
       "anahtar": "usdKarsiligi",
       "baslik": "USD karşılığı",
       "g": 1.9,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kosul": "p:gosterim!=tutar"
     },
     {
       "anahtar": "cins",
@@ -175,6 +261,10 @@
       "pdf": false
     }
   ],
+  "bolum": {
+    "anahtar": "bolumAd",
+    "baslik": "{{bolumAd}}"
+  },
   "grup": {
     "anahtar": "grupAnahtar",
     "baslik": "{{grupBaslik}}",

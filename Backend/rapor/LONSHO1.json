@@ -31,6 +31,74 @@
       "etiket": "Denge parası",
       "tip": "para",
       "not": "Rapor altı toplamlarının çevrileceği para; boş bırakılırsa TL"
+    },
+    {
+      "ad": "longShort",
+      "etiket": "Long / Short seçeneği",
+      "tip": "secim",
+      "varsayilan": "hepsi",
+      "secenekler": [
+        {
+          "deger": "hepsi",
+          "ad": "Hepsi"
+        },
+        {
+          "deger": "long",
+          "ad": "Long"
+        },
+        {
+          "deger": "short",
+          "ad": "Short"
+        }
+      ]
+    },
+    {
+      "ad": "longCevrim",
+      "etiket": "Long: Döviz → TL çevrimi",
+      "tip": "secim",
+      "varsayilan": "alis",
+      "secenekler": [
+        {
+          "deger": "alis",
+          "ad": "Alış"
+        },
+        {
+          "deger": "satis",
+          "ad": "Satış"
+        }
+      ]
+    },
+    {
+      "ad": "shortCevrim",
+      "etiket": "Short: Döviz → TL çevrimi",
+      "tip": "secim",
+      "varsayilan": "alis",
+      "secenekler": [
+        {
+          "deger": "alis",
+          "ad": "Alış"
+        },
+        {
+          "deger": "satis",
+          "ad": "Satış"
+        }
+      ]
+    },
+    {
+      "ad": "dengeCevrim",
+      "etiket": "Denge: TL → Döviz çevrimi",
+      "tip": "secim",
+      "varsayilan": "alis",
+      "secenekler": [
+        {
+          "deger": "alis",
+          "ad": "Alış"
+        },
+        {
+          "deger": "satis",
+          "ad": "Satış"
+        }
+      ]
     }
   ],
   "kolonlar": [
@@ -42,8 +110,7 @@
     {
       "anahtar": "paraAd",
       "baslik": "Para adı",
-      "g": 2.6,
-      "pdf": false
+      "g": 2.6
     },
     {
       "anahtar": "devir",

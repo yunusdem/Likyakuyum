@@ -63,6 +63,10 @@
         {
           "deger": "para",
           "ad": "Para"
+        },
+        {
+          "deger": "gunpara",
+          "ad": "Tarih (gün içinde para, yön)"
         }
       ],
       "varsayilan": "tarih"
@@ -167,7 +171,17 @@
   "grup": {
     "anahtar": "grupAnahtar",
     "baslik": "{{grupBaslik}}",
-    "altToplam": true
+    "altToplam": true,
+    "net": {
+      "arti": "giris",
+      "eksi": "cikis",
+      "etiket": "Net"
+    }
+  },
+  "net": {
+    "arti": "giris",
+    "eksi": "cikis",
+    "etiket": "Genel net"
   },
   "ozet": {
     "baslik": "Para bazında net toplam",

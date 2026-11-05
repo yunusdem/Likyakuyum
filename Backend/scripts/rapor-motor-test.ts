@@ -31,20 +31,26 @@ function ornekSatirlar(kod: string, adet: number) {
     const s: Record<string, any> = {};
     const grupNo = Math.floor(i / Math.ceil(adet / 3));
     for (const k of t.kolonlar) {
-      if (k.bicim === "tarih" || k.bicim === "tarihSaat") s[k.anahtar] = new Date(2026, 8, 1 + (i % 12), 9 + (i % 9), i % 60).toISOString();
+      if (k.bicim === "tarih" || k.bicim === "tarihSaat" || k.bicim === "saat") s[k.anahtar] = new Date(2026, 8, 1 + (i % 12), 9 + (i % 9), i % 60).toISOString();
       else if (k.bicim === "tam") s[k.anahtar] = 1 + (i % 7);
       else if (k.bicim === "kur") s[k.anahtar] = 41 + rnd(2);
       else if (k.bicim === "sayi" || k.bicim === "sayi4") s[k.anahtar] = rnd(50000);
       else s[k.anahtar] = `${k.baslik} ${i + 1}`;
     }
-    if (t.grup) { s[t.grup.anahtar] = `G${grupNo + 1}`; for (const ek of ["cariBaslik", "vezneBaslik", "grup", "paraKod", "grupBaslik", "hesapBaslik"]) if (!(ek in s) || t.grup.anahtar === ek) s[ek] = `G${grupNo + 1} — Örnek grup ${grupNo + 1}`; }
+    // Çok seviyeli gruplarda (gruplar) en dış seviye 3 gruba bölünür; iç seviyeler dış grubun içinde ikiye
+    const gruplar = t.gruplar || (t.grup ? [t.grup] : []);
+    gruplar.forEach((gr, seviye) => { s[gr.anahtar] = seviye === 0 ? `G${grupNo + 1}` : `G${grupNo + 1}.${seviye}.${i % 2}`; });
+    if (gruplar.length) for (const ek of ["cariBaslik", "vezneBaslik", "grup", "paraKod", "grupBaslik", "hesapBaslik"]) if (!(ek in s) || gruplar[0].anahtar === ek) s[ek] = `G${grupNo + 1} — Örnek grup ${grupNo + 1}`;
+    if (t.bolum && !(t.bolum.anahtar in s)) s[t.bolum.anahtar] = "Örnek bölüm";
+    if (t.altTablo && i % 4 === 0) s._alt = [0, 1].map(n => Object.fromEntries(t.altTablo!.kolonlar.map(k => [k.anahtar, ["sayi", "sayi4", "kur", "tam"].includes(k.bicim || "") ? rnd(900) : k.bicim === "tarih" || k.bicim === "saat" || k.bicim === "tarihSaat" ? new Date(2026, 8, 1 + n).toISOString() : `${k.baslik} ${n + 1}`])));
     satirlar.push(s);
   }
   return { t, satirlar };
 }
 
 // Tanım tutarlılığı: seed ↔ sorgu ↔ frontend menüsü; parametre tipleri ve zorunlu ekleri
-const TIPLER = ["tarih", "tarihAralik", "saatAralik", "vezne", "para", "cari", "fisTipi", "kurSecimi", "kmt", "cariAralik", "vezneAralik", "paraCoklu", "cariCoklu", "vezneCoklu", "hareketTipi", "secim", "sayi", "listeCoklu", "metin"];
+const TIPLER = ["tarih", "tarihAralik", "saatAralik", "vezne", "para", "cari", "fisTipi", "kurSecimi", "kmt", "cariAralik", "vezneAralik", "paraCoklu", "cariCoklu", "vezneCoklu", "hareketTipi", "secim", "sayi", "listeCoklu", "metin",
+  "onay", "metinAralik", "sayiAralik"];
 const KAYNAKLAR = ["hesap", "istatistik", "meslek", "sektor", "kullanici", "banka"];
 // Menü artık Backend/src/services/rapor/raporMenu.ts'te (ön yüz oradan dışa aktarır). Motor dışı kendi sayfası olan maddeler
 // (ör. XMLDOS1 — rapor/<kod>.json yok) seed ile karşılaştırmaya girmez.
@@ -69,6 +75,16 @@ for (const seed of RAPOR_SEED) {
   const anahtarlar = t.kolonlar.map(k => `${k.anahtar}|${k.kosul ?? ""}`);
   if (new Set(anahtarlar).size !== anahtarlar.length) sorunlar.push("yinelenen kolon anahtarı");
   if (!t.kolonlar.some(k => k.pdf !== false)) sorunlar.push("PDF'te kolon kalmıyor");
+  // Koşullar tanımlı bir parametreye bakmalı; seçim parametresinde koşul değeri seçenekler arasında olmalı
+  for (const kosul of [...t.kolonlar.map(k => k.kosul), ...(t.gruplar || []).map(x => x.kosul), t.grup?.kosul, t.altTablo?.kosul, t.grupAltTablo?.kosul, ...(t.ozet?.kolonlar || []).map(k => k.kosul)]) {
+    const m = /^p:(\w+)(?:!=|=)(.*)$/.exec(kosul || "");
+    if (!m) continue;
+    const prm = t.parametreler.find(x => x.ad === m[1]);
+    if (!prm) { sorunlar.push(`koşul bilinmeyen parametreye bakıyor: ${kosul}`); continue; }
+    if (prm.tip === "secim") for (const d of m[2].split("|")) if (!prm.secenekler?.some(o => o.deger === d)) sorunlar.push(`koşul değeri seçeneklerde yok: ${kosul}`);
+  }
+  // Boş değerli seçenek sunucuya gitmez (varsayılan uygulanır): ek seçimlerde boş değer kullanılmaz
+  for (const p of t.parametreler) if (p.tip === "secim" && p.secenekler?.some(o => o.deger === "") && p.varsayilan !== undefined && p.varsayilan !== null && p.varsayilan !== "") sorunlar.push(`${p.ad}: boş değerli seçenek + dolu varsayılan`);
   esit(`${seed.kod} tanım tutarlı`, sorunlar.join("; "), "");
 }
 
@@ -77,10 +93,13 @@ for (const seed of RAPOR_SEED) {
   esit(`${seed.kod} kagit`, t.kagit, seed.kagit);
   // Özet bölümü olan raporlarda özet satırları da üretilir
   const ozetSatirlar = t.ozet ? Array.from({ length: 4 }, (_, i) => Object.fromEntries(t.ozet!.kolonlar.map(k => [k.anahtar, ["sayi", "sayi4", "kur", "tam"].includes(k.bicim || "") ? rnd(9000) : `${k.baslik} ${i + 1}`]))) : undefined;
-  const pdf = await raporPdf({ tanim: t, satirlar, filtreOzeti: "01.09.2026 – 12.09.2026 · Tüm vezneler", firma, kullanici: "test", ozetSatirlar });
+  // Grup altı tablo tanımlıysa ilk seviyedeki her grup için iki satır
+  const gat = t.grupAltTablo, gAnahtar = (t.gruplar || (t.grup ? [t.grup] : []))[gat?.seviye ?? 0]?.anahtar;
+  const grupAltSatirlar = gat && gAnahtar ? Object.fromEntries([...new Set(satirlar.map(s => String(s[gAnahtar])))].map(a => [a, [0, 1].map(n => Object.fromEntries(gat.kolonlar.map(k => [k.anahtar, ["sayi", "sayi4", "kur", "tam"].includes(k.bicim || "") ? rnd(900) : `${k.baslik} ${n + 1}`])))])) : undefined;
+  const pdf = await raporPdf({ tanim: t, satirlar, filtreOzeti: "01.09.2026 – 12.09.2026 · Tüm vezneler", firma, kullanici: "test", ozetSatirlar, grupAltSatirlar });
   writeFileSync(path.join(dir, `${seed.kod}.pdf`), pdf);
   esit(`${seed.kod} pdf imzası`, pdf.subarray(0, 5).toString(), "%PDF-");
-  const xlsx = await raporExcel({ tanim: t, satirlar, filtreOzeti: "Test", firma, kullanici: "test", ozetSatirlar });
+  const xlsx = await raporExcel({ tanim: t, satirlar, filtreOzeti: "Test", firma, kullanici: "test", ozetSatirlar, grupAltSatirlar });
   writeFileSync(path.join(dir, `${seed.kod}.xlsx`), xlsx);
   esit(`${seed.kod} xlsx imzası (PK)`, xlsx.subarray(0, 2).toString(), "PK");
 }

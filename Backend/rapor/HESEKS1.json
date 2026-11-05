@@ -8,8 +8,12 @@
       "ad": "hesapIdler",
       "etiket": "Hesap (dürbünden seçin)",
       "tip": "listeCoklu",
-      "kaynak": "hesap",
-      "zorunlu": true
+      "kaynak": "hesap"
+    },
+    {
+      "ad": "hesapAd",
+      "etiket": "Hesap adı (ilk – son)",
+      "tip": "metinAralik"
     },
     {
       "ad": "baslangic",
@@ -22,6 +26,38 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "hesapTipi",
+      "etiket": "Hesap tipi",
+      "tip": "secim",
+      "secenekler": [
+        { "deger": "hepsi", "ad": "Hepsi" },
+        { "deger": "borc", "ad": "Borç" },
+        { "deger": "alacak", "ad": "Alacak" }
+      ],
+      "varsayilan": "hepsi"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        { "deger": "kod", "ad": "Kod" },
+        { "deger": "ad", "ad": "Ad" },
+        { "deger": "tarih", "ad": "Tarih" }
+      ],
+      "varsayilan": "kod"
+    },
+    {
+      "ad": "devirGizle",
+      "etiket": "Devir görünmesin",
+      "tip": "onay"
+    },
+    {
+      "ad": "devirAyrinti",
+      "etiket": "Dönem öncesi hareketler satır satır",
+      "tip": "onay"
     }
   ],
   "kolonlar": [
@@ -30,6 +66,18 @@
       "baslik": "Tarih",
       "g": 1.4,
       "bicim": "tarih"
+    },
+    {
+      "anahtar": "hesapKod",
+      "baslik": "Hesap",
+      "g": 1.1,
+      "kosul": "p:siralama=tarih"
+    },
+    {
+      "anahtar": "hesapAd",
+      "baslik": "Hesap adı",
+      "g": 2.2,
+      "kosul": "p:siralama=tarih"
     },
     {
       "anahtar": "aciklama",
@@ -119,12 +167,21 @@
       "pdf": false
     }
   ],
-  "grup": {
-    "anahtar": "grupAnahtar",
-    "baslik": "{{grupBaslik}}",
-    "altToplam": true,
-    "genelToplam": false
-  },
+  "gruplar": [
+    {
+      "anahtar": "hesapBaslik",
+      "baslik": "{{hesapBaslik}}",
+      "altToplam": false,
+      "genelToplam": false
+    },
+    {
+      "anahtar": "grupAnahtar",
+      "baslik": "Para birimi: {{paraKod}}",
+      "altToplam": true,
+      "genelToplam": false
+    }
+  ],
+  "genelToplam": false,
   "ozet": {
     "baslik": "Kapanış bakiyeleri — hesap ve para bazında",
     "kolonlar": [

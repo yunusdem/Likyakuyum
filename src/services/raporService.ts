@@ -7,26 +7,36 @@ import { RAPOR_MENU, type RaporGrubu } from "../../Backend/src/services/rapor/ra
  * Rapor tanımı (parametreler + kolonlar) sunucudan gelir; ekran filtre şeridini ve grid'i buna göre kurar.
  */
 
-export type RaporParametreTipi = "tarih" | "tarihAralik" | "saatAralik" | "vezne" | "para" | "cari" | "fisTipi" | "kurSecimi" | "kmt" | "cariAralik" | "vezneAralik" | "paraCoklu" | "cariCoklu" | "vezneCoklu" | "hareketTipi" | "secim" | "sayi" | "listeCoklu" | "metin";
+export type RaporParametreTipi = "tarih" | "tarihAralik" | "saatAralik" | "vezne" | "para" | "cari" | "fisTipi" | "kurSecimi" | "kmt" | "cariAralik" | "vezneAralik" | "paraCoklu" | "cariCoklu" | "vezneCoklu" | "hareketTipi" | "secim" | "sayi" | "listeCoklu" | "metin" | "onay" | "metinAralik" | "sayiAralik";
 export type RaporSecimKaynagi = "hesap" | "istatistik" | "meslek" | "sektor" | "kullanici" | "banka";
 export interface RaporSecimKaydi { id: number; kod: string; ad: string }
 export interface RaporParametre { ad: string; etiket: string; tip: RaporParametreTipi; zorunlu?: boolean; varsayilan?: string | number | null;
   secenekler?: { deger: string; ad: string }[]; kaynak?: RaporSecimKaynagi; not?: string }
-export type RaporBicim = "metin" | "sayi" | "sayi4" | "kur" | "tarih" | "tarihSaat" | "tam";
+export type RaporBicim = "metin" | "sayi" | "sayi4" | "kur" | "tarih" | "tarihSaat" | "tam" | "saat";
+/** Grup altı / rapor altı net satırı: "Bakiye : |Σartı − Σeksi| B/A" */
+export interface RaporNet { arti: string; eksi: string; etiket?: string; artiHarf?: string; eksiHarf?: string }
+/** Grup tanımı (bir seviye); çok seviyeli gruplar `gruplar` dizisinde dıştan içe */
+export interface RaporGrup { anahtar: string; baslik: string; altToplam?: boolean; altBaslik?: string; genelToplam?: boolean; toplamEtiketi?: string; net?: RaporNet }
+/** Alt tablo (satırın ya da grubun altındaki iç tablo) */
+export interface RaporAltTablo { baslik?: string; kolonlar: RaporKolon[]; toplamEtiketi?: string }
 export interface RaporKolon { anahtar: string; baslik: string; g: number; hiza?: "left" | "right" | "center"; bicim?: RaporBicim; toplam?: boolean; pdf?: boolean; kmt?: "K" | "M" | "T" }
 export interface RaporTanim {
   kod: string; ad: string; aciklama?: string; kagit: "A4" | "A4-yatay";
   parametreler: RaporParametre[]; kolonlar: RaporKolon[];
   /** Bölüm: grubun üstünde ikinci seviye (sektörlü raporlar); veride tek bölüm varsa çizilmez */
-  bolum?: { anahtar: string; baslik: string; altToplam?: boolean };
-  grup?: { anahtar: string; baslik: string; altToplam?: boolean; altBaslik?: string; genelToplam?: boolean }; dipnot?: string; ustSinir?: number;
+  bolum?: { anahtar: string; baslik: string; altToplam?: boolean; herZaman?: boolean };
+  grup?: RaporGrup; gruplar?: RaporGrup[]; genelToplam?: boolean; net?: RaporNet; dipnot?: string; ustSinir?: number;
+  /** Satır altı iç tablo (satır `_alt` dizisi taşır) ve grup altı iç tablo (RaporVeri.grupAltSatirlar) */
+  altTablo?: RaporAltTablo; grupAltTablo?: RaporAltTablo & { seviye?: number }; sayfaToplami?: boolean;
   /** Rapor sonundaki ikinci tablo (alt rapor karşılığı); satırları RaporVeri.ozetSatirlar */
   ozet?: { baslik: string; kolonlar: RaporKolon[] };
 }
 /** Kayıtlı arama (sunucuda, kullanıcı × rapor; yönetici kararı 14.09.2026) */
 export interface RaporArama { aramaId: number; raporKod: string; ozet: string; parametreler: Record<string, string | number | null>; zaman: string }
 export interface RaporSablon { kod: string; ad: string; kagit: string; aciklama: string; parametreler: RaporParametre[] }
-export interface RaporVeri { satirlar: Record<string, any>[]; filtreOzeti: string; ekDipnot?: string; sinirAsildi: boolean; toplamKayit: number; tanim: RaporTanim; ozetSatirlar?: Record<string, any>[] }
+export interface RaporVeri { satirlar: Record<string, any>[]; filtreOzeti: string; ekDipnot?: string; sinirAsildi: boolean; toplamKayit: number; tanim: RaporTanim; ozetSatirlar?: Record<string, any>[];
+  /** Sorgunun seçtiği gruplar (tanımdakinin yerine) ve grup altı tablo satırları (grup anahtar değeri → satırlar) */
+  gruplar?: RaporGrup[]; grupAltSatirlar?: Record<string, Record<string, any>[]> }
 
 export type RaporParametreDegerleri = Record<string, string | number | undefined | "">;
 
@@ -97,6 +107,7 @@ export const RaporService = {
   },
 };
 
+const saatBicimi = new Intl.DateTimeFormat("tr-TR", { timeZone: "Europe/Istanbul", hour12: false, hour: "2-digit", minute: "2-digit" });
 export const raporBicimle = (v: any, bicim?: RaporBicim): string => {
   if (v === null || v === undefined || v === "") return "";
   const tr = (n: number, b: number, maxB = b) => trSayiBicimi(b, maxB).format(Number(n || 0));
@@ -107,6 +118,8 @@ export const raporBicimle = (v: any, bicim?: RaporBicim): string => {
     case "tam": return trSayiBicimi(undefined, 0).format(Number(v || 0));
     case "tarih": { const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : trTarihBicimi().format(d); }
     case "tarihSaat": { const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : trTarihSaatBicimi().format(d).replace(",", ""); }
+    case "saat": { if (typeof v === "string" && /^\d{1,2}:\d{2}/.test(v)) return v.slice(0, 5);
+      const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : saatBicimi.format(d); }
     default: return String(v);
   }
 };

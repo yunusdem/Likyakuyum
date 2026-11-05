@@ -31,14 +31,45 @@
       "ad": "paraIdler",
       "etiket": "Para (dürbünden seçin)",
       "tip": "paraCoklu"
+    },
+    {
+      "ad": "siralama",
+      "etiket": "Sıralama",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "yok",
+          "ad": "Yok"
+        },
+        {
+          "deger": "doviz",
+          "ad": "Döviz bazında"
+        },
+        {
+          "deger": "vezne",
+          "ad": "Vezne bazında"
+        }
+      ],
+      "varsayilan": "yok"
+    },
+    {
+      "ad": "isimsizTopla",
+      "etiket": "İsim beyan edilmemişleri para bazında topla",
+      "tip": "onay"
     }
   ],
   "kolonlar": [
     {
       "anahtar": "zaman",
-      "baslik": "Tarih / saat",
-      "g": 1.9,
-      "bicim": "tarihSaat"
+      "baslik": "Tarih",
+      "g": 1.3,
+      "bicim": "tarih"
+    },
+    {
+      "anahtar": "saat",
+      "baslik": "Saat",
+      "g": 0.8,
+      "bicim": "saat"
     },
     {
       "anahtar": "vezneKod",
@@ -127,14 +158,69 @@
     {
       "anahtar": "istatistikKod",
       "baslik": "İstatistik",
-      "g": 1,
-      "pdf": false
+      "g": 1
     }
   ],
   "grup": {
     "anahtar": "istatistikBaslik",
     "baslik": "{{istatistikBaslik}}",
     "altToplam": true
+  },
+  "altTablo": {
+    "kolonlar": [
+      {
+        "anahtar": "saat",
+        "baslik": "Saat",
+        "g": 0.8,
+        "bicim": "saat"
+      },
+      {
+        "anahtar": "vezneKod",
+        "baslik": "Vezne",
+        "g": 0.8,
+        "hiza": "center"
+      },
+      {
+        "anahtar": "belgeNo",
+        "baslik": "Belge no",
+        "g": 2
+      },
+      {
+        "anahtar": "seriNo",
+        "baslik": "Seri no",
+        "g": 1.4
+      },
+      {
+        "anahtar": "miktar",
+        "baslik": "Miktar",
+        "g": 1.6,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "kur",
+        "baslik": "Kur",
+        "g": 1.2,
+        "bicim": "kur"
+      },
+      {
+        "anahtar": "tutar",
+        "baslik": "Tutar",
+        "g": 1.8,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "kmv",
+        "baslik": "KMV",
+        "g": 1.3,
+        "bicim": "sayi"
+      },
+      {
+        "anahtar": "fisToplami",
+        "baslik": "Fiş toplamı",
+        "g": 1.8,
+        "bicim": "sayi"
+      }
+    ]
   },
   "ozet": {
     "baslik": "KMV özeti — istatistik × para × oran",

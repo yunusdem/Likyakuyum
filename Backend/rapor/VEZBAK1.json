@@ -12,6 +12,26 @@
       "varsayilan": "bugun"
     },
     {
+      "ad": "listeleme",
+      "etiket": "Listeleme şekli",
+      "tip": "secim",
+      "secenekler": [
+        {
+          "deger": "vezne",
+          "ad": "Vezne bazında"
+        },
+        {
+          "deger": "para",
+          "ad": "Para bazında"
+        },
+        {
+          "deger": "genel",
+          "ad": "Genel"
+        }
+      ],
+      "varsayilan": "vezne"
+    },
+    {
       "ad": "vezneIdler",
       "etiket": "Vezne (dürbünden seçin)",
       "tip": "vezneCoklu"
@@ -35,16 +55,23 @@
   ],
   "kolonlar": [
     {
+      "anahtar": "vezneBaslik",
+      "baslik": "Vezne",
+      "g": 3,
+      "kosul": "p:listeleme=para"
+    },
+    {
       "anahtar": "paraKod",
       "baslik": "Para",
       "g": 1.2,
-      "hiza": "center"
+      "hiza": "center",
+      "kosul": "p:listeleme!=para"
     },
     {
       "anahtar": "paraAd",
       "baslik": "Para adı",
       "g": 3,
-      "pdf": false
+      "kosul": "p:listeleme!=para"
     },
     {
       "anahtar": "miktar",
@@ -95,6 +122,11 @@
       "kosul": "kurIkisi"
     }
   ],
+  "bolum": {
+    "anahtar": "paraGrupAd",
+    "baslik": "{{paraGrupAd}}",
+    "altToplam": false
+  },
   "grup": {
     "anahtar": "vezneKod",
     "baslik": "Vezne {{vezneBaslik}}",
