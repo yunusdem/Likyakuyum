@@ -25,3 +25,8 @@ node_modules/.vite-erp/
 
 # Destek ekibi paneli build çıktısı (npm run build:destek; docs/DESTEK_PANELI_YOL_HARITASI.md); sunucuda üretilir
 dist-destek/
+
+# Yerel/Sunucu belge ve resim yüklemeleri (git'e dahil edilmez)
+*LikyaBelge*
+Backend/*LikyaBelge*
+Backend/LikyaBelge/
