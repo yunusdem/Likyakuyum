@@ -151,7 +151,8 @@ export async function raporPdfUret(g: RaporPdfGirdi): Promise<Buffer> {
     let kolonlar = g.tanim.kolonlar.filter(k => k.pdf !== false);
     const genislikler = (ks: RaporKolon[]) => { const tg = ks.reduce((t, k) => t + (k.g || 1), 0); return ks.map(k => ((k.g || 1) / tg) * genislik); };
     let kolonG = genislikler(kolonlar);
-    const satirH = 17, boyut = 8;
+    // Sık satır (eski Crystal raporları gibi): yatay A4 sayfaya ~38, dikeye ~55 satır; önceki 17 pt / 8 pt ile sayfa yarı boş görünüyordu
+    const satirH = 13, boyut = 7.5;
     let zebra = 0;
     const ustSayfa = () => kenar;
 
