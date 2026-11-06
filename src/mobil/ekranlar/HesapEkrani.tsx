@@ -112,6 +112,8 @@ const HesapEkrani: React.FC<{ firmaId: number; yetkiler: MobilYetkiler }> = ({ f
         </Alert>
       )}
 
+      {/* Geniş ekranda bakiye solda, döküm sağda (mobil.scss .m-hesap-duzen) */}
+      <div className="m-hesap-duzen">
       {yetkiler.bakiye && (
         <div className="m-kart">
           <div className="m-baslik">Bakiyem</div>
@@ -255,6 +257,7 @@ const HesapEkrani: React.FC<{ firmaId: number; yetkiler: MobilYetkiler }> = ({ f
             ))}
         </div>
       )}
+      </div>
     </>
   );
 };

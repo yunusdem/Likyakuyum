@@ -53,6 +53,7 @@ const FiyatEkrani: React.FC<{ firmaId: number }> = ({ firmaId }) => {
             <div className="small text-muted">{veri.zaman ? new Date(veri.zaman).toLocaleString("tr-TR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", timeZone: "UTC" }) : ""}</div>
           </div>
           {veri.urunler.length === 0 && <div className="text-muted py-3">Şu an gösterilecek fiyat yok.</div>}
+          <div className="m-fiyat-liste">
           {veri.urunler.map((u) => (
             <div className="m-fiyat-satir" key={u.urunId}>
               <div className="ad">
@@ -71,6 +72,7 @@ const FiyatEkrani: React.FC<{ firmaId: number }> = ({ firmaId }) => {
               </div>
             </div>
           ))}
+          </div>
         </div>
       )}
     </>

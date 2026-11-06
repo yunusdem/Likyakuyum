@@ -15,7 +15,10 @@ export const kisaAdUret = (unvan: string | null | undefined, elle?: string | nul
     .trim()
     .split(/\s+/)[0]
     ?.replace(/[.,;:]+$/, "");
-  return (ilk || "Likya").slice(0, 40);
+  if (!ilk) return "Likya";
+  // Ünvan küçük ya da büyük harfle yazılmış olabilir: ilk harf büyük, gerisi küçük (Türkçe kurallarıyla)
+  const ad = ilk.charAt(0).toLocaleUpperCase("tr-TR") + ilk.slice(1).toLocaleLowerCase("tr-TR");
+  return ad.slice(0, 40);
 };
 
 /** Firma başına mobil kullanıcı sınırı (K7, K26): yeni erişim açılabilir mi. */

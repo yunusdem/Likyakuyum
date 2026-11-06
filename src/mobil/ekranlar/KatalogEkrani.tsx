@@ -151,6 +151,7 @@ const KatalogEkrani: React.FC<{ firmaId: number }> = ({ firmaId }) => {
         )}
         {urunler.length === 0 && <div className="text-muted">Katalogda ürün yok.</div>}
         {urunler.length > 0 && gorunen.length === 0 && <div className="text-muted">Aramaya uyan ürün yok.</div>}
+        <div className="m-urun-izgara">
         {gorunen.map((u) => {
           const m = sepet[u.stokKartId];
           return (
@@ -193,6 +194,7 @@ const KatalogEkrani: React.FC<{ firmaId: number }> = ({ firmaId }) => {
             </div>
           );
         })}
+        </div>
         <div className="small text-muted mt-2">Fiyatlar KDV dahildir.</div>
       </div>
 

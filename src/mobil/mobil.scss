@@ -233,3 +233,138 @@ body {
     font-size: 0.78rem;
   }
 }
+
+/* ───────────── Geniş ekran (masaüstü tarayıcı) ─────────────
+   Telefon düzeni yukarıdaki kurallardır; buradakiler yalnız 992 px ve üstünde devreye girer. Alt menü gizlenir, sekmeler
+   üst çubuğa taşınır, içerik 1180 px'e kadar açılır, ekranlar iki sütuna yayılır. */
+.m-ust-sekmeler {
+  display: none;
+}
+
+@media (min-width: 992px) {
+  .m-kap {
+    max-width: none;
+  }
+  .m-ust {
+    padding: 0 24px;
+    .m-ust-ic {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-height: 60px;
+    }
+    .m-ust-satir {
+      display: contents;
+    }
+    .m-marka {
+      order: 1;
+      font-size: 1.3rem;
+      flex: 0 0 auto;
+    }
+    .m-ust-sekmeler {
+      order: 2;
+      display: flex;
+      gap: 4px;
+      flex: 1;
+      button {
+        border: 0;
+        background: none;
+        color: rgba(255, 255, 255, 0.75);
+        padding: 8px 14px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 0.95rem;
+        &:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: #fff;
+        }
+        &.secili {
+          background: rgba(255, 255, 255, 0.14);
+          color: #fff;
+          font-weight: 700;
+          box-shadow: inset 0 -2px 0 var(--m-vurgu);
+        }
+      }
+    }
+    .m-ust-hesap {
+      order: 3;
+      margin-top: 0 !important;
+      max-width: 320px;
+    }
+    .m-likya {
+      order: 4;
+      margin-left: 0;
+    }
+    .dropdown {
+      order: 5;
+    }
+  }
+  .m-alt {
+    display: none;
+  }
+  .m-govde {
+    width: 100%;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 24px 24px 48px;
+  }
+  .m-kart {
+    padding: 18px 20px;
+    border-radius: 16px;
+  }
+  /* Fiyatlar iki sütun */
+  .m-fiyat-liste {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 40px;
+    .m-fiyat-satir:last-child {
+      border-bottom: 1px solid #eef0f5;
+    }
+  }
+  /* Al / Sat: form + emirler yan yana */
+  .m-iki-kolon {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+  /* Hesabım: bakiye dar sütun, döküm geniş */
+  .m-hesap-duzen {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+    > .m-kart:only-child {
+      grid-column: 1 / -1;
+    }
+  }
+  /* Katalog ürünleri ızgara */
+  .m-urun-izgara {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 10px 16px;
+    .m-dokum-satir {
+      border: 1px solid #eef0f5;
+      border-radius: 12px;
+      padding: 12px 14px;
+    }
+  }
+  /* Sepet: sağ altta yüzen düğme */
+  .m-sepet-cubugu {
+    left: auto;
+    right: 32px;
+    bottom: 28px;
+    width: 360px;
+    padding: 0;
+    .btn {
+      box-shadow: 0 6px 18px rgba(20, 30, 60, 0.25);
+    }
+  }
+  .m-buyuk-dugme {
+    min-height: 46px;
+  }
+}

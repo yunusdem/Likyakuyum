@@ -140,6 +140,8 @@ const IslemEkrani: React.FC<{ firmaId: number; yetkiler: MobilYetkiler }> = ({ f
         </Alert>
       )}
 
+      {/* Geniş ekranda işlem formu solda, emirler sağda (mobil.scss .m-iki-kolon) */}
+      <div className="m-iki-kolon">
       <div className="m-kart">
         <div className="m-baslik">Al / Sat</div>
         {!bilgi.acik ? (
@@ -241,6 +243,7 @@ const IslemEkrani: React.FC<{ firmaId: number; yetkiler: MobilYetkiler }> = ({ f
             </div>
           ))
         )}
+      </div>
       </div>
 
       <Modal show={onay} onHide={() => setOnay(false)} centered>

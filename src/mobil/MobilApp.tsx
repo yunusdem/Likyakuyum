@@ -268,10 +268,13 @@ const MobilApp: React.FC = () => {
       </>
     );
 
-  const ustCubuk = (
+  // Üst çubuk. Geniş ekranda (masaüstü) sekmeler alt menü yerine burada durur; telefonda gizlidir (mobil.scss)
+  const ustCubukCiz = (sekmeDugmeleri?: React.ReactNode) => (
     <div className="m-ust">
+      <div className="m-ust-ic">
       <div className="m-ust-satir">
       <div className="m-marka">{ben.kisaAd}</div>
+      {sekmeDugmeleri && <nav className="m-ust-sekmeler">{sekmeDugmeleri}</nav>}
       <span className="m-likya">Likya</span>
       <Dropdown align="end">
         <Dropdown.Toggle as={Button} variant="link" aria-label="Menü" className="after-none">
@@ -290,7 +293,7 @@ const MobilApp: React.FC = () => {
       </div>
       {/* Birden çok veritabanı (K25): üstten geçiş, kısa adı kesmesin diye ikinci satırda */}
       {ben.veritabanlari.length > 1 && !ben.kullanici.sifreDegismeli && (
-        <Form.Select size="sm" aria-label="Hesap" className="mt-2" value={ben.seciliFirmaId ?? ""} onChange={(e) => void veritabaniSec(Number(e.target.value))}>
+        <Form.Select size="sm" aria-label="Hesap" className="mt-2 m-ust-hesap" value={ben.seciliFirmaId ?? ""} onChange={(e) => void veritabaniSec(Number(e.target.value))}>
           {ben.seciliFirmaId === null && <option value="">Hesap seçin…</option>}
           {ben.veritabanlari.map((v) => (
             <option key={v.firmaId} value={v.firmaId}>
@@ -300,8 +303,10 @@ const MobilApp: React.FC = () => {
           ))}
         </Form.Select>
       )}
+      </div>
     </div>
   );
+  const ustCubuk = ustCubukCiz();
 
   // İlk giriş: şifre değişmeden başka ekran yok
   if (ben.kullanici.sifreDegismeli || sifreAcik)
@@ -344,9 +349,19 @@ const MobilApp: React.FC = () => {
   const aciklar = sekmeler.filter((s) => s.acik);
   const gecerliSekme = aciklar.some((s) => s.k === sekme) ? sekme : aciklar[0]?.k;
 
+  const sekmeDugmeleri =
+    aciklar.length > 1
+      ? aciklar.map((s) => (
+          <button key={s.k} className={gecerliSekme === s.k ? "secili" : ""} onClick={() => setSekme(s.k)}>
+            {s.ikon}
+            {s.ad}
+          </button>
+        ))
+      : undefined;
+
   return (
     <div className="m-kap">
-      {ustCubuk}
+      {ustCubukCiz(sekmeDugmeleri)}
       <div className="m-govde">
         {hata && (
           <Alert variant="warning" dismissible onClose={() => setHata(null)}>
@@ -359,16 +374,9 @@ const MobilApp: React.FC = () => {
         {gecerliSekme === "katalog" && <KatalogEkrani firmaId={ben.seciliFirmaId} />}
         {gecerliSekme === "hesap" && <HesapEkrani firmaId={ben.seciliFirmaId} yetkiler={y!} />}
       </div>
-      {aciklar.length > 1 && (
+      {sekmeDugmeleri && (
         <nav className="m-alt">
-          <div className="m-alt-ic">
-            {aciklar.map((s) => (
-              <button key={s.k} className={gecerliSekme === s.k ? "secili" : ""} onClick={() => setSekme(s.k)}>
-                {s.ikon}
-                {s.ad}
-              </button>
-            ))}
-          </div>
+          <div className="m-alt-ic">{sekmeDugmeleri}</div>
         </nav>
       )}
     </div>
