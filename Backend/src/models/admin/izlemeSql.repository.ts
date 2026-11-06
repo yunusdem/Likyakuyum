@@ -124,7 +124,7 @@ export class IzlemeSqlRepository {
   }
 
   public static async girisLoglari(
-    filtre: { firmaId?: number; tur?: "ADMIN" | "KULLANICI"; basarili?: boolean; arama?: string } & SayfaIstegi
+    filtre: { firmaId?: number; tur?: "ADMIN" | "KULLANICI" | "MOBIL"; basarili?: boolean; arama?: string } & SayfaIstegi
   ): Promise<{ satirlar: any[]; toplam: number }> {
     const pool = await getAdminPool();
     const { atla, al } = sayfala(filtre);

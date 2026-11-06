@@ -13,7 +13,7 @@ import { ApiError } from "../../utils/ApiError.js";
 import { logger } from "../../utils/logger.js";
 
 /** bicim: "a4" ekran önizlemesi (varsayılan) · "80" yazdır/indir için 80 mm dikey düzen (yönetici kararı 12.09.2026). */
-export interface BelgeIstek { fisId?: number; belgeNo?: string; kod?: string; bicim?: "a4" | "80" }
+export interface BelgeIstek { fisId?: number; belgeNo?: string; kod?: string; bicim?: "a4" | "80"; ettn?: string }
 
 /** 80 mm düzeni: `<kod>_80.json` varsa o, yoksa A4 şablonu. */
 function duzenDosyasi(sablon: BelgeSablonModel, bicim?: "a4" | "80"): string {
@@ -35,7 +35,7 @@ export class BelgeService {
    * `kod` verilmezse fiş tipine göre varsayılan şablon (ALFIS1 / STFIS1) seçilir.
    */
   static async pdf(istek: BelgeIstek, kullanici: string, ctx?: DbContext): Promise<BelgeSonuc> {
-    const b = await BelgeSqlRepository.fisDetay({ fisId: istek.fisId, belgeNo: istek.belgeNo }, ctx);
+    const b = await BelgeSqlRepository.fisDetay({ fisId: istek.fisId, belgeNo: istek.belgeNo, ettn: istek.ettn }, ctx);
     const fisTipi = Number(b.FIS_TIPI) === 1 ? 1 : 0;
     const sablon = istek.kod ? await BelgeSqlRepository.sablonBul(istek.kod, ctx) : await BelgeSqlRepository.varsayilanSablon(fisTipi, ctx);
     if (sablon.tur !== "BELGE") throw ApiError.badRequest(`${sablon.kod} bir belge şablonu değil.`);

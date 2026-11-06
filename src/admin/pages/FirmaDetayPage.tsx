@@ -7,6 +7,7 @@ import FirmaKullanicilari from "../components/FirmaKullanicilari";
 import FirmaModulleri from "../components/FirmaModulleri";
 import FirmaPos from "../components/FirmaPos";
 import FirmaPanoApi from "../components/FirmaPanoApi";
+import FirmaMobil from "../components/FirmaMobil";
 import FirmaEpostaDogrulama from "../components/FirmaEpostaDogrulama";
 import FirmaYedekSilme from "../components/FirmaYedekSilme";
 import LisansKoduIslemleri from "../components/LisansKoduIslemleri";
@@ -394,6 +395,10 @@ const FirmaDetayPage: React.FC = () => {
 
             <Tab eventKey="panoApi" title="Pano API" mountOnEnter>
               <FirmaPanoApi firma={firma} />
+            </Tab>
+
+            <Tab eventKey="mobil" title="Mobil" mountOnEnter>
+              <FirmaMobil firma={firma} />
             </Tab>
 
             {firma.baglantiModu === "setup" && (

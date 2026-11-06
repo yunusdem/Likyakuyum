@@ -57,6 +57,10 @@ import { CariKimlikFotografSection } from "../../components/cari/CariKimlikFotog
 import { OcrExtractedData } from "../../utils/kimlikOcrParser";
 import { ebelgeService } from "../../services/ebelgeService";
 import { KnskCariAlani } from "../ebelge/EBelgeKnsk";
+// Mobil cari erişimi (docs/MOBIL_CARI_YOL_HARITASI.md): yöneticiye, Mobil modülü açık firmada ayrı sekme
+import { IconDeviceMobile as IconMobilSekme } from "@tabler/icons-react";
+import CariMobilErisim from "../mobil/CariMobilErisim";
+import { useMobilYetkisi } from "../mobil/useMobilYetkisi";
 import { Country, State, City } from "country-state-city";
 import CountryStateCitySelect, { GeoLocationValue } from "../../components/common/CountryStateCitySelect";
 
@@ -194,6 +198,7 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
     vergiKimlikNo: initialVkn || "",
   }));
   const [isNewRecord, setIsNewRecord] = useState<boolean>(!isEditPage);
+  const { tanimYapabilir: mobilSekmesiAcik } = useMobilYetkisi();
   const [activeTab, setActiveTab] = useState<string>("general");
 
   // Field validation errors
@@ -204,6 +209,10 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   useERPAutoFocus({ dependencies: [isNewRecord, selectedIndex] });
+  // Mobil sekmesi açıkken yeni kayda geçilirse (sekme kalkar) Temel sekmesine dön
+  useEffect(() => {
+    if (activeTab === "mobil" && (!mobilSekmesiAcik || !selectedCari || isNewRecord)) setActiveTab("general");
+  }, [activeTab, mobilSekmesiAcik, selectedCari, isNewRecord]);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
@@ -1404,6 +1413,9 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                 icon: <IconReceipt2 size={15} />,
                 hasError: !!fieldErrors.vekilKimlikNo,
               },
+              ...(mobilSekmesiAcik && selectedCari && !isNewRecord
+                ? [{ key: "mobil", label: "Mobil", icon: <IconMobilSekme size={15} />, hasError: false }]
+                : []),
             ].map((tab) => {
               const isActive = activeTab === tab.key;
               return (
@@ -2382,6 +2394,12 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                   </Tab.Pane>
                 </Tab.Content>
               </Form>
+              {/* Mobil Erişim: cari formunun DIŞINDA (kendi düğmeleri cari kaydını tetiklemesin) */}
+              {mobilSekmesiAcik && selectedCari && !isNewRecord && (
+                <Tab.Content>
+                  <Tab.Pane eventKey="mobil">{activeTab === "mobil" && <CariMobilErisim key={selectedCari.id} cariKartId={Number(selectedCari.id)} />}</Tab.Pane>
+                </Tab.Content>
+              )}
             </Tab.Container>
         </Card.Body>
       </Card>

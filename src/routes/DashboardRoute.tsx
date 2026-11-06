@@ -13,6 +13,7 @@ import {
   IconBuildingStore,
   IconSettings,
   IconBuildingWarehouse,
+  IconDeviceMobile,
 } from "@tabler/icons-react";
 
 //import custom type
@@ -293,6 +294,20 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "M- GİB Sorgu Ayarları", link: "ayarlar/gib-sorgu" },
       { id: uuid(), name: "N- Belge Tasarımı", link: "ayarlar/belge-tasarimi" },
       { id: uuid(), name: "O- Hızlı Satış Düzeni", link: "ayarlar/hizli-satis-duzeni" },
+    ],
+  },
+
+  // M- Mobil (docs/MOBIL_CARI_YOL_HARITASI.md, K11): carinin telefondan erişimi. Lisansta ayrı modül, her firmada KAPALI
+  // başlar; kısıtsız firmada ve ERP paketinde de kapalı sayılır (modulKatalogu.ts ACIKCA_ACILAN).
+  {
+    id: uuid(),
+    key: "mobil", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
+    title: "M- Mobil",
+    icon: <IconDeviceMobile size={18} />,
+    children: [
+      { id: uuid(), name: "A- Mobil Emirler", link: "mobil/emirler" },
+      { id: uuid(), name: "B- Mobil Kullanıcılar", link: "mobil/kullanicilar" },
+      { id: uuid(), name: "C- Mobil Ayarları", link: "mobil/ayarlar" },
     ],
   },
 ];

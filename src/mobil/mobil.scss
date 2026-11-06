@@ -1,0 +1,235 @@
+// Mobil cari sitesi (mobil.likyaerp.com; docs/MOBIL_CARI_YOL_HARITASI.md): telefon öncelikli, sade, büyük dokunma alanları
+:root {
+  --m-ana: #1b2a49;
+  --m-vurgu: #c9a227;
+  --m-zemin: #f4f6fa;
+  --m-kart: #ffffff;
+  --m-yazi: #1f2633;
+  --m-soluk: #6b7383;
+  --m-alis: #127a47;
+  --m-satis: #b3261e;
+}
+
+html,
+body {
+  background: var(--m-zemin);
+  color: var(--m-yazi);
+  -webkit-text-size-adjust: 100%;
+}
+
+.m-kap {
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.m-ust {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--m-ana);
+  color: #fff;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px;
+  .m-ust-satir {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .dropdown-toggle::after {
+    display: none;
+  }
+  .m-marka {
+    font-weight: 700;
+    font-size: 1.15rem;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .m-likya {
+    font-size: 0.72rem;
+    opacity: 0.75;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .btn-link {
+    color: #fff;
+    text-decoration: none;
+    padding: 4px 6px;
+  }
+  .form-select {
+    font-size: 0.85rem;
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.25);
+    option {
+      color: #000;
+    }
+  }
+}
+
+.m-govde {
+  flex: 1;
+  padding: 14px 12px calc(env(safe-area-inset-bottom, 0px) + 140px);
+}
+
+.m-kart {
+  background: var(--m-kart);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(20, 30, 60, 0.08);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.m-baslik {
+  font-size: 0.82rem;
+  color: var(--m-soluk);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.m-giris {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 24px 18px;
+  max-width: 420px;
+  margin: 0 auto;
+  .m-giris-marka {
+    text-align: center;
+    margin-bottom: 22px;
+    .ad {
+      font-size: 1.9rem;
+      font-weight: 800;
+      color: var(--m-ana);
+    }
+    .alt {
+      color: var(--m-soluk);
+      font-size: 0.85rem;
+    }
+  }
+  .form-control,
+  .btn {
+    min-height: 48px;
+    font-size: 1.05rem;
+  }
+}
+
+/* Katalog sepeti: alt menünün üstünde sabit */
+.m-sepet-cubugu {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 62px);
+  z-index: 9;
+  padding: 0 12px 8px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.m-alt {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: #fff;
+  border-top: 1px solid #e3e6ee;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  .m-alt-ic {
+    max-width: 560px;
+    margin: 0 auto;
+    display: flex;
+  }
+  button {
+    flex: 1;
+    border: 0;
+    background: none;
+    padding: 9px 4px 8px;
+    font-size: 0.75rem;
+    color: var(--m-soluk);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    &.secili {
+      color: var(--m-ana);
+      font-weight: 700;
+    }
+  }
+}
+
+.m-fiyat-satir {
+  display: flex;
+  align-items: center;
+  padding: 12px 2px;
+  border-bottom: 1px solid #eef0f5;
+  &:last-child {
+    border-bottom: 0;
+  }
+  .ad {
+    flex: 1;
+    font-weight: 600;
+    min-width: 0;
+    .kod {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--m-soluk);
+      font-weight: 400;
+    }
+  }
+  .deger {
+    width: 31%;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 1.02rem;
+    .etiket {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 400;
+      color: var(--m-soluk);
+    }
+  }
+  .alis {
+    color: var(--m-alis);
+  }
+  .satis {
+    color: var(--m-satis);
+  }
+}
+
+.m-buyuk-dugme {
+  min-height: 52px;
+  font-size: 1.08rem;
+  font-weight: 600;
+  border-radius: 12px;
+}
+
+.m-dokum-satir {
+  display: flex;
+  gap: 10px;
+  padding: 11px 2px;
+  border-bottom: 1px solid #eef0f5;
+  &:last-child {
+    border-bottom: 0;
+  }
+  .sol {
+    flex: 1;
+    min-width: 0;
+  }
+  .tutar {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .soluk {
+    color: var(--m-soluk);
+    font-size: 0.78rem;
+  }
+}

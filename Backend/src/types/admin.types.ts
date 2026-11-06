@@ -89,6 +89,8 @@ export type AdminIslem =
   | "PANO_ANAHTAR_URETILDI"
   | "PANO_ANAHTAR_IPTAL"
   | "PANO_ONBELLEK_DEGISTI"
+  // Mobil cari erişimi (docs/MOBIL_CARI_YOL_HARITASI.md)
+  | "MOBIL_AYAR_DEGISTI"
   | "HEDEF_SURUM_DEGISTI"
   | "DESTEK_ATAMA"
   | "DESTEK_DURUM"

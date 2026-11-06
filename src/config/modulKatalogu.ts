@@ -1,6 +1,7 @@
 import { DashboardMenu } from "routes/DashboardRoute";
 import { MenuItemType } from "types/menuTypes";
 import { KullaniciYetkisi, anaMenuAcik, maddeHarfi, menuMaddesiAcik, sayfaKutusuAcik } from "../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { ACIKCA_ACILAN_MODULLER, acikcaAcilanMi } from "../../Backend/src/services/admin/modulAgaci";
 
 /**
  * Modül kataloğu: yönetim panelinden firma bazında açılıp kapatılan her şey (docs/ADMIN_PANEL_YOL_HARITASI.md, Faz 4).
@@ -91,10 +92,15 @@ export const modulKatalogu = (): ModulKaydi[] => {
     }
   };
 
+  const anaEkle = (ana: (typeof DashboardMenu)[number]) => {
+    liste.push({ modulKodu: ana.key!, ustKodu: null, baslik: ana.title || ana.key!, tur: "ANA", sira: sira++ });
+    if (ana.children?.length) altlariEkle(ana.key!, ana.key!, ana.children);
+  };
+  // Açıkça açılan modüller (Mobil) panel ağacında en altta durur (üst kısayol grubundan sonra)
+  const acikcalar = new Set<string>(ACIKCA_ACILAN_MODULLER);
   for (const ana of DashboardMenu) {
-    if (!ana.key || ana.grouptitle) continue;
-    liste.push({ modulKodu: ana.key, ustKodu: null, baslik: ana.title || ana.key, tur: "ANA", sira: sira++ });
-    if (ana.children?.length) altlariEkle(ana.key, ana.key, ana.children);
+    if (!ana.key || ana.grouptitle || acikcalar.has(ana.key)) continue;
+    anaEkle(ana);
   }
 
   // Menü dışı sanal sayfalar: ana menüsünün altında seçenek
@@ -110,16 +116,22 @@ export const modulKatalogu = (): ModulKaydi[] => {
     liste.push({ modulKodu: k.key, ustKodu: UST_KISAYOL_GRUBU, baslik: k.baslik, tur: "UST_KISAYOL", sira: sira++ });
   }
 
+  for (const ana of DashboardMenu) if (ana.key && !ana.grouptitle && acikcalar.has(ana.key)) anaEkle(ana);
+
   onbellek = liste;
   return liste;
 };
 
-/** acik === null/undefined → kısıt yok (yönetim paneli kapalı ya da firmaya modül ayarı yapılmamış). */
-export const modulAcikMi = (acik: string[] | null | undefined, kod: string): boolean => !acik || acik.includes(kod);
+/**
+ * acik === null/undefined → kısıt yok (yönetim paneli kapalı ya da firmaya modül ayarı yapılmamış). Açıkça açılan
+ * modüller (Mobil) bunun dışındadır: kısıtsız firmada kapalıdır.
+ */
+export const modulAcikMi = (acik: string[] | null | undefined, kod: string): boolean =>
+  acik ? acik.includes(kod) : !acikcaAcilanMi(kod);
 
 /** Sol menüyü firmaya açık modüllere göre süzer. Alt öğesi kalmayan grup ve ana menü gizlenir. */
 export const menuyuSuz = (menu: MenuItemType[], acik: string[] | null | undefined): MenuItemType[] => {
-  if (!acik) return menu;
+  if (!acik) return menu.filter((ana) => !ana.key || !acikcaAcilanMi(ana.key));
   const kume = new Set(acik);
 
   const altlariSuz = (anaKey: string, ogeler: MenuItemType[]): MenuItemType[] =>
@@ -315,8 +327,9 @@ const adresZincirleri = (pathname: string): string[][] => {
  * açık sayılır. Menüde hiç geçmeyen adresler (ara sayfalar) kısıtlanmaz; takma adlar asıl adresiyle denetlenir.
  */
 export const sayfaKapaliMi = (acik: string[] | null | undefined, pathname: string): boolean => {
-  if (!acik) return false;
   const zincirler = adresZincirleri(pathname);
+  // Kısıtsız firmada yalnız açıkça açılan modüllerin (Mobil) sayfaları kapalıdır
+  if (!acik) return zincirler.length > 0 && zincirler.every((z) => acikcaAcilanMi(z[0]));
   return zincirler.length > 0 && !zincirler.some((z) => z.every((k) => acik.includes(k)));
 };
 

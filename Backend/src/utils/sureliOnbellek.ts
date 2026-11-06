@@ -46,4 +46,9 @@ export class SureliOnbellek<T> {
   public get boyut(): number {
     return this.kayitlar.size;
   }
+
+  /** Bütün kayıtları atar (uçuştaki sorgular kendi sonucunu yine döner) */
+  public temizle(): void {
+    this.kayitlar.clear();
+  }
 }
