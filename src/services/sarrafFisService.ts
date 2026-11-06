@@ -180,6 +180,9 @@ export interface SaveSarrafFisPayload {
     adet: number | string;
     iscilikiMiktari: number | string;
     iscilikHasGram: number | string;
+    iscilikTutari?: number | string;
+    iscilikKdvOrani?: number | string | null;
+    iscilikKdvTutari?: number | string | null;
     aciklama?: string | null;
     iscilikHesaplamaSekli?: number | null;
     kur: number | string;

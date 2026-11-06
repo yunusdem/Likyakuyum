@@ -278,13 +278,108 @@ export function initGlobalNumericInputInterceptor() {
     return { isNumeric: false, allowDecimal: false };
   };
 
+  const isVezneFisPage = (): boolean => {
+    if (typeof window === "undefined") return false;
+    const p = (window.location.pathname || "").toLowerCase();
+    return (
+      p.includes("/vezne/sarraf-fisi") ||
+      p.includes("/vezne/genel-sarraf-fisi") ||
+      p.includes("/vezne/doviz-fisi") ||
+      p.includes("/vezne/doviz-fis") ||
+      p.includes("/vezne/perakende") ||
+      p.includes("/perakende/perakende-fisi") ||
+      p.includes("/perakende/satis")
+    );
+  };
+
+  const appendTripleZeroToNumericInput = (input: HTMLInputElement | HTMLTextAreaElement) => {
+    if (input.readOnly || input.disabled) return;
+
+    const currentVal = input.value ?? "";
+    let start: number | null = null;
+    let end: number | null = null;
+    try {
+      start = input.selectionStart;
+      end = input.selectionEnd;
+    } catch {
+      start = null;
+      end = null;
+    }
+
+    let newVal: string;
+    let newCursorPos: number;
+
+    if (start === null || end === null) {
+      newVal = (currentVal.trim() === "0" ? "" : currentVal) + "000";
+      newCursorPos = newVal.length;
+    } else if (start === 0 && end === currentVal.length && currentVal.trim().length > 0) {
+      newVal = currentVal.trim() === "0" ? "000" : currentVal + "000";
+      newCursorPos = newVal.length;
+    } else {
+      newVal = currentVal.slice(0, start) + "000" + currentVal.slice(end);
+      newCursorPos = start + 3;
+    }
+
+    const proto =
+      input instanceof HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    const tracker = (input as any)._valueTracker;
+    if (tracker) {
+      tracker.setValue(currentVal);
+    }
+    if (setter) {
+      setter.call(input, newVal);
+    } else {
+      input.value = newVal;
+    }
+
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    try {
+      if (!(input instanceof HTMLInputElement && input.type === "number")) {
+        input.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    } catch {
+      // selection not supported on some input types
+    }
+  };
+
   // 1. Keydown listener (Capture phase for early prevention)
   window.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
+      const target = e.target as HTMLElement | null;
+      const isSpaceKey = (e.key === " " || e.code === "Space") && !e.ctrlKey && !e.metaKey && !e.altKey;
       const { isNumeric, allowDecimal } = isNumericTarget(target);
-      if (!isNumeric) return;
+
+      if (!isNumeric) {
+        if (isSpaceKey && isVezneFisPage()) {
+          if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+            if (target.readOnly || target.disabled) {
+              e.preventDefault();
+            }
+          } else if (
+            !(target instanceof HTMLSelectElement) &&
+            !(target instanceof HTMLButtonElement) &&
+            !target?.isContentEditable
+          ) {
+            e.preventDefault();
+          }
+        }
+        return;
+      }
+
+      if (isSpaceKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          appendTripleZeroToNumericInput(target);
+        }
+        return;
+      }
 
       // Allow ditto key in tables without blocking
       if (isDittoKey(e)) return;

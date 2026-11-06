@@ -284,9 +284,19 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     for (const k of kurRows) {
       const kodUpper = (k.kod || "").toUpperCase();
       if (!kodUpper) continue;
+      const hasRate = (Number(k.efektifAlis) || Number(k.dovizAlis) || Number(k.efektifSatis) || Number(k.dovizSatis)) > 0;
       if (!seen.has(kodUpper)) {
         seen.add(kodUpper);
         list.push(k);
+      } else if (hasRate) {
+        const existingIdx = list.findIndex((x) => (x.kod || "").toUpperCase() === kodUpper);
+        if (existingIdx !== -1) {
+          const ex = list[existingIdx];
+          const exHasRate = (Number(ex.efektifAlis) || Number(ex.dovizAlis) || Number(ex.efektifSatis) || Number(ex.dovizSatis)) > 0;
+          if (!exHasRate) {
+            list[existingIdx] = k;
+          }
+        }
       }
     }
     return list;
@@ -499,7 +509,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
     // 1. ÖNCELİK 1: Altın Ayar & Milyem Tanımları (TODVZ_AYAR - ayarList)
     if (ayarList && ayarList.length > 0) {
-      // 1.a: Tam Kod / Ad Eşleşmesi
+      // 1.a: Tam Kod / Ad Eşleşmesi ("22" ile "22 FANTAZI" karışmasın)
       const foundInDb = ayarList.find((a) => {
         const aKod = (a.ayarKodu || "").toUpperCase().trim();
         const aAdi = (a.ayarAdi || "").toUpperCase().trim();
@@ -524,9 +534,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           aKodNorm === normalized ||
           aAdiNorm === normalized ||
           `${aKod} AYAR` === raw ||
-          `${aKodNorm} AYAR` === normalized ||
-          `${a.standartAyar} AYAR` === raw ||
-          `${a.standartAyar}` === raw
+          `${aKodNorm} AYAR` === normalized
         );
       });
 
@@ -537,10 +545,19 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         }
       }
 
+      if (normalized.includes("FANTAZI") || raw.includes("FANTAZİ")) {
+        return 956;
+      }
+
       // 1.b: Sayısal Standart Ayar Eşleşmesi (Örn: "22", "14", "18", "24", "8")
       const parsedNum = parseFloat(normalized.replace(/,/g, "."));
       if (!isNaN(parsedNum) && parsedNum > 0) {
-        const matchByStandart = ayarList.find((a) => Number(a.standartAyar) === parsedNum);
+        const matchByStandart =
+          ayarList.find(
+            (a) =>
+              Number(a.standartAyar) === parsedNum &&
+              !(a.ayarKodu || "").toUpperCase().includes("FANTAZ")
+          ) || ayarList.find((a) => Number(a.standartAyar) === parsedNum);
         if (matchByStandart && matchByStandart.milyem !== undefined && matchByStandart.milyem !== null) {
           const m = Number(matchByStandart.milyem);
           if (m > 0) {
@@ -879,12 +896,17 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         const bf = field === "birimFiyat" ? parseNum(val) : parseNum(t.birimFiyat);
         if (m > 0 && bf > 0) {
           updated.tutar = formatNumber(m * bf, 2);
+        } else if (field === "birimFiyat" && m <= 0 && bf > 0) {
+          const adetNum = parseNum(t.adet) > 0 ? parseNum(t.adet) : 1;
+          updated.tutar = formatNumber(adetNum * bf, 2);
         }
       }
       return updated;
     });
     setTaslar(nextTaslar);
-    recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, nextTaslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, kurRef);
+    if (field === "miktar" || field === "birimFiyat" || field === "tutar" || field === "paraKodu") {
+      recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, nextTaslar, maliyetParaKodu, satisParaKodu, satisKariYuzde, kurRef);
+    }
   };
 
   // ─── Taş Grid Klavye Yön Okları & Enter Navigasyonu ────────────────────────
@@ -1025,6 +1047,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           : sNum;
       const yuzde = Number((((sNumInMaliyetPara - mNum) / mNum) * 100).toFixed(2));
       setSatisKariYuzde(yuzde);
+    } else if (mNum > 0 && sNum <= 0 && String(satisKariYuzde ?? "").trim() !== "") {
+      const karY = Math.max(0, parseNum(satisKariYuzde));
+      const calcSatisInMaliyetPara = mNum * (1 + karY / 100);
+      const calcSatisInTarget = convertCurrency(calcSatisInMaliyetPara, maliyetParaKodu || "USD", satisParaKodu || "USD", kurRef);
+      setSatisFiyati(format2(calcSatisInTarget));
     }
   };
 
@@ -1052,6 +1079,20 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       setSatisFiyati("");
       return;
     }
+    const mNum = parseNum(maliyet);
+    if (mNum > 0) {
+      const karY = parseNum(val);
+      const effectiveKarY = karY >= 0 ? karY : 0;
+      const calcSatisInMaliyetPara = mNum * (1 + effectiveKarY / 100);
+      const calcSatisInTarget = convertCurrency(
+        calcSatisInMaliyetPara,
+        maliyetParaKodu || "USD",
+        satisParaKodu || "USD",
+        kurRef
+      );
+      setSatisFiyati(format2(calcSatisInTarget));
+      return;
+    }
     recalculateAll(
       monturGram,
       ayar,
@@ -1068,39 +1109,49 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
   const handleSatisParaChange = (val: string) => {
     const kod = val.trim().toUpperCase();
+    const prevKod = (satisParaKodu || "USD").trim().toUpperCase();
     setSatisParaKodu(kod);
-    if (kod) {
-      recalculateAll(
-        monturGram,
-        ayar,
-        monturIscilik,
-        monturIscilikBirim,
-        monturIscilikParaKodu,
-        taslar,
-        maliyetParaKodu,
-        kod,
-        satisKariYuzde,
-        kurRef
-      );
+    if (!kod || kod === prevKod) {
+      return;
+    }
+    const isKnownKur = lookupKurItems.some((k) => (k.kod || "").toUpperCase() === kod);
+    if (!isKnownKur) {
+      return;
+    }
+    const sNum = parseNum(satisFiyati);
+    if (sNum > 0) {
+      const converted = convertCurrency(sNum, prevKod, kod, kurRef);
+      if (converted > 0) {
+        setSatisFiyati(format2(converted));
+      }
+      return;
+    }
+    const mNum = parseNum(maliyet);
+    if (mNum > 0 && String(satisKariYuzde ?? "").trim() !== "") {
+      const karY = Math.max(0, parseNum(satisKariYuzde));
+      const calcSatisInMaliyetPara = mNum * (1 + karY / 100);
+      const calcSatisInTarget = convertCurrency(calcSatisInMaliyetPara, maliyetParaKodu || "USD", kod, kurRef);
+      setSatisFiyati(format2(calcSatisInTarget));
     }
   };
 
   const handleMaliyetParaChange = (val: string) => {
     const kod = val.trim().toUpperCase();
+    const prevKod = (maliyetParaKodu || "USD").trim().toUpperCase();
     setMaliyetParaKodu(kod);
-    if (kod) {
-      recalculateAll(
-        monturGram,
-        ayar,
-        monturIscilik,
-        monturIscilikBirim,
-        monturIscilikParaKodu,
-        taslar,
-        kod,
-        satisParaKodu,
-        satisKariYuzde,
-        kurRef
-      );
+    if (!kod || kod === prevKod) {
+      return;
+    }
+    const isKnownKur = lookupKurItems.some((k) => (k.kod || "").toUpperCase() === kod);
+    if (!isKnownKur) {
+      return;
+    }
+    const mNum = parseNum(maliyet);
+    if (mNum > 0) {
+      const converted = convertCurrency(mNum, prevKod, kod, kurRef);
+      if (converted > 0) {
+        setMaliyet(format2(converted));
+      }
     }
   };
 
@@ -1323,7 +1374,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           KurService.getKurTablosu({ tur: 0 }).catch(() => null),
           KurService.getKurTablosu({ tur: 1 }).catch(() => null),
         ])
-          .then(([t0, t1]) => [...(t1?.satirlar || []), ...(t0?.satirlar || [])])
+          .then(([t0, t1]) => [...(t0?.satirlar || []), ...(t1?.satirlar || [])])
           .catch(() => []),
         EtiketService.getBankolar().catch(() => []),
         AyarService.getAyarlar(false).catch(() => []),
@@ -1364,7 +1415,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       }
 
       if (kurlar.length > 0) {
-        const hasKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS");
+        const hasPositiveRate = (k: KurRowItem) =>
+          (Number(k.efektifAlis) || Number(k.dovizAlis) || Number(k.efektifSatis) || Number(k.dovizSatis)) > 0;
+        const hasKur =
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS" && hasPositiveRate(k)) ||
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS");
         if (hasKur) {
           const hAlis = (hasKur.efektifAlis !== undefined && hasKur.efektifAlis !== null && Number(hasKur.efektifAlis) > 0) ? hasKur.efektifAlis : hasKur.dovizAlis;
           const hSatis = (hasKur.efektifSatis !== undefined && hasKur.efektifSatis !== null && Number(hasKur.efektifSatis) > 0) ? hasKur.efektifSatis : hasKur.dovizSatis;
@@ -1372,7 +1427,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           if (hSatis !== undefined && hSatis !== null) setHasSatis(hSatis);
         }
 
-        const usdKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "USD");
+        const usdKur =
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "USD" && hasPositiveRate(k)) ||
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "USD");
         if (usdKur) {
           const uAlis = (usdKur.efektifAlis !== undefined && usdKur.efektifAlis !== null && Number(usdKur.efektifAlis) > 0) ? usdKur.efektifAlis : usdKur.dovizAlis;
           const uSatis = (usdKur.efektifSatis !== undefined && usdKur.efektifSatis !== null && Number(usdKur.efektifSatis) > 0) ? usdKur.efektifSatis : (usdKur.efektifAlis || usdKur.dovizSatis || usdKur.dovizAlis);
@@ -1380,7 +1437,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           if (uSatis !== undefined && uSatis !== null) setUsdSatis(uSatis);
         }
 
-        const eurKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "EUR");
+        const eurKur =
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "EUR" && hasPositiveRate(k)) ||
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "EUR");
         if (eurKur) {
           const eSatis = (eurKur.efektifSatis !== undefined && eurKur.efektifSatis !== null && Number(eurKur.efektifSatis) > 0) ? eurKur.efektifSatis : (eurKur.efektifAlis || eurKur.dovizSatis || eurKur.dovizAlis);
           if (eSatis) setEurKuru(eSatis);
@@ -1477,14 +1536,19 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           };
         }
       }
-    } else if (isInitialMountRef.current) {
-      isInitialMountRef.current = false;
-      handleNew();
+    } else {
+      if (!queryId && !queryBarkod) {
+        handledQueryIdRef.current = null;
+      }
+      if (isInitialMountRef.current) {
+        isInitialMountRef.current = false;
+        handleNew();
+        const timer = setTimeout(() => {
+          grupKoduRef.current?.focus();
+        }, 150);
+        return () => clearTimeout(timer);
+      }
     }
-    const timer = setTimeout(() => {
-      grupKoduRef.current?.focus();
-    }, 150);
-    return () => clearTimeout(timer);
   }, [isDuzeltmeMode, ozelList, location.search]);
 
   // ─── F1 / F9 / F10 Klavye Kısayolları (Her render güncel ref çağırır) ─────────────
@@ -1502,19 +1566,24 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
       if (e.key === "F1") {
         e.preventDefault();
+        e.stopPropagation();
         handleSaveRef.current();
       } else if (e.key === "F9") {
         e.preventDefault();
+        e.stopPropagation();
         handleDirectPrintRef.current();
       } else if (e.key === "F10") {
         e.preventDefault();
+        e.stopPropagation();
         handleSaveAndPrintRef.current();
       } else if (isDuzeltmeMode && e.key === "F2") {
         e.preventDefault();
+        e.stopPropagation();
         if (ozelUrunId) setShowDeleteConfirm(true);
         else showNotif("warning", "Silinecek kayıt bulunmamaktadır.");
       } else if (isDuzeltmeMode && (e.key === "F3" || e.key === "F4")) {
         e.preventDefault();
+        e.stopPropagation();
         setShowLookup(true);
       }
     };
@@ -1745,6 +1814,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       const exact = lookupKurItems.find((k) => (k.kod || "").toUpperCase() === val);
       if (exact) {
         handleMaliyetParaChange(exact.kod);
+        if (e.key === "Enter") {
+          handleSave();
+        }
         return;
       }
       const matches = lookupKurItems.filter(
@@ -1754,6 +1826,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       );
       if (matches.length === 1) {
         handleMaliyetParaChange(matches[0].kod);
+        if (e.key === "Enter") {
+          handleSave();
+        }
       } else {
         setKurInitialSearch(val);
         setShowKurLookup("maliyet");
@@ -1821,8 +1896,9 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
   const handleNew = () => {
     if (location.search) {
       navigate(location.pathname, { replace: true });
+    } else {
+      handledQueryIdRef.current = null;
     }
-    handledQueryIdRef.current = null;
     setOzelUrunId(null);
     setTarih(new Date().toISOString().slice(0, 10));
     setGrupKodu("");
@@ -1899,20 +1975,36 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     setModel(it.modelOzellik1 || "");
     setBanko(it.banko || "Banko 1");
 
+    // Önceki seçili kayıttan kalan montür state'lerini temizle
+    setMonturGram(it.miktar || "");
+    setMonturHas("");
+    setMonturIscilik("");
+    setMonturIscilikBirim("Gram");
+    setMonturIscilikParaKodu("USD");
+    setMonturIscilikTutari("0.00");
+    setMonturMaliyet("0.00");
+
     let loadedTaslar: TasSatiri[] = [];
-    let loadedMonturGram = it.miktar || "";
-    let loadedMonturIscilik = "";
+    let loadedMonturGram: number | string = it.miktar || "";
+    let loadedMonturHas: number | string = "";
+    let loadedMonturIscilik: number | string = "";
     let loadedMonturIscilikBirim = "Gram";
     let loadedMonturIscilikPara = "USD";
+    let loadedMonturIscilikTutari: number | string = "";
+    let loadedMonturMaliyet: number | string = "";
+    let activeKurRefForRecord = kurRef;
 
     if (it.modelOzellik2) {
       try {
         const extra = JSON.parse(it.modelOzellik2);
-        if (extra.monturGram !== undefined) {
+        if (extra.monturGram !== undefined && extra.monturGram !== "") {
           setMonturGram(extra.monturGram);
           loadedMonturGram = extra.monturGram;
         }
-        if (extra.monturHas !== undefined) setMonturHas(extra.monturHas);
+        if (extra.monturHas !== undefined) {
+          setMonturHas(extra.monturHas);
+          loadedMonturHas = extra.monturHas;
+        }
         if (extra.monturIscilik !== undefined) {
           setMonturIscilik(extra.monturIscilik);
           loadedMonturIscilik = extra.monturIscilik;
@@ -1925,7 +2017,44 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
           setMonturIscilikParaKodu(extra.monturIscilikParaKodu);
           loadedMonturIscilikPara = extra.monturIscilikParaKodu;
         }
-        if (extra.monturMaliyet !== undefined) setMonturMaliyet(extra.monturMaliyet);
+        if (extra.monturIscilikTutari !== undefined) {
+          setMonturIscilikTutari(extra.monturIscilikTutari);
+          loadedMonturIscilikTutari = extra.monturIscilikTutari;
+        }
+        if (extra.monturMaliyet !== undefined) {
+          setMonturMaliyet(extra.monturMaliyet);
+          loadedMonturMaliyet = extra.monturMaliyet;
+        }
+        if (extra.kurRefMode === "alis" || extra.kurRefMode === "satis") {
+          setKurRefMode(extra.kurRefMode);
+        }
+        const savedHasAlis = parseNum(extra.hasAlis);
+        const savedHasSatis = parseNum(extra.hasSatis);
+        const savedUsdAlis = parseNum(extra.usdAlis);
+        const savedUsdSatis = parseNum(extra.usdSatis);
+        if (savedHasAlis > 0) setHasAlis(extra.hasAlis);
+        if (savedHasSatis > 0) setHasSatis(extra.hasSatis);
+        if (savedUsdAlis > 0) setUsdAlis(extra.usdAlis);
+        if (savedUsdSatis > 0) setUsdSatis(extra.usdSatis);
+        if (savedHasAlis > 0 || savedHasSatis > 0 || savedUsdAlis > 0 || savedUsdSatis > 0) {
+          const isAlisMode = (extra.kurRefMode || kurRefMode) === "alis";
+          const hAlis = savedHasAlis > 0 ? savedHasAlis : kurRef.hasAlis;
+          const hSatis = savedHasSatis > 0 ? savedHasSatis : kurRef.hasSatis;
+          const uAlis = savedUsdAlis > 0 ? savedUsdAlis : kurRef.usdAlis;
+          const uSatis = savedUsdSatis > 0 ? savedUsdSatis : kurRef.usdSatis;
+          const activeHas = isAlisMode ? (hAlis > 0 ? hAlis : hSatis) : (hSatis > 0 ? hSatis : hAlis);
+          const activeUsd = isAlisMode ? (uAlis > 0 ? uAlis : uSatis) : (uSatis > 0 ? uSatis : uAlis);
+          activeKurRefForRecord = {
+            ...kurRef,
+            hasAlis: hAlis,
+            hasSatis: hSatis,
+            usdAlis: uAlis,
+            usdSatis: uSatis,
+            activeHas,
+            activeUsd,
+            usd: activeUsd > 0 ? activeUsd : 1,
+          };
+        }
         if (Array.isArray(extra.taslar) && extra.taslar.length > 0) {
           loadedTaslar = extra.taslar;
         }
@@ -1957,27 +2086,10 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
 
     const rawMaliyet = it.maliyet !== undefined && it.maliyet !== null ? parseNum(it.maliyet) : 0;
     const rawSatis = it.satisFiyati !== undefined && it.satisFiyati !== null ? parseNum(it.satisFiyati) : 0;
-    let effectiveMaliyet = rawMaliyet;
-    let effectiveSatis = rawSatis;
-    let effectiveKar = it.karYuzdesi !== undefined && it.karYuzdesi !== null ? parseNum(it.karYuzdesi) : 100;
+    const effectiveKar =
+      it.karYuzdesi !== undefined && it.karYuzdesi !== null ? parseNum(it.karYuzdesi) : 100;
 
-    // Eğer eski veritabanı kaydında Maliyet ile Satış Fiyatı birbirine eşit kaydedilmişse düzelt:
-    if (effectiveMaliyet > 0 && effectiveSatis > 0 && Math.abs(effectiveMaliyet - effectiveSatis) < 0.01) {
-      if (effectiveKar > 0) {
-        effectiveMaliyet = Number((effectiveSatis / (1 + effectiveKar / 100)).toFixed(2));
-      } else {
-        effectiveKar = 50;
-        effectiveSatis = Number((effectiveMaliyet * 1.5).toFixed(2));
-      }
-    }
-
-    setMaliyet(effectiveMaliyet > 0 ? formatNumber(effectiveMaliyet, 2) : (rawMaliyet > 0 ? formatNumber(rawMaliyet, 2) : ""));
-    setMaliyetParaKodu(it.maliyetParaKodu || "USD");
-    setSatisFiyati(effectiveSatis > 0 ? formatNumber(effectiveSatis, 2) : (rawSatis > 0 ? formatNumber(rawSatis, 2) : ""));
-    setSatisParaKodu(it.satisParaKodu || "USD");
-    setSatisKariYuzde(effectiveKar);
-
-    // Otomatik hesaplama motorunu yüklenen değerlerle anında tetikle:
+    // Otomatik hesaplama motorunu yüklenen değerlerle tetikle (monturHas ve monturIscilikTutari için):
     recalculateAll(
       loadedMonturGram,
       it.ayar || ayar || "14",
@@ -1988,8 +2100,25 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       it.maliyetParaKodu || "USD",
       it.satisParaKodu || "USD",
       effectiveKar,
-      kurRef
+      activeKurRefForRecord
     );
+
+    // Kayıtta tanımlı montür ve fiyat değerlerini koru (recalculateAll'ın üzerine yazmasını engelle):
+    if (parseNum(loadedMonturHas) > 0) {
+      setMonturHas(format5(parseNum(loadedMonturHas)));
+    }
+    if (parseNum(loadedMonturIscilikTutari) > 0) {
+      setMonturIscilikTutari(format2(parseNum(loadedMonturIscilikTutari)));
+    }
+    if (parseNum(loadedMonturMaliyet) > 0) {
+      setMonturMaliyet(format2(parseNum(loadedMonturMaliyet)));
+    }
+
+    setMaliyet(rawMaliyet > 0 ? formatNumber(rawMaliyet, 2) : "");
+    setMaliyetParaKodu(it.maliyetParaKodu || "USD");
+    setSatisFiyati(rawSatis > 0 ? formatNumber(rawSatis, 2) : "");
+    setSatisParaKodu(it.satisParaKodu || "USD");
+    setSatisKariYuzde(effectiveKar);
 
     const loadedImages = (it.resimler && it.resimler.length > 0) ? it.resimler : (it.resim ? [it.resim] : []);
     setResimler(loadedImages);
@@ -2004,7 +2133,6 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     setShowLookup(false);
   };
 
-  // ─── Kaydet / Güncelle (F1) ──────────────────────────────────────────────────
   // ─── Kaydet / Güncelle (F1) ──────────────────────────────────────────────────
   const handleSave = async (autoClear?: boolean) => {
     const shouldClear = autoClear !== false;
@@ -2037,15 +2165,38 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     try {
       const finalUrunNo = Number(urunNo) || 1;
       const paddedUrunNo = format3Digits(finalUrunNo);
-      const finalBarkod = barkod.trim() || `${grupKodu.trim().toUpperCase()}${paddedUrunNo}`;
+      const cleanGrupKodu = grupKodu.trim().toUpperCase();
+      const finalBarkod = barkod.trim() || `${cleanGrupKodu}${paddedUrunNo}`;
+
+      let resolvedOzelUrunId = ozelUrunId;
+      if (!resolvedOzelUrunId && isDuzeltmeMode && ozelList.length > 0) {
+        const matchedExisting = ozelList.find(
+          (u) =>
+            (u.grupKodu || "").trim().toUpperCase() === cleanGrupKodu &&
+            Number(u.urunNo) === finalUrunNo
+        );
+        if (matchedExisting?.ozelUrunId) {
+          resolvedOzelUrunId = matchedExisting.ozelUrunId;
+        }
+      }
+
+      const rawMilyemForSave = getMilyemFromAyar(ayar);
+      const milyemRatioForSave = rawMilyemForSave > 1 ? rawMilyemForSave / 1000 : (rawMilyemForSave > 0 ? rawMilyemForSave : 0.916);
+      const computedMonturHas = parseNum(monturGram) > 0 ? format5(parseNum(monturGram) * milyemRatioForSave) : "";
 
       const extraMetadata = JSON.stringify({
         monturGram: monturGram || "",
-        monturHas: monturHas || "",
+        monturHas: monturHas || computedMonturHas || "",
         monturIscilik: monturIscilik || "",
         monturIscilikBirim: monturIscilikBirim || "Gram",
         monturIscilikParaKodu: monturIscilikParaKodu || "USD",
+        monturIscilikTutari: monturIscilikTutari || "",
         monturMaliyet: monturMaliyet || "",
+        kurRefMode,
+        hasAlis: hasAlis ?? "",
+        hasSatis: hasSatis ?? "",
+        usdAlis: usdAlis ?? "",
+        usdSatis: usdSatis ?? "",
         taslar,
       });
 
@@ -2062,11 +2213,16 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         paraKodu: "USD",
       };
 
+      const resolvedTasTutar =
+        taslar.length > 1 && toplamTasTutariUSD > 0
+          ? Number(toplamTasTutariUSD.toFixed(2))
+          : parseNum(primaryTas.tutar) || null;
+
       const payload: SaveOzelUrunPayload = {
-        ozelUrunId: ozelUrunId || undefined,
+        ozelUrunId: resolvedOzelUrunId || undefined,
         vezneId: vezneId || undefined,
         tarih,
-        grupKodu: grupKodu.trim().toUpperCase(),
+        grupKodu: cleanGrupKodu,
         urunNo: finalUrunNo,
         barkod: finalBarkod,
         mamulTipi: mamulTipi.trim() || null,
@@ -2084,8 +2240,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         tasRenk: primaryTas.renk || null,
         tasSaflik: primaryTas.saflik || null,
         tasAdet: toplamTasAdedi > 0 ? toplamTasAdedi : 1,
-        tasTutar: parseNum(primaryTas.tutar) || null,
-        tasTutarBirimi: primaryTas.paraKodu || "USD",
+        tasTutar: resolvedTasTutar,
+        tasTutarBirimi: taslar.length > 1 ? "USD" : (primaryTas.paraKodu || "USD"),
         maliyet: parseNum(maliyet),
         maliyetParaKodu: maliyetParaKodu || "USD",
         karYuzdesi: parseNum(satisKariYuzde),
@@ -2106,19 +2262,45 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       setUrunNo(format3Digits(saved.urunNo));
       setBarkod(saved.barkod || `${saved.grupKodu}${format3Digits(saved.urunNo)}`);
 
+      // Listede kaydedilen ürünü anında güncelle
+      setOzelList((prev) => {
+        const exists = prev.some((x) => x.ozelUrunId === saved.ozelUrunId);
+        const next = exists
+          ? prev.map((x) => (x.ozelUrunId === saved.ozelUrunId ? saved : x))
+          : [...prev, saved];
+        return next.slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
+      });
+
       if (vezneId) {
         fetchStok(vezneId, ayar);
       }
 
       const updated = await EtiketService.getOzelUrunler({ limit: 500 });
-      const sortedUpdated = (updated || []).slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
+      const mergedUpdated = (updated || []).map((x) =>
+        x.ozelUrunId === saved.ozelUrunId ? saved : x
+      );
+      if (!mergedUpdated.some((x) => x.ozelUrunId === saved.ozelUrunId)) {
+        mergedUpdated.push(saved);
+      }
+      const sortedUpdated = mergedUpdated.slice().sort((a, b) => (a.ozelUrunId || 0) - (b.ozelUrunId || 0));
       setOzelList(sortedUpdated);
 
       // TV Canlı Vitrin ekranına anında haber ver
       notifyKatalogUpdate();
 
+      showNotif(
+        "success",
+        isDuzeltmeMode
+          ? "Özel ürün kaydı başarıyla güncellendi."
+          : "Özel ürün kaydı başarıyla oluşturuldu."
+      );
+
       if (shouldClear) {
-        handleNew();
+        if (isDuzeltmeMode) {
+          handleSelectRecord(saved);
+        } else {
+          handleNew();
+        }
       } else {
         setKatalog(Boolean(saved.katalog || saved.menuId));
         setMenuId(saved.menuId || null);
@@ -2514,6 +2696,7 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
         onSaveAndPrint={handleSaveAndPrint}
         onPrint={handleSaveAndPrint}
         disabled={isSaving}
+        disableShortcuts={true}
         modeText={ozelUrunId ? `Kayıt: ${grupKodu}-${format3Digits(urunNo)} (${currentIndex + 1}/${ozelList.length})` : (isDuzeltmeMode ? "Düzeltme Modu" : "Yeni Kayıt Modu")}
         rightContent={
           <button
@@ -2613,6 +2796,16 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
                         setUrunNo(padded);
                         if (grupKodu) {
                           setBarkod(`${grupKodu}${padded}`);
+                          if (isDuzeltmeMode) {
+                            const match = ozelList.find(
+                              (r) =>
+                                r.grupKodu.toUpperCase() === grupKodu.toUpperCase() &&
+                                (r.urunNo === parseInt(padded, 10) || format3Digits(r.urunNo) === padded)
+                            );
+                            if (match && match.ozelUrunId !== ozelUrunId) {
+                              handleSelectRecord(match);
+                            }
+                          }
                         }
                       }
                     }}
@@ -4331,9 +4524,13 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
               const newRate = getKurVal(kod, kurRef);
               const convertedMaliyet = newRate > 0 ? (mNum * oldRate) / newRate : mNum;
               setMaliyet(formatNumber(convertedMaliyet, 2));
-            }
-            if (parseNum(monturGram) > 0 || (taslar && taslar.length > 0)) {
-              recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, kod, satisParaKodu, satisKariYuzde, kurRef);
+              const sNum = parseNum(satisFiyati);
+              if (sNum > 0 && convertedMaliyet > 0) {
+                const sRate = getKurVal(satisParaKodu, kurRef);
+                const satisInMaliyetCurr = newRate > 0 ? (sNum * sRate) / newRate : sNum;
+                const karVal = ((satisInMaliyetCurr - convertedMaliyet) / convertedMaliyet) * 100;
+                setSatisKariYuzde(formatNumber(karVal, 2));
+              }
             }
             setShowKurLookup(null);
             return;
@@ -4346,9 +4543,6 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
               const newRate = getKurVal(kod, kurRef);
               const convertedSatis = newRate > 0 ? (sNum * oldRate) / newRate : sNum;
               setSatisFiyati(formatNumber(convertedSatis, 2));
-            }
-            if (parseNum(monturGram) > 0 || (taslar && taslar.length > 0)) {
-              recalculateAll(monturGram, ayar, monturIscilik, monturIscilikBirim, monturIscilikParaKodu, taslar, maliyetParaKodu, kod, satisKariYuzde, kurRef);
             }
             setShowKurLookup(null);
             setTimeout(() => {

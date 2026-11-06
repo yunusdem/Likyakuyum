@@ -28,3 +28,7 @@ dist-destek/
 
 # Mobil cari sitesi build çıktısı (npm run build:mobil; docs/MOBIL_CARI_YOL_HARITASI.md); sunucuda üretilir
 dist-mobil/
+# Yerel/Sunucu belge ve resim yüklemeleri (git'e dahil edilmez)
+*LikyaBelge*
+Backend/*LikyaBelge*
+Backend/LikyaBelge/
