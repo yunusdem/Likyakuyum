@@ -39,7 +39,6 @@ export const KAYNAK_GORUNUM: Record<string, { renk: string; kisa: string }> = {
   zile: { renk: "#0369a1", kisa: "ZD" },
   ahlatci: { renk: "#0f766e", kisa: "AD" },
   altinkaynak: { renk: "#b45309", kisa: "AK" },
-  dovizcom: { renk: "#1d4ed8", kisa: "DC" },
   hakan: { renk: "#be185d", kisa: "HD" },
   ozbag: { renk: "#15803d", kisa: "ÖB" },
 };

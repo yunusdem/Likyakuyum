@@ -1,9 +1,9 @@
-import { KAYNAKLAR } from "../piyasa/kaynaklar/index.js";
+import { KAYNAKLAR, PANO_KAYNAKLARI, panodaMi } from "../piyasa/kaynaklar/index.js";
 import type { KaynakAnlik, Yon } from "../piyasa/tipler.js";
 import { logger } from "../utils/logger.js";
 
 /**
- * Piyasa panosu: 7 sitenin fiyatlarını süreç içinde tek noktadan tutar.
+ * Piyasa panosu: panodaki sitelerin fiyatlarını süreç içinde tek noktadan tutar.
  * - Firma bağımsız, veritabanı yok; kaç kullanıcı bakarsa baksın sitelere giden istek sayısı değişmez.
  * - Talep olunca çalışır: son istekten BOSTA_KAPAT_MS sonra bağlantılar kapanır, ilk istekte yeniden açılır.
  * - Değişim yönü (yukarı/aşağı) burada, bir önceki değere göre bulunur ve bir sonraki değişime kadar korunur.
@@ -20,7 +20,7 @@ const baslat = (): void => {
   if (calisiyor) return;
   calisiyor = true;
   logger.info("[piyasa] Kaynaklar başlatılıyor");
-  for (const k of KAYNAKLAR) k.baslat();
+  for (const k of PANO_KAYNAKLARI) k.baslat();
   denetim = setInterval(() => {
     if (Date.now() - sonIstek > BOSTA_KAPAT_MS) durdur();
   }, 15_000);
@@ -32,7 +32,7 @@ const durdur = (): void => {
   calisiyor = false;
   logger.info("[piyasa] Kimse bakmıyor, kaynaklar durduruldu");
   // Anlık Fiyat Listesi'nin tek başına kullandığı kaynak açık kalır (tekil denetim kapatır)
-  for (const k of KAYNAKLAR) if (!tekilKullanimda(k.kod)) k.durdur();
+  for (const k of PANO_KAYNAKLARI) if (!tekilKullanimda(k.kod)) k.durdur();
   if (denetim) clearInterval(denetim);
   denetim = null;
 };
@@ -66,8 +66,8 @@ const tekilDenetimBaslat = (): void => {
     for (const [kod] of tekilIstek) {
       if (tekilKullanimda(kod)) continue;
       tekilIstek.delete(kod);
-      // Pano açıksa kaynak panoya aittir, onun denetimi kapatır
-      if (!calisiyor) KAYNAKLAR.find((k) => k.kod === kod)?.durdur();
+      // Pano açıksa panodaki kaynak panoya aittir, onun denetimi kapatır; panoda olmayanı burası kapatır
+      if (!calisiyor || !panodaMi(kod)) KAYNAKLAR.find((k) => k.kod === kod)?.durdur();
     }
     if (tekilIstek.size === 0 && tekilDenetim) {
       clearInterval(tekilDenetim);
@@ -84,11 +84,11 @@ export const PiyasaService = {
       baslat();
       // İlk açılışta boş ekran yerine verinin gelmesini kısa süre bekle
       const bitis = Date.now() + ILK_BEKLEME_MS;
-      while (Date.now() < bitis && KAYNAKLAR.some((k) => k.anlik().durum === "bekliyor")) await bekle(150);
+      while (Date.now() < bitis && PANO_KAYNAKLARI.some((k) => k.anlik().durum === "bekliyor")) await bekle(150);
     }
     return {
       sunucuSaati: new Date().toISOString(),
-      kaynaklar: KAYNAKLAR.map((k) => yonEkle(k.anlik())),
+      kaynaklar: PANO_KAYNAKLARI.map((k) => yonEkle(k.anlik())),
     };
   },
 
