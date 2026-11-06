@@ -2,17 +2,27 @@ import { apiClient } from "./apiClient";
 import { notifyVezneBakiyeChanged } from "./vezneSyncService";
 
 export interface PerakendeUrunItem {
-  altinUrunId: number;
+  altinUrunId: number | null;
+  paraId?: number | null;
+  kod?: string;
+  urunTipi?: number;
+  hasOrani?: number;
   barkod: string;
   urunAdi: string;
   ayar?: string;
   hasGram: number;
+  satisHas?: number;
   gram: number;
   miktar: number;
   satisFiyati: number;
+  satisDoviz?: number | null;
+  satisParaKodu?: string;
+  usdKuru1?: number | null;
+  usdKuru2?: number | null;
   birim?: string;
   kdvOrani?: number;
   satildi?: boolean;
+  isBarkodlu?: boolean;
 }
 
 export interface PerakendeFaturaSatiriItem {
@@ -23,11 +33,14 @@ export interface PerakendeFaturaSatiriItem {
   barkod?: string | null;
   urunAdi: string;
   ayar?: string | null;
+  adet?: number | null;
   miktar: number;
   birim: string;
   gram: number;
   hasGram: number;
   birimFiyat: number;
+  paraKodu?: string | null;
+  kur?: number | null;
   tutar: number;
   kdvOrani: number;
   kdvTutari: number;
@@ -98,11 +111,15 @@ export interface SavePerakendeFaturaSatiriPayload {
   barkod?: string | null;
   urunAdi: string;
   ayar?: string | null;
+  adet?: number | null;
   miktar: number;
   birim?: string;
   gram?: number;
   hasGram?: number;
   birimFiyat: number;
+  paraKodu?: string | null;
+  kur?: number | null;
+  tutar?: number;
   kdvOrani?: number;
 }
 

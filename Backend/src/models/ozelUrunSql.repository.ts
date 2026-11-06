@@ -761,7 +761,9 @@ export class OzelUrunSqlRepository {
         LEFT JOIN TODVZ_MENU m ON m.MENU_ID = u.MENU_ID
         WHERE u.BARKOD = @BARKOD
            OR (u.GRUP_KODU + CAST(u.URUN_NO AS VARCHAR(20))) = @BARKOD
+           OR (u.GRUP_KODU + RIGHT('000' + CAST(u.URUN_NO AS VARCHAR(20)), 3)) = @BARKOD
            OR (u.GRUP_KODU + '-' + CAST(u.URUN_NO AS VARCHAR(20))) = @BARKOD
+           OR (u.GRUP_KODU + '-' + RIGHT('000' + CAST(u.URUN_NO AS VARCHAR(20)), 3)) = @BARKOD
            OR u.ORJINAL_KOD = @BARKOD
       `);
 
@@ -798,33 +800,51 @@ export class OzelUrunSqlRepository {
       }
     }
 
+    const safeFloat = (val: any, def = 0): number => {
+      if (val === undefined || val === null || val === "") return def;
+      if (typeof val === "number") return isNaN(val) ? def : val;
+      let str = String(val).trim();
+      if (!str) return def;
+      if (str.includes(".") && str.includes(",")) {
+        if (str.lastIndexOf(",") > str.lastIndexOf(".")) {
+          str = str.replace(/\./g, "").replace(",", ".");
+        } else {
+          str = str.replace(/,/g, "");
+        }
+      } else if (str.includes(",")) {
+        str = str.replace(/,/g, ".");
+      }
+      const parsed = parseFloat(str);
+      return isNaN(parsed) ? def : parsed;
+    };
+
     const targetId = dto.ozelUrunId && Number(dto.ozelUrunId) > 0 ? Number(dto.ozelUrunId) : null;
     const grupKoduVal = (dto.grupKodu || "").trim().toUpperCase();
     const urunNoVal = Number(dto.urunNo) || 1;
     const barkodVal = dto.barkod ? dto.barkod.trim() : null;
     const mamulTipiVal = dto.mamulTipi ? dto.mamulTipi.trim() : null;
     const ureticiFirmaVal = dto.ureticiFirma ? dto.ureticiFirma.trim() : null;
-    const miktarVal = dto.miktar !== undefined ? Number(dto.miktar) : 1;
+    const miktarVal = dto.miktar !== undefined ? safeFloat(dto.miktar, 1) : 1;
     const miktarBirimiVal = dto.miktarBirimi || "Adet";
     const orjinalKodVal = dto.orjinalKod ? dto.orjinalKod.trim() : null;
     const ayarVal = dto.ayar ? dto.ayar.trim() : null;
     const modelOzellik1Val = dto.modelOzellik1 ? dto.modelOzellik1.trim() : null;
     const modelOzellik2Val = dto.modelOzellik2 ? dto.modelOzellik2.trim() : null;
     const bankoVal = dto.banko ? dto.banko.trim() : null;
-    const maliyetVal = Number(dto.maliyet) || 0;
+    const maliyetVal = safeFloat(dto.maliyet, 0);
     const maliyetParaKoduVal = dto.maliyetParaKodu || "USD";
-    const karYuzdesiVal = Number(dto.karYuzdesi) || 0;
+    const karYuzdesiVal = safeFloat(dto.karYuzdesi, 0);
     const sabitleVal = dto.sabitle ? 1 : 0;
-    const satisFiyatiVal = Number(dto.satisFiyati) || 0;
+    const satisFiyatiVal = safeFloat(dto.satisFiyati, 0);
     const satisParaKoduVal = dto.satisParaKodu || "USD";
     const hizliGirisVal = dto.hizliGiris ? 1 : 0;
     const tasCinsiVal = dto.tasCinsi ? dto.tasCinsi.trim() : null;
-    const tasMiktarVal = dto.tasMiktar ?? null;
+    const tasMiktarVal = dto.tasMiktar !== undefined && dto.tasMiktar !== null ? safeFloat(dto.tasMiktar, 0) : null;
     const tasBirimVal = dto.tasBirim || "Ct";
     const tasRenkVal = dto.tasRenk ? dto.tasRenk.trim() : null;
     const tasSaflikVal = dto.tasSaflik ? dto.tasSaflik.trim() : null;
-    const tasAdetVal = dto.tasAdet ?? null;
-    const tasTutarVal = dto.tasTutar ?? null;
+    const tasAdetVal = dto.tasAdet !== undefined && dto.tasAdet !== null ? Math.round(safeFloat(dto.tasAdet, 0)) : null;
+    const tasTutarVal = dto.tasTutar !== undefined && dto.tasTutar !== null ? safeFloat(dto.tasTutar, 0) : null;
     const tasTutarBirimiVal = dto.tasTutarBirimi || "USD";
     const vezneIdVal = dto.vezneId && Number(dto.vezneId) > 0 ? Number(dto.vezneId) : null;
     const satildiVal = dto.satildi ? 1 : 0;
@@ -1168,16 +1188,64 @@ export class OzelUrunSqlRepository {
 
     if (!savedId) throw ApiError.internal("Özel ürün kaydedildi ancak kimlik bilgisi alınamadı.");
 
-    // Update VEZNE_ID, KATALOG, MENU_ID columns to guarantee persistence
+    // Update all core & price columns to guarantee persistence across all DB versions
     try {
       await pool.request()
         .input("SAVED_ID", sql.Int, savedId)
+        .input("MAMUL_TIPI", sql.VarChar(250), mamulTipiVal)
+        .input("URETICI_FIRMA", sql.VarChar(500), ureticiFirmaVal)
+        .input("MIKTAR", sql.Float, miktarVal)
+        .input("MIKTAR_BIRIMI", sql.VarChar(50), miktarBirimiVal)
+        .input("ORJINAL_KOD", sql.VarChar(250), orjinalKodVal)
+        .input("AYAR", sql.VarChar(250), ayarVal)
+        .input("MODEL_OZELLIK_1", sql.VarChar(sql.MAX), modelOzellik1Val)
+        .input("MODEL_OZELLIK_2", sql.VarChar(sql.MAX), modelOzellik2Val)
+        .input("BANKO", sql.VarChar(250), bankoVal)
+        .input("MALIYET", sql.Float, maliyetVal)
+        .input("MALIYET_PARA_KODU", sql.VarChar(50), maliyetParaKoduVal)
+        .input("KAR_YUZDESI", sql.Float, karYuzdesiVal)
+        .input("SABITLE", sql.Bit, sabitleVal)
+        .input("SATIS_FIYATI", sql.Float, satisFiyatiVal)
+        .input("SATIS_PARA_KODU", sql.VarChar(50), satisParaKoduVal)
+        .input("TAS_CINSI", sql.VarChar(250), tasCinsiVal)
+        .input("TAS_MIKTAR", sql.Float, tasMiktarVal)
+        .input("TAS_BIRIM", sql.VarChar(50), tasBirimVal)
+        .input("TAS_RENK", sql.VarChar(100), tasRenkVal)
+        .input("TAS_SAFLIK", sql.VarChar(100), tasSaflikVal)
+        .input("TAS_ADET", sql.Int, tasAdetVal)
+        .input("TAS_TUTAR", sql.Float, tasTutarVal)
+        .input("TAS_TUTAR_BIRIMI", sql.VarChar(50), tasTutarBirimiVal)
         .input("VEZNE_ID", sql.Int, vezneIdVal)
+        .input("KONSINYE", sql.Bit, konsinyeVal)
         .input("KATALOG", sql.Bit, katalogVal)
         .input("MENU_ID", sql.Int, menuIdVal)
         .query(`
           UPDATE dbo.TODVZ_OZEL_URUN
-          SET VEZNE_ID = COALESCE(@VEZNE_ID, VEZNE_ID),
+          SET MAMUL_TIPI = @MAMUL_TIPI,
+              URETICI_FIRMA = @URETICI_FIRMA,
+              MIKTAR = @MIKTAR,
+              MIKTAR_BIRIMI = @MIKTAR_BIRIMI,
+              ORJINAL_KOD = @ORJINAL_KOD,
+              AYAR = @AYAR,
+              MODEL_OZELLIK_1 = @MODEL_OZELLIK_1,
+              MODEL_OZELLIK_2 = @MODEL_OZELLIK_2,
+              BANKO = @BANKO,
+              MALIYET = @MALIYET,
+              MALIYET_PARA_KODU = @MALIYET_PARA_KODU,
+              KAR_YUZDESI = @KAR_YUZDESI,
+              SABITLE = @SABITLE,
+              SATIS_FIYATI = @SATIS_FIYATI,
+              SATIS_PARA_KODU = @SATIS_PARA_KODU,
+              TAS_CINSI = @TAS_CINSI,
+              TAS_MIKTAR = @TAS_MIKTAR,
+              TAS_BIRIM = @TAS_BIRIM,
+              TAS_RENK = @TAS_RENK,
+              TAS_SAFLIK = @TAS_SAFLIK,
+              TAS_ADET = @TAS_ADET,
+              TAS_TUTAR = @TAS_TUTAR,
+              TAS_TUTAR_BIRIMI = @TAS_TUTAR_BIRIMI,
+              VEZNE_ID = COALESCE(@VEZNE_ID, VEZNE_ID),
+              KONSINYE = @KONSINYE,
               KATALOG = @KATALOG,
               MENU_ID = @MENU_ID
           WHERE OZEL_URUN_ID = @SAVED_ID

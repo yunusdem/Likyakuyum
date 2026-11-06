@@ -5,12 +5,13 @@ import { kurlariDenetle, milyemleriDenetle } from "../../utils/kurYetkiDenetimi"
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
-import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner } from "react-bootstrap";
+import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner, Dropdown } from "react-bootstrap";
 import {
   IconCheck, IconBinoculars, IconAlertTriangle, IconPlus, IconShieldExclamation, IconShieldCheck, IconPrinter, IconClock, IconCoins, IconUsers, IconBuildingBank, IconBuildingStore,
   IconRefresh, IconFileText,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
+import { SayfaCikisUyarisiModal, useSayfaCikisUyarisi } from "../../components/common/SayfaCikisUyarisiModal";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { useAuth } from "../../context/AuthContext";
 import { AuthService } from "../../services/authService";
@@ -77,10 +78,14 @@ interface GridRow {
   milyem: number | string;
   refMilyem?: number | string;
   hasGram: number | string;
+  iscilikToplam?: number | string;
+  tlTutar?: number | string;
   iscilikHesaplamaSekli: number | string;
   iscilikiMiktari: number | string;
   iscilikHasGram: number | string;
   iscilikTutari?: number | string;
+  iscilikKdvOrani?: number | string;
+  iscilikKdvTutari?: number | string;
   kur: number | string;
   tutar: number | string;
   urunTipi: number;
@@ -115,7 +120,8 @@ interface OdemeRow {
 
 const GRID_COLS = [
   "urunKodu", "urunAdi", "adet", "miktar", "milyem", "hasGram",
-  "iscilikHesaplamaSekli", "iscilikiMiktari", "iscilikHasGram", "iscilikTutari", "kur", "tutar",
+  "iscilikToplam", "tlTutar",
+  "iscilikHesaplamaSekli", "iscilikiMiktari", "iscilikHasGram", "iscilikTutari", "iscilikKdvOrani", "iscilikKdvTutari", "kur", "tutar",
 ] as const;
 type GridColKey = typeof GRID_COLS[number];
 
@@ -127,8 +133,8 @@ type OdemeColKey = typeof ODEME_COLS[number];
 const makeId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const createEmptyRow = (satirNo = 1): GridRow => ({
   id: makeId(), satirId: null, satirNo, urunId: 0, urunKodu: "", urunAdi: "",
-  adet: "", miktar: "", milyem: "", refMilyem: "", hasGram: "", iscilikHesaplamaSekli: 0,
-  iscilikiMiktari: "", iscilikHasGram: "", iscilikTutari: "", kur: "", tutar: "", urunTipi: 0, karat: "", aciklama: "",
+  adet: "", miktar: "", milyem: "", refMilyem: "", hasGram: "", iscilikToplam: "", tlTutar: "", iscilikHesaplamaSekli: 0,
+  iscilikiMiktari: "", iscilikHasGram: "", iscilikTutari: "", iscilikKdvOrani: "", iscilikKdvTutari: "", kur: "", tutar: "", urunTipi: 1, karat: "", aciklama: "",
 });
 const createEmptyOdemeRow = (satirNo: number): OdemeRow => ({
   id: makeId(), satirNo, odemeAraciTuru: 0, cariKartId: null, cariKod: "", cariUnvan: "", bankaId: null, posCihaziId: null, iskontoId: null, paraId: null, paraKodu: "", paraAdi: "", aciklama: "",
@@ -137,31 +143,52 @@ const createEmptyOdemeRow = (satirNo: number): OdemeRow => ({
 
 export const isZiynetProduct = (urun?: { urunTipi?: number | string | null; kod?: string; ad?: string; mamulTipi?: string } | null): boolean => {
   if (!urun) return false;
+
+  // 1. Ürün tanımlarından gelen urunTipi doğrudan 3 (Ziynet) ise kesinlikle Ziynet'tir
+  if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
+    const tipNum = Number(urun.urunTipi);
+    if (tipNum === 3) return true;
+    if (tipNum === 1 || tipNum === 2) return false;
+  }
+
   const k = (urun.kod || "").trim().toUpperCase();
   const n = (urun.ad || (urun as any).mamulTipi || "").trim().toUpperCase();
-  // Ayar altın / Has altın / Külçe / Hurda ürünler veritabanında sehven urunTipi=3 kayıtlı olsa dahi Ziynet değildir, Milyem çalışmalıdır
-  const exactAyarCodes = ["24", "22", "18", "14", "8", "HAS", "24AYAR", "22AYAR", "18AYAR", "14AYAR", "8AYAR", "KULCE", "KÜLÇE"];
+
+  // 2. Kesinlikle Ziynet olmayan ürünler (Has Külçe, Hurda, Bilezik vb.)
+  // DİKKAT: "22 AYAR ÇEYREK" gibi ürünlerde "AYAR" kelimesi geçebilir; bu yüzden tek başına "AYAR" ziynet'i engellememeli!
   if (
-    exactAyarCodes.includes(k) ||
-    n.includes("AYAR") ||
-    n.includes("HAS ALTIN") ||
-    n.includes("KÜLÇE") ||
-    n.includes("KULCE") ||
-    n.includes("HURDA") ||
-    n.includes("BİLEZİK") ||
-    n.includes("BILEZIK")
+    k === "24" || k === "HAS" || k === "24AYAR" || k === "KULCE" || k === "KÜLÇE" ||
+    k.includes("KULCE") || k.includes("KÜLÇE") || n.includes("KÜLÇE") || n.includes("KULCE") ||
+    k.includes("HURDA") || n.includes("HURDA") ||
+    k.includes("BILEZIK") || k.includes("BİLEZİK") || n.includes("BİLEZİK") || n.includes("BILEZIK") ||
+    n.includes("HAS ALTIN")
   ) {
     return false;
   }
-  // 1. Ürün tanımlarından gelen urunTipi doğrudan esastır (3: Ziynet)
-  if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
-    return Number(urun.urunTipi) === 3;
-  }
-  // 2. Yalnızca urunTipi tanımlı değilse fallback:
-  const exactZiynetCodes = ["ÇEY", "CEY", "YAR", "ATA", "GRE", "ZIY", "BESLI", "BEŞLİ"];
-  if (exactZiynetCodes.includes(k) || n.startsWith("ÇEYREK") || n.startsWith("CEYREK") || n.startsWith("YARIM") || n.startsWith("ATA ALTIN") || n.startsWith("ZİYNET")) {
+
+  // 3. Ziynet anahtar kelimeleri ve kodları (Çeyrek, Yarım, Tam, Ata, Cumhuriyet, Gremse, Reşat, Hamit, Ziynet vb.)
+  const ziynetKeywords = [
+    "ÇEYREK", "CEYREK",
+    "YARIM",
+    "TAM ALTIN", "TAMALTIN", "TAM_ALTIN",
+    "ATA ALTIN", "ATA_ALTIN", "ATALIRA", "ATA LİRA", "ATA LIRA", "ATACEYREK", "ATA ÇEYREK", "ATA YARIM", "ATAYARIM",
+    "CUMHURİYET", "CUMHURIYET",
+    "GREMSE", "KRAMSE",
+    "ZİYNET", "ZIYNET", "SARRAFİYE", "SARRAFIYE",
+    "REŞAT", "RESAT", "HAMİT", "HAMIT", "AZİZ", "AZIZ",
+    "BEŞLİ", "BESLI", "İKİBUÇUK", "IKIBUCUK", "2.5 ALTIN", "2,5 ALTIN",
+  ];
+
+  const exactZiynetCodes = ["CEYREK", "ÇEYREK", "YARIM", "TAM", "ATA", "GREMSE", "ZIYNET", "BESLI", "BEŞLİ", "CUMHURIYET", "RESAT", "REŞAT"];
+
+  if (
+    ziynetKeywords.some((w) => k.includes(w) || n.includes(w)) ||
+    exactZiynetCodes.some((c) => k === c || k.startsWith(c + "_") || k.endsWith("_" + c)) ||
+    ["ÇEY", "CEY", "YAR", "ATA", "GRE", "ZIY", "CUMH"].some((p) => k.startsWith(p))
+  ) {
     return true;
   }
+
   return false;
 };
 
@@ -180,18 +207,23 @@ export const isCurrencyItem = (item?: { kod?: string; ad?: string; urunTipi?: nu
 
 export const resolveEffectiveUrunTipi = (item?: { kod?: string; ad?: string; urunTipi?: number | string | null; hasOrani?: number; alisMilyem?: number; hasAlisKatsayisi?: number; mamulTipi?: string } | null): number => {
   if (!item) return 1;
+  // 1. Döviz kontrolü (USD, EUR vb.)
   if (isCurrencyItem(item as any)) return 0;
-  if (isZiynetProduct(item)) return 3;
+  // 2. Ürün tanımında doğrudan urunTipi === 3 verilmişse VEYA ziynet algoritması true döndüyse: ZİYNET (3)
   if (item.urunTipi !== undefined && item.urunTipi !== null && String(item.urunTipi).trim() !== "") {
     const t = Number(item.urunTipi);
-    if (t === 3) return 1; // isZiynetProduct false döndüyse (örn. 24 Ayar Altın) Altın (1) olarak işle
+    if (t === 3) return 3;
     if (t === 2) return 2;
     if (t === 1) return 1;
-    if (t === 0) return 1;
   }
+  if (isZiynetProduct(item)) return 3;
+
+  // 3. Gümüş kontrolü
   const k = (item.kod || "").trim().toUpperCase();
   const a = (item.ad || (item as any).mamulTipi || "").trim().toUpperCase();
   if (k.includes("GUMUS") || k.includes("GÜMÜŞ") || a.includes("GÜMÜŞ") || a.includes("GUMUS")) return 2;
+
+  // 4. Varsayılan Altın (1)
   return 1;
 };
 
@@ -444,13 +476,17 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
     return {
       ...r,
       adet: r.adet,
-      miktar: r.miktar,
+      miktar: "",
       milyem: "",
       hasGram: "",
+      iscilikToplam: "",
+      tlTutar: tutar !== "" ? tutar : "",
       iscilikHesaplamaSekli: 0,
       iscilikiMiktari: "",
       iscilikHasGram: "",
       iscilikTutari: "",
+      iscilikKdvOrani: "",
+      iscilikKdvTutari: "",
       kur,
       tutar,
     };
@@ -574,12 +610,44 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
     tutar = sabitTutariKoru(r, kur, tutar);
   }
 
+  const iscilikToplam = iscilikTutari !== "" && parseDecimal(iscilikTutari) > 0
+    ? parseDecimal(iscilikTutari)
+    : (iscilikHasGram !== "" && parseDecimal(iscilikHasGram) > 0 && hasFiyati > 0
+      ? parseFloat((parseDecimal(iscilikHasGram) * hasFiyati).toFixed(2))
+      : "");
+
+  let iscilikKdvOrani = r.iscilikKdvOrani !== undefined && r.iscilikKdvOrani !== null ? r.iscilikKdvOrani : "";
+  let iscilikKdvTutari = r.iscilikKdvTutari !== undefined && r.iscilikKdvTutari !== null ? r.iscilikKdvTutari : "";
+
+  if (changedField === "iscilikKdvOrani") {
+    const oranVal = parseDecimal(iscilikKdvOrani);
+    const iscTop = parseDecimal(iscilikToplam);
+    if (oranVal > 0 && iscTop > 0) {
+      iscilikKdvTutari = parseFloat(((iscTop * oranVal) / 100).toFixed(2));
+    } else if (iscilikKdvOrani === "" || oranVal === 0) {
+      iscilikKdvTutari = "";
+    }
+  } else if (changedField === "iscilikKdvTutari") {
+    // Doğrudan KDV tutarı girildiğinde koru
+  } else {
+    // Diğer alanlar değiştiğinde eğer KDV oranı varsa KDV tutarını güncelle
+    const oranVal = parseDecimal(iscilikKdvOrani);
+    const iscTop = parseDecimal(iscilikToplam);
+    if (oranVal > 0 && iscTop > 0) {
+      iscilikKdvTutari = parseFloat(((iscTop * oranVal) / 100).toFixed(2));
+    }
+  }
+
   return {
     ...r,
     iscilikiMiktari,
     hasGram,
+    iscilikToplam: iscilikToplam !== "" ? iscilikToplam : "",
+    tlTutar: tutar !== "" ? tutar : "",
     iscilikHasGram,
     iscilikTutari,
+    iscilikKdvOrani,
+    iscilikKdvTutari,
     kur,
     tutar,
   };
@@ -842,6 +910,42 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, []);
 
   // Header State
+  const GRID_COL_STORAGE_KEY = `sarraf_fis_grid_cols_${user?.id || "default"}`;
+
+  const defaultColVisibility = {
+    urunAdi: true,
+    adet: true,
+    miktar: true,
+    milyem: true,
+    hasGram: true,
+    iscilikToplam: true,
+    tlTutar: true,
+    iscilikHesaplamaSekli: true,
+    iscilikiMiktari: true,
+    iscilikHasGram: true,
+    iscilikTutari: true,
+    iscilikKdvOrani: true,
+    iscilikKdvTutari: true,
+    kur: true,
+    tutar: true,
+  };
+
+  const [colVisibility, setColVisibility] = useState<typeof defaultColVisibility>(() => {
+    try {
+      const stored = localStorage.getItem(GRID_COL_STORAGE_KEY);
+      if (stored) return { ...defaultColVisibility, ...JSON.parse(stored) };
+    } catch { }
+    return defaultColVisibility;
+  });
+
+  const toggleCol = (col: keyof typeof defaultColVisibility) => {
+    setColVisibility((prev) => {
+      const next = { ...prev, [col]: !prev[col] };
+      try { localStorage.setItem(GRID_COL_STORAGE_KEY, JSON.stringify(next)); } catch { }
+      return next;
+    });
+  };
+
   const [fisId, setFisId] = useState<number | null>(null);
   const [fisNo, setFisNo] = useState("");
   const [seriNo, setSeriNo] = useState("");
@@ -1162,6 +1266,46 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [isPendingDirectPrint, setIsPendingDirectPrint] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  const hasSayfaVerisi = useMemo(() => {
+    if (fisId !== null && fisId > 0) return true;
+    if (cariKartId !== null && cariKartId > 0) return true;
+    if ((cariKod || "").trim() !== "") return true;
+    if ((unvan || "").trim() !== "" && !isAnonymousCustomerName(unvan)) return true;
+    if ((detayVergiKimlikNo || "").trim() !== "") return true;
+    if ((detayPasaportNo || "").trim() !== "") return true;
+    if ((detayTelefonNo || "").trim() !== "") return true;
+    if ((detayAdres || "").trim() !== "") return true;
+    const hasLineData = lines.some(
+      (r) =>
+        Boolean((r.urunKodu || "").trim()) ||
+        Boolean((r.urunAdi || "").trim()) ||
+        Number(r.urunId) > 0 ||
+        parseDecimal(r.adet) > 0 ||
+        parseDecimal(r.miktar) > 0 ||
+        parseDecimal(r.tutar) > 0 ||
+        parseDecimal(r.iscilikiMiktari) > 0 ||
+        parseDecimal(r.iscilikTutari) > 0
+    );
+    if (hasLineData) return true;
+    const hasOdemeData = odemeRows.some(
+      (r) =>
+        Boolean((r.paraKodu || "").trim()) ||
+        Boolean((r.paraAdi || "").trim()) ||
+        Boolean((r.cariKod || "").trim()) ||
+        Boolean((r.aciklama || "").trim()) ||
+        Boolean(r.cariKartId) ||
+        Boolean(r.bankaId) ||
+        Boolean(r.posCihaziId) ||
+        Boolean(r.iskontoId) ||
+        parseDecimal(r.adet) > 0 ||
+        parseDecimal(r.miktar) > 0 ||
+        parseDecimal(r.tutar) > 0
+    );
+    return hasOdemeData;
+  }, [fisId, cariKartId, cariKod, unvan, detayVergiKimlikNo, detayPasaportNo, detayTelefonNo, detayAdres, lines, odemeRows]);
+
+  const cikisUyarisi = useSayfaCikisUyarisi(hasSayfaVerisi);
+
   // Totals (Kalemler)
   const totalAdet = lines.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
   const totalMiktar = lines.reduce((s, r) => s + (parseDecimal(r.miktar) || 0), 0);
@@ -1169,6 +1313,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const totalIscilikMiktari = lines.reduce((s, r) => s + (parseDecimal(formatIscilikGirisDegeri(r.iscilikiMiktari, userIscilikGirisSekli)) || 0), 0);
   const totalIscilikHasGram = lines.reduce((s, r) => s + (parseDecimal(r.iscilikHasGram) || 0), 0);
   const totalIscilikTutari = lines.reduce((s, r) => s + (parseDecimal(r.iscilikTutari) || 0), 0);
+  const totalIscilikToplam = lines.reduce((s, r) => s + (parseDecimal(r.iscilikToplam ?? r.iscilikTutari) || 0), 0);
+  const totalIscilikKdvTutari = lines.reduce((s, r) => {
+    const rowKdv = parseDecimal(r.iscilikKdvTutari);
+    if (rowKdv > 0) return s + rowKdv;
+    const oran = parseDecimal(r.iscilikKdvOrani) || parseDecimal(kdvOrani) || 0;
+    const rowIscTop = parseDecimal(r.iscilikToplam) || parseDecimal(r.iscilikTutari) || 0;
+    if (oran > 0 && rowIscTop > 0) {
+      return s + (rowIscTop * oran) / 100;
+    }
+    const ihg = parseDecimal(r.iscilikHasGram);
+    const hk = parseDecimal(altinHasKuru) || parseDecimal(r.kur) || 0;
+    if (oran > 0 && ihg > 0 && hk > 0) {
+      return s + (ihg * hk * oran) / 100;
+    }
+    const it = parseDecimal(r.iscilikTutari);
+    if (oran > 0 && it > 0) {
+      return s + (it * oran) / 100;
+    }
+    return s;
+  }, 0);
   const totalTutar = useMemo(() => {
     const hasRows = lines.filter((r) => (parseDecimal(r.hasGram) || 0) > 0 || (parseDecimal(r.iscilikHasGram) || 0) > 0);
     const nonHasRowsTutar = lines
@@ -1185,10 +1349,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const hasToplamTutar = allSameKur
       ? (totalHasGram + totalIscilikHasGram) * kurlar[0]
       : hasRows.reduce((s, r) => {
-          const rowHas = (parseDecimal(r.hasGram) || 0) + (parseDecimal(r.iscilikHasGram) || 0);
-          const rowKur = parseDecimal(r.kur) || parseDecimal(altinHasKuru) || 0;
-          return s + rowHas * rowKur;
-        }, 0);
+        const rowHas = (parseDecimal(r.hasGram) || 0) + (parseDecimal(r.iscilikHasGram) || 0);
+        const rowKur = parseDecimal(r.kur) || parseDecimal(altinHasKuru) || 0;
+        return s + rowHas * rowKur;
+      }, 0);
 
     return parseFloat((hasToplamTutar + nonHasRowsTutar).toFixed(2));
   }, [lines, totalHasGram, totalIscilikHasGram, altinHasKuru]);
@@ -1328,6 +1492,25 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
+
+  const activeStat = useMemo(() => {
+    if (istatistikKodu && istatistikKodu.trim()) {
+      const match = statisticList.find((s) => (s.kod && s.kod.trim().toLowerCase() === istatistikKodu.trim().toLowerCase()) || (istatistikId && s.id === istatistikId));
+      if (match) return match;
+    }
+    if (selectedStatistic) return selectedStatistic;
+    if (istatistikId) {
+      const match = statisticList.find((s) => s.id === istatistikId);
+      if (match) return match;
+    }
+    return null;
+  }, [selectedStatistic, statisticList, istatistikId, istatistikKodu]);
+
+  const isKdvDisabled = useMemo(() => {
+    const rawVal = activeStat?.fisDizaynTipi ?? (activeStat as any)?.FIS_DIZAYN_TIPI ?? (activeStat as any)?.fis_dizayn_tipi ?? istatistikFisDizaynTipi;
+    if (rawVal === undefined || rawVal === null || rawVal === "") return false;
+    return Number(rawVal) === 1;
+  }, [istatistikFisDizaynTipi, activeStat]);
   const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
   const prevTipRef = useRef<number>(tip);
 
@@ -1731,7 +1914,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setIstatistikId(item.id);
     setIstatistikKodu(item.kod);
     setSelectedStatistic(item as any);
-    const dizaynTipi = Number(item.fisDizaynTipi ?? (item as any).tip ?? 0);
+    const dizaynTipi = item.fisDizaynTipi !== undefined && item.fisDizaynTipi !== null
+      ? Number(item.fisDizaynTipi)
+      : ((item as any).FIS_DIZAYN_TIPI !== undefined && (item as any).FIS_DIZAYN_TIPI !== null ? Number((item as any).FIS_DIZAYN_TIPI) : 0);
     setIstatistikFisDizaynTipi(dizaynTipi);
     setStatisticList((prev) => {
       const idx = prev.findIndex((s) => s.id === item.id || s.kod === item.kod);
@@ -1877,17 +2062,30 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const st = (statisticList || []).find((s) => s.id === data.istatistikId || s.kod === data.istatistikKodu);
         const statKod = data.istatistikKodu || st?.kod || "";
         setIstatistikKodu(statKod);
+        if (st) {
+          setSelectedStatistic(st);
+          const dizayn = st.fisDizaynTipi !== undefined && st.fisDizaynTipi !== null ? Number(st.fisDizaynTipi) : 0;
+          setIstatistikFisDizaynTipi(dizayn);
+        }
         lastFocusedIstatistikKodRef.current = statKod;
       } else if (data.istatistikKodu) {
         setIstatistikKodu(data.istatistikKodu);
         lastFocusedIstatistikKodRef.current = data.istatistikKodu;
         const st = (statisticList || []).find((s) => s.kod === data.istatistikKodu);
-        if (st) setIstatistikId(st.id);
+        if (st) {
+          setIstatistikId(st.id);
+          setSelectedStatistic(st);
+          const dizayn = st.fisDizaynTipi !== undefined && st.fisDizaynTipi !== null ? Number(st.fisDizaynTipi) : 0;
+          setIstatistikFisDizaynTipi(dizayn);
+        }
       } else {
         const defStat = getDefaultStatistic(Number(data.tip) === 1 ? 1 : 0);
         if (defStat) {
           setIstatistikId(defStat.id);
           setIstatistikKodu(defStat.kod);
+          setSelectedStatistic(defStat);
+          const dizayn = defStat.fisDizaynTipi !== undefined && defStat.fisDizaynTipi !== null ? Number(defStat.fisDizaynTipi) : 0;
+          setIstatistikFisDizaynTipi(dizayn);
           lastFocusedIstatistikKodRef.current = defStat.kod;
         }
       }
@@ -1949,6 +2147,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             iscilikiMiktari: s.iscilikiMiktari != null && s.iscilikiMiktari !== "" ? s.iscilikiMiktari : "",
             iscilikHasGram: s.iscilikHasGram != null ? s.iscilikHasGram : "",
             iscilikTutari: s.iscilikTutari != null ? s.iscilikTutari : "",
+            iscilikKdvOrani: s.iscilikKdvOrani != null ? s.iscilikKdvOrani : (s.kdvOrani != null ? s.kdvOrani : ""),
+            iscilikKdvTutari: s.iscilikKdvTutari != null ? s.iscilikKdvTutari : (s.kdvTutari != null ? s.kdvTutari : ""),
             kur: s.kur != null ? s.kur : "",
             tutar: s.tutar != null ? s.tutar : "",
             urunTipi: matchedUrun?.urunTipi !== undefined && matchedUrun?.urunTipi !== null ? Number(matchedUrun.urunTipi) : (s.urunTipi || 0),
@@ -2121,6 +2321,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const defStat = getDefaultStatistic(0);
     setIstatistikId(defStat ? defStat.id : null);
     setIstatistikKodu(defStat ? defStat.kod : "");
+    setSelectedStatistic(defStat || null);
+    const dizayn = defStat && defStat.fisDizaynTipi !== undefined && defStat.fisDizaynTipi !== null ? Number(defStat.fisDizaynTipi) : null;
+    setIstatistikFisDizaynTipi(dizayn);
     setLines([createEmptyRow(1)]);
     setActiveRowIndex(0);
     setOdemeRows([createEmptyOdemeRow(1)]);
@@ -2273,6 +2476,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           if (defStat) {
             setIstatistikId(defStat.id);
             setIstatistikKodu(defStat.kod);
+            setSelectedStatistic(defStat);
+            const dizayn = defStat.fisDizaynTipi !== undefined && defStat.fisDizaynTipi !== null ? Number(defStat.fisDizaynTipi) : 0;
+            setIstatistikFisDizaynTipi(dizayn);
+            lastFocusedIstatistikKodRef.current = defStat.kod;
           }
         }
       } else {
@@ -2734,6 +2941,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             iscilikiMiktari: isPZ ? 0 : (parseDecimal(formatIscilikGirisDegeri(l.iscilikiMiktari, userIscilikGirisSekli)) || 0),
             iscilikHasGram: isPZ ? 0 : (parseDecimal(l.iscilikHasGram) || 0),
             iscilikTutari: isPZ ? 0 : (parseDecimal(l.iscilikTutari) || 0),
+            iscilikKdvOrani: isPZ ? null : (parseDecimal(l.iscilikKdvOrani) || null),
+            iscilikKdvTutari: isPZ ? null : (parseDecimal(l.iscilikKdvTutari) || null),
             iscilikHesaplamaSekli: isPZ ? 0 : (l.iscilikHesaplamaSekli !== undefined && l.iscilikHesaplamaSekli !== null && !isNaN(Number(l.iscilikHesaplamaSekli)) ? Number(l.iscilikHesaplamaSekli) : 0),
             aciklama: l.aciklama || null,
             kur: parseDecimal(l.kur) || 0,
@@ -4204,6 +4413,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const n = parseDecimal(val);
         val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
       }
+      if (field === "iscilikKdvOrani") {
+        const n = parseDecimal(val);
+        val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
+      }
+      if (field === "iscilikKdvTutari") {
+        const n = parseDecimal(val);
+        val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
+      }
       if (field === "milyem") {
         const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
         const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
@@ -4789,41 +5006,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
   // Open product modal with eager data fetch if not empty
   const openUrunModal = useCallback(async (rowId: string, initialSearch?: string) => {
-    const row = lines.find((r) => r.id === rowId);
-    const search = initialSearch !== undefined ? initialSearch.trim() : (row?.urunKodu || "").trim();
-    if (search && urunList.length > 0) {
-      const t = search.toLowerCase();
-      const matches = urunList.filter((u) => {
-        const k = (u.kod || "").trim().toUpperCase();
-        if (k === "TL" || k === "TRY") return false;
-        return (
-          (u.kod || "").toLowerCase().includes(t) ||
-          (u.ad || "").toLowerCase().includes(t) ||
-          ((u as any).barkod || "").toLowerCase().includes(t) ||
-          ((u as any).model || "").toLowerCase().includes(t) ||
-          ((u as any).ayar || "").toLowerCase().includes(t) ||
-          ((u as any).grupKodu || "").toLowerCase().includes(t) ||
-          ((u as any).aciklama || "").toLowerCase().includes(t) ||
-          ((u as any).mamulTipi || "").toLowerCase().includes(t)
-        );
-      });
-      if (matches.length === 1) {
-        lastModalCallerRef.current = null;
-        lastKalemModalRowIdRef.current = null;
-        applyProductToRow(rowId, matches[0]);
-        const isZiynet = matches[0].urunTipi === 3 || isZiynetProduct(matches[0]);
-        const isPara = matches[0].urunTipi === 0;
-        const isParaOrZiynet = isPara || isZiynet;
-        setTimeout(() => {
-          focusGridCell(rowId, isParaOrZiynet ? "adet" : "miktar", "select");
-        }, 30);
-        return;
-      }
-    }
+    lastModalCallerRef.current = "gridKalem";
+    lastKalemModalRowIdRef.current = rowId;
     activeRowIdForUrunRef.current = rowId;
     activeOdemeRowIdForUrunRef.current = null;
     setActiveRowIdForUrun(rowId);
     setActiveOdemeRowIdForUrun(null);
+    const row = lines.find((r) => r.id === rowId);
+    const search = initialSearch !== undefined ? initialSearch.trim() : (row?.urunKodu || "").trim();
     setUrunSearchTerm(search);
     setShowUrunModal(true);
     if (urunList.length === 0) {
@@ -4845,7 +5035,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
       }).catch(() => { });
     }
-  }, [lines, urunList, applyProductToRow, focusGridCell]);
+  }, [lines, urunList]);
 
   const openOdemeParaIskontoModal = useCallback((rowId: string, initialSearch?: string) => {
     lastModalCallerRef.current = "gridOdeme";
@@ -5259,7 +5449,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setIstatistikId(single.id);
           setIstatistikKodu(single.kod);
           setSelectedStatistic(single);
-          setIstatistikFisDizaynTipi(Number(single.fisDizaynTipi));
+          const dizayn = single.fisDizaynTipi !== undefined && single.fisDizaynTipi !== null ? Number(single.fisDizaynTipi) : 0;
+          setIstatistikFisDizaynTipi(dizayn);
           lastFocusedIstatistikKodRef.current = single.kod;
           hasKuruRef.current?.focus();
           hasKuruRef.current?.select();
@@ -5359,14 +5550,19 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     }
 
     const isColPassive = (col: GridColKey, rIdx: number = rowIndex) => {
-      if (col === "urunAdi" || col === "hasGram" || col === "iscilikHasGram" || col === "tutar") return true;
+      if (col !== "urunKodu" && col in colVisibility && !colVisibility[col as keyof typeof colVisibility]) return true;
+      if (col === "urunAdi" || col === "hasGram" || col === "iscilikToplam" || col === "tlTutar" || col === "iscilikHasGram" || col === "tutar") return true;
       if (col === "kur" && !kurAcik) return true;
       if (col === "milyem" && !milyemAcik) return true;
       const currentRow = lines[rIdx];
-      const isPara = currentRow && currentRow.urunTipi === 0 && Boolean(currentRow.urunKodu && currentRow.urunKodu.trim());
-      const isZiynet = currentRow && (currentRow.urunTipi === 3 || isZiynetProduct({ urunTipi: currentRow.urunTipi, kod: currentRow.urunKodu, ad: currentRow.urunAdi }));
+      const effTipi = currentRow ? resolveEffectiveUrunTipi({ urunTipi: currentRow.urunTipi, kod: currentRow.urunKodu, ad: currentRow.urunAdi }) : 1;
+      const isPara = effTipi === 0 && Boolean(currentRow && currentRow.urunKodu && currentRow.urunKodu.trim());
+      const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: currentRow?.urunTipi, kod: currentRow?.urunKodu, ad: currentRow?.urunAdi });
       const isParaOrZiynet = isPara || isZiynet;
-      if (isParaOrZiynet && (col === "miktar" || col === "milyem" || col === "iscilikHesaplamaSekli" || col === "iscilikiMiktari" || col === "iscilikTutari")) {
+      if (isParaOrZiynet && (col === "miktar" || col === "milyem" || col === "iscilikHesaplamaSekli" || col === "iscilikiMiktari" || col === "iscilikTutari" || col === "iscilikKdvOrani" || col === "iscilikKdvTutari")) {
+        return true;
+      }
+      if ((col === "iscilikKdvOrani" || col === "iscilikKdvTutari") && isKdvDisabled) {
         return true;
       }
       return false;
@@ -5382,6 +5578,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
       if (colKey === "iscilikTutari") {
         normalizeRowOnBlur(rowId, "iscilikTutari");
+      }
+      if (colKey === "iscilikKdvOrani") {
+        normalizeRowOnBlur(rowId, "iscilikKdvOrani");
+      }
+      if (colKey === "iscilikKdvTutari") {
+        normalizeRowOnBlur(rowId, "iscilikKdvTutari");
       }
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
@@ -5479,6 +5681,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (colKey === "iscilikTutari") {
         normalizeRowOnBlur(rowId, "iscilikTutari");
       }
+      if (colKey === "iscilikKdvOrani") {
+        normalizeRowOnBlur(rowId, "iscilikKdvOrani");
+      }
+      if (colKey === "iscilikKdvTutari") {
+        normalizeRowOnBlur(rowId, "iscilikKdvTutari");
+      }
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
       }
@@ -5509,6 +5717,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (colKey === "iscilikTutari") {
         normalizeRowOnBlur(rowId, "iscilikTutari");
       }
+      if (colKey === "iscilikKdvOrani") {
+        normalizeRowOnBlur(rowId, "iscilikKdvOrani");
+      }
+      if (colKey === "iscilikKdvTutari") {
+        normalizeRowOnBlur(rowId, "iscilikKdvTutari");
+      }
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
       }
@@ -5526,6 +5740,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
       if (colKey === "iscilikTutari") {
         normalizeRowOnBlur(rowId, "iscilikTutari");
+      }
+      if (colKey === "iscilikKdvOrani") {
+        normalizeRowOnBlur(rowId, "iscilikKdvOrani");
+      }
+      if (colKey === "iscilikKdvTutari") {
+        normalizeRowOnBlur(rowId, "iscilikKdvTutari");
       }
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
@@ -6701,6 +6921,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                       if (defStat) {
                         setIstatistikId(defStat.id);
                         setIstatistikKodu(defStat.kod);
+                        setSelectedStatistic(defStat);
+                        const dizayn = defStat.fisDizaynTipi !== undefined && defStat.fisDizaynTipi !== null ? Number(defStat.fisDizaynTipi) : 0;
+                        setIstatistikFisDizaynTipi(dizayn);
+                        lastFocusedIstatistikKodRef.current = defStat.kod;
                       }
                       const newHasKuru = getHasKurForTip(newTip);
                       const newGumusKuru = getGumusKurForTip(newTip);
@@ -6751,6 +6975,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         if (defStat) {
                           setIstatistikId(defStat.id);
                           setIstatistikKodu(defStat.kod);
+                          setSelectedStatistic(defStat);
+                          const dizayn = defStat.fisDizaynTipi !== undefined && defStat.fisDizaynTipi !== null ? Number(defStat.fisDizaynTipi) : 0;
+                          setIstatistikFisDizaynTipi(dizayn);
+                          lastFocusedIstatistikKodRef.current = defStat.kod;
                         }
                         const newHasKuru = getHasKurForTip(newTip);
                         const newGumusKuru = getGumusKurForTip(newTip);
@@ -7060,7 +7288,32 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                       onChange={(e) => {
                         const val = e.target.value.slice(0, 20);
                         setIstatistikKodu(val);
-                        if (!val.trim()) setIstatistikId(null);
+                        const clean = val.trim().toLowerCase();
+                        if (!clean) {
+                          setIstatistikId(null);
+                          setSelectedStatistic(null);
+                          setIstatistikFisDizaynTipi(null);
+                        } else {
+                          const match = statisticList.find((s) => s.kod && s.kod.trim().toLowerCase() === clean);
+                          if (match) {
+                            setIstatistikId(match.id);
+                            setSelectedStatistic(match);
+                            const dizayn = match.fisDizaynTipi !== undefined && match.fisDizaynTipi !== null ? Number(match.fisDizaynTipi) : 0;
+                            setIstatistikFisDizaynTipi(dizayn);
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        const clean = (istatistikKodu || "").trim().toLowerCase();
+                        if (clean) {
+                          const match = statisticList.find((s) => s.kod && s.kod.trim().toLowerCase() === clean);
+                          if (match) {
+                            setIstatistikId(match.id);
+                            setSelectedStatistic(match);
+                            const dizayn = match.fisDizaynTipi !== undefined && match.fisDizaynTipi !== null ? Number(match.fisDizaynTipi) : 0;
+                            setIstatistikFisDizaynTipi(dizayn);
+                          }
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "F3") {
@@ -7079,7 +7332,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                               setIstatistikId(single.id);
                               setIstatistikKodu(single.kod);
                               setSelectedStatistic(single);
-                              setIstatistikFisDizaynTipi(Number(single.fisDizaynTipi));
+                              const dizayn = single.fisDizaynTipi !== undefined && single.fisDizaynTipi !== null ? Number(single.fisDizaynTipi) : 0;
+          setIstatistikFisDizaynTipi(dizayn);
                               lastFocusedIstatistikKodRef.current = single.kod;
                               hasKuruRef.current?.focus();
                               hasKuruRef.current?.select();
@@ -7156,11 +7410,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
                 {/* e-Belge KDV kodu (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF29): kuyumculuk GİB kodları dürbünü */}
                 <div className="d-flex align-items-center gap-1">
-                  <label style={{ fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap" }} className="mb-0 text-secondary"
+                  <label style={{ fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", opacity: isKdvDisabled ? 0.6 : 1 }} className="mb-0 text-secondary"
                     title={tip === 0 ? "Alış fişi gider pusulasına gider; GİB gider pusulasında bu kod yazılmaz, fişte saklanır." : "Faturada altın satırı KDV %0 ile bu kodla gider (805 seçiliyken gümüş 808)."}>
                     KDV Kodu
                   </label>
-                  <KuyumKodDurbun value={istisnaKodu} onChange={setIstisnaKodu} isInvalid={tip === 1 && !(parseDecimal(kdvOrani) > 0) && !istisnaKodu.trim()} />
+                  <KuyumKodDurbun
+                    value={istisnaKodu}
+                    onChange={setIstisnaKodu}
+                    disabled={isKdvDisabled}
+                    isInvalid={!isKdvDisabled && tip === 1 && !(parseDecimal(kdvOrani) > 0) && !istisnaKodu.trim()}
+                  />
                   {tip === 0 && <span className="text-muted" style={{ fontSize: "10px", whiteSpace: "nowrap" }}>(gider pusulasına yazılmaz)</span>}
                 </div>
               </div>
@@ -7231,23 +7490,86 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       {/* ─── 2. Satır Tablosu (Kalemler) (Ayrı Dış Dikdörtgen Kutu) ─── */}
       <Card className="shadow-sm mb-2 border rounded-2 fis-theme-card" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
         <Card.Body className="p-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+          {/* Kolon Görünürlük Kontrol Şeridi */}
+          <div className="d-flex align-items-center justify-content-end gap-1" style={{ marginBottom: "2px", lineHeight: 1 }}>
+            <Dropdown autoClose="outside" align="end">
+              <Dropdown.Toggle
+                variant="outline-secondary"
+                size="sm"
+                className="d-flex align-items-center gap-1 py-0 px-1.5"
+                style={{ fontSize: "11px", height: "20px", lineHeight: 1 }}
+                id="sarraf-grid-col-toggle"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+                Kolonlar
+              </Dropdown.Toggle>
+              <Dropdown.Menu
+                popperConfig={{ strategy: "fixed" }}
+                style={{ minWidth: "185px", fontSize: "13px", padding: "6px 4px", zIndex: 2050, maxHeight: "360px", overflowY: "auto" }}
+              >
+                <div className="px-2 pb-1 text-muted" style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.5px" }}>GÖRÜNÜR KOLONLAR</div>
+                {([
+                  { key: "urunAdi", label: "Ürün Adı" },
+                  { key: "adet", label: "Adet" },
+                  { key: "miktar", label: "Miktar" },
+                  { key: "milyem", label: "Milyem" },
+                  { key: "hasGram", label: "Has" },
+                  { key: "iscilikToplam", label: "İşçilik Toplam" },
+                  { key: "tlTutar", label: "TL Tutar" },
+                  { key: "iscilikHesaplamaSekli", label: "İşçilik Şekli" },
+                  { key: "iscilikiMiktari", label: userIscilikGirisSekli === 0 ? "İşçilik/T" : "İşçilik/M" },
+                  { key: "iscilikHasGram", label: "İşçilik (Has)" },
+                  { key: "iscilikTutari", label: "İşçilik (TL)" },
+                  { key: "iscilikKdvOrani", label: "İşçilik KDV (%)" },
+                  { key: "iscilikKdvTutari", label: "İşçilik KDV Tutar" },
+                  { key: "kur", label: "Kur" },
+                  { key: "tutar", label: "Tutar" },
+                ] as { key: keyof typeof defaultColVisibility; label: string }[]).map(({ key, label }) => (
+                  <Dropdown.Item
+                    key={key}
+                    as="button"
+                    className="d-flex align-items-center gap-2 py-1"
+                    onClick={() => toggleCol(key)}
+                  >
+                    <span
+                      style={{
+                        width: "14px", height: "14px", border: "1.5px solid #6c757d",
+                        borderRadius: "3px", display: "inline-flex", alignItems: "center",
+                        justifyContent: "center", flexShrink: 0,
+                        backgroundColor: colVisibility[key] ? "#0d6efd" : "transparent",
+                      }}
+                    >
+                      {colVisibility[key] && (
+                        <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2.5"><polyline points="1,6 4,9 11,2" /></svg>
+                      )}
+                    </span>
+                    <span style={{ color: colVisibility[key] ? "#212529" : "#adb5bd" }}>{label}</span>
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown>
+          </div>
           <div style={{ overflowX: "auto" }}>
-            <Table bordered size="sm" hover className="mb-0" style={{ fontSize: "11.5px", minWidth: 1050 }}>
+            <Table bordered size="sm" hover className="mb-0" style={{ fontSize: "11.5px", width: "100%" }}>
               <thead style={{ background: "#d9e8fb", color: "#000" }}>
                 <tr className="text-center align-middle">
                   <th style={{ width: 25 }} className="text-center">#</th>
                   <th style={{ width: 110 }} className="text-center">Ürün kodu</th>
-                  <th style={{ width: 140 }} className="text-center">Ürün adı</th>
-                  <th style={{ width: 55 }} className="text-center">Adet</th>
-                  <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth }} className="text-center">Miktar</th>
-                  <th style={{ width: 70 }} className="text-center">Milyem</th>
-                  <th style={{ width: 85 }} className="text-center">Has</th>
-                  <th style={{ width: 85 }} className="text-center">İşçilik şekli</th>
-                  <th style={{ width: 85 }} className="text-center">{userIscilikGirisSekli === 0 ? "İşçilik/T" : "İşçilik/M"}</th>
-                  <th style={{ width: 85 }} className="text-center">İşçilik (Has)</th>
-                  <th style={{ width: 90 }} className="text-center">İşçilik (TL)</th>
-                  <th style={{ width: 105 }} className="text-center">Kur</th>
-                  <th style={{ width: 110 }} className="text-center">Tutar (TL)</th>
+                  {colVisibility.urunAdi && <th style={{ width: 140 }} className="text-center">Ürün adı</th>}
+                  {colVisibility.adet && <th style={{ width: 55 }} className="text-center">Adet</th>}
+                  {colVisibility.miktar && <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth }} className="text-center">Miktar</th>}
+                  {colVisibility.milyem && <th style={{ width: 70 }} className="text-center">Milyem</th>}
+                  {colVisibility.hasGram && <th style={{ width: 85 }} className="text-center">Has</th>}
+                  {colVisibility.iscilikToplam && <th style={{ width: 95 }} className="text-center">İşçilik Toplam</th>}
+                  {colVisibility.tlTutar && <th style={{ width: 95 }} className="text-center">TL Tutar</th>}
+                  {colVisibility.iscilikHesaplamaSekli && <th style={{ width: 85 }} className="text-center">İşçilik şekli</th>}
+                  {colVisibility.iscilikiMiktari && <th style={{ width: 85 }} className="text-center">{userIscilikGirisSekli === 0 ? "İşçilik/T" : "İşçilik/M"}</th>}
+                  {colVisibility.iscilikHasGram && <th style={{ width: 85 }} className="text-center">İşçilik (Has)</th>}
+                  {colVisibility.iscilikTutari && <th style={{ width: 90 }} className="text-center">İşçilik (TL)</th>}
+                  {colVisibility.iscilikKdvOrani && <th style={{ width: 80 }} className="text-center">İşçilik KDV (%)</th>}
+                  {colVisibility.iscilikKdvTutari && <th style={{ width: 95 }} className="text-center">İşçilik KDV Tutar</th>}
+                  {colVisibility.kur && <th style={{ width: 105 }} className="text-center">Kur</th>}
+                  {colVisibility.tutar && <th style={{ width: 110 }} className="text-center">Tutar</th>}
                 </tr>
               </thead>
               <tbody>
@@ -7367,300 +7689,431 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                       </td>
 
                       {/* Ürün adı - read only */}
-                      <td>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_urunAdi`] = el; }}
-                          size="sm"
-                          value={row.urunAdi}
-                          readOnly
-                          onFocus={handleKalemRowFocus}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "urunAdi", row.id)}
-                          style={{ fontSize: "11px", padding: "1px 4px", background: "#e9ecef" }}
-                        />
-                      </td>
+                      {colVisibility.urunAdi && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_urunAdi`] = el; }}
+                            size="sm"
+                            value={row.urunAdi}
+                            readOnly
+                            onFocus={handleKalemRowFocus}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "urunAdi", row.id)}
+                            style={{ fontSize: "11px", padding: "1px 4px", background: "#e9ecef" }}
+                          />
+                        </td>
+                      )}
 
                       {/* Adet */}
-                      <td>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_adet`] = el; }}
-                          inputMode={isPara ? "decimal" : "numeric"}
-                          data-decimal={isPara ? "true" : undefined}
-                          size="sm"
-                          readOnly={false}
-                          className={`text-end font-monospace ${isAdetMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""}`}
-                          value={row.adet ?? ""}
-                          onChange={(e) => updateRow(row.id, "adet", e.target.value)}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "adet", row.id)}
-                          onBlur={() => setInvalidRowIds((prev) => ({ ...prev, [row.id]: true }))}
-                          onFocus={handleKalemRowFocus}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: isAdetMissing ? "#fee2e2" : undefined,
-                            border: isAdetMissing ? "2px solid #dc2626" : undefined,
-                            boxShadow: isAdetMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
-                          }}
-                          title={isAdetMissing ? "Lütfen adet giriniz" : undefined}
-                        />
-                      </td>
+                      {colVisibility.adet && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_adet`] = el; }}
+                            inputMode={isPara ? "decimal" : "numeric"}
+                            data-decimal={isPara ? "true" : undefined}
+                            size="sm"
+                            readOnly={false}
+                            className={`text-end font-monospace ${isAdetMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""}`}
+                            value={row.adet ?? ""}
+                            onChange={(e) => updateRow(row.id, "adet", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "adet", row.id)}
+                            onBlur={() => setInvalidRowIds((prev) => ({ ...prev, [row.id]: true }))}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: isAdetMissing ? "#fee2e2" : undefined,
+                              border: isAdetMissing ? "2px solid #dc2626" : undefined,
+                              boxShadow: isAdetMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
+                            }}
+                            title={isAdetMissing ? "Lütfen adet giriniz" : undefined}
+                          />
+                        </td>
+                      )}
 
                       {/* Miktar */}
-                      <td style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, backgroundColor: isMiktarMissing ? "#fee2e2" : (isParaOrZiynet ? "#e9ecef" : undefined) }}>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_miktar`] = el; }}
-                          inputMode="decimal"
-                          size="sm"
-                          readOnly={isParaOrZiynet}
-                          tabIndex={isParaOrZiynet ? -1 : undefined}
-                          className={`text-end font-monospace ${isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""} ${isParaOrZiynet ? "text-muted" : ""}`}
-                          value={isParaOrZiynet ? "" : (row.miktar ?? "")}
-                          onChange={(e) => !isParaOrZiynet && updateRow(row.id, "miktar", e.target.value)}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "miktar", row.id)}
-                          onBlur={() => normalizeRowOnBlur(row.id, "miktar")}
-                          onFocus={handleKalemRowFocus}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: isParaOrZiynet ? "#e9ecef" : (isMiktarMissing ? "#fee2e2" : undefined),
-                            border: isMiktarMissing ? "2px solid #dc2626" : undefined,
-                            boxShadow: isMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
-                            cursor: isParaOrZiynet ? "not-allowed" : undefined,
-                          }}
-                          title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde adet çalışır, miktar pasiftir" : isMiktarMissing ? "Lütfen miktar giriniz" : undefined}
-                        />
-                      </td>
+                      {colVisibility.miktar && (
+                        <td style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, backgroundColor: isMiktarMissing ? "#fee2e2" : (isParaOrZiynet ? "#e9ecef" : undefined) }}>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_miktar`] = el; }}
+                            inputMode="decimal"
+                            size="sm"
+                            readOnly={isParaOrZiynet}
+                            tabIndex={isParaOrZiynet ? -1 : undefined}
+                            className={`text-end font-monospace ${isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""} ${isParaOrZiynet ? "text-muted" : ""}`}
+                            value={isParaOrZiynet ? "" : (row.miktar ?? "")}
+                            onChange={(e) => !isParaOrZiynet && updateRow(row.id, "miktar", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "miktar", row.id)}
+                            onBlur={() => normalizeRowOnBlur(row.id, "miktar")}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: isParaOrZiynet ? "#e9ecef" : (isMiktarMissing ? "#fee2e2" : undefined),
+                              border: isMiktarMissing ? "2px solid #dc2626" : undefined,
+                              boxShadow: isMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
+                              cursor: isParaOrZiynet ? "not-allowed" : undefined,
+                            }}
+                            title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde adet çalışır, miktar pasiftir" : isMiktarMissing ? "Lütfen miktar giriniz" : undefined}
+                          />
+                        </td>
+                      )}
 
                       {/* Milyem */}
-                      <td
-                        style={{
-                          backgroundColor: (isParaOrZiynet || !milyemAcik) ? "#e9ecef" : undefined,
-                          cursor: (isParaOrZiynet || !milyemAcik) ? "not-allowed" : undefined,
-                        }}
-                        title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde milyem girilmez" : (!milyemAcik ? "Milyem değiştirme yetkiniz yok" : undefined)}
-                      >
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_milyem`] = el; }}
-                          inputMode="decimal"
-                          data-decimal="true"
-                          size="sm"
-                          disabled={isParaOrZiynet || !milyemAcik}
-                          readOnly={isParaOrZiynet || !milyemAcik}
-                          tabIndex={isParaOrZiynet || !milyemAcik ? -1 : undefined}
-                          className={`text-end font-monospace ${(isParaOrZiynet || !milyemAcik) ? "text-muted" : ""}`}
-                          value={isParaOrZiynet ? "" : row.milyem}
-                          onChange={(e) => !isParaOrZiynet && milyemAcik && updateRow(row.id, "milyem", e.target.value)}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "milyem", row.id)}
-                          onBlur={() => !isParaOrZiynet && milyemAcik && normalizeRowOnBlur(row.id, "milyem")}
-                          onFocus={(e) => {
-                            if (isParaOrZiynet || !milyemAcik) {
-                              e.currentTarget.blur();
-                              return;
-                            }
-                            handleKalemRowFocus();
-                            if (!row.refMilyem && row.milyem && parseDecimal(row.milyem) > 0) {
-                              row.refMilyem = row.milyem;
-                            }
-                          }}
+                      {colVisibility.milyem && (
+                        <td
                           style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
                             backgroundColor: (isParaOrZiynet || !milyemAcik) ? "#e9ecef" : undefined,
                             cursor: (isParaOrZiynet || !milyemAcik) ? "not-allowed" : undefined,
-                            pointerEvents: (isParaOrZiynet || !milyemAcik) ? "none" : undefined,
-                            userSelect: (isParaOrZiynet || !milyemAcik) ? "none" : undefined,
                           }}
                           title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde milyem girilmez" : (!milyemAcik ? "Milyem değiştirme yetkiniz yok" : undefined)}
-                        />
-                      </td>
+                        >
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_milyem`] = el; }}
+                            inputMode="decimal"
+                            data-decimal="true"
+                            size="sm"
+                            disabled={isParaOrZiynet || !milyemAcik}
+                            readOnly={isParaOrZiynet || !milyemAcik}
+                            tabIndex={isParaOrZiynet || !milyemAcik ? -1 : undefined}
+                            className={`text-end font-monospace ${(isParaOrZiynet || !milyemAcik) ? "text-muted" : ""}`}
+                            value={isParaOrZiynet ? "" : row.milyem}
+                            onChange={(e) => !isParaOrZiynet && milyemAcik && updateRow(row.id, "milyem", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "milyem", row.id)}
+                            onBlur={() => !isParaOrZiynet && milyemAcik && normalizeRowOnBlur(row.id, "milyem")}
+                            onFocus={(e) => {
+                              if (isParaOrZiynet || !milyemAcik) {
+                                e.currentTarget.blur();
+                                return;
+                              }
+                              handleKalemRowFocus();
+                              if (!row.refMilyem && row.milyem && parseDecimal(row.milyem) > 0) {
+                                row.refMilyem = row.milyem;
+                              }
+                            }}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: (isParaOrZiynet || !milyemAcik) ? "#e9ecef" : undefined,
+                              cursor: (isParaOrZiynet || !milyemAcik) ? "not-allowed" : undefined,
+                              pointerEvents: (isParaOrZiynet || !milyemAcik) ? "none" : undefined,
+                              userSelect: (isParaOrZiynet || !milyemAcik) ? "none" : undefined,
+                            }}
+                            title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde milyem girilmez" : (!milyemAcik ? "Milyem değiştirme yetkiniz yok" : undefined)}
+                          />
+                        </td>
+                      )}
 
                       {/* Has (Gr) - Pasif / Otomatik Hesaplanır */}
-                      <td>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_hasGram`] = el; }}
-                          readOnly
-                          tabIndex={-1}
-                          size="sm"
-                          className="text-end font-monospace text-muted"
-                          value={isParaOrZiynet ? "" : (row.hasGram !== "" && !isNaN(Number(row.hasGram)) ? Number(row.hasGram).toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : row.hasGram)}
-                          onFocus={handleKalemRowFocus}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "hasGram", row.id)}
-                          style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
-                          title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde has gram hesaplanmaz" : "Altın has gramı otomatik hesaplanır, değiştirilemez"}
-                        />
-                      </td>
+                      {colVisibility.hasGram && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_hasGram`] = el; }}
+                            readOnly
+                            tabIndex={-1}
+                            size="sm"
+                            className="text-end font-monospace text-muted"
+                            value={isParaOrZiynet ? "" : (row.hasGram !== "" && !isNaN(Number(row.hasGram)) ? Number(row.hasGram).toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : row.hasGram)}
+                            onFocus={handleKalemRowFocus}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "hasGram", row.id)}
+                            style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
+                            title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde has gram hesaplanmaz" : "Altın has gramı otomatik hesaplanır, değiştirilemez"}
+                          />
+                        </td>
+                      )}
+
+                      {/* İşçilik Toplam (Has ile İşçilik Şekli arasında) */}
+                      {colVisibility.iscilikToplam && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikToplam`] = el; }}
+                            readOnly
+                            tabIndex={-1}
+                            size="sm"
+                            className="text-end font-monospace text-muted"
+                            value={isParaOrZiynet ? "" : (row.iscilikToplam !== "" && row.iscilikToplam !== null && row.iscilikToplam !== undefined && !isNaN(Number(row.iscilikToplam)) ? Number(row.iscilikToplam).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (row.iscilikTutari !== "" && !isNaN(Number(row.iscilikTutari)) ? Number(row.iscilikTutari).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""))}
+                            onFocus={handleKalemRowFocus}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikToplam", row.id)}
+                            style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
+                            title="İşçilik toplam tutarı"
+                          />
+                        </td>
+                      )}
+
+                      {/* TL Tutar (Has'tan sonra) */}
+                      {colVisibility.tlTutar && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_tlTutar`] = el; }}
+                            readOnly
+                            tabIndex={-1}
+                            size="sm"
+                            className="text-end font-monospace text-muted"
+                            value={row.tutar !== "" && !isNaN(Number(row.tutar)) ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (row.tutar || "")}
+                            onFocus={handleKalemRowFocus}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "tlTutar", row.id)}
+                            style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
+                            title="TL Tutar"
+                          />
+                        </td>
+                      )}
 
                       {/* İşçilik şekli */}
-                      <td>
-                        <Form.Select
-                          size="sm"
-                          disabled={isParaOrZiynet}
-                          tabIndex={isParaOrZiynet ? -1 : undefined}
-                          value={isParaOrZiynet ? 0 : row.iscilikHesaplamaSekli}
-                          ref={(el) => { rowInputRefs.current[`${row.id}_iscilikHesaplamaSekli`] = el; }}
-                          onChange={(e) => !isParaOrZiynet && updateRow(row.id, "iscilikHesaplamaSekli", Number(e.target.value))}
-                          onKeyDown={(e) => {
-                            if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const nextVal = ((Number(row.iscilikHesaplamaSekli) || 0) + 1) % 4;
-                              updateRow(row.id, "iscilikHesaplamaSekli", nextVal);
-                              return;
-                            }
-                            handleGridKeyDown(e, rowIndex, "iscilikHesaplamaSekli", row.id);
-                          }}
-                          onBlur={() => setInvalidRowIds((prev) => ({ ...prev, [row.id]: true }))}
-                          onFocus={handleKalemRowFocus}
-                          style={{
-                            fontSize: "10.5px",
-                            padding: "1px 2px",
-                            backgroundColor: isParaOrZiynet ? "#e9ecef" : undefined,
-                            cursor: isParaOrZiynet ? "not-allowed" : undefined,
-                          }}
-                          title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz" : undefined}
-                        >
-                          <option value={0}>Gram</option>
-                          <option value={1}>Adet</option>
-                          <option value={2}>Toplam</option>
-                        </Form.Select>
-                      </td>
+                      {colVisibility.iscilikHesaplamaSekli && (
+                        <td>
+                          <Form.Select
+                            size="sm"
+                            disabled={isParaOrZiynet}
+                            tabIndex={isParaOrZiynet ? -1 : undefined}
+                            value={isParaOrZiynet ? 0 : row.iscilikHesaplamaSekli}
+                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikHesaplamaSekli`] = el; }}
+                            onChange={(e) => !isParaOrZiynet && updateRow(row.id, "iscilikHesaplamaSekli", Number(e.target.value))}
+                            onKeyDown={(e) => {
+                              if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const nextVal = ((Number(row.iscilikHesaplamaSekli) || 0) + 1) % 4;
+                                updateRow(row.id, "iscilikHesaplamaSekli", nextVal);
+                                return;
+                              }
+                              handleGridKeyDown(e, rowIndex, "iscilikHesaplamaSekli", row.id);
+                            }}
+                            onBlur={() => setInvalidRowIds((prev) => ({ ...prev, [row.id]: true }))}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "10.5px",
+                              padding: "1px 2px",
+                              backgroundColor: isParaOrZiynet ? "#e9ecef" : undefined,
+                              cursor: isParaOrZiynet ? "not-allowed" : undefined,
+                            }}
+                            title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz" : undefined}
+                          >
+                            <option value={0}>Gram</option>
+                            <option value={1}>Adet</option>
+                            <option value={2}>Toplam</option>
+                          </Form.Select>
+                        </td>
+                      )}
 
                       {/* İşçilik miktarı */}
-                      <td>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_iscilikiMiktari`] = el; }}
-                          inputMode="decimal"
-                          data-decimal="true"
-                          size="sm"
-                          readOnly={isParaOrZiynet}
-                          tabIndex={isParaOrZiynet ? -1 : undefined}
-                          className={`text-end font-monospace ${isParaOrZiynet ? "text-muted" : ""}`}
-                          value={isParaOrZiynet ? "" : row.iscilikiMiktari}
-                          onChange={(e) => !isParaOrZiynet && updateRow(row.id, "iscilikiMiktari", e.target.value)}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikiMiktari", row.id)}
-                          onBlur={() => !isParaOrZiynet && normalizeRowOnBlur(row.id, "iscilikiMiktari")}
-                          onFocus={handleKalemRowFocus}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: isParaOrZiynet ? "#e9ecef" : undefined,
-                            cursor: isParaOrZiynet ? "not-allowed" : undefined,
-                          }}
-                          title={
-                            isParaOrZiynet
-                              ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz"
-                              : userIscilikGirisSekli === 0
-                                ? "İşçilik (Tam Sayı: örn. 25 girildiğinde 0,025 olarak hesaplanır)"
-                                : "İşçilik (Milyem: girilen değer doğrudan hesaplanır)"
-                          }
-                        />
-                      </td>
+                      {colVisibility.iscilikiMiktari && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikiMiktari`] = el; }}
+                            inputMode="decimal"
+                            data-decimal="true"
+                            size="sm"
+                            readOnly={isParaOrZiynet}
+                            tabIndex={isParaOrZiynet ? -1 : undefined}
+                            className={`text-end font-monospace ${isParaOrZiynet ? "text-muted" : ""}`}
+                            value={isParaOrZiynet ? "" : row.iscilikiMiktari}
+                            onChange={(e) => !isParaOrZiynet && updateRow(row.id, "iscilikiMiktari", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikiMiktari", row.id)}
+                            onBlur={() => !isParaOrZiynet && normalizeRowOnBlur(row.id, "iscilikiMiktari")}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: isParaOrZiynet ? "#e9ecef" : undefined,
+                              cursor: isParaOrZiynet ? "not-allowed" : undefined,
+                            }}
+                            title={
+                              isParaOrZiynet
+                                ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz"
+                                : userIscilikGirisSekli === 0
+                                  ? "İşçilik (Tam Sayı: örn. 25 girildiğinde 0,025 olarak hesaplanır)"
+                                  : "İşçilik (Milyem: girilen değer doğrudan hesaplanır)"
+                            }
+                          />
+                        </td>
+                      )}
 
                       {/* İşçilik Has Gram - Pasif / Otomatik Hesaplanır */}
-                      <td>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_iscilikHasGram`] = el; }}
-                          readOnly
-                          tabIndex={-1}
-                          size="sm"
-                          className="text-end font-monospace text-muted"
-                          value={isParaOrZiynet ? "" : (row.iscilikHasGram !== "" && !isNaN(Number(row.iscilikHasGram)) ? Number(row.iscilikHasGram).toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : row.iscilikHasGram)}
-                          onFocus={handleKalemRowFocus}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikHasGram", row.id)}
-                          style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
-                          title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz" : "İşçilik has gramı otomatik hesaplanır, değiştirilemez"}
-                        />
-                      </td>
+                      {colVisibility.iscilikHasGram && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikHasGram`] = el; }}
+                            readOnly
+                            tabIndex={-1}
+                            size="sm"
+                            className="text-end font-monospace text-muted"
+                            value={isParaOrZiynet ? "" : (row.iscilikHasGram !== "" && !isNaN(Number(row.iscilikHasGram)) ? Number(row.iscilikHasGram).toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : row.iscilikHasGram)}
+                            onFocus={handleKalemRowFocus}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikHasGram", row.id)}
+                            style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
+                            title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz" : "İşçilik has gramı otomatik hesaplanır, değiştirilemez"}
+                          />
+                        </td>
+                      )}
 
                       {/* İşçilik (TL) - Girilebilir & Otomatik Hesaplanır */}
-                      <td>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_iscilikTutari`] = el; }}
-                          inputMode="decimal"
-                          data-decimal="true"
-                          size="sm"
-                          readOnly={isParaOrZiynet}
-                          tabIndex={isParaOrZiynet ? -1 : undefined}
-                          className={`text-end font-monospace ${isParaOrZiynet ? "text-muted" : ""}`}
-                          value={isParaOrZiynet ? "" : (row.iscilikTutari !== "" && row.iscilikTutari !== null && row.iscilikTutari !== undefined ? row.iscilikTutari : "")}
-                          onChange={(e) => !isParaOrZiynet && updateRow(row.id, "iscilikTutari", e.target.value)}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikTutari", row.id)}
-                          onBlur={() => !isParaOrZiynet && normalizeRowOnBlur(row.id, "iscilikTutari")}
-                          onFocus={handleKalemRowFocus}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: isParaOrZiynet ? "#e9ecef" : undefined,
-                            cursor: isParaOrZiynet ? "not-allowed" : undefined,
-                          }}
-                          title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz" : "İşçilik tutarı (TL) - Girildiğinde işçilik ve has hesaplanır"}
-                        />
-                      </td>
+                      {colVisibility.iscilikTutari && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikTutari`] = el; }}
+                            inputMode="decimal"
+                            data-decimal="true"
+                            size="sm"
+                            readOnly={isParaOrZiynet}
+                            tabIndex={isParaOrZiynet ? -1 : undefined}
+                            className={`text-end font-monospace ${isParaOrZiynet ? "text-muted" : ""}`}
+                            value={isParaOrZiynet ? "" : (row.iscilikTutari !== "" && row.iscilikTutari !== null && row.iscilikTutari !== undefined ? row.iscilikTutari : "")}
+                            onChange={(e) => !isParaOrZiynet && updateRow(row.id, "iscilikTutari", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikTutari", row.id)}
+                            onBlur={() => !isParaOrZiynet && normalizeRowOnBlur(row.id, "iscilikTutari")}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: isParaOrZiynet ? "#e9ecef" : undefined,
+                              cursor: isParaOrZiynet ? "not-allowed" : undefined,
+                            }}
+                            title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz" : "İşçilik tutarı (TL) - Girildiğinde işçilik ve has hesaplanır"}
+                          />
+                        </td>
+                      )}
+
+                      {/* İşçilik KDV Oranı (%) */}
+                      {colVisibility.iscilikKdvOrani && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikKdvOrani`] = el; }}
+                            inputMode="decimal"
+                            data-decimal="true"
+                            size="sm"
+                            readOnly={isParaOrZiynet || isKdvDisabled}
+                            tabIndex={(isParaOrZiynet || isKdvDisabled) ? -1 : undefined}
+                            className={`text-end font-monospace ${(isParaOrZiynet || isKdvDisabled) ? "text-muted" : ""}`}
+                            value={isParaOrZiynet ? "" : (row.iscilikKdvOrani ?? "")}
+                            onChange={(e) => !(isParaOrZiynet || isKdvDisabled) && updateRow(row.id, "iscilikKdvOrani", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikKdvOrani", row.id)}
+                            onBlur={() => !(isParaOrZiynet || isKdvDisabled) && normalizeRowOnBlur(row.id, "iscilikKdvOrani")}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: (isParaOrZiynet || isKdvDisabled) ? "#e9ecef" : undefined,
+                              cursor: (isParaOrZiynet || isKdvDisabled) ? "not-allowed" : undefined,
+                            }}
+                            placeholder={(isParaOrZiynet || isKdvDisabled) ? "" : "%"}
+                            title={
+                              isParaOrZiynet
+                                ? "Döviz ve Ziynet işlemlerinde KDV uygulanmaz"
+                                : isKdvDisabled
+                                  ? "Fiş Dizayn Tipi 1 olduğunda KDV pasiftir"
+                                  : "İşçilik KDV Oranı (%)"
+                            }
+                          />
+                        </td>
+                      )}
+
+                      {/* İşçilik KDV Tutar */}
+                      {colVisibility.iscilikKdvTutari && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikKdvTutari`] = el; }}
+                            inputMode="decimal"
+                            data-decimal="true"
+                            size="sm"
+                            readOnly={isParaOrZiynet || isKdvDisabled}
+                            tabIndex={(isParaOrZiynet || isKdvDisabled) ? -1 : undefined}
+                            className={`text-end font-monospace ${(isParaOrZiynet || isKdvDisabled) ? "text-muted" : ""}`}
+                            value={isParaOrZiynet ? "" : (row.iscilikKdvTutari !== "" && row.iscilikKdvTutari !== null && row.iscilikKdvTutari !== undefined ? row.iscilikKdvTutari : "")}
+                            onChange={(e) => !(isParaOrZiynet || isKdvDisabled) && updateRow(row.id, "iscilikKdvTutari", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikKdvTutari", row.id)}
+                            onBlur={() => !(isParaOrZiynet || isKdvDisabled) && normalizeRowOnBlur(row.id, "iscilikKdvTutari")}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: (isParaOrZiynet || isKdvDisabled) ? "#e9ecef" : undefined,
+                              cursor: (isParaOrZiynet || isKdvDisabled) ? "not-allowed" : undefined,
+                            }}
+                            title={
+                              isParaOrZiynet
+                                ? "Döviz ve Ziynet işlemlerinde KDV uygulanmaz"
+                                : isKdvDisabled
+                                  ? "Fiş Dizayn Tipi 1 olduğunda KDV pasiftir"
+                                  : "İşçilik KDV Tutarı (TL)"
+                            }
+                          />
+                        </td>
+                      )}
 
                       {/* Kur */}
-                      <td>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_kur`] = el; }}
-                          inputMode="decimal"
-                          size="sm"
-                          className={`text-end font-monospace ${isKurMissing ? "text-danger fw-bold" : ""}`}
-                          value={row.kur}
-                          onChange={(e) => kurAcik && updateRow(row.id, "kur", e.target.value)}
-                          disabled={!kurAcik}
-                          readOnly={!kurAcik}
-                          tabIndex={!kurAcik ? -1 : undefined}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "kur", row.id)}
-                          onBlur={() => normalizeRowOnBlur(row.id, "kur")}
-                          onFocus={handleKalemRowFocus}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: !kurAcik ? "#e9ecef" : (isKurMissing ? "#fee2e2" : undefined),
-                            border: isKurMissing ? "1.5px solid #dc2626" : undefined,
-                            cursor: !kurAcik ? "not-allowed" : undefined,
-                          }}
-                          title={!kurAcik ? "Kur değiştirme yetkiniz yok" : isKurMissing ? "Lütfen kur giriniz" : undefined}
-                        />
-                      </td>
+                      {colVisibility.kur && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_kur`] = el; }}
+                            inputMode="decimal"
+                            size="sm"
+                            className={`text-end font-monospace ${isKurMissing ? "text-danger fw-bold" : ""}`}
+                            value={row.kur}
+                            onChange={(e) => kurAcik && updateRow(row.id, "kur", e.target.value)}
+                            disabled={!kurAcik}
+                            readOnly={!kurAcik}
+                            tabIndex={!kurAcik ? -1 : undefined}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "kur", row.id)}
+                            onBlur={() => normalizeRowOnBlur(row.id, "kur")}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: !kurAcik ? "#e9ecef" : (isKurMissing ? "#fee2e2" : undefined),
+                              border: isKurMissing ? "1.5px solid #dc2626" : undefined,
+                              cursor: !kurAcik ? "not-allowed" : undefined,
+                            }}
+                            title={!kurAcik ? "Kur değiştirme yetkiniz yok" : isKurMissing ? "Lütfen kur giriniz" : undefined}
+                          />
+                        </td>
+                      )}
 
                       {/* Tutar - Pasif / Otomatik Hesaplanır */}
-                      <td>
-                        <Form.Control
-                          ref={(el) => { rowInputRefs.current[`${row.id}_tutar`] = el; }}
-                          readOnly
-                          tabIndex={-1}
-                          size="sm"
-                          className="text-end font-monospace text-muted"
-                          value={row.tutar !== "" && !isNaN(Number(row.tutar)) ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : row.tutar}
-                          onFocus={handleKalemRowFocus}
-                          onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "tutar", row.id)}
-                          style={{
-                            fontSize: "11px",
-                            padding: "1px 4px",
-                            backgroundColor: "#e9ecef",
-                            cursor: "not-allowed",
-                          }}
-                          title="Tutar otomatik hesaplanır, değiştirilemez"
-                        />
-                      </td>
+                      {colVisibility.tutar && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_tutar`] = el; }}
+                            readOnly
+                            tabIndex={-1}
+                            size="sm"
+                            className="text-end font-monospace text-muted"
+                            value={row.tutar !== "" && !isNaN(Number(row.tutar)) ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : row.tutar}
+                            onFocus={handleKalemRowFocus}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "tutar", row.id)}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: "#e9ecef",
+                              cursor: "not-allowed",
+                            }}
+                            title="Tutar otomatik hesaplanır, değiştirilemez"
+                          />
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
               </tbody>
               <tfoot style={{ background: "#f2f4f7", fontWeight: 600, fontSize: "11px" }}>
                 <tr>
-                  <td colSpan={3} className="text-end small">Toplam</td>
-                  <td style={{ textAlign: "right" }}>{totalAdet ? totalAdet.toLocaleString("tr-TR") : ""}</td>
-                  <td style={{ textAlign: "right" }}>{totalMiktar ? totalMiktar.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>
-                  <td></td>
-                  <td style={{ textAlign: "right" }}>{totalHasGram ? totalHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>
-                  <td></td>
-                  <td></td>
-                  <td style={{ textAlign: "right" }}>{totalIscilikHasGram ? totalIscilikHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>
-                  <td style={{ textAlign: "right" }}>{totalIscilikTutari ? totalIscilikTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
-                  <td></td>
-                  <td style={{ textAlign: "right" }}>
-                    {totalTutar ? totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL" : ""}
-                  </td>
+                  <td colSpan={colVisibility.urunAdi ? 3 : 2} className="text-end small">Toplam</td>
+                  {colVisibility.adet && <td style={{ textAlign: "right" }}>{totalAdet ? totalAdet.toLocaleString("tr-TR") : ""}</td>}
+                  {colVisibility.miktar && <td style={{ textAlign: "right" }}>{totalMiktar ? totalMiktar.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>}
+                  {colVisibility.milyem && <td></td>}
+                  {colVisibility.hasGram && <td style={{ textAlign: "right" }}>{totalHasGram ? totalHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>}
+                  {colVisibility.iscilikToplam && <td style={{ textAlign: "right" }}>{totalIscilikToplam ? totalIscilikToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                  {colVisibility.tlTutar && <td style={{ textAlign: "right" }}>{totalTutar ? totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                  {colVisibility.iscilikHesaplamaSekli && <td></td>}
+                  {colVisibility.iscilikiMiktari && <td></td>}
+                  {colVisibility.iscilikHasGram && <td style={{ textAlign: "right" }}>{totalIscilikHasGram ? totalIscilikHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>}
+                  {colVisibility.iscilikTutari && <td style={{ textAlign: "right" }}>{totalIscilikTutari ? totalIscilikTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                  {colVisibility.iscilikKdvOrani && <td></td>}
+                  {colVisibility.iscilikKdvTutari && <td style={{ textAlign: "right" }}>{totalIscilikKdvTutari ? totalIscilikKdvTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                  {colVisibility.kur && <td></td>}
+                  {colVisibility.tutar && (
+                    <td style={{ textAlign: "right" }}>
+                      {totalTutar ? totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL" : ""}
+                    </td>
+                  )}
                 </tr>
               </tfoot>
             </Table>
@@ -8726,17 +9179,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
           if (targetKalemRowId) {
             applyProductToRow(targetKalemRowId, item);
-            const isZiynet = item.urunTipi === 3 || isZiynetProduct(item);
-            const isPara = item.urunTipi === 0;
-            const isParaOrZiynet = isPara || isZiynet;
+            const effTipi = resolveEffectiveUrunTipi(item);
+            const isParaOrZiynet = effTipi === 0 || effTipi === 3;
             setTimeout(() => {
               focusGridCell(targetKalemRowId, isParaOrZiynet ? "adet" : "miktar", "select");
             }, 30);
           } else if (targetOdemeRowId) {
             applyProductToOdemeRow(targetOdemeRowId, item);
-            const isZiynet = item.urunTipi === 3 || isZiynetProduct(item);
-            const isPara = item.urunTipi === 0 || item.kod?.toUpperCase() === "TL" || item.kod?.toUpperCase() === "TRY";
-            const isParaOrZiynet = isPara || isZiynet;
+            const isParaOrZiynet = isOdemeRowParaOrZiynet(item);
             setTimeout(() => {
               focusOdemeGridCell(targetOdemeRowId, isParaOrZiynet ? "adet" : "miktar", "select");
             }, 30);
@@ -8881,9 +9331,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             } else if (item.rawProduct) {
               applyProductToOdemeRow(rowId, item.rawProduct);
               odemeFocusedInitialValRef.current[rowId] = (item.kod || "").trim();
-              const isZiynet = item.rawProduct.urunTipi === 3 || isZiynetProduct(item.rawProduct);
-              const isPara = item.rawProduct.urunTipi === 0 || item.rawProduct.kod?.toUpperCase() === "TL" || item.rawProduct.kod?.toUpperCase() === "TRY";
-              const isParaOrZiynet = isPara || isZiynet;
+              const isParaOrZiynet = isOdemeRowParaOrZiynet(item.rawProduct);
               setTimeout(() => {
                 focusOdemeGridCell(rowId, isParaOrZiynet ? "adet" : "miktar", "select");
               }, 30);
@@ -8956,9 +9404,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         onSelect={(item) => {
           if (targetOdemeRowIdForLookup) {
             applyProductToOdemeRow(targetOdemeRowIdForLookup, item);
-            const isZiynet = item.urunTipi === 3 || isZiynetProduct(item);
-            const isPara = item.urunTipi === 0 || item.kod?.toUpperCase() === "TL" || item.kod?.toUpperCase() === "TRY";
-            const isParaOrZiynet = isPara || isZiynet;
+            const isParaOrZiynet = isOdemeRowParaOrZiynet(item);
             setTimeout(() => {
               focusOdemeGridCell(targetOdemeRowIdForLookup, isParaOrZiynet ? "adet" : "miktar", "select");
             }, 30);
@@ -9521,19 +9967,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         <Modal.Footer className="py-1 d-flex justify-content-between">
           <div className="d-flex align-items-center gap-2">
             <Button
-              variant="primary"
-              size="sm"
-              className="d-flex align-items-center gap-1 shadow-xs"
-              style={{ backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
-              onClick={() => {
-                setShowDetayModal(false);
-                openPrintPreview();
-              }}
-              title="Fişi kaydetmeden standart sarraf fişi olarak yazdır / önizle (Teklif)"
-            >
-              <IconPrinter size={16} /> Teklif Yazdır
-            </Button>
-            <Button
               variant="info"
               size="sm"
               className="d-flex align-items-center gap-1 fw-bold text-white shadow-xs"
@@ -9943,6 +10376,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </div>
         </Modal.Footer>
       </Modal>
+      <SayfaCikisUyarisiModal
+        acik={cikisUyarisi.acik}
+        vazgec={cikisUyarisi.vazgec}
+        yineDeKapat={cikisUyarisi.yineDeKapat}
+      />
     </div>
   );
 };

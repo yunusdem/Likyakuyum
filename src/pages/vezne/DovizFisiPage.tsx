@@ -36,6 +36,7 @@ import {
   IconPrinter,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
+import { SayfaCikisUyarisiModal, useSayfaCikisUyarisi } from "../../components/common/SayfaCikisUyarisiModal";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { MasakService, MasakEslesme } from "../../services/masakService";
@@ -369,12 +370,16 @@ export const DovizFisiPage: React.FC = () => {
   const GRID_COL_STORAGE_KEY = `doviz_fis_grid_cols_${user?.id || "default"}`;
 
   const defaultColVisibility = {
+    ad: true,
+    miktar: true,
+    kur: true,
     komisyonOrani: true,
     komisyon: true,
     bmvOrani: true,
     bmv: true,
     kmvOrani: true,
     kmv: true,
+    tutar: true,
   };
 
   const [colVisibility, setColVisibility] = useState<typeof defaultColVisibility>(() => {
@@ -762,6 +767,29 @@ export const DovizFisiPage: React.FC = () => {
   const [lines, setLines] = useState<GridLineItem[]>([createEmptyRow(1)]);
   const [activeRowIndex, setActiveRowIndex] = useState<number>(0);
   const [invalidRowIds, setInvalidRowIds] = useState<Record<string, boolean>>({});
+
+  const hasSayfaVerisi = useMemo(() => {
+    if (fisId !== null && fisId > 0) return true;
+    if (cariKartId !== null && cariKartId > 0) return true;
+    if ((cariKod || "").trim() !== "") return true;
+    if ((unvan || "").trim() !== "" && (unvan || "").trim() !== DEFAULT_CUSTOMER_NAME) return true;
+    if ((vergiKimlikNo || "").trim() !== "") return true;
+    if ((detayPasaportNo || "").trim() !== "") return true;
+    if ((detayTelefon || "").trim() !== "") return true;
+    if ((detayAdres || "").trim() !== "") return true;
+    if ((gelisNedeni || "").trim() !== "") return true;
+    if (isArbitrajActive) return true;
+    return lines.some(
+      (r) =>
+        Boolean((r.paraKodu || "").trim()) ||
+        Boolean((r.paraAdi || "").trim()) ||
+        Number(r.paraId) > 0 ||
+        parseDecimal(r.miktar) > 0 ||
+        parseDecimal(r.tutar) > 0
+    );
+  }, [fisId, cariKartId, cariKod, unvan, vergiKimlikNo, detayPasaportNo, detayTelefon, detayAdres, gelisNedeni, isArbitrajActive, lines]);
+
+  const cikisUyarisi = useSayfaCikisUyarisi(hasSayfaVerisi);
 
   // Dynamic Vezne Balances fetched from backend
   const [topBalances, setTopBalances] = useState<{ tl: number; usd: number; eur: number }>({
@@ -3789,7 +3817,9 @@ export const DovizFisiPage: React.FC = () => {
 
     // Görünür olan navigasyon sütunlarının dinamik sırası (% BMV, BMV, % KMV ve KMV salt okunur olduğundan atlanır)
     const isRowTL = lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TL" || lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TRY" || lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TRL";
-    const visibleCols: GridColumnKey[] = (isRowTL || !kurAcik) ? ["kod", "miktar"] : ["kod", "miktar", "kur"];
+    const visibleCols: GridColumnKey[] = ["kod"];
+    if (colVisibility.miktar) visibleCols.push("miktar");
+    if (!isRowTL && kurAcik && colVisibility.kur) visibleCols.push("kur");
     if (colVisibility.komisyonOrani) visibleCols.push("komisyonOrani");
     if (colVisibility.komisyon) visibleCols.push("komisyon");
 
@@ -5931,6 +5961,32 @@ export const DovizFisiPage: React.FC = () => {
     }
   };
 
+  const handleGumrukDateMouseDown = (e: React.MouseEvent<HTMLElement>) => {
+    if (e.detail >= 2) {
+      e.preventDefault();
+    }
+  };
+
+  const handleGumrukDateClick = (e: React.MouseEvent<HTMLElement>) => {
+    if (e.detail >= 2) {
+      e.preventDefault();
+      e.stopPropagation();
+      const el = e.currentTarget as HTMLInputElement;
+      try {
+        (el as any).showPicker?.();
+      } catch {}
+    }
+  };
+
+  const handleGumrukDateDoubleClick = (e: React.MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget as HTMLInputElement;
+    try {
+      (el as any).showPicker?.();
+    } catch {}
+  };
+
   // Gümrük Modal Field KeyDown Navigation (Enter, ArrowDown, ArrowUp)
   const handleGumrukFieldKeyDown = (
     e: React.KeyboardEvent<HTMLElement>,
@@ -5950,10 +6006,6 @@ export const DovizFisiPage: React.FC = () => {
         }
       } else if (e.key === "Enter") {
         setShowGumrukModal(false);
-        setNotification({
-          type: "success",
-          message: "Gümrük beyanname bilgileri kaydedildi.",
-        });
       }
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -6320,7 +6372,7 @@ export const DovizFisiPage: React.FC = () => {
 
       {/* ─── 1. Üst Giriş Alanları Kartı (Ayrı Dış Dikdörtgen Kutu) ─── */}
       <Card
-        className={`shadow-sm rounded-2 overflow-hidden mt-1 mb-2 border fis-theme-card ${isMasakBlocked ? "border-2 border-danger" : ""}`}
+        className={`shadow-sm rounded-2 overflow-hidden mt-1 mb-1 border fis-theme-card ${isMasakBlocked ? "border-2 border-danger" : ""}`}
         data-fis-theme="active"
         style={
           isMasakBlocked
@@ -6330,16 +6382,16 @@ export const DovizFisiPage: React.FC = () => {
       >
         <Card.Body className="p-0 fis-theme-card-body" data-fis-theme="active">
           {/* En Üstteki 3 Alan */}
-          <div className="py-2.5 px-3 fis-theme-panel" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
-            <Row className="g-3">
+          <div className="py-1.5 px-2 fis-theme-panel" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+            <Row className="g-2">
               {/* Sol Sütun: Tarih, Saat, Geliş Nedeni / Satış Dayanağı, Kur Türü */}
               <Col xs={12} md={4}>
                 <div
-                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-2 fis-theme-panel"
+                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-1.5 fis-theme-panel"
                   data-fis-theme="active"
                   style={{
                     borderColor: "#cbd5e1",
-                    padding: "14px 18px",
+                    padding: "8px 12px",
                     backgroundColor: activeFisThemeBg,
                   }}
                 >
@@ -6430,27 +6482,28 @@ export const DovizFisiPage: React.FC = () => {
                 </div>
               </Col>
 
-              {/* Orta Sütun: Seri No, Cari Kodu, Ünvan, Fiş Tipi */}
+              {/* Orta Sütun: Seri No + Cari Kodu (Yan Yana), Ünvan, Fiş Tipi */}
               <Col xs={12} md={4}>
                 <div
-                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-2 fis-theme-panel"
+                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-1.5 fis-theme-panel"
                   data-fis-theme="active"
                   style={{
                     borderColor: "#cbd5e1",
-                    padding: "14px 18px",
+                    padding: "8px 12px",
                     backgroundColor: activeFisThemeBg,
                   }}
                 >
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  {/* Seri No ve Cari Kodu Yan Yana Tek Satırda */}
+                  <div className="d-flex flex-row align-items-center gap-2" style={{ height: "30px" }}>
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
                       style={{ minWidth: "80px", width: "80px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       Seri no
                     </label>
-                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                    <div style={{ width: "110px", flexShrink: 0 }}>
                       {isDuzeltmeMode ? (
-                        <InputGroup size="sm" style={{ height: "30px", maxWidth: "160px" }}>
+                        <InputGroup size="sm" style={{ height: "30px" }}>
                           <Form.Control
                             type="text"
                             autoComplete="off"
@@ -6465,19 +6518,19 @@ export const DovizFisiPage: React.FC = () => {
                               }
                             }}
                             readOnly={!kYetki.fisNoDegistirme}
-                            className="font-monospace fw-bold px-2.5 py-1"
-                            style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                            className="font-monospace fw-bold px-2 py-1"
+                            style={{ minWidth: 0, height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
                           />
                           <Button
                             variant="outline-secondary"
-                            className="px-2 py-0 d-flex align-items-center justify-content-center"
+                            className="px-1.5 py-0 d-flex align-items-center justify-content-center"
                             style={{ height: "30px", borderColor: "#cbd5e1" }}
                             onClick={() => {
                               openFisSecimModal();
                             }}
                             title="Seri No ile Fiş Ara / Seç"
                           >
-                            <IconBinoculars size={14} />
+                            <IconBinoculars size={13} />
                           </Button>
                         </InputGroup>
                       ) : (
@@ -6489,26 +6542,23 @@ export const DovizFisiPage: React.FC = () => {
                           value={seriNo}
                           maxLength={20}
                           onChange={(e) => setSeriNo(e.target.value.slice(0, 20))}
-                            readOnly={!kYetki.fisNoDegistirme}
-                          className="font-monospace fw-bold px-2.5 py-1"
-                          style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
-                          placeholder="Otomatik (Boş ise atanır)"
+                          readOnly={!kYetki.fisNoDegistirme}
+                          className="font-monospace fw-bold px-2 py-1"
+                          style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
+                          placeholder="Otomatik"
                           title="Fiş Seri No (Boş bırakılırsa numaradörden otomatik atanır)"
                         />
                       )}
                     </div>
-                  </div>
 
-                  {/* Cari Kodu */}
-                  <div className="d-flex flex-row align-items-center gap-2">
                     <label
-                      className="small fw-semibold mb-0 text-nowrap text-secondary"
-                      style={{ minWidth: "80px", width: "80px", flexShrink: 0, fontSize: "12.5px", fontWeight: 600 }}
+                      className="small fw-semibold mb-0 text-nowrap text-secondary ms-1"
+                      style={{ flexShrink: 0, fontSize: "12px", fontWeight: 600 }}
                     >
                       Cari Kodu
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "160px" }}>
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "135px" }}>
                         <Form.Control
                           ref={cariKodRef}
                           type="text"
@@ -6580,13 +6630,13 @@ export const DovizFisiPage: React.FC = () => {
                               setShowCariModal(true);
                             }
                           }}
-                          className="font-monospace px-2.5 py-1"
-                          style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                          className="font-monospace px-2 py-1"
+                          style={{ minWidth: 0, height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
                           placeholder="Cari Kodu"
                         />
                         <Button
                           variant="outline-secondary"
-                          className="px-2 py-0 d-flex align-items-center justify-content-center"
+                          className="px-1.5 py-0 d-flex align-items-center justify-content-center"
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           onClick={() => {
                             const val = cariKod.trim();
@@ -6617,7 +6667,7 @@ export const DovizFisiPage: React.FC = () => {
                           }}
                           title="Cari Seç"
                         >
-                          <IconBinoculars size={14} />
+                          <IconBinoculars size={13} />
                         </Button>
                       </InputGroup>
                     </div>
@@ -6819,11 +6869,11 @@ export const DovizFisiPage: React.FC = () => {
               {/* Sağ Sütun: Belge No, VKN/TCKN, İstatistik Kodu */}
               <Col xs={12} md={4}>
                 <div
-                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-2 fis-theme-panel"
+                  className="border rounded-2 shadow-sm h-100 d-flex flex-column gap-1.5 fis-theme-panel"
                   data-fis-theme="active"
                   style={{
                     borderColor: "#cbd5e1",
-                    padding: "14px 18px",
+                    padding: "8px 12px",
                     backgroundColor: activeFisThemeBg,
                   }}
                 >
@@ -7182,30 +7232,37 @@ export const DovizFisiPage: React.FC = () => {
       </Card>
 
       {/* ─── 2. Döviz Kalemleri Tablo ve Toplam Kartı (Ayrı Dış Dikdörtgen Kutu) ─── */}
-      <Card className="shadow-sm rounded-2 overflow-hidden mb-2 border fis-theme-card" data-fis-theme="active" style={{ borderColor: "#cbd5e1", backgroundColor: activeFisThemeBg }}>
-        <Card.Body className="p-2.5 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
+      <Card className="shadow-sm rounded-2 mb-2 border fis-theme-card" data-fis-theme="active" style={{ borderColor: "#cbd5e1", backgroundColor: activeFisThemeBg }}>
+        <Card.Body className="px-2 pt-1 pb-2 fis-theme-card-body" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
           {/* Kolon Görünürlük Kontrol Şeridi */}
-          <div className="d-flex align-items-center justify-content-end mb-1 gap-1">
-            <Dropdown autoClose="outside">
+          <div className="d-flex align-items-center justify-content-end gap-1" style={{ marginBottom: "2px", lineHeight: 1 }}>
+            <Dropdown autoClose="outside" align="end">
               <Dropdown.Toggle
                 variant="outline-secondary"
                 size="sm"
-                className="d-flex align-items-center gap-1 py-0 px-2"
-                style={{ fontSize: "12px", height: "24px" }}
+                className="d-flex align-items-center gap-1 py-0 px-1.5"
+                style={{ fontSize: "11px", height: "20px", lineHeight: 1 }}
                 id="grid-col-toggle"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
                 Kolonlar
               </Dropdown.Toggle>
-              <Dropdown.Menu style={{ minWidth: "170px", fontSize: "13px", padding: "6px 4px" }}>
-                <div className="px-2 pb-1 text-muted" style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.5px" }}>GÖRÜNÜRLEBİLİR KOLONLAR</div>
+              <Dropdown.Menu
+                popperConfig={{ strategy: "fixed" }}
+                style={{ minWidth: "185px", fontSize: "13px", padding: "6px 4px", zIndex: 2050, maxHeight: "360px", overflowY: "auto" }}
+              >
+                <div className="px-2 pb-1 text-muted" style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.5px" }}>GÖRÜNÜR KOLONLAR</div>
                 {([
+                  { key: "ad", label: "Ad" },
+                  { key: "miktar", label: "Miktar" },
+                  { key: "kur", label: tip === 1 ? "Satış Kuru" : "Alış Kuru" },
                   { key: "komisyonOrani", label: "Komisyon %" },
                   { key: "komisyon", label: "Komisyon" },
                   { key: "bmvOrani", label: "BMV %" },
                   { key: "bmv", label: "BMV" },
                   { key: "kmvOrani", label: "KMV %" },
                   { key: "kmv", label: "KMV" },
+                  { key: "tutar", label: "Tutar" },
                 ] as { key: keyof typeof defaultColVisibility; label: string }[]).map(({ key, label }) => (
                   <Dropdown.Item
                     key={key}
@@ -7251,18 +7308,20 @@ export const DovizFisiPage: React.FC = () => {
                 <tr style={{ height: "30px", borderBottom: "1px solid #94a3b8", fontSize: "12.5px" }}>
                   <th style={{ width: "45px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>#</th>
                   <th style={{ width: "100px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Kod</th>
-                  <th style={{ width: "170px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Ad</th>
-                  <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Miktar</th>
-                  <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
-                    {tip === 1 ? "Satış kuru" : "Alış kuru"}
-                  </th>
+                  {colVisibility.ad && <th style={{ width: "170px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Ad</th>}
+                  {colVisibility.miktar && <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Miktar</th>}
+                  {colVisibility.kur && (
+                    <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
+                      {tip === 1 ? "Satış kuru" : "Alış kuru"}
+                    </th>
+                  )}
                   {colVisibility.komisyonOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
                   {colVisibility.komisyon && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Komisyon</th>}
                   {colVisibility.bmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
                   {colVisibility.bmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>BMV</th>}
                   {colVisibility.kmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
                   {colVisibility.kmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>KMV</th>}
-                  <th style={{ width: "110px", textAlign: "center" }}>Tutar</th>
+                  {colVisibility.tutar && <th style={{ width: "110px", textAlign: "center" }}>Tutar</th>}
                 </tr>
               </thead>
               <tbody>
@@ -7380,11 +7439,14 @@ export const DovizFisiPage: React.FC = () => {
                       </td>
 
                       {/* Ad */}
-                      <td className="p-0 px-2 text-dark small" style={{ borderRight: "1px solid #e2e8f0" }}>
-                        {row.paraAdi || "-"}
-                      </td>
+                      {colVisibility.ad && (
+                        <td className="p-0 px-2 text-dark small" style={{ borderRight: "1px solid #e2e8f0" }}>
+                          {row.paraAdi || "-"}
+                        </td>
+                      )}
 
                       {/* Miktar */}
+                      {colVisibility.miktar && (
                       <td className="p-0" style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, borderRight: "1px solid #e2e8f0", backgroundColor: isMiktarMissing ? "#fee2e2" : undefined }}>
                         <input
                           id={`grid-input-${idx}-miktar`}
@@ -7431,8 +7493,10 @@ export const DovizFisiPage: React.FC = () => {
                           title={isMiktarMissing ? "Lütfen geçerli bir miktar giriniz" : undefined}
                         />
                       </td>
+                      )}
 
                       {/* Kur */}
+                      {colVisibility.kur && (
                       <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                         <input
                           id={`grid-input-${idx}-kur`}
@@ -7508,6 +7572,7 @@ export const DovizFisiPage: React.FC = () => {
                           title={isTL ? "TL için kur girilmez" : !kurAcik ? "Kur değiştirme yetkiniz yok" : isKurMissing ? "Lütfen geçerli bir kur giriniz" : undefined}
                         />
                       </td>
+                      )}
 
                       {/* % (Komisyon %) */}
                       {colVisibility.komisyonOrani && (
@@ -7624,11 +7689,13 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* Tutar */}
-                      <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
-                        {row.tutar !== "" && row.tutar !== undefined && row.tutar !== null && parseDecimal(row.tutar) > 0
-                          ? parseDecimal(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                          : ""}
-                      </td>
+                      {colVisibility.tutar && (
+                        <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
+                          {row.tutar !== "" && row.tutar !== undefined && row.tutar !== null && parseDecimal(row.tutar) > 0
+                            ? parseDecimal(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                            : ""}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -8461,18 +8528,6 @@ export const DovizFisiPage: React.FC = () => {
           </Button>
           <div className="d-flex align-items-center gap-2">
             <Button
-              variant="outline-primary"
-              size="sm"
-              className="d-flex align-items-center gap-1 fw-bold shadow-xs"
-              onClick={() => {
-                setShowDetayModal(false);
-                handleOpenPrintPreview();
-              }}
-              title="Fişi kaydetmeden standart döviz fişi olarak yazdır / önizle (Teklif)"
-            >
-              <IconPrinter size={16} /> Teklif Yazdır
-            </Button>
-            <Button
               variant="primary"
               size="sm"
               className="d-flex align-items-center gap-1 fw-bold shadow-xs"
@@ -8986,6 +9041,9 @@ export const DovizFisiPage: React.FC = () => {
               size="sm"
               data-gumruk-idx={1}
               onKeyDown={(e) => handleGumrukFieldKeyDown(e, 1)}
+              onMouseDown={handleGumrukDateMouseDown}
+              onClick={handleGumrukDateClick}
+              onDoubleClick={handleGumrukDateDoubleClick}
               value={gmBeyannameTarih}
               onChange={(e) => setGmBeyannameTarih(e.target.value)}
             />
@@ -9001,6 +9059,9 @@ export const DovizFisiPage: React.FC = () => {
                 size="sm"
                 data-gumruk-idx={2}
                 onKeyDown={(e) => handleGumrukFieldKeyDown(e, 2)}
+                onMouseDown={handleGumrukDateMouseDown}
+                onClick={handleGumrukDateClick}
+                onDoubleClick={handleGumrukDateDoubleClick}
                 value={gmDovizTarih}
                 onChange={(e) => setGmDovizTarih(e.target.value)}
               />
@@ -9026,6 +9087,9 @@ export const DovizFisiPage: React.FC = () => {
                 size="sm"
                 data-gumruk-idx={4}
                 onKeyDown={(e) => handleGumrukFieldKeyDown(e, 4)}
+                onMouseDown={handleGumrukDateMouseDown}
+                onClick={handleGumrukDateClick}
+                onDoubleClick={handleGumrukDateDoubleClick}
                 value={gmTeyitTarih}
                 onChange={(e) => setGmTeyitTarih(e.target.value)}
               />
@@ -9063,10 +9127,6 @@ export const DovizFisiPage: React.FC = () => {
             className="d-flex align-items-center gap-1"
             onClick={() => {
               setShowGumrukModal(false);
-              setNotification({
-                type: "success",
-                message: "Gümrük beyanname bilgileri kaydedildi.",
-              });
             }}
           >
             <IconCheck size={16} /> Kaydet
@@ -9422,6 +9482,11 @@ export const DovizFisiPage: React.FC = () => {
       <MasakModal
         show={masakManagementOpen}
         onHide={() => setMasakManagementOpen(false)}
+      />
+      <SayfaCikisUyarisiModal
+        acik={cikisUyarisi.acik}
+        vazgec={cikisUyarisi.vazgec}
+        yineDeKapat={cikisUyarisi.yineDeKapat}
       />
     </div>
   );

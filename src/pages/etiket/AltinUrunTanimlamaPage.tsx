@@ -200,9 +200,19 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
     for (const k of kurRows) {
       const kodUpper = (k.kod || "").toUpperCase();
       if (!kodUpper) continue;
+      const hasRate = (Number(k.efektifAlis) || Number(k.dovizAlis) || Number(k.efektifSatis) || Number(k.dovizSatis)) > 0;
       if (!seen.has(kodUpper)) {
         seen.add(kodUpper);
         list.push(k);
+      } else if (hasRate) {
+        const existingIdx = list.findIndex((x) => (x.kod || "").toUpperCase() === kodUpper);
+        if (existingIdx !== -1) {
+          const ex = list[existingIdx];
+          const exHasRate = (Number(ex.efektifAlis) || Number(ex.dovizAlis) || Number(ex.efektifSatis) || Number(ex.dovizSatis)) > 0;
+          if (!exHasRate) {
+            list[existingIdx] = k;
+          }
+        }
       }
     }
     return list;
@@ -403,9 +413,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
           aKodNorm === normalized ||
           aAdiNorm === normalized ||
           `${aKod} AYAR` === raw ||
-          `${aKodNorm} AYAR` === normalized ||
-          `${a.standartAyar} AYAR` === raw ||
-          `${a.standartAyar}` === raw
+          `${aKodNorm} AYAR` === normalized
         );
       });
 
@@ -416,10 +424,19 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         }
       }
 
+      if (normalized.includes("FANTAZI") || raw.includes("FANTAZİ")) {
+        return 956;
+      }
+
       // 1.b: Sayısal Standart Ayar Eşleşmesi (Örn: "22", "14", "18", "24", "8")
       const parsedNum = parseFloat(normalized.replace(/,/g, "."));
       if (!isNaN(parsedNum) && parsedNum > 0) {
-        const matchByStandart = ayarList.find((a) => Number(a.standartAyar) === parsedNum);
+        const matchByStandart =
+          ayarList.find(
+            (a) =>
+              Number(a.standartAyar) === parsedNum &&
+              !(a.ayarKodu || "").toUpperCase().includes("FANTAZ")
+          ) || ayarList.find((a) => Number(a.standartAyar) === parsedNum);
         if (matchByStandart && matchByStandart.milyem !== undefined && matchByStandart.milyem !== null) {
           const m = Number(matchByStandart.milyem);
           if (m > 0) {
@@ -922,7 +939,7 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
           KurService.getKurTablosu({ tur: 0 }).catch(() => null),
           KurService.getKurTablosu({ tur: 1 }).catch(() => null),
         ])
-          .then(([t0, t1]) => [...(t1?.satirlar || []), ...(t0?.satirlar || [])])
+          .then(([t0, t1]) => [...(t0?.satirlar || []), ...(t1?.satirlar || [])])
           .catch(() => []),
         EtiketService.getBankolar().catch(() => []),
         AyarService.getAyarlar(false).catch(() => []),
@@ -976,14 +993,20 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
 
       // Kurları otomatik doldur (HAS & USD) - Öncelik Efektif Alış / Efektif Satış
       if (kurlar.length > 0) {
-        const hasKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS");
+        const hasPositiveRate = (k: KurRowItem) =>
+          (Number(k.efektifAlis) || Number(k.dovizAlis) || Number(k.efektifSatis) || Number(k.dovizSatis)) > 0;
+        const hasKur =
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS" && hasPositiveRate(k)) ||
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "HAS");
         if (hasKur) {
           const hAlis = (hasKur.efektifAlis !== undefined && hasKur.efektifAlis !== null && Number(hasKur.efektifAlis) > 0) ? hasKur.efektifAlis : hasKur.dovizAlis;
           const hSatis = (hasKur.efektifSatis !== undefined && hasKur.efektifSatis !== null && Number(hasKur.efektifSatis) > 0) ? hasKur.efektifSatis : hasKur.dovizSatis;
           if (hAlis !== undefined && hAlis !== null) setHasKuru1(hAlis);
           if (hSatis !== undefined && hSatis !== null) setHasKuru2(hSatis);
         }
-        const usdKur = kurlar.find((k) => (k.kod || "").toUpperCase() === "USD");
+        const usdKur =
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "USD" && hasPositiveRate(k)) ||
+          kurlar.find((k) => (k.kod || "").toUpperCase() === "USD");
         if (usdKur) {
           const uAlis = (usdKur.efektifAlis !== undefined && usdKur.efektifAlis !== null && Number(usdKur.efektifAlis) > 0) ? usdKur.efektifAlis : usdKur.dovizAlis;
           const uSatis = (usdKur.efektifSatis !== undefined && usdKur.efektifSatis !== null && Number(usdKur.efektifSatis) > 0) ? usdKur.efektifSatis : usdKur.dovizSatis;

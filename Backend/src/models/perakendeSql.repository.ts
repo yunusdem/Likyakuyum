@@ -14,11 +14,14 @@ export interface FaturaSatiriModel {
   barkod?: string | null;
   urunAdi: string;
   ayar?: string | null;
+  adet?: number | null;
   miktar: number;
   birim: string;
   gram: number;
   hasGram: number;
   birimFiyat: number;
+  paraKodu?: string | null;
+  kur?: number | null;
   tutar: number;
   kdvOrani: number;
   kdvTutari: number;
@@ -92,11 +95,15 @@ export interface CreateFaturaSatiriDto {
   barkod?: string | null;
   urunAdi: string;
   ayar?: string | null;
+  adet?: number | null;
   miktar: number;
   birim?: string;
   gram?: number;
   hasGram?: number;
   birimFiyat: number;
+  paraKodu?: string | null;
+  kur?: number | null;
+  tutar?: number;
   kdvOrani?: number;
 }
 
@@ -315,6 +322,9 @@ export class PerakendeSqlRepository {
         IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_MIKTAR') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_MIKTAR] FLOAT NULL;
         -- Ticari satış fişi satırının stok kartı (raporlar perakende vezne stoğundan ayırır)
         IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'STOK_KART_ID') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [STOK_KART_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'ADET') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [ADET] FLOAT NULL;
+        IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [PARA_KODU] VARCHAR(20) NULL;
+        IF COL_LENGTH('dbo.TODVZ_FATURA_SATIRI', 'KUR') IS NULL ALTER TABLE dbo.TODVZ_FATURA_SATIRI ADD [KUR] FLOAT NULL;
       `);
 
       // 2.b TODVZ_FATURA_ODEME Detail Table
@@ -740,23 +750,14 @@ export class PerakendeSqlRepository {
 
     // 1. Check TODVZ_ALTIN_URUN
     const altinRes = await req.query(`
-      SELECT TOP 1 
-        u.[ALTIN_URUN_ID],
-        u.[BARKOD],
-        u.[GRUP_KODU],
-        u.[URUN_NO],
-        u.[AYAR],
-        u.[MODEL],
-        u.[ORJINAL_KOD],
-        u.[URETICI_FIRMA],
-        u.[MIKTAR],
-        u.[HAS_GRAM],
-        u.[SATIS_FIYATI],
-        u.[SATIS_PARA_KODU],
-        u.[SATILDI]
+      SELECT TOP 1 u.*
       FROM [dbo].[TODVZ_ALTIN_URUN] u
       WHERE u.[BARKOD] = @BARKOD
-         OR CAST(u.[ALTIN_URUN_ID] AS VARCHAR(50)) = @BARKOD;
+         OR (u.[GRUP_KODU] + CAST(u.[URUN_NO] AS VARCHAR(20))) = @BARKOD
+         OR (u.[GRUP_KODU] + RIGHT('000' + CAST(u.[URUN_NO] AS VARCHAR(20)), 3)) = @BARKOD
+         OR (u.[GRUP_KODU] + '-' + CAST(u.[URUN_NO] AS VARCHAR(20))) = @BARKOD
+         OR (u.[GRUP_KODU] + '-' + RIGHT('000' + CAST(u.[URUN_NO] AS VARCHAR(20)), 3)) = @BARKOD
+         OR u.[ORJINAL_KOD] = @BARKOD;
     `);
 
     if (altinRes.recordset && altinRes.recordset.length > 0) {
@@ -767,19 +768,46 @@ export class PerakendeSqlRepository {
         );
       }
 
+      const satisHasVal = Number(row.SATIS_FIYATI) > 0 ? Number(row.SATIS_FIYATI) : (Number(row.HAS_GRAM) || 0);
+      const satisDovizVal = row.SATIS_DOVIZ !== null && row.SATIS_DOVIZ !== undefined && Number(row.SATIS_DOVIZ) > 0
+        ? Number(row.SATIS_DOVIZ)
+        : null;
+      const rawParaKodu = (row.SATIS_PARA_KODU || "").trim().toUpperCase();
+      const effectiveParaKodu = rawParaKodu && rawParaKodu !== "HAS" ? rawParaKodu : "USD";
+      const legacyUsdFallback = row.ALTIN_KURU !== null && row.ALTIN_KURU !== undefined && Number(row.ALTIN_KURU) > 0 && Number(row.ALTIN_KURU) < 500
+        ? Number(row.ALTIN_KURU)
+        : null;
+
       return {
+        tip: "altin",
         altinUrunId: row.ALTIN_URUN_ID,
-        barkod: row.BARKOD || cleanBarcode,
-        grupKodu: row.GRUP_KODU,
+        barkod: row.BARKOD ? String(row.BARKOD).trim() : `${(row.GRUP_KODU || "").trim()}${String(row.URUN_NO || "").padStart(3, "0")}`,
+        grupKodu: (row.GRUP_KODU || "").trim(),
         urunNo: row.URUN_NO,
-        urunAdi: row.MODEL || `${row.GRUP_KODU || "Altın"} ${row.AYAR || ""} Ürün`,
-        ayar: row.AYAR || "24K",
-        miktar: 1,
-        birim: "Adet",
+        model: row.MODEL ? String(row.MODEL).trim() : null,
+        urunAdi: (row.MODEL && String(row.MODEL).trim()) || `${(row.GRUP_KODU || "Altın").trim()} ${row.AYAR || ""} Ürün`,
+        ayar: row.AYAR ? String(row.AYAR).trim() : "22",
+        miktar: Number(row.MIKTAR) || 0,
+        birim: "Gram",
         gram: Number(row.MIKTAR) || 0,
         hasGram: Number(row.HAS_GRAM) || 0,
+        satisHas: satisHasVal,
+        maliyet: Number(row.MALIYET) || 0,
+        maliyetIscilik: Number(row.MALIYET_ISCILIK) || 0,
+        maliyetIscilikBirimi: row.MALIYET_ISCILIK_BIRIMI ? String(row.MALIYET_ISCILIK_BIRIMI).trim() : "Gram",
+        maliyetIscilikParaKodu: row.MALIYET_ISCILIK_PARA_KODU ? String(row.MALIYET_ISCILIK_PARA_KODU).trim() : "HAS",
+        maliyetIscilikTutari: Number(row.MALIYET_ISCILIK_TUTARI) || 0,
+        satisIscilik: Number(row.SATIS_ISCILIK) || 0,
+        satisIscilikBirimi: row.SATIS_ISCILIK_BIRIMI ? String(row.SATIS_ISCILIK_BIRIMI).trim() : "Gram",
+        satisIscilikTutari: Number(row.SATIS_ISCILIK_TUTARI) || 0,
+        satisKariYuzde: Number(row.SATIS_KARI_YUZDE) || 0,
+        satisDoviz: satisDovizVal,
         satisFiyati: Number(row.SATIS_FIYATI) || 0,
-        satisParaKodu: row.SATIS_PARA_KODU || "TL",
+        satisParaKodu: effectiveParaKodu,
+        hasKuru1: row.HAS_KURU_1 !== null && row.HAS_KURU_1 !== undefined ? Number(row.HAS_KURU_1) : null,
+        hasKuru2: row.HAS_KURU_2 !== null && row.HAS_KURU_2 !== undefined ? Number(row.HAS_KURU_2) : null,
+        usdKuru1: row.USD_KURU_1 !== null && row.USD_KURU_1 !== undefined ? Number(row.USD_KURU_1) : legacyUsdFallback,
+        usdKuru2: row.USD_KURU_2 !== null && row.USD_KURU_2 !== undefined ? Number(row.USD_KURU_2) : legacyUsdFallback,
         satildi: false,
         isBarkodlu: true,
       };
@@ -787,47 +815,80 @@ export class PerakendeSqlRepository {
 
     // 2. Check TODVZ_OZEL_URUN
     const ozelRes = await req.query(`
-      SELECT TOP 1 
-        u.[OZEL_URUN_ID],
-        u.[BARKOD],
-        u.[GRUP_KODU],
-        u.[URUN_NO],
-        u.[AYAR],
-        u.[MODEL_OZELLIK_1] AS [MODEL],
-        u.[MAMUL_TIPI],
-        u.[ORJINAL_KOD],
-        u.[URETICI_FIRMA],
-        u.[MIKTAR],
-        u.[MIKTAR_BIRIMI],
-        u.[SATIS_FIYATI],
-        u.[SATIS_PARA_KODU],
-        u.[SATILDI]
+      SELECT TOP 1 u.*
       FROM [dbo].[TODVZ_OZEL_URUN] u
       WHERE u.[BARKOD] = @BARKOD
-         OR CAST(u.[OZEL_URUN_ID] AS VARCHAR(50)) = @BARKOD;
+         OR (u.[GRUP_KODU] + CAST(u.[URUN_NO] AS VARCHAR(20))) = @BARKOD
+         OR (u.[GRUP_KODU] + RIGHT('000' + CAST(u.[URUN_NO] AS VARCHAR(20)), 3)) = @BARKOD
+         OR (u.[GRUP_KODU] + '-' + CAST(u.[URUN_NO] AS VARCHAR(20))) = @BARKOD
+         OR (u.[GRUP_KODU] + '-' + RIGHT('000' + CAST(u.[URUN_NO] AS VARCHAR(20)), 3)) = @BARKOD
+         OR u.[ORJINAL_KOD] = @BARKOD;
     `);
 
     if (ozelRes.recordset && ozelRes.recordset.length > 0) {
       const row = ozelRes.recordset[0];
       if (row.SATILDI === true || row.SATILDI === 1) {
         throw ApiError.badRequest(
-          `'${cleanBarcode}' barkodlu özel ürün (${row.MODEL || row.MAMUL_TIPI || row.GRUP_KODU || "Özel Ürün"}) daha önce satılmıştır ve stokta mevcut değildir.`
+          `'${cleanBarcode}' barkodlu özel ürün (${row.MODEL_OZELLIK_1 || row.MAMUL_TIPI || row.GRUP_KODU || "Özel Ürün"}) daha önce satılmıştır ve stokta mevcut değildir.`
         );
       }
 
+      let resolvedMiktar = Number(row.MIKTAR) || 0;
+      let resolvedHas = 0;
+      if (row.MODEL_OZELLIK_2) {
+        try {
+          const extra = JSON.parse(String(row.MODEL_OZELLIK_2));
+          if (extra.monturGram !== undefined && Number(String(extra.monturGram).replace(",", ".")) > 0) {
+            resolvedMiktar = Number(String(extra.monturGram).replace(",", "."));
+          }
+          if (extra.monturHas !== undefined && Number(String(extra.monturHas).replace(",", ".")) > 0) {
+            resolvedHas = Number(String(extra.monturHas).replace(",", "."));
+          }
+        } catch {
+          // ignore json parse error
+        }
+      }
+      if (resolvedHas <= 0 && resolvedMiktar > 0) {
+        const rawAyar = String(row.AYAR || "14").toUpperCase().trim();
+        let milyemRatio = 0.585;
+        if (rawAyar.includes("FANTAZ")) milyemRatio = 0.956;
+        else if (rawAyar.includes("925") || rawAyar.includes("GUMUS") || rawAyar.includes("GÜMÜŞ")) milyemRatio = 0.925;
+        else if (rawAyar.includes("950") || rawAyar.includes("PLATIN") || rawAyar.includes("PLATİN")) milyemRatio = 0.950;
+        else if (rawAyar.startsWith("24") || rawAyar === "995") milyemRatio = 0.995;
+        else if (rawAyar.startsWith("22") || rawAyar === "916") milyemRatio = 0.916;
+        else if (rawAyar.startsWith("18") || rawAyar === "750") milyemRatio = 0.750;
+        else if (rawAyar.startsWith("14") || rawAyar === "585") milyemRatio = 0.585;
+        else if (rawAyar.startsWith("8") || rawAyar === "333") milyemRatio = 0.333;
+        resolvedHas = Number((resolvedMiktar * milyemRatio).toFixed(5));
+      }
+
       return {
+        tip: "ozel",
+        ozelUrunId: row.OZEL_URUN_ID,
         altinUrunId: null,
-        barkod: row.BARKOD || cleanBarcode,
-        grupKodu: row.GRUP_KODU,
+        barkod: row.BARKOD ? String(row.BARKOD).trim() : `${(row.GRUP_KODU || "").trim()}${String(row.URUN_NO || "").padStart(3, "0")}`,
+        grupKodu: (row.GRUP_KODU || "").trim(),
         urunNo: row.URUN_NO,
-        urunAdi: row.MODEL || row.MAMUL_TIPI || `${row.GRUP_KODU || "Özel"} ${row.AYAR || ""} Ürün`,
-        ayar: row.AYAR || "24K",
-        miktar: 1,
-        birim: row.MIKTAR_BIRIMI || "Adet",
-        gram: Number(row.MIKTAR) || 0,
-        hasGram: 0,
+        mamulTipi: row.MAMUL_TIPI ? String(row.MAMUL_TIPI).trim() : null,
+        modelOzellik1: row.MODEL_OZELLIK_1 ? String(row.MODEL_OZELLIK_1).trim() : null,
+        modelOzellik2: row.MODEL_OZELLIK_2 ? String(row.MODEL_OZELLIK_2).trim() : null,
+        urunAdi: (row.MAMUL_TIPI && String(row.MAMUL_TIPI).trim()) || (row.MODEL_OZELLIK_1 && String(row.MODEL_OZELLIK_1).trim()) || `${(row.GRUP_KODU || "Özel").trim()} ${row.AYAR || ""} Ürün`,
+        ayar: row.AYAR ? String(row.AYAR).trim() : "14",
+        miktar: resolvedMiktar,
+        birim: row.MIKTAR_BIRIMI ? String(row.MIKTAR_BIRIMI).trim() : "Gram",
+        gram: resolvedMiktar,
+        hasGram: resolvedHas,
+        maliyet: Number(row.MALIYET) || 0,
+        maliyetParaKodu: (row.MALIYET_PARA_KODU || "USD").trim().toUpperCase(),
+        karYuzdesi: Number(row.KAR_YUZDESI) || 0,
+        satisDoviz: Number(row.SATIS_FIYATI) || 0,
         satisFiyati: Number(row.SATIS_FIYATI) || 0,
-        satisParaKodu: row.SATIS_PARA_KODU || "USD",
+        satisParaKodu: (row.SATIS_PARA_KODU || "USD").trim().toUpperCase(),
+        tasCinsi: row.TAS_CINSI ? String(row.TAS_CINSI).trim() : null,
+        tasMiktar: row.TAS_MIKTAR !== null && row.TAS_MIKTAR !== undefined ? Number(row.TAS_MIKTAR) : null,
+        tasBirim: row.TAS_BIRIM ? String(row.TAS_BIRIM).trim() : "Ct",
+        tasTutar: row.TAS_TUTAR !== null && row.TAS_TUTAR !== undefined ? Number(row.TAS_TUTAR) : null,
+        tasTutarBirimi: row.TAS_TUTAR_BIRIMI ? String(row.TAS_TUTAR_BIRIMI).trim() : "USD",
         satildi: false,
         isBarkodlu: true,
       };
@@ -852,6 +913,10 @@ export class PerakendeSqlRepository {
       const isGram = Number(row.URUN_TIPI) === 0;
       return {
         altinUrunId: null,
+        paraId: row.PARA_ID,
+        kod: (row.KOD || "").trim(),
+        urunTipi: Number(row.URUN_TIPI ?? 0),
+        hasOrani: Number(row.HAS_ORANI) || 0,
         barkod: "",
         grupKodu: "",
         urunNo: 0,
@@ -911,7 +976,13 @@ export class PerakendeSqlRepository {
       const m = Number(s.miktar) || 1;
       const f = Number(s.birimFiyat) || 0;
       const kdvRate = Number(s.kdvOrani) || 0;
-      const tutar = Math.round(m * f * 100) / 100;
+      const pKod = (s.paraKodu || "").trim().toUpperCase();
+      const sKur = Number(s.kur) > 0 ? Number(s.kur) : 1;
+      const isForeign = pKod !== "" && pKod !== "TL" && pKod !== "TRY" && pKod !== "TRL";
+      const isBarkodluRow = Boolean(s.altinUrunId || (s.barkod && String(s.barkod).trim()));
+      const baseCnt = isBarkodluRow ? (Number(s.adet) || 1) : m;
+      const calcTutar = isForeign ? Math.round(baseCnt * f * sKur * 100) / 100 : Math.round(m * f * 100) / 100;
+      const tutar = Number(s.tutar) > 0 ? Math.round(Number(s.tutar) * 100) / 100 : calcTutar;
       const kdvTutari = Math.round(tutar * (kdvRate / 100) * 100) / 100;
       araToplam += tutar;
       toplamKdv += kdvTutari;
@@ -1206,15 +1277,21 @@ export class PerakendeSqlRepository {
           const lineReq = new sql.Request(transaction);
 
           const m = Number(row.miktar) || 1;
+          const adetVal = row.adet !== undefined && row.adet !== null && Number(row.adet) > 0 ? Number(row.adet) : 1;
           const f = Number(row.birimFiyat) || 0;
           const kdvRate = Number(row.kdvOrani) || 0;
-          const tutar = Math.round(m * f * 100) / 100;
+          const cleanBarkod = (row.barkod || "").trim() || null;
+          const isBarkodlu = Boolean(row.altinUrunId || cleanBarkod);
+          const pKod = ((row.paraKodu || (isBarkodlu ? "USD" : "TL")).trim().toUpperCase()) || "TL";
+          const rowKur = Number(row.kur) > 0 ? Number(row.kur) : 1;
+          const isForeign = pKod !== "TL" && pKod !== "TRY" && pKod !== "TRL";
+          const baseCnt = isBarkodlu ? adetVal : m;
+          const calcTutar = isForeign ? Math.round(baseCnt * f * rowKur * 100) / 100 : Math.round(m * f * 100) / 100;
+          const tutar = Number(row.tutar) > 0 ? Math.round(Number(row.tutar) * 100) / 100 : calcTutar;
           const kdvTutari = Math.round(tutar * (kdvRate / 100) * 100) / 100;
           const toplamTutar = Math.round((tutar + kdvTutari) * 100) / 100;
           const gramVal = Number(row.gram) || 0;
           const hasGramVal = Number(row.hasGram) || 0;
-          const cleanBarkod = (row.barkod || "").trim() || null;
-          const isBarkodlu = Boolean(row.altinUrunId || cleanBarkod);
 
           lineReq.input("FATURA_ID", sql.Int, outFaturaId);
           lineReq.input("VEZNE_ID", sql.Int, vezneId);
@@ -1224,11 +1301,14 @@ export class PerakendeSqlRepository {
           lineReq.input("BARKOD", sql.VarChar(50), cleanBarkod);
           lineReq.input("URUN_ADI", sql.VarChar(200), (row.urunAdi || "Altın Ürün").trim());
           lineReq.input("AYAR", sql.VarChar(50), (row.ayar || "").trim() || null);
+          lineReq.input("ADET", sql.Float, adetVal);
           lineReq.input("MIKTAR", sql.Float, m);
           lineReq.input("BIRIM", sql.VarChar(20), (row.birim || "Adet").trim());
           lineReq.input("GRAM", sql.Float, gramVal);
           lineReq.input("HAS_GRAM", sql.Float, hasGramVal);
           lineReq.input("BIRIM_FIYAT", sql.Float, f);
+          lineReq.input("PARA_KODU", sql.VarChar(20), pKod);
+          lineReq.input("KUR", sql.Float, rowKur);
           lineReq.input("TUTAR", sql.Float, tutar);
           lineReq.input("KDV_ORANI", sql.Float, kdvRate);
           lineReq.input("KDV_TUTARI", sql.Float, kdvTutari);
@@ -1239,13 +1319,13 @@ export class PerakendeSqlRepository {
           const lineInsertQuery = `
             INSERT INTO dbo.TODVZ_FATURA_SATIRI (
               FATURA_ID, SATIR_NO, ALTIN_URUN_ID, BARKOD, URUN_ADI,
-              AYAR, MIKTAR, BIRIM, GRAM, HAS_GRAM,
-              BIRIM_FIYAT, TUTAR, KDV_ORANI, KDV_TUTARI, TOPLAM_TUTAR
+              AYAR, ADET, MIKTAR, BIRIM, GRAM, HAS_GRAM,
+              BIRIM_FIYAT, PARA_KODU, KUR, TUTAR, KDV_ORANI, KDV_TUTARI, TOPLAM_TUTAR
             )
             VALUES (
               @FATURA_ID, @SATIR_NO, @ALTIN_URUN_ID, @BARKOD, @URUN_ADI,
-              @AYAR, @MIKTAR, @BIRIM, @GRAM, @HAS_GRAM,
-              @BIRIM_FIYAT, @TUTAR, @KDV_ORANI, @KDV_TUTARI, @TOPLAM_TUTAR
+              @AYAR, @ADET, @MIKTAR, @BIRIM, @GRAM, @HAS_GRAM,
+              @BIRIM_FIYAT, @PARA_KODU, @KUR, @TUTAR, @KDV_ORANI, @KDV_TUTARI, @TOPLAM_TUTAR
             );
 
             -- 1. Barkodlu ürün durumu (TODVZ_ALTIN_URUN & TODVZ_OZEL_URUN)
@@ -1545,11 +1625,14 @@ export class PerakendeSqlRepository {
         ISNULL(NULLIF(s.[BARKOD], ''), ISNULL(u.[BARKOD], '')) AS [BARKOD],
         ISNULL(NULLIF(s.[URUN_ADI], ''), ISNULL(u.[MODEL], 'Altın Ürün')) AS [URUN_ADI],
         ISNULL(NULLIF(s.[AYAR], ''), ISNULL(u.[AYAR], '')) AS [AYAR],
+        s.[ADET],
         ISNULL(s.[MIKTAR], 1) AS [MIKTAR],
         ISNULL(s.[BIRIM], 'Adet') AS [BIRIM],
         ISNULL(NULLIF(s.[GRAM], 0), ISNULL(u.[MIKTAR], 0)) AS [GRAM],
-        ISNULL(NULLIF(s.[HAS_GRAM], 0), ISNULL(u.[HAS_GRAM], 0)) AS [HAS_GRAM],
+        ISNULL(NULLIF(s.[HAS_GRAM], 0), ISNULL(u.[SATIS_FIYATI], ISNULL(u.[HAS_GRAM], 0))) AS [HAS_GRAM],
         ISNULL(s.[BIRIM_FIYAT], 0) AS [BIRIM_FIYAT],
+        s.[PARA_KODU],
+        s.[KUR],
         ISNULL(s.[TUTAR], 0) AS [TUTAR],
         ISNULL(s.[KDV_ORANI], 0) AS [KDV_ORANI],
         ISNULL(s.[KDV_TUTARI], 0) AS [KDV_TUTARI],
@@ -1568,11 +1651,14 @@ export class PerakendeSqlRepository {
       barkod: s.BARKOD,
       urunAdi: s.URUN_ADI || "Altın Ürün",
       ayar: s.AYAR || "",
+      adet: s.ADET !== null && s.ADET !== undefined ? Number(s.ADET) : null,
       miktar: Number(s.MIKTAR) || 1,
       birim: s.BIRIM || "Adet",
       gram: Number(s.GRAM) || 0,
       hasGram: Number(s.HAS_GRAM) || 0,
       birimFiyat: Number(s.BIRIM_FIYAT) || 0,
+      paraKodu: s.PARA_KODU ? String(s.PARA_KODU).trim() : null,
+      kur: s.KUR !== null && s.KUR !== undefined ? Number(s.KUR) : null,
       tutar: Number(s.TUTAR) || 0,
       kdvOrani: Number(s.KDV_ORANI) || 0,
       kdvTutari: Number(s.KDV_TUTARI) || 0,
