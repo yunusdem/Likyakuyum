@@ -120,8 +120,9 @@ interface OdemeRow {
 
 const GRID_COLS = [
   "urunKodu", "urunAdi", "adet", "miktar", "milyem", "hasGram",
-  "iscilikToplam", "tlTutar",
-  "iscilikHesaplamaSekli", "iscilikiMiktari", "iscilikHasGram", "iscilikTutari", "iscilikKdvOrani", "iscilikKdvTutari", "kur", "tutar",
+  "tlTutar",
+  "iscilikHesaplamaSekli", "iscilikiMiktari", "iscilikHasGram", "iscilikTutari", "iscilikKdvOrani", "iscilikKdvTutari", "iscilikToplam",
+  "kur", "tutar",
 ] as const;
 type GridColKey = typeof GRID_COLS[number];
 
@@ -451,7 +452,7 @@ const sabitTutariKoru = (r: GridRow, kur: number | string, hesaplanan: number | 
     ? r.ebSabit.tutar
     : hesaplanan;
 
-const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0): GridRow => {
+const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false): GridRow => {
   const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
   const isPara = effTipi === 0 && Boolean(r.urunKodu && r.urunKodu.trim());
   const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
@@ -520,16 +521,64 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
   const effectiveKur = parseDecimal(kur);
   const hasFiyati = defaultKur > 0 ? defaultKur : effectiveKur;
 
+  // TL Tutar hesabı: Has * Kur (veya miktar/adet * kur)
+  let tlTutar: number | string = "";
+  const hasNum = parseDecimal(hasGram);
+  if (hasNum > 0 && effectiveKur > 0) {
+    tlTutar = parseFloat((hasNum * effectiveKur).toFixed(2));
+  } else if (base > 0 && effectiveKur > 0) {
+    tlTutar = parseFloat((base * effectiveKur).toFixed(2));
+  } else if (r.tlTutar !== "" && parseDecimal(r.tlTutar) > 0) {
+    tlTutar = parseDecimal(r.tlTutar);
+  }
+
   // İşçilik hesabı: 0: Gram, 1: Adet, 2: Toplam
   const iscilikSekli = Number(r.iscilikHesaplamaSekli) || 0;
   let iscilikiMiktari: number | string = r.iscilikiMiktari;
-  let iscilikHasGram: number | string = "";
-  let iscilikTutari: number | string = "";
+  let iscilikHasGram: number | string = r.iscilikHasGram;
+  let iscilikTutari: number | string = r.iscilikTutari;
+  let iscilikKdvOrani: number | string = isKdvDisabled ? "" : (r.iscilikKdvOrani !== undefined && r.iscilikKdvOrani !== null ? r.iscilikKdvOrani : "");
+  let iscilikKdvTutari: number | string = isKdvDisabled ? "" : (r.iscilikKdvTutari !== undefined && r.iscilikKdvTutari !== null ? r.iscilikKdvTutari : "");
+  let iscilikToplam: number | string = r.iscilikToplam !== undefined && r.iscilikToplam !== null ? r.iscilikToplam : "";
 
   const gramVal = miktar > 0 ? miktar : (adet > 0 ? adet : 0);
   const adetVal = adet > 0 ? adet : 1;
 
-  if (changedField === "iscilikTutari") {
+  if (changedField === "iscilikToplam") {
+    const topVal = parseDecimal(r.iscilikToplam);
+    iscilikToplam = r.iscilikToplam;
+    if (topVal > 0) {
+      const oranVal = !isKdvDisabled ? parseDecimal(iscilikKdvOrani) : 0;
+      if (oranVal > 0) {
+        // KDV dahil toplam işçilikten net işçilik ve KDV ayrıştırma
+        const netTl = parseFloat((topVal / (1 + oranVal / 100)).toFixed(2));
+        iscilikTutari = netTl;
+        iscilikKdvTutari = parseFloat((topVal - netTl).toFixed(2));
+      } else {
+        iscilikTutari = topVal;
+        iscilikKdvTutari = isKdvDisabled ? "" : (iscilikKdvTutari !== "" ? iscilikKdvTutari : "");
+      }
+      if (hasFiyati > 0) {
+        const calcHas = parseFloat((parseDecimal(iscilikTutari) / hasFiyati).toFixed(4));
+        iscilikHasGram = calcHas;
+        let effIsc = 0;
+        if (iscilikSekli === 0 && gramVal > 0) effIsc = calcHas / gramVal;
+        else if (iscilikSekli === 1 && adetVal > 0) effIsc = calcHas / adetVal;
+        else if (iscilikSekli === 2) effIsc = calcHas;
+        if (effIsc > 0) {
+          iscilikiMiktari = iscilikGirisSekli === 0 ? parseFloat((effIsc * 1000).toFixed(2)) : parseFloat(effIsc.toFixed(4));
+        } else {
+          iscilikiMiktari = "";
+        }
+      }
+    } else if (topVal === 0 || r.iscilikToplam === "") {
+      iscilikToplam = "";
+      iscilikTutari = "";
+      iscilikKdvTutari = "";
+      iscilikHasGram = "";
+      iscilikiMiktari = "";
+    }
+  } else if (changedField === "iscilikTutari") {
     const rawTl = parseDecimal(r.iscilikTutari);
     if (rawTl > 0 && hasFiyati > 0) {
       iscilikTutari = r.iscilikTutari;
@@ -557,28 +606,70 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
     } else {
       iscilikTutari = r.iscilikTutari;
     }
+
+    const netIsc = parseDecimal(iscilikTutari);
+    const oranVal = !isKdvDisabled ? parseDecimal(iscilikKdvOrani) : 0;
+    if (oranVal > 0 && netIsc > 0) {
+      iscilikKdvTutari = parseFloat(((netIsc * oranVal) / 100).toFixed(2));
+      iscilikToplam = parseFloat((netIsc + parseDecimal(iscilikKdvTutari)).toFixed(2));
+    } else if (parseDecimal(iscilikKdvTutari) > 0) {
+      iscilikToplam = parseFloat((netIsc + parseDecimal(iscilikKdvTutari)).toFixed(2));
+    } else {
+      if (isKdvDisabled) iscilikKdvTutari = "";
+      iscilikToplam = netIsc > 0 ? netIsc : "";
+    }
+  } else if (changedField === "iscilikKdvTutari") {
+    iscilikKdvTutari = r.iscilikKdvTutari;
+    const netIsc = parseDecimal(iscilikTutari);
+    const kdvVal = parseDecimal(iscilikKdvTutari);
+    if (netIsc > 0 && kdvVal > 0) {
+      iscilikKdvOrani = parseFloat(((kdvVal / netIsc) * 100).toFixed(2));
+    }
+    if (netIsc > 0 || kdvVal > 0) {
+      iscilikToplam = parseFloat((netIsc + kdvVal).toFixed(2));
+    } else {
+      iscilikToplam = "";
+    }
+  } else if (changedField === "iscilikKdvOrani") {
+    const oranVal = !isKdvDisabled ? parseDecimal(iscilikKdvOrani) : 0;
+    const netIsc = parseDecimal(iscilikTutari);
+    if (oranVal > 0 && netIsc > 0) {
+      iscilikKdvTutari = parseFloat(((netIsc * oranVal) / 100).toFixed(2));
+      iscilikToplam = parseFloat((netIsc + parseDecimal(iscilikKdvTutari)).toFixed(2));
+    } else if (oranVal === 0 || iscilikKdvOrani === "") {
+      iscilikKdvTutari = "";
+      iscilikToplam = netIsc > 0 ? netIsc : "";
+    }
   } else if (changedField === "iscilikHasGram") {
     iscilikHasGram = r.iscilikHasGram;
-    const hasNum = parseDecimal(iscilikHasGram);
-    if (hasNum > 0 && hasFiyati > 0) {
-      iscilikTutari = parseFloat((hasNum * hasFiyati).toFixed(2));
+    const hasNumIsc = parseDecimal(iscilikHasGram);
+    if (hasNumIsc > 0 && hasFiyati > 0) {
+      iscilikTutari = parseFloat((hasNumIsc * hasFiyati).toFixed(2));
     } else {
       iscilikTutari = "";
     }
+    const netIsc = parseDecimal(iscilikTutari);
+    const oranVal = !isKdvDisabled ? parseDecimal(iscilikKdvOrani) : 0;
+    if (oranVal > 0 && netIsc > 0) {
+      iscilikKdvTutari = parseFloat(((netIsc * oranVal) / 100).toFixed(2));
+      iscilikToplam = parseFloat((netIsc + parseDecimal(iscilikKdvTutari)).toFixed(2));
+    } else if (parseDecimal(iscilikKdvTutari) > 0) {
+      iscilikToplam = parseFloat((netIsc + parseDecimal(iscilikKdvTutari)).toFixed(2));
+    } else {
+      if (isKdvDisabled) iscilikKdvTutari = "";
+      iscilikToplam = netIsc > 0 ? netIsc : "";
+    }
   } else {
+    // Default recalculation (e.g. iscilikiMiktari, miktar, adet, kur vb.)
     const rawIscilik = parseDecimal(r.iscilikiMiktari);
-    // Eğer tam sayı seçili ise (iscilikGirisSekli === 0), 1000'e bölünmüş hali kullanılır (örn: 25 -> 0.025). Milyem ise (1) doğrudan kullanılır.
     const effectiveIscilik = (iscilikGirisSekli === 0) ? (rawIscilik / 1000) : rawIscilik;
 
     if (effectiveIscilik > 0) {
       if (iscilikSekli === 0) {
-        // Gram seçilirse: gram (veya miktar/adet) * işçilik
         iscilikHasGram = parseFloat((gramVal * effectiveIscilik).toFixed(4));
       } else if (iscilikSekli === 1) {
-        // Adet seçilirse: adet * işçilik
         iscilikHasGram = parseFloat((adetVal * effectiveIscilik).toFixed(4));
       } else if (iscilikSekli === 2) {
-        // Toplam seçilirse
         iscilikHasGram = parseFloat(effectiveIscilik.toFixed(4));
       }
 
@@ -587,67 +678,47 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
       } else {
         iscilikTutari = "";
       }
-    } else {
+    } else if (changedField === "iscilikiMiktari") {
       iscilikHasGram = "";
       iscilikTutari = "";
     }
+
+    const netIsc = parseDecimal(iscilikTutari);
+    const oranVal = !isKdvDisabled ? parseDecimal(iscilikKdvOrani) : 0;
+    if (oranVal > 0 && netIsc > 0) {
+      iscilikKdvTutari = parseFloat(((netIsc * oranVal) / 100).toFixed(2));
+      iscilikToplam = parseFloat((netIsc + parseDecimal(iscilikKdvTutari)).toFixed(2));
+    } else if (parseDecimal(iscilikKdvTutari) > 0) {
+      iscilikToplam = parseFloat((netIsc + parseDecimal(iscilikKdvTutari)).toFixed(2));
+    } else {
+      if (isKdvDisabled) iscilikKdvTutari = "";
+      iscilikToplam = netIsc > 0 ? netIsc : "";
+    }
   }
 
-  const totalRowHas = (parseDecimal(hasGram) || 0) + (parseDecimal(iscilikHasGram) || 0);
-
-  // Tutar (TL) hesabı: (Has + İşçilik Has) * Kur
+  // Toplam Tutar (TL) hesabı: TL Tutar + İşçilik Toplam
+  const tlTutVal = parseDecimal(tlTutar);
+  const iscTopVal = parseDecimal(iscilikToplam);
   let tutar: number | string = r.tutar;
   if (changedField !== "tutar") {
-    if (totalRowHas > 0 && effectiveKur > 0) {
-      tutar = parseFloat((totalRowHas * effectiveKur).toFixed(2));
-    } else if (base > 0 && effectiveKur > 0) {
-      tutar = parseFloat((base * effectiveKur).toFixed(2));
-    } else if (base > 0 && parseDecimal(r.tutar) > 0) {
-      tutar = r.tutar;
+    if (tlTutVal > 0 || iscTopVal > 0) {
+      tutar = parseFloat((tlTutVal + iscTopVal).toFixed(2));
     } else {
       tutar = "";
     }
     tutar = sabitTutariKoru(r, kur, tutar);
   }
 
-  const iscilikToplam = iscilikTutari !== "" && parseDecimal(iscilikTutari) > 0
-    ? parseDecimal(iscilikTutari)
-    : (iscilikHasGram !== "" && parseDecimal(iscilikHasGram) > 0 && hasFiyati > 0
-      ? parseFloat((parseDecimal(iscilikHasGram) * hasFiyati).toFixed(2))
-      : "");
-
-  let iscilikKdvOrani = r.iscilikKdvOrani !== undefined && r.iscilikKdvOrani !== null ? r.iscilikKdvOrani : "";
-  let iscilikKdvTutari = r.iscilikKdvTutari !== undefined && r.iscilikKdvTutari !== null ? r.iscilikKdvTutari : "";
-
-  if (changedField === "iscilikKdvOrani") {
-    const oranVal = parseDecimal(iscilikKdvOrani);
-    const iscTop = parseDecimal(iscilikToplam);
-    if (oranVal > 0 && iscTop > 0) {
-      iscilikKdvTutari = parseFloat(((iscTop * oranVal) / 100).toFixed(2));
-    } else if (iscilikKdvOrani === "" || oranVal === 0) {
-      iscilikKdvTutari = "";
-    }
-  } else if (changedField === "iscilikKdvTutari") {
-    // Doğrudan KDV tutarı girildiğinde koru
-  } else {
-    // Diğer alanlar değiştiğinde eğer KDV oranı varsa KDV tutarını güncelle
-    const oranVal = parseDecimal(iscilikKdvOrani);
-    const iscTop = parseDecimal(iscilikToplam);
-    if (oranVal > 0 && iscTop > 0) {
-      iscilikKdvTutari = parseFloat(((iscTop * oranVal) / 100).toFixed(2));
-    }
-  }
-
   return {
     ...r,
     iscilikiMiktari,
     hasGram,
-    iscilikToplam: iscilikToplam !== "" ? iscilikToplam : "",
-    tlTutar: tutar !== "" ? tutar : "",
+    tlTutar: tlTutar !== "" ? tlTutar : "",
     iscilikHasGram,
     iscilikTutari,
-    iscilikKdvOrani,
-    iscilikKdvTutari,
+    iscilikKdvOrani: isKdvDisabled ? "" : iscilikKdvOrani,
+    iscilikKdvTutari: isKdvDisabled ? "" : iscilikKdvTutari,
+    iscilikToplam: iscilikToplam !== "" ? iscilikToplam : "",
     kur,
     tutar,
   };
@@ -1167,7 +1238,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 newKur = newHas || line.kur;
               }
               const updated = { ...line, kur: newKur };
-              return recomputeRow(updated, Number(newKur) || Number(newHas) || 0, undefined, userIscilikGirisSekli);
+              return recomputeRow(updated, Number(newKur) || Number(newHas) || 0, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
             })
           );
 
@@ -1312,21 +1383,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const totalHasGram = lines.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
   const totalIscilikMiktari = lines.reduce((s, r) => s + (parseDecimal(formatIscilikGirisDegeri(r.iscilikiMiktari, userIscilikGirisSekli)) || 0), 0);
   const totalIscilikHasGram = lines.reduce((s, r) => s + (parseDecimal(r.iscilikHasGram) || 0), 0);
+  const totalTLTutar = lines.reduce((s, r) => s + (parseDecimal(r.tlTutar) || 0), 0);
   const totalIscilikTutari = lines.reduce((s, r) => s + (parseDecimal(r.iscilikTutari) || 0), 0);
-  const totalIscilikToplam = lines.reduce((s, r) => s + (parseDecimal(r.iscilikToplam ?? r.iscilikTutari) || 0), 0);
+  const totalIscilikToplam = lines.reduce((s, r) => s + (parseDecimal(r.iscilikToplam) || 0), 0);
   const totalIscilikKdvTutari = lines.reduce((s, r) => {
     const rowKdv = parseDecimal(r.iscilikKdvTutari);
     if (rowKdv > 0) return s + rowKdv;
     const oran = parseDecimal(r.iscilikKdvOrani) || parseDecimal(kdvOrani) || 0;
-    const rowIscTop = parseDecimal(r.iscilikToplam) || parseDecimal(r.iscilikTutari) || 0;
-    if (oran > 0 && rowIscTop > 0) {
-      return s + (rowIscTop * oran) / 100;
-    }
-    const ihg = parseDecimal(r.iscilikHasGram);
-    const hk = parseDecimal(altinHasKuru) || parseDecimal(r.kur) || 0;
-    if (oran > 0 && ihg > 0 && hk > 0) {
-      return s + (ihg * hk * oran) / 100;
-    }
     const it = parseDecimal(r.iscilikTutari);
     if (oran > 0 && it > 0) {
       return s + (it * oran) / 100;
@@ -1334,28 +1397,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     return s;
   }, 0);
   const totalTutar = useMemo(() => {
-    const hasRows = lines.filter((r) => (parseDecimal(r.hasGram) || 0) > 0 || (parseDecimal(r.iscilikHasGram) || 0) > 0);
-    const nonHasRowsTutar = lines
-      .filter((r) => !((parseDecimal(r.hasGram) || 0) > 0 || (parseDecimal(r.iscilikHasGram) || 0) > 0))
-      .reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
-
-    if (hasRows.length === 0) {
-      return parseFloat(nonHasRowsTutar.toFixed(2));
-    }
-
-    const kurlar = hasRows.map((r) => parseDecimal(r.kur) || parseDecimal(altinHasKuru) || 0).filter((k) => k > 0);
-    const allSameKur = kurlar.length > 0 && kurlar.every((k) => Math.abs(k - kurlar[0]) < 0.0001);
-
-    const hasToplamTutar = allSameKur
-      ? (totalHasGram + totalIscilikHasGram) * kurlar[0]
-      : hasRows.reduce((s, r) => {
-        const rowHas = (parseDecimal(r.hasGram) || 0) + (parseDecimal(r.iscilikHasGram) || 0);
-        const rowKur = parseDecimal(r.kur) || parseDecimal(altinHasKuru) || 0;
-        return s + rowHas * rowKur;
-      }, 0);
-
-    return parseFloat((hasToplamTutar + nonHasRowsTutar).toFixed(2));
-  }, [lines, totalHasGram, totalIscilikHasGram, altinHasKuru]);
+    return parseFloat(lines.reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0).toFixed(2));
+  }, [lines]);
 
   // Totals (Ödeme / Tahsilat)
   const totalOdemeAdet = odemeRows.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
@@ -1511,6 +1554,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     if (rawVal === undefined || rawVal === null || rawVal === "") return false;
     return Number(rawVal) === 1;
   }, [istatistikFisDizaynTipi, activeStat]);
+  const isKdvDisabledRef = useRef<boolean>(isKdvDisabled);
+  isKdvDisabledRef.current = isKdvDisabled;
   const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
   const prevTipRef = useRef<number>(tip);
 
@@ -2155,7 +2200,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             karat: s.karat || "",
             aciklama: s.aciklama || "",
           };
-          return recomputeRow(rowObj, curHasKuru, undefined, userIscilikGirisSekli);
+          return recomputeRow(rowObj, curHasKuru, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
         });
         setLines(mapped.length > 0 ? mapped : [createEmptyRow(1)]);
       } else {
@@ -4021,7 +4066,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           }
         }
       }
-      const hesaplanan = recomputeRow(updated, finalKur, undefined, userIscilikGirisSekli);
+      const hesaplanan = recomputeRow(updated, finalKur, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
       return ebSabitTutar !== null && parseDecimal(hesaplanan.tutar) > 0
         ? { ...hesaplanan, tutar: ebSabitTutar, ebSabit: { miktar: parseDecimal(hesaplanan.miktar), adet: parseDecimal(hesaplanan.adet), kur: parseDecimal(hesaplanan.kur), tutar: ebSabitTutar } }
         : hesaplanan;
@@ -4313,7 +4358,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     if (newKur > 0) {
       setLines((prev) => prev.map((r) => {
         const updated = { ...r, kur: newKur };
-        return recomputeRow(updated, newKur, undefined, userIscilikGirisSekli);
+        return recomputeRow(updated, newKur, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
       }));
       setOdemeRows((prev) => prev.map((r) => recomputeOdemeRow(r, newKur)));
     }
@@ -4421,6 +4466,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const n = parseDecimal(val);
         val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
       }
+      if (field === "iscilikToplam") {
+        const n = parseDecimal(val);
+        val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
+      }
       if (field === "milyem") {
         const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
         const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
@@ -4460,7 +4509,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
       }
       const curHasKuru = Number(altinHasKuru) || 0;
-      return recomputeRow({ ...r, refMilyem: nextRefMilyem, [field]: val }, curHasKuru, field, userIscilikGirisSekli);
+      return recomputeRow({ ...r, refMilyem: nextRefMilyem, [field]: val }, curHasKuru, field, userIscilikGirisSekli, isKdvDisabledRef.current);
     }));
     if (pendingWarnMsg) {
       const msg = pendingWarnMsg;
@@ -4480,6 +4529,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       field === "iscilikiMiktari" ||
       field === "iscilikHasGram" ||
       field === "iscilikTutari" ||
+      field === "iscilikKdvOrani" ||
+      field === "iscilikKdvTutari" ||
+      field === "iscilikToplam" ||
       field === "kur" ||
       field === "tutar" ||
       field === "karat"
@@ -4551,7 +4603,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         miktar,
         [field]: finalFieldVal
       };
-      return recomputeRow(updated, curHasKuru, field, userIscilikGirisSekli);
+      return recomputeRow(updated, curHasKuru, field, userIscilikGirisSekli, isKdvDisabledRef.current);
     }));
 
     if (pendingWarnMsg) {
@@ -5551,7 +5603,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const isColPassive = (col: GridColKey, rIdx: number = rowIndex) => {
       if (col !== "urunKodu" && col in colVisibility && !colVisibility[col as keyof typeof colVisibility]) return true;
-      if (col === "urunAdi" || col === "hasGram" || col === "iscilikToplam" || col === "tlTutar" || col === "iscilikHasGram" || col === "tutar") return true;
+      if (col === "urunAdi" || col === "hasGram" || col === "tlTutar" || col === "iscilikHasGram" || col === "tutar") return true;
       if (col === "kur" && !kurAcik) return true;
       if (col === "milyem" && !milyemAcik) return true;
       const currentRow = lines[rIdx];
@@ -5559,7 +5611,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const isPara = effTipi === 0 && Boolean(currentRow && currentRow.urunKodu && currentRow.urunKodu.trim());
       const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: currentRow?.urunTipi, kod: currentRow?.urunKodu, ad: currentRow?.urunAdi });
       const isParaOrZiynet = isPara || isZiynet;
-      if (isParaOrZiynet && (col === "miktar" || col === "milyem" || col === "iscilikHesaplamaSekli" || col === "iscilikiMiktari" || col === "iscilikTutari" || col === "iscilikKdvOrani" || col === "iscilikKdvTutari")) {
+      if (isParaOrZiynet && (col === "miktar" || col === "milyem" || col === "iscilikHesaplamaSekli" || col === "iscilikiMiktari" || col === "iscilikTutari" || col === "iscilikKdvOrani" || col === "iscilikKdvTutari" || col === "iscilikToplam")) {
         return true;
       }
       if ((col === "iscilikKdvOrani" || col === "iscilikKdvTutari") && isKdvDisabled) {
@@ -5584,6 +5636,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
       if (colKey === "iscilikKdvTutari") {
         normalizeRowOnBlur(rowId, "iscilikKdvTutari");
+      }
+      if (colKey === "iscilikToplam") {
+        normalizeRowOnBlur(rowId, "iscilikToplam");
       }
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
@@ -6943,7 +6998,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           kur: curKur > 0 ? curKur : r.kur,
                           milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                         };
-                        return recomputeRow(updated, curKur, undefined, userIscilikGirisSekli);
+                        return recomputeRow(updated, curKur, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
                       }));
 
                       const odemeTip: 0 | 1 = newTip === 0 ? 1 : 0;
@@ -6997,7 +7052,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             kur: curKur > 0 ? curKur : r.kur,
                             milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                           };
-                          return recomputeRow(updated, curKur, undefined, userIscilikGirisSekli);
+                          return recomputeRow(updated, curKur, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
                         }));
 
                         const odemeTip: 0 | 1 = newTip === 0 ? 1 : 0;
@@ -7514,7 +7569,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   { key: "miktar", label: "Miktar" },
                   { key: "milyem", label: "Milyem" },
                   { key: "hasGram", label: "Has" },
-                  { key: "iscilikToplam", label: "İşçilik Toplam" },
                   { key: "tlTutar", label: "TL Tutar" },
                   { key: "iscilikHesaplamaSekli", label: "İşçilik Şekli" },
                   { key: "iscilikiMiktari", label: userIscilikGirisSekli === 0 ? "İşçilik/T" : "İşçilik/M" },
@@ -7522,8 +7576,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   { key: "iscilikTutari", label: "İşçilik (TL)" },
                   { key: "iscilikKdvOrani", label: "İşçilik KDV (%)" },
                   { key: "iscilikKdvTutari", label: "İşçilik KDV Tutar" },
+                  { key: "iscilikToplam", label: "İşçilik Toplam" },
                   { key: "kur", label: "Kur" },
-                  { key: "tutar", label: "Tutar" },
+                  { key: "tutar", label: "Toplam Tutar" },
                 ] as { key: keyof typeof defaultColVisibility; label: string }[]).map(({ key, label }) => (
                   <Dropdown.Item
                     key={key}
@@ -7560,7 +7615,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   {colVisibility.miktar && <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth }} className="text-center">Miktar</th>}
                   {colVisibility.milyem && <th style={{ width: 70 }} className="text-center">Milyem</th>}
                   {colVisibility.hasGram && <th style={{ width: 85 }} className="text-center">Has</th>}
-                  {colVisibility.iscilikToplam && <th style={{ width: 95 }} className="text-center">İşçilik Toplam</th>}
                   {colVisibility.tlTutar && <th style={{ width: 95 }} className="text-center">TL Tutar</th>}
                   {colVisibility.iscilikHesaplamaSekli && <th style={{ width: 85 }} className="text-center">İşçilik şekli</th>}
                   {colVisibility.iscilikiMiktari && <th style={{ width: 85 }} className="text-center">{userIscilikGirisSekli === 0 ? "İşçilik/T" : "İşçilik/M"}</th>}
@@ -7568,8 +7622,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   {colVisibility.iscilikTutari && <th style={{ width: 90 }} className="text-center">İşçilik (TL)</th>}
                   {colVisibility.iscilikKdvOrani && <th style={{ width: 80 }} className="text-center">İşçilik KDV (%)</th>}
                   {colVisibility.iscilikKdvTutari && <th style={{ width: 95 }} className="text-center">İşçilik KDV Tutar</th>}
+                  {colVisibility.iscilikToplam && <th style={{ width: 95 }} className="text-center">İşçilik Toplam</th>}
                   {colVisibility.kur && <th style={{ width: 105 }} className="text-center">Kur</th>}
-                  {colVisibility.tutar && <th style={{ width: 110 }} className="text-center">Tutar</th>}
+                  {colVisibility.tutar && <th style={{ width: 110 }} className="text-center">Toplam Tutar</th>}
                 </tr>
               </thead>
               <tbody>
@@ -7821,24 +7876,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         </td>
                       )}
 
-                      {/* İşçilik Toplam (Has ile İşçilik Şekli arasında) */}
-                      {colVisibility.iscilikToplam && (
-                        <td>
-                          <Form.Control
-                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikToplam`] = el; }}
-                            readOnly
-                            tabIndex={-1}
-                            size="sm"
-                            className="text-end font-monospace text-muted"
-                            value={isParaOrZiynet ? "" : (row.iscilikToplam !== "" && row.iscilikToplam !== null && row.iscilikToplam !== undefined && !isNaN(Number(row.iscilikToplam)) ? Number(row.iscilikToplam).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (row.iscilikTutari !== "" && !isNaN(Number(row.iscilikTutari)) ? Number(row.iscilikTutari).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""))}
-                            onFocus={handleKalemRowFocus}
-                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikToplam", row.id)}
-                            style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
-                            title="İşçilik toplam tutarı"
-                          />
-                        </td>
-                      )}
-
                       {/* TL Tutar (Has'tan sonra) */}
                       {colVisibility.tlTutar && (
                         <td>
@@ -7848,7 +7885,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             tabIndex={-1}
                             size="sm"
                             className="text-end font-monospace text-muted"
-                            value={row.tutar !== "" && !isNaN(Number(row.tutar)) ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (row.tutar || "")}
+                            value={row.tlTutar !== "" && !isNaN(Number(row.tlTutar)) ? Number(row.tlTutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (row.tlTutar || "")}
                             onFocus={handleKalemRowFocus}
                             onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "tlTutar", row.id)}
                             style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
@@ -8039,6 +8076,33 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         </td>
                       )}
 
+                      {/* İşçilik Toplam (İşçilik KDV Tutar'dan sonra) */}
+                      {colVisibility.iscilikToplam && (
+                        <td>
+                          <Form.Control
+                            ref={(el) => { rowInputRefs.current[`${row.id}_iscilikToplam`] = el; }}
+                            inputMode="decimal"
+                            data-decimal="true"
+                            size="sm"
+                            readOnly={isParaOrZiynet}
+                            tabIndex={isParaOrZiynet ? -1 : undefined}
+                            className={`text-end font-monospace ${isParaOrZiynet ? "text-muted" : ""}`}
+                            value={isParaOrZiynet ? "" : (row.iscilikToplam !== "" && row.iscilikToplam !== null && row.iscilikToplam !== undefined ? row.iscilikToplam : "")}
+                            onChange={(e) => !isParaOrZiynet && updateRow(row.id, "iscilikToplam", e.target.value)}
+                            onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "iscilikToplam", row.id)}
+                            onBlur={() => !isParaOrZiynet && normalizeRowOnBlur(row.id, "iscilikToplam")}
+                            onFocus={handleKalemRowFocus}
+                            style={{
+                              fontSize: "11px",
+                              padding: "1px 4px",
+                              backgroundColor: isParaOrZiynet ? "#e9ecef" : undefined,
+                              cursor: isParaOrZiynet ? "not-allowed" : undefined,
+                            }}
+                            title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde işçilik uygulanmaz" : "İşçilik Toplam (Net İşçilik + KDV)"}
+                          />
+                        </td>
+                      )}
+
                       {/* Kur */}
                       {colVisibility.kur && (
                         <td>
@@ -8067,7 +8131,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         </td>
                       )}
 
-                      {/* Tutar - Pasif / Otomatik Hesaplanır */}
+                      {/* Toplam Tutar - Pasif / Otomatik Hesaplanır */}
                       {colVisibility.tutar && (
                         <td>
                           <Form.Control
@@ -8085,7 +8149,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                               backgroundColor: "#e9ecef",
                               cursor: "not-allowed",
                             }}
-                            title="Tutar otomatik hesaplanır, değiştirilemez"
+                            title="Toplam Tutar (TL Tutar + İşçilik Toplam)"
                           />
                         </td>
                       )}
@@ -8100,14 +8164,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   {colVisibility.miktar && <td style={{ textAlign: "right" }}>{totalMiktar ? totalMiktar.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>}
                   {colVisibility.milyem && <td></td>}
                   {colVisibility.hasGram && <td style={{ textAlign: "right" }}>{totalHasGram ? totalHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>}
-                  {colVisibility.iscilikToplam && <td style={{ textAlign: "right" }}>{totalIscilikToplam ? totalIscilikToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
-                  {colVisibility.tlTutar && <td style={{ textAlign: "right" }}>{totalTutar ? totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                  {colVisibility.tlTutar && <td style={{ textAlign: "right" }}>{totalTLTutar ? totalTLTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
                   {colVisibility.iscilikHesaplamaSekli && <td></td>}
                   {colVisibility.iscilikiMiktari && <td></td>}
                   {colVisibility.iscilikHasGram && <td style={{ textAlign: "right" }}>{totalIscilikHasGram ? totalIscilikHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>}
                   {colVisibility.iscilikTutari && <td style={{ textAlign: "right" }}>{totalIscilikTutari ? totalIscilikTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
                   {colVisibility.iscilikKdvOrani && <td></td>}
                   {colVisibility.iscilikKdvTutari && <td style={{ textAlign: "right" }}>{totalIscilikKdvTutari ? totalIscilikKdvTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                  {colVisibility.iscilikToplam && <td style={{ textAlign: "right" }}>{totalIscilikToplam ? totalIscilikToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
                   {colVisibility.kur && <td></td>}
                   {colVisibility.tutar && (
                     <td style={{ textAlign: "right" }}>
