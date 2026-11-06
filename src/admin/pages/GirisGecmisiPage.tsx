@@ -51,6 +51,7 @@ const GirisGecmisiPage: React.FC = () => {
             <Form.Select size="sm" style={{ width: 150 }} value={tur} onChange={filtre(setTur)}>
               <option value="">Herkes</option>
               <option value="KULLANICI">Kullanıcılar</option>
+              <option value="MOBIL">Mobil (cari)</option>
               <option value="ADMIN">Adminler</option>
             </Form.Select>
             <Form.Select size="sm" style={{ width: 150 }} value={basarili} onChange={filtre(setBasarili)}>

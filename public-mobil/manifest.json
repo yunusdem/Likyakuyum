@@ -1,0 +1,9 @@
+{
+  "name": "Likya Mobil",
+  "short_name": "Likya",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6fa",
+  "theme_color": "#1b2a49",
+  "icons": [{ "src": "/favicon.ico", "sizes": "64x64", "type": "image/x-icon" }]
+}

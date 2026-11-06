@@ -6,6 +6,7 @@ import { KurulumLisansService } from "../services/kurulum/kurulumLisans.service.
 import { raporModulKodlari } from "../services/rapor/raporMenu.js";
 import { ApiError } from "../utils/ApiError.js";
 import { etkinModuller, oturumKapalilari } from "../services/gorunum/kullaniciGorunum.service.js";
+import { acikcaAcikMi } from "../services/admin/modulAgaci.js";
 
 /**
  * Oturumun firmaya açık modülleri; null = kısıt yok. Kullanıcı uygulaması menüyü aynı listeyle süzer (user.merkez.moduller):
@@ -64,4 +65,20 @@ export const modulKapisi = (apiOnek: keyof typeof API_MODULLERI | string) => {
       next(err);
     }
   };
+};
+
+/**
+ * Mobil modülü kapısı (docs/MOBIL_CARI_YOL_HARITASI.md K11, K24). Mobil, açıkça açılan bir modüldür: bulutta firmanın
+ * modül listesinde "mobil" açıkça bulunmalı (kısıtsız firmada da kapalı). Kurulumda (exe) bu tur yok. Merkez girişi
+ * kapalı yerel geliştirmede diğer modüller gibi kısıtlanmaz.
+ */
+export const mobilModulKapisi = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    if (env.KURULUM_MODU) return next(modulKapaliHatasi("Mobil erişim kurulum sürümünde henüz yok."));
+    if (env.MERKEZ_GIRIS !== "zorunlu") return next();
+    const acik = await oturumModulleri(req);
+    next(acikcaAcikMi(acik, "mobil") ? undefined : modulKapaliHatasi("Mobil modülü hesabınıza açık değil."));
+  } catch (err) {
+    next(err);
+  }
 };

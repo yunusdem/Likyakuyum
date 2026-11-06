@@ -24,6 +24,10 @@ import CariHareketListPage from "./pages/cari/CariHareketListPage";
 import KurFiyatListesiPage from "./pages/kur/KurFiyatListesiPage";
 import PanoTanimiPage from "./pages/kur/PanoTanimiPage";
 import PanoEntegrasyonuPage from "./pages/kur/PanoEntegrasyonuPage";
+import MobilKullanicilarPage from "./pages/mobil/MobilKullanicilarPage";
+import MobilAyarlarPage from "./pages/mobil/MobilAyarlarPage";
+import MobilEmirlerPage from "./pages/mobil/MobilEmirlerPage";
+import MobilEmirBildirimi from "./pages/mobil/MobilEmirBildirimi";
 import PanoPage from "./pages/kur/PanoPage";
 import TvKatalogPage from "./pages/katalog/TvKatalogPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
@@ -264,6 +268,8 @@ const DashboardLayout: React.FC = () => {
         <main className="flex-grow-1 custom-container pt-1 pb-3" data-sayfa-icerik="true">
           <LisansUyariBandi />
           <ModulKorumasi />
+          {/* Yeni mobil emir bildirimi (docs/MOBIL_CARI_YOL_HARITASI.md V7) */}
+          <MobilEmirBildirimi />
         </main>
         <footer className="custom-container py-3 border-top mt-auto bg-body">
           <div className="d-flex align-items-center">
@@ -489,6 +495,10 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="tanimlar/pano-tanimi" element={<PanoTanimiPage />} />
               {/* Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): pano başına açık veri anahtarı, yalnız yönetici */}
               <Route path="kur/pano-entegrasyonu" element={<PanoEntegrasyonuPage />} />
+              {/* Mobil cari erişimi (docs/MOBIL_CARI_YOL_HARITASI.md) */}
+              <Route path="mobil/kullanicilar" element={<MobilKullanicilarPage />} />
+              <Route path="mobil/ayarlar" element={<MobilAyarlarPage />} />
+              <Route path="mobil/emirler" element={<MobilEmirlerPage />} />
               <Route path="ayarlar/masak-dondurulanlar" element={<MasakListsPage />} />
               <Route path="masak" element={<MasakListsPage />} />
               {/* Eski "Belge / Fiş PDF" adresleri e-Belge ana sayfasına gider */}

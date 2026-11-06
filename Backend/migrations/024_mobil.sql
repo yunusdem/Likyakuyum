@@ -1,0 +1,126 @@
+-- ============================================================================
+-- Migration: 024_mobil.sql
+-- Mobil cari erişimi (docs/MOBIL_CARI_YOL_HARITASI.md): mobil ayarları, mobilde görünen ürünler, cariye özel sınır ve
+-- makas, cari emirleri. Kimlik ve erişim merkezdedir (LIKYA_ADMIN.ADM_MOBIL_*); burada yalnız firmaya ait veri durur.
+-- Tekrar çalıştırılabilir.
+-- ============================================================================
+
+-- Firma geneli ayar (tek satır, ID = 1). Boş sınır = sınır yok.
+IF OBJECT_ID('dbo.LKY_MOBIL_AYAR') IS NULL
+BEGIN
+  CREATE TABLE dbo.LKY_MOBIL_AYAR (
+    ID                   TINYINT        NOT NULL CONSTRAINT PK_LKY_MOBIL_AYAR PRIMARY KEY CONSTRAINT CK_LKY_MOBIL_AYAR_TEK CHECK (ID = 1),
+    EMIR_ACIK            BIT            NOT NULL CONSTRAINT DF_LKY_MOBIL_AYAR_EMIR DEFAULT 0,
+    VEZNE_ID             INT            NULL,           -- mobil fişlerin veznesi (K19)
+    KULLANICI_ID         INT            NULL,           -- mobil fişlerin kullanıcısı (TODVZ_KULLANICI)
+    BILDIRIM_EPOSTA      NVARCHAR(500)  NULL,           -- virgülle birden çok adres (K33)
+    FIYAT_GECERLILIK_SN  INT            NOT NULL CONSTRAINT DF_LKY_MOBIL_AYAR_GECERLILIK DEFAULT 300,
+    CALISMA_BASLANGIC    CHAR(5)        NULL,           -- 'SS:DD'
+    CALISMA_BITIS        CHAR(5)        NULL,
+    CALISMA_GUNLERI      CHAR(7)        NOT NULL CONSTRAINT DF_LKY_MOBIL_AYAR_GUN DEFAULT '1111110', -- Pzt..Paz
+    ISLEM_EN_AZ_TL       DECIMAL(18, 2) NULL,
+    ISLEM_EN_COK_TL      DECIMAL(18, 2) NULL,
+    GUNLUK_LIMIT_TL      DECIMAL(18, 2) NULL,
+    BAKIYE_SINIRI_UYGULA BIT            NOT NULL CONSTRAINT DF_LKY_MOBIL_AYAR_BAKIYE DEFAULT 0,  -- TODVZ_CARI_KART.CARI_BAKIYE_SINIRI
+    TERCIHLER            VARCHAR(100)   NOT NULL CONSTRAINT DF_LKY_MOBIL_AYAR_TERCIH DEFAULT 'BAKIYE,TESLIM,HAVALE,POS',
+    GUNCELLEYEN          NVARCHAR(100)  NULL,
+    GUNCELLEME_TARIHI    DATETIME       NULL
+  );
+END
+GO
+
+-- Mobilde görünen ürünler (K14). TUR: 'PARA' = TODVZ_PARA (döviz / altın), 'STOK' = ticari stok kartı.
+IF OBJECT_ID('dbo.LKY_MOBIL_URUN') IS NULL
+BEGIN
+  CREATE TABLE dbo.LKY_MOBIL_URUN (
+    TUR      VARCHAR(10) NOT NULL,
+    URUN_ID  INT         NOT NULL,
+    SIRA     INT         NOT NULL CONSTRAINT DF_LKY_MOBIL_URUN_SIRA DEFAULT 0,
+    CONSTRAINT PK_LKY_MOBIL_URUN PRIMARY KEY (TUR, URUN_ID)
+  );
+END
+GO
+
+-- Cariye özel sınırlar (K20). NULL = firma varsayılanı.
+IF OBJECT_ID('dbo.LKY_MOBIL_CARI_AYAR') IS NULL
+BEGIN
+  CREATE TABLE dbo.LKY_MOBIL_CARI_AYAR (
+    CARI_KART_ID         INT            NOT NULL CONSTRAINT PK_LKY_MOBIL_CARI_AYAR PRIMARY KEY,
+    EMIR_ACIK            BIT            NULL,
+    ISLEM_EN_AZ_TL       DECIMAL(18, 2) NULL,
+    ISLEM_EN_COK_TL      DECIMAL(18, 2) NULL,
+    GUNLUK_LIMIT_TL      DECIMAL(18, 2) NULL,
+    BAKIYE_SINIRI_UYGULA BIT            NULL,
+    CALISMA_BASLANGIC    CHAR(5)        NULL,
+    CALISMA_BITIS        CHAR(5)        NULL,
+    FIYAT_GECERLILIK_SN  INT            NULL,
+    GUNCELLEYEN          NVARCHAR(100)  NULL,
+    GUNCELLEME_TARIHI    DATETIME       NULL
+  );
+END
+GO
+
+-- Cariye özel makas (K13, K29). TIP: 'Y' yüzde | 'T' TL tutar. DEGER > 0 cari lehine (alış fiyatı artar, satış düşer),
+-- DEGER < 0 cari aleyhine.
+IF OBJECT_ID('dbo.LKY_MOBIL_CARI_MAKAS') IS NULL
+BEGIN
+  CREATE TABLE dbo.LKY_MOBIL_CARI_MAKAS (
+    CARI_KART_ID INT            NOT NULL,
+    TUR          VARCHAR(10)    NOT NULL,
+    URUN_ID      INT            NOT NULL,
+    ALIS_TIP     CHAR(1)        NOT NULL CONSTRAINT DF_LKY_MOBIL_CARI_MAKAS_AT DEFAULT 'Y',
+    ALIS_DEGER   DECIMAL(18, 6) NOT NULL CONSTRAINT DF_LKY_MOBIL_CARI_MAKAS_AD DEFAULT 0,
+    SATIS_TIP    CHAR(1)        NOT NULL CONSTRAINT DF_LKY_MOBIL_CARI_MAKAS_ST DEFAULT 'Y',
+    SATIS_DEGER  DECIMAL(18, 6) NOT NULL CONSTRAINT DF_LKY_MOBIL_CARI_MAKAS_SD DEFAULT 0,
+    CONSTRAINT PK_LKY_MOBIL_CARI_MAKAS PRIMARY KEY (CARI_KART_ID, TUR, URUN_ID)
+  );
+END
+GO
+
+-- Cari emri (K17, K30–K32). YON carinin gözünden: 'AL' cari alır (firma satar), 'SAT' cari satar (firma alır).
+-- DURUM: BEKLIYOR | ONAYLANDI | REDDEDILDI | SURESI_DOLDU | IPTAL
+IF OBJECT_ID('dbo.LKY_MOBIL_EMIR') IS NULL
+BEGIN
+  CREATE TABLE dbo.LKY_MOBIL_EMIR (
+    EMIR_ID               INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_LKY_MOBIL_EMIR PRIMARY KEY,
+    CARI_KART_ID          INT            NOT NULL,
+    MOBIL_KULLANICI_ID    INT            NOT NULL,
+    MOBIL_KULLANICI_ADI   NVARCHAR(100)  NULL,
+    TUR                   VARCHAR(10)    NOT NULL,           -- 'PARA' | 'STOK'
+    YON                   VARCHAR(3)     NOT NULL,
+    TOPLAM_TL             DECIMAL(18, 2) NOT NULL,
+    TERCIH                VARCHAR(20)    NULL,
+    NOTU                  NVARCHAR(500)  NULL,
+    DURUM                 VARCHAR(12)    NOT NULL CONSTRAINT DF_LKY_MOBIL_EMIR_DURUM DEFAULT 'BEKLIYOR',
+    OLUSTURMA_TARIHI      DATETIME       NOT NULL CONSTRAINT DF_LKY_MOBIL_EMIR_OT DEFAULT DATEADD(HOUR, 3, GETUTCDATE()), -- Türkiye saati
+    GECERLILIK_BITIS      DATETIME       NOT NULL,
+    ISLEM_TARIHI          DATETIME       NULL,
+    ISLEYEN_KULLANICI_ID  INT            NULL,
+    ISLEYEN_KULLANICI_ADI NVARCHAR(100)  NULL,
+    RED_NEDENI            NVARCHAR(300)  NULL,
+    ODEME_SEKLI           VARCHAR(20)    NULL,
+    FIS_TURU              VARCHAR(20)    NULL,               -- 'SARRAF' | 'DOVIZ' | 'TICARI'
+    FIS_ID                INT            NULL,
+    FIS_NO                VARCHAR(40)    NULL
+  );
+  CREATE INDEX IX_LKY_MOBIL_EMIR_DURUM ON dbo.LKY_MOBIL_EMIR (DURUM, OLUSTURMA_TARIHI DESC);
+  CREATE INDEX IX_LKY_MOBIL_EMIR_CARI ON dbo.LKY_MOBIL_EMIR (CARI_KART_ID, OLUSTURMA_TARIHI DESC);
+END
+GO
+
+IF OBJECT_ID('dbo.LKY_MOBIL_EMIR_SATIRI') IS NULL
+BEGIN
+  CREATE TABLE dbo.LKY_MOBIL_EMIR_SATIRI (
+    SATIR_ID     INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_LKY_MOBIL_EMIR_SATIRI PRIMARY KEY,
+    EMIR_ID      INT            NOT NULL CONSTRAINT FK_LKY_MOBIL_EMIR_SATIRI_EMIR REFERENCES dbo.LKY_MOBIL_EMIR (EMIR_ID),
+    URUN_ID      INT            NOT NULL,
+    URUN_KOD     NVARCHAR(40)   NULL,
+    URUN_AD      NVARCHAR(200)  NULL,
+    MIKTAR       DECIMAL(18, 4) NOT NULL,
+    BIRIM        NVARCHAR(10)   NULL,
+    BIRIM_FIYAT  DECIMAL(18, 6) NOT NULL,
+    TUTAR        DECIMAL(18, 2) NOT NULL
+  );
+  CREATE INDEX IX_LKY_MOBIL_EMIR_SATIRI_EMIR ON dbo.LKY_MOBIL_EMIR_SATIRI (EMIR_ID);
+END
+GO

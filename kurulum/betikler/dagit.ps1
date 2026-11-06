@@ -212,9 +212,11 @@ function Kur([string]$commit, [string]$oncekiCommit, [bool]$geriDonus) {
   Calistir "robocopy.exe" @((Join-Path $kok "dist"), (Join-Path $kok "yayin"), "/MIR", "/R:10", "/W:3", "/NFL", "/NDL", "/NJH", "/NP") $kok @(0, 1, 2, 3, 4, 5, 6, 7) | Out-Null
   if ($hedef -eq "canli") {
     if ($ortam.admin -ne $false) { Adim ($on + "Yonetim paneli derleniyor"); Calistir $npm @("run", "build:admin") $kok | Out-Null }
-    if ($ortam.erp -ne $false) { Adim ($on + "Tanitim sitesi derleniyor"); Calistir $npm @("run", "build:erp") $kok | Out-Null }
-    # Destek ekibi paneli (destek.likyakuyum.com, docs/DESTEK_PANELI_YOL_HARITASI.md); ayar.json canli.destek=false ile kapatilir
+    if ($ortam.erp -ne $false) { Adim ($on + "Tanitim sitesi derleniyor"); Calistir $npm @("run", "build:erp") $kok | Out-Null }
+    # Destek ekibi paneli (destek.likyakuyum.com, docs/DESTEK_PANELI_YOL_HARITASI.md); ayar.json canli.destek=false ile kapatilir
     if ($ortam.destek -ne $false) { Adim ($on + "Destek paneli derleniyor"); Calistir $npm @("run", "build:destek") $kok | Out-Null }
+    # Mobil cari sitesi (mobil.likyaerp.com, docs/MOBIL_CARI_YOL_HARITASI.md; IIS koku dist-mobil); ayar.json canli.mobil=false ile kapatilir
+    if ($ortam.mobil -ne $false) { Adim ($on + "Mobil site derleniyor"); Calistir $npm @("run", "build:mobil") $kok | Out-Null }
   }
 
   Adim ($on + "Backend yeniden baslatiliyor")
@@ -260,7 +262,7 @@ try {
 
   Adim "Calisma kopyasi denetleniyor"
   # public-admin / public-erp altındaki PrinterAgent.exe ve images: admin ve erp derlemesi public'ten kopyalar (vite.*.config.ts)
-  $izinli = '^(Backend/dist/|dist/|dist-admin/|dist-erp/|dist-destek/|yayin/|node_modules/|Backend/node_modules/|public-erp/images/|public-erp/PrinterAgent\.exe$|public-admin/PrinterAgent\.exe$|package-lock\.json$|Backend/package-lock\.json$)'
+  $izinli = '^(Backend/dist/|dist/|dist-admin/|dist-erp/|dist-destek/|dist-mobil/|yayin/|node_modules/|Backend/node_modules/|public-erp/images/|public-erp/PrinterAgent\.exe$|public-admin/PrinterAgent\.exe$|package-lock\.json$|Backend/package-lock\.json$)'
   $elle = @()
   foreach ($s in ((Git @("-c", "core.quotepath=false", "status", "--porcelain", "--untracked-files=no")) -split "`r?`n")) {
     if (-not $s.Trim()) { continue }

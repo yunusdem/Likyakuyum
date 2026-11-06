@@ -183,6 +183,11 @@ const envSchema = z.object({
       "http://destek.likyakuyum.com,https://destek.likyakuyum.com,http://localhost:3005,http://127.0.0.1:3005"
     )
     .transform((val) => val.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)),
+  // Mobil cari erişimi (mobil.likyaerp.com, docs/MOBIL_CARI_YOL_HARITASI.md). Gizi boşsa ADMIN_JWT_SECRET'tan türetilir.
+  MOBIL_JWT_SECRET: z.string().default(""),
+  MOBIL_JWT_EXPIRES_IN: z.string().default("12h"),
+  // Firmaya özel giriş bağlantısı ve e-postalardaki adres kökü
+  MOBIL_ADRES: z.string().default("https://mobil.likyaerp.com"),
 });
 
 

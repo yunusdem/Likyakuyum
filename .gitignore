@@ -25,3 +25,6 @@ node_modules/.vite-erp/
 
 # Destek ekibi paneli build çıktısı (npm run build:destek; docs/DESTEK_PANELI_YOL_HARITASI.md); sunucuda üretilir
 dist-destek/
+
+# Mobil cari sitesi build çıktısı (npm run build:mobil; docs/MOBIL_CARI_YOL_HARITASI.md); sunucuda üretilir
+dist-mobil/

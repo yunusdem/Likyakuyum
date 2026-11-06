@@ -1,5 +1,5 @@
 import { ModulKaydi } from "../../types/admin.types.js";
-import { modulleriDuzenle } from "./modulAgaci.js";
+import { acikcaAcilanMi, modulleriDuzenle } from "./modulAgaci.js";
 
 /**
  * Lisans ürün paketleri — saf hesap (docs/LISANS_URUN_PAKETLERI.md, 3.2). Veritabanına dokunmaz.
@@ -34,7 +34,9 @@ export const ustleriyle = (katalog: ModulKaydi[], kodlar: Iterable<string>): Set
 export const paketTabani = (katalog: ModulKaydi[], paketler: PaketIcerigi[], urunler: string[]): string[] => {
   if (urunler.length === 0) return [];
   const secili = paketler.filter((p) => p.cekirdek || urunler.includes(p.paketKodu));
-  if (secili.some((p) => p.hepsi && urunler.includes(p.paketKodu))) return katalog.map((m) => m.modulKodu);
+  // ERP katalogun tamamıdır; yalnız açıkça açılan modüller (Mobil) hariç — onlar EK istisnasıyla açılır
+  if (secili.some((p) => p.hepsi && urunler.includes(p.paketKodu)))
+    return katalog.map((m) => m.modulKodu).filter((k) => !acikcaAcilanMi(k));
   return modulleriDuzenle(katalog, [...ustleriyle(katalog, secili.flatMap((p) => p.moduller))]);
 };
 

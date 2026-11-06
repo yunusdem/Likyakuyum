@@ -310,6 +310,52 @@ export interface Sayfali<T> {
 export type PosMod = "kapali" | "test" | "canli";
 
 /** Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md): firma panosu + açık veri anahtarı */
+/** Firma › Mobil sekmesi (docs/MOBIL_CARI_YOL_HARITASI.md) */
+export interface MobilKullaniciSatiri {
+  erisimId: number;
+  mobilKullaniciId: number;
+  musteriNo: string;
+  kullaniciAdi: string;
+  adSoyad: string | null;
+  cariKartId: number;
+  cariKod: string | null;
+  cariAd: string | null;
+  yetkiler: { fiyat: boolean; bakiye: boolean; dokum: boolean; alis: boolean; satis: boolean };
+  aktif: boolean;
+  erisimDurumu: string;
+  kullaniciDurumu: string;
+  kilitli: boolean;
+  sifreDegismeli: boolean;
+  sonGiris: string | null;
+  olusturma: string | null;
+}
+
+export interface MobilGirisSatiri {
+  logId: number;
+  tarih: string;
+  kullaniciAdi: string;
+  basarili: boolean;
+  redNedeni: string | null;
+  ip: string | null;
+  firmaBelli: boolean;
+}
+
+export interface MobilKullanim {
+  kullanicilar: MobilKullaniciSatiri[];
+  girisler: MobilGirisSatiri[];
+  ozet: { aktif: number; pasif: number; kilitli: number; hicGirmedi: number };
+}
+
+export interface MobilFirmaOzeti {
+  semaVar: boolean;
+  modulAcik: boolean;
+  kullaniciLimiti: number;
+  kullanilan: number;
+  kisaAd: string | null;
+  gorunenKisaAd: string;
+  musteriNo: string | null;
+}
+
 export interface PanoAnahtarSatiri {
   panoId: number;
   panoNo: string;
@@ -788,6 +834,10 @@ export const adminApi = {
   posDenemeIslemi: (firmaId: number, posIslemId: number) => istek<PosDenemeIslemi>("GET", `/firmalar/${firmaId}/pos/deneme/${posIslemId}`),
   posDenemeIptal: (firmaId: number, posIslemId: number) => istek<PosDenemeIslemi>("POST", `/firmalar/${firmaId}/pos/deneme/${posIslemId}/iptal`),
   // Pano Entegrasyonu (docs/PANO_API_YOL_HARITASI.md)
+  mobilOzet: (firmaId: number) => istek<MobilFirmaOzeti>("GET", `/firmalar/${firmaId}/mobil`),
+  mobilKullanim: (firmaId: number) => istek<MobilKullanim>("GET", `/firmalar/${firmaId}/mobil/kullanim`),
+  mobilYaz: (firmaId: number, veri: { kullaniciLimiti: number; kisaAd: string | null }) =>
+    istek<MobilFirmaOzeti>("PUT", `/firmalar/${firmaId}/mobil`, veri),
   panoAnahtarlari: (firmaId: number) => istek<PanoAnahtarSatiri[]>("GET", `/firmalar/${firmaId}/pano-anahtarlari`),
   panoAnahtarUret: (firmaId: number, panoId: number) => istek<PanoAnahtarSatiri>("POST", `/firmalar/${firmaId}/pano-anahtarlari/${panoId}`),
   panoAnahtarIptal: (firmaId: number, panoId: number) => istek<PanoAnahtarSatiri>("DELETE", `/firmalar/${firmaId}/pano-anahtarlari/${panoId}`),
