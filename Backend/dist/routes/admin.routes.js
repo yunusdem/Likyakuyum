@@ -8,13 +8,14 @@ import { PaketController } from "../controllers/admin/paket.controller.js";
 import { IzlemeController } from "../controllers/admin/izleme.controller.js";
 import { PosAdminController } from "../controllers/admin/posAdmin.controller.js";
 import { PanoApiAdminController } from "../controllers/admin/panoApiAdmin.controller.js";
+import { MobilAdminController } from "../controllers/admin/mobilAdmin.controller.js";
 import { DestekAdminController } from "../controllers/admin/destekAdmin.controller.js";
 import { DagitimController } from "../controllers/admin/dagitim.controller.js";
 import { adminKonuListeSchema, adminMesajSchema, adminKonuGuncelleSchema, bildirimOlusturSchema, bildirimGuncelleSchema, destekIdSchema, } from "../schemas/destek.schema.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { adminKapisi, adminAuthenticate, adminGirisSiniri, sifreBelirlenmisOlmali, adminHataIsleyici, epostaOnaySiniri, } from "../middlewares/adminAuth.middleware.js";
 import { ApiError } from "../utils/ApiError.js";
-import { adminGirisSchema, adminSifreDegistirSchema, adminEkleSchema, adminGuncelleSchema, adminIdSchema, firmaEkleSchema, bulutFirmaSchema, firmaSilSchema, indirSchema, lisansKodSchema, lisansIptalSchema, ayarKaydetSchema, surumGuncelleSchema, dagitimBaslatSchema, dagitimIdSchema, hedefSurumSchema, firmaGuncelleSchema, firmaDurumSchema, firmaDogrulamaSchema, lisansEkleSchema, kullaniciEkleSchema, kullaniciGuncelleSchema, modulKatalogSchema, firmaModulSchema, girisLogSchema, islemLogSchema, oturumKapatSchema, epostaDogrulamaElleSchema, epostaOnaySchema, adminFirmaPanoSchema, paketIlkIcerikSchema, paketYazSchema, paketOnizlemeSchema, } from "../schemas/admin.schema.js";
+import { adminGirisSchema, adminSifreDegistirSchema, adminEkleSchema, adminGuncelleSchema, adminIdSchema, firmaEkleSchema, bulutFirmaSchema, firmaSilSchema, indirSchema, lisansKodSchema, lisansIptalSchema, ayarKaydetSchema, surumGuncelleSchema, dagitimBaslatSchema, dagitimIdSchema, hedefSurumSchema, firmaGuncelleSchema, firmaDurumSchema, firmaDogrulamaSchema, lisansEkleSchema, kullaniciEkleSchema, kullaniciGuncelleSchema, modulKatalogSchema, firmaModulSchema, girisLogSchema, islemLogSchema, oturumKapatSchema, epostaDogrulamaElleSchema, epostaOnaySchema, adminFirmaPanoSchema, adminMobilSchema, paketIlkIcerikSchema, paketYazSchema, paketOnizlemeSchema, } from "../schemas/admin.schema.js";
 // Ana admin paneli API'si (docs/ADMIN_PANEL_YOL_HARITASI.md). Kullanıcı tarafının authenticate'i burada kullanılmaz.
 const router = Router();
 router.use(adminKapisi);
@@ -122,6 +123,10 @@ router.get("/firmalar/:id/pano-anahtarlari", validate(adminIdSchema), PanoApiAdm
 router.post("/firmalar/:id/pano-anahtarlari/:panoId", validate(adminFirmaPanoSchema), PanoApiAdminController.uret);
 router.delete("/firmalar/:id/pano-anahtarlari/:panoId", validate(adminFirmaPanoSchema), PanoApiAdminController.iptal);
 router.put("/firmalar/:id/pano-anahtarlari/:panoId/onbellek", validate(adminFirmaPanoSchema), PanoApiAdminController.onbellek);
+// Mobil cari erişimi (docs/MOBIL_CARI_YOL_HARITASI.md): firma başına mobil kullanıcı sınırı + kısa ad
+router.get("/firmalar/:id/mobil", validate(adminIdSchema), MobilAdminController.ozet);
+router.put("/firmalar/:id/mobil", validate(adminMobilSchema), MobilAdminController.yaz);
+router.get("/firmalar/:id/mobil/kullanim", validate(adminIdSchema), MobilAdminController.kullanim);
 router.get("/firmalar/:id/pos/terminaller", validate(adminIdSchema), PosAdminController.konsolTerminaller);
 router.post("/firmalar/:id/pos/baglanti-testi", validate(adminIdSchema), PosAdminController.konsolBaglantiTesti);
 router.post("/firmalar/:id/pos/deneme", validate(adminIdSchema), PosAdminController.konsolDeneme);

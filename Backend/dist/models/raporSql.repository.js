@@ -29,7 +29,7 @@ export const RAPOR_SEED = [
     { kod: "FISLIS1", ad: "Fiş Listeleme", kagit: "A4-yatay" },
     { kod: "GUNFIS1", ad: "Günlük Fiş Detay Raporu", kagit: "A4-yatay" },
     { kod: "ISTRAP1", ad: "İstatistik Raporu", kagit: "A4-yatay" },
-    { kod: "ISTKMV1", ad: "İstatistik Bazında KMV Raporu", kagit: "A4" },
+    { kod: "ISTKMV1", ad: "İstatistik Bazında KMV Raporu", kagit: "A4-yatay" },
     { kod: "VERNUM1", ad: "Vergi Numarası Raporu", kagit: "A4-yatay" },
     { kod: "KARLIL1", ad: "Kârlılık Raporu", kagit: "A4-yatay" },
     { kod: "ALTISC1", ad: "Altın İşçilik Raporu", kagit: "A4-yatay" },

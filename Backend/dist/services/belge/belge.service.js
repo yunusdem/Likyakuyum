@@ -29,7 +29,7 @@ export class BelgeService {
      * `kod` verilmezse fiş tipine göre varsayılan şablon (ALFIS1 / STFIS1) seçilir.
      */
     static async pdf(istek, kullanici, ctx) {
-        const b = await BelgeSqlRepository.fisDetay({ fisId: istek.fisId, belgeNo: istek.belgeNo }, ctx);
+        const b = await BelgeSqlRepository.fisDetay({ fisId: istek.fisId, belgeNo: istek.belgeNo, ettn: istek.ettn }, ctx);
         const fisTipi = Number(b.FIS_TIPI) === 1 ? 1 : 0;
         const sablon = istek.kod ? await BelgeSqlRepository.sablonBul(istek.kod, ctx) : await BelgeSqlRepository.varsayilanSablon(fisTipi, ctx);
         if (sablon.tur !== "BELGE")

@@ -86,6 +86,9 @@ export const useEnterNavigation = () => {
     // ─── 0. Ctrl+N / Cmd+N: Evrensel Yeni Kayıt / Yeni Fiş (Capture Aşamasında) ───
     const handleCaptureShortcuts = (e: KeyboardEvent) => {
       if (isCtrlNEvent(e)) {
+        if (typeof window !== "undefined" && window.location.pathname.includes("duzeltme")) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         triggerGlobalNewRecord();

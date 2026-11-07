@@ -15,10 +15,11 @@ export async function belgeTablolari(pool) {
     CASE WHEN OBJECT_ID('dbo.TODVZ_OZEL_URUN','U') IS NULL THEN 0 ELSE 1 END ozelUrun,
     CASE WHEN COL_LENGTH('dbo.TODVZ_OZEL_URUN','STOK_PARA_ID') IS NULL THEN 0 ELSE 1 END ozelStok,
     CASE WHEN OBJECT_ID('dbo.TODVZ_AYAR','U') IS NULL THEN 0 ELSE 1 END ayar,
-    CASE WHEN OBJECT_ID('dbo.TODVZ_VEZNE_BAKIYE_DUZELTME','U') IS NULL THEN 0 ELSE 1 END duzeltme`)).recordset[0] || {};
+    CASE WHEN OBJECT_ID('dbo.TODVZ_VEZNE_BAKIYE_DUZELTME','U') IS NULL THEN 0 ELSE 1 END duzeltme,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_FATURA','FIS_KAYNAGI') IS NULL THEN 0 ELSE 1 END fisKaynagi`)).recordset[0] || {};
     return { kasa: !!r.kasa, transfer: !!r.transfer, dekont: !!r.dekont, sarraf: !!r.sarraf, odemeCari: !!r.sarraf && !!r.odemeCari, pos: !!r.pos,
         perakende: !!r.perakende, perakendeStok: !!r.perakende && !!r.perakendeStok, ticariSatir: !!r.perakende && !!r.ticariSatir, altinUrun: !!r.altinUrun, altinStok: !!r.altinUrun && !!r.altinStok,
-        ozelUrun: !!r.ozelUrun, ozelStok: !!r.ozelUrun && !!r.ozelStok, ayar: !!r.ayar, duzeltme: !!r.duzeltme };
+        ozelUrun: !!r.ozelUrun, ozelStok: !!r.ozelUrun && !!r.ozelStok, ayar: !!r.ayar, duzeltme: !!r.duzeltme, fisKaynagi: !!r.perakende && !!r.fisKaynagi };
 }
 /**
  * Döviz / sarraf / perakende fişinin işçiliği için uygulamanın işçilik hesabına doğrudan yazdığı kasa hareketi (ör. "Sarraf Fişi İşçilik - Fiş No: …").
@@ -27,7 +28,11 @@ export async function belgeTablolari(pool) {
  */
 export const ISCILIK_KAYDI = (a) => `(${a}.ACIKLAMA LIKE 'Sarraf Fişi İşçilik - %' OR ${a}.ACIKLAMA LIKE 'Döviz Fişi İşçilik - %' OR ${a}.ACIKLAMA LIKE 'Perakende Fişi İşçilik - %')`;
 /** Vezne hareketi belge tipleri — eski BELGE_TIPI kodlarıyla aynı */
-export const VEZNE_BELGE = { 0: "Fiş", 1: "Transfer", 2: "Cari", 3: "Hesap", 4: "Dekont", 5: "Sarraf", 6: "Perakende", 7: "Ürün tanımı", 8: "Bakiye düzeltme" };
+export const VEZNE_BELGE = { 0: "Fiş", 1: "Transfer", 2: "Cari", 3: "Hesap", 4: "Dekont", 5: "Sarraf", 6: "Perakende", 7: "Ürün tanımı", 8: "Bakiye düzeltme", 9: "Ticari" };
+/** Fiş niteliğindeki vezne belgeleri (alış / satış tipi taşır): döviz fişi, sarraf fişi, perakende fişi, ticari fiş */
+export const FIS_BELGELERI = [0, 5, 6, 9];
+/** TODVZ_FATURA kaynaklı vezne belge tipi: ticari fiş (FIS_KAYNAGI 1) → 9, perakende fişi → 6. `f` = TODVZ_FATURA takma adı */
+const FATURA_BELGE_TIPI = (d, f = "F") => (d.fisKaynagi ? `CASE WHEN ISNULL(${f}.FIS_KAYNAGI,0)=1 THEN 9 ELSE 6 END` : "6");
 /**
  * Perakende fişi / ürün tanımı tarihleri ekrandan saatli gelir ve uygulama bunları UTC olarak yazar (Türkiye saatinin 3 saat gerisi);
  * iş günü İstanbul saatine göre alınır. `a` = TARIH kolonu.
@@ -36,7 +41,7 @@ export const YEREL_GUN = (a) => `CAST(DATEADD(hour, 3, ${a}) AS date)`;
 /** Perakende ödeme satırının miktarı (miktar yoksa tutar ÷ kur) */
 const FATURA_ODEME_MIKTARI = `ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0))`;
 /** 01.10.2026 öncesi perakende satırlarının stok parası: kaydetme anındaki eşleştirmeyle aynı (ayar / ürün adı → TODVZ_PARA). `s` = TODVZ_FATURA_SATIRI */
-const PERAKENDE_SATIR_PARASI = (s) => `
+export const PERAKENDE_SATIR_PARASI = (s) => `
        OUTER APPLY (SELECT UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(${s}.AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', '')))) C) PA
        OUTER APPLY (SELECT TOP 1 P.PARA_ID FROM dbo.TODVZ_PARA P WHERE UPPER(LTRIM(RTRIM(P.KOD))) = UPPER(LTRIM(RTRIM(${s}.AYAR))) OR UPPER(LTRIM(RTRIM(P.KOD))) = PA.C
          OR UPPER(LTRIM(RTRIM(P.KOD))) = UPPER(LTRIM(RTRIM(ISNULL(${s}.URUN_ADI, '')))) OR UPPER(LTRIM(RTRIM(P.AD))) = UPPER(LTRIM(RTRIM(ISNULL(${s}.URUN_ADI, ''))))) P1
@@ -114,11 +119,12 @@ export function vezneHareketleriSql(d, tipFiltresi = false) {
     if (d.perakende) {
         const fTip = `CASE WHEN F.FATURA_TIPI=1 THEN 1 ELSE 0 END`;
         const q = `COALESCE(${d.perakendeStok ? "S.STOK_MIKTAR" : "NULL"}, CASE WHEN S.GRAM > 0 THEN S.GRAM ELSE S.MIKTAR END)`;
-        parcalar.push(`SELECT 6, F.FATURA_ID, S.SATIR_NO, 0, F.VEZNE_ID, ${YEREL_GUN("F.TARIH")}, F.TARIH, COALESCE(${d.perakendeStok ? "S.STOK_PARA_ID, " : ""}P1.PARA_ID, P2.PARA_ID),
+        parcalar.push(`SELECT ${FATURA_BELGE_TIPI(d)}, F.FATURA_ID, S.SATIR_NO, 0, F.VEZNE_ID, ${YEREL_GUN("F.TARIH")}, F.TARIH, COALESCE(${d.perakendeStok ? "S.STOK_PARA_ID, " : ""}P1.PARA_ID, P2.PARA_ID),
          CASE WHEN F.FATURA_TIPI=1 THEN 0 ELSE ${q} END, CASE WHEN F.FATURA_TIPI=1 THEN ${q} ELSE 0 END, ISNULL(S.BIRIM_FIYAT,0), RTRIM(ISNULL(F.FATURA_NO,'')), NULL, ${fTip},
          RTRIM(ISNULL(F.FATURA_NO,'')), RTRIM(ISNULL(F.ALICI_UNVAN,'')), ISNULL(S.TUTAR,0), 0, 0
        FROM dbo.TODVZ_FATURA F JOIN dbo.TODVZ_FATURA_SATIRI S ON S.FATURA_ID=F.FATURA_ID ${PERAKENDE_SATIR_PARASI("S")}
-       WHERE ISNULL(F.VEZNE_ID,0)>0 AND ISNULL(S.ALTIN_URUN_ID,0)=0 AND LEN(LTRIM(RTRIM(ISNULL(S.BARKOD,''))))=0 AND ${q}>0${d.ticariSatir ? " AND S.STOK_KART_ID IS NULL" : ""}${tip(fTip)}`, `SELECT 6, F.FATURA_ID, O.SATIR_NO, 1, F.VEZNE_ID, ${YEREL_GUN("F.TARIH")}, F.TARIH, O.PARA_ID,
+       WHERE ISNULL(F.VEZNE_ID,0)>0 AND ISNULL(S.ALTIN_URUN_ID,0)=0 AND LEN(LTRIM(RTRIM(ISNULL(S.BARKOD,''))))=0 AND ${q}>0
+         AND COALESCE(${d.perakendeStok ? "S.STOK_PARA_ID, " : ""}P1.PARA_ID, P2.PARA_ID) IS NOT NULL${d.ticariSatir ? " AND S.STOK_KART_ID IS NULL" : ""}${tip(fTip)}`, `SELECT ${FATURA_BELGE_TIPI(d)}, F.FATURA_ID, O.SATIR_NO, 1, F.VEZNE_ID, ${YEREL_GUN("F.TARIH")}, F.TARIH, O.PARA_ID,
          CASE WHEN F.FATURA_TIPI=1 THEN ${FATURA_ODEME_MIKTARI} ELSE 0 END, CASE WHEN F.FATURA_TIPI=1 THEN 0 ELSE ${FATURA_ODEME_MIKTARI} END, ISNULL(O.KUR,1),
          RTRIM(ISNULL(F.FATURA_NO,'')), NULL, ${fTip}, RTRIM(ISNULL(F.FATURA_NO,'')), RTRIM(ISNULL(F.ALICI_UNVAN,'')), ISNULL(O.TUTAR,0), 0, 0
        FROM dbo.TODVZ_FATURA F JOIN dbo.TODVZ_FATURA_ODEME O ON O.FATURA_ID=F.FATURA_ID JOIN dbo.TODVZ_PARA OP ON OP.PARA_ID=O.PARA_ID
@@ -161,7 +167,7 @@ export function vezneHareketleriSql(d, tipFiltresi = false) {
 /** vezneHareketleriSql kolon listesi — CTE tanımında kullanılır */
 export const VEZNE_HAREKET_KOLONLARI = "belgeTipi, belgeId, satirNo, ayak, vezneId, tarih, zaman, paraId, giris, cikis, kur, aciklama, bankaHesabiId, fisTip, belgeNo, unvan, tutar, komisyon, bmv";
 /** Cari hareket evrak tipleri — eski EVRAK_TIPI kodlarıyla aynı */
-export const CARI_EVRAK = { 1: "Virman dekontu", 2: "Döviz fişi (banka)", 3: "Sarraf fişi", 4: "Perakende fişi" };
+export const CARI_EVRAK = { 1: "Virman dekontu", 2: "Döviz fişi (banka)", 3: "Sarraf fişi", 4: "Perakende fişi", 5: "Ticari fiş" };
 /**
  * Cari hareketleri: her satır bir cari × para borç / alacak kaydı. Kolonlar: evrakTipi, hareketId, satirNo, cariKartId, tarih, eklemeZamani, vezneId, paraId,
  * hareketTipi (cari hareket için HAREKET_TIPI; belgelerde eski görünümdeki gibi 0), tip (0 borç / 1 alacak), meblag, aciklama, belgeNo.
@@ -193,7 +199,7 @@ export function cariHareketleriSql(d) {
      FROM dbo.TODVZ_SARRAF_FISI SF JOIN dbo.TODVZ_ODEME_SATIRI OS ON OS.SARRAF_FISI_ID=SF.SARRAF_FISI_ID
      WHERE OS.ISLEME_YERI=1 AND OS.PARA_ID IS NOT NULL AND ${d.odemeCari ? "COALESCE(OS.CARI_KART_ID, SF.CARI_KART_ID)" : "SF.CARI_KART_ID"} IS NOT NULL`);
     if (d.perakende)
-        parcalar.push(`SELECT 4, F.FATURA_ID, O.SATIR_NO, O.CARI_KART_ID, ${YEREL_GUN("F.TARIH")}, F.EKLEME_ZAMANI, F.VEZNE_ID, O.PARA_ID, 0, CASE WHEN F.FATURA_TIPI=1 THEN 0 ELSE 1 END,
+        parcalar.push(`SELECT ${d.fisKaynagi ? "CASE WHEN ISNULL(F.FIS_KAYNAGI,0)=1 THEN 5 ELSE 4 END" : "4"}, F.FATURA_ID, O.SATIR_NO, O.CARI_KART_ID, ${YEREL_GUN("F.TARIH")}, F.EKLEME_ZAMANI, F.VEZNE_ID, O.PARA_ID, 0, CASE WHEN F.FATURA_TIPI=1 THEN 0 ELSE 1 END,
        ${FATURA_ODEME_MIKTARI}, RTRIM(ISNULL(F.ALICI_UNVAN,'')), RTRIM(ISNULL(F.FATURA_NO,''))
      FROM dbo.TODVZ_FATURA F JOIN dbo.TODVZ_FATURA_ODEME O ON O.FATURA_ID=F.FATURA_ID JOIN dbo.TODVZ_PARA OP ON OP.PARA_ID=O.PARA_ID
      WHERE O.ODEME_ARACI_TURU=1 AND O.CARI_KART_ID IS NOT NULL`);

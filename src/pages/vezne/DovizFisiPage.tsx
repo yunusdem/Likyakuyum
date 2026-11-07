@@ -3923,14 +3923,11 @@ export const DovizFisiPage: React.FC = () => {
             const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
             if (res.degisti) {
               num = res.kur;
-              hasWarning = true;
-              if (res.mesaj) {
-                setNotification({ type: "warning", message: res.mesaj });
-              } else {
-                setNotification({ type: "warning", message: "Kur yetki sınırına göre güncellendi." });
-              }
             }
             const denetim = kurDenetle(kYetki, gise, num, `${rowIndex + 1}. satır kuru`);
+            if (denetim.sinirKur) {
+              num = denetim.sinirKur;
+            }
             if (denetim.hata) {
               setNotification({ type: "danger", message: denetim.hata });
               hasError = true;
@@ -4025,14 +4022,11 @@ export const DovizFisiPage: React.FC = () => {
             const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
             if (res.degisti) {
               num = res.kur;
-              hasWarning = true;
-              if (res.mesaj) {
-                setNotification({ type: "warning", message: res.mesaj });
-              } else {
-                setNotification({ type: "warning", message: "Kur yetki sınırına göre güncellendi." });
-              }
             }
             const denetim = kurDenetle(kYetki, gise, num, `${rowIndex + 1}. satır kuru`);
+            if (denetim.sinirKur) {
+              num = denetim.sinirKur;
+            }
             if (denetim.hata) {
               setNotification({ type: "danger", message: denetim.hata });
               hasError = true;
@@ -4316,7 +4310,16 @@ export const DovizFisiPage: React.FC = () => {
       let errRowId: string | null = null;
       let errMsg: string | null = null;
       for (const s of kurSatirlari) {
+        const sinirli = kurDegeriniSinirla(kYetki, s.gise, s.kur, kurKurusSayisi);
+        if (sinirli.degisti) {
+          handleLineFieldChange(s.rowId, "kur", sinirli.kur.toFixed(kurKurusSayisi));
+          s.kur = sinirli.kur;
+        }
         const d = kurDenetle(kYetki, s.gise, s.kur, s.etiket);
+        if (d.sinirKur) {
+          handleLineFieldChange(s.rowId, "kur", d.sinirKur.toFixed(kurKurusSayisi));
+          s.kur = d.sinirKur;
+        }
         if (d.hata) {
           errRowId = s.rowId;
           errMsg = d.hata;
@@ -5807,10 +5810,12 @@ export const DovizFisiPage: React.FC = () => {
 
       const isCtrlN = isCtrlNEvent(e);
       if (isCtrlN) {
-        e.preventDefault();
-        e.stopPropagation();
-        closeAllModals();
-        handleToolbarNew();
+        if (!isDuzeltmeMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeAllModals();
+          handleToolbarNew();
+        }
         return;
       }
 
@@ -6224,7 +6229,8 @@ export const DovizFisiPage: React.FC = () => {
       <ERPToolbar
         disableShortcuts={true}
         pageTitle={isDuzeltmeMode ? "F- Döviz Fişi Düzeltme" : "E- Döviz Fişi Kayıt"}
-        onNew={handleToolbarNew}
+        onNew={isDuzeltmeMode ? undefined : handleToolbarNew}
+        hideNew={isDuzeltmeMode}
         onSave={handleToolbarSave}
         onSaveAndPrint={handleTriggerF10}
         onDirectPrint={handleOpenPrintPreview}
@@ -7547,14 +7553,11 @@ export const DovizFisiPage: React.FC = () => {
                                   const res = kurDegeriniSinirla(kYetki, gise, num, kurKurusSayisi);
                                   if (res.degisti) {
                                     num = res.kur;
-                                    hasWarning = true;
-                                    if (res.mesaj) {
-                                      setNotification({ type: "warning", message: res.mesaj });
-                                    } else {
-                                      setNotification({ type: "warning", message: "Kur yetki sınırına göre güncellendi." });
-                                    }
                                   }
                                   const denetim = kurDenetle(kYetki, gise, num, `${idx + 1}. satır kuru`);
+                                  if (denetim.sinirKur) {
+                                    num = denetim.sinirKur;
+                                  }
                                   if (denetim.hata) {
                                     setNotification({ type: "danger", message: denetim.hata });
                                     hasError = true;

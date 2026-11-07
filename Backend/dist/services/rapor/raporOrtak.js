@@ -1,6 +1,18 @@
 import sql from "mssql";
 import { RAPOR_UST_SINIR } from "./raporTanim.js";
 import { VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketleriSql } from "./kaynak.js";
+/** Ek parametre değeri (metin; yoksa "") */
+export const ek = (p, ad) => String(p.ek?.[ad] ?? "").trim();
+/** Ek onay kutusu işaretli mi ("1" / "true" / "evet") */
+export const ekOnay = (p, ad) => ["1", "true", "evet"].includes(ek(p, ad).toLowerCase());
+/** Ek sayısal parametre (virgüllü yazım kabul edilir); boş / geçersizse undefined */
+export const ekSayi = (p, ad) => {
+    const m = ek(p, ad).replace(",", ".");
+    if (!m)
+        return undefined;
+    const n = Number(m);
+    return Number.isFinite(n) ? n : undefined;
+};
 /** Seçim listesi filtresi: `kolon IN (…)`; liste boşsa boş metin. `onek` parametre adlarının çakışmaması içindir. */
 export function idFiltre(req, idler, kolon, onek) {
     const ids = (idler || []).filter(n => Number.isInteger(n) && n > 0);
@@ -172,10 +184,12 @@ export async function hedefPara(pool, p, kur) {
 }
 export function sinirla(satirlar, tanim, filtreOzeti, ekDipnot, ozetSatirlar) {
     const sinir = tanim.ustSinir || RAPOR_UST_SINIR;
-    if (satirlar.length > sinir)
-        return { satirlar: [], filtreOzeti, ekDipnot, sinirAsildi: true, toplamKayit: satirlar.length };
+    // Kayıt sayısı ve üst sınır yalnız veri satırlarıyla (Döviz / Kuyum alt başlık satırları sayılmaz)
+    const kayit = satirlar.filter(s => s?._stil !== "baslik").length;
+    if (kayit > sinir)
+        return { satirlar: [], filtreOzeti, ekDipnot, sinirAsildi: true, toplamKayit: kayit };
     // Hesap açıklamaları basılmaz (kullanıcı kararı 19.09.2026: eski raporlardaki gibi sade çıktı); not yalnızca rapor boşken, nedenini söylemek için gösterilir
-    return { satirlar, filtreOzeti, ekDipnot: satirlar.length ? undefined : ekDipnot, toplamKayit: satirlar.length, ...(ozetSatirlar?.length ? { ozetSatirlar } : {}) };
+    return { satirlar, filtreOzeti, ekDipnot: kayit ? undefined : ekDipnot, toplamKayit: kayit, ...(ozetSatirlar?.length ? { ozetSatirlar } : {}) };
 }
 export const aralikOzeti = (p) => `${tarihTr(p.baslangic)} – ${tarihTr(p.bitis)}`;
 /** Ortak filtre parçaları: cari kod aralığı, vezne kod aralığı, para listesi. Parametreler request'e eklenir, SQL parçası döner. */

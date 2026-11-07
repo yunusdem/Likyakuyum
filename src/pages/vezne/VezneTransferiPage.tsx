@@ -1175,9 +1175,11 @@ export const VezneTransferiPage: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCtrlN = isCtrlNEvent(e);
       if (isCtrlN) {
-        e.preventDefault();
-        e.stopPropagation();
-        resetForm();
+        if (!isDuzeltmeMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          resetForm();
+        }
         return;
       }
 
@@ -1288,7 +1290,8 @@ export const VezneTransferiPage: React.FC = () => {
       <ERPToolbar
         disableShortcuts={true}
         hideBottomBar={true}
-        onNew={resetForm}
+        onNew={isDuzeltmeMode ? undefined : resetForm}
+        hideNew={isDuzeltmeMode}
         onSave={() => handleSave(false)}
         onSaveAndPrint={() => handleSave(true)}
         onSearch={isDuzeltmeMode ? handleOpenSearchModal : undefined}

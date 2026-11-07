@@ -271,8 +271,8 @@ export const ERPToolbar: React.FC<ERPToolbarProps> = ({
     // Kasa Hareket (Kayıt: /kasa/hareket-kayit vs Düzeltme: /kasa/hareket-duzeltme)
     location.pathname.includes("/kasa/hareket-kayit");
 
-  // Yeni Kayıt Butonu
-  const shouldShowNew = hideNew !== undefined ? !hideNew : true;
+  // Yeni Kayıt Butonu (Düzeltme sayfalarında asla gözükmez)
+  const shouldShowNew = hideNew !== undefined ? !hideNew : !isDuzeltmePage;
 
   // Kaydet Butonu
   const shouldShowSave = hideSave !== undefined ? !hideSave : true;

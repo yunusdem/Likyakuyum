@@ -309,12 +309,10 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
         raw: g,
       });
     }
-    onClose();
   };
 
   const handleSelectIsimBeyanEdilmemistir = () => {
     onSelectCustomer({ type: "anonymous", id: null, kod: "", unvan: "İSİM BEYAN EDİLMEMİŞTİR", vergiKimlikNo: "", adres: "", telefon: "" });
-    onClose();
   };
 
   const handleConfirm = () => {
@@ -423,6 +421,8 @@ export const MusteriSecimModal: React.FC<MusteriSecimModalProps> = ({
         centered
         backdrop="static"
         keyboard={false}
+        restoreFocus={false}
+        enforceFocus={false}
         dialogClassName="cari-secim-modal-custom"
       >
         <div

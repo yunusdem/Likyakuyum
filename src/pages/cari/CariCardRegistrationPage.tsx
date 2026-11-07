@@ -1344,7 +1344,8 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
           )
         }
         pageIcon={<IconUsers size={20} />}
-        onNew={handleNewCari}
+        onNew={isEditPage ? undefined : handleNewCari}
+        hideNew={isEditPage}
         onSave={handleSave}
         onSearch={
           isEditPage

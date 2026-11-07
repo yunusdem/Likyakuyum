@@ -90,12 +90,17 @@ export class BelgeSqlRepository {
      * Fişi FIS_ID veya belge numarasıyla (DIA2026…/DIS2026…) bulur; iptal fiş de döner
      * (önizlemede İPTAL filigranı basılır). Belge içeriği XSLT görünümünden tamamlanır.
      */
+    /**
+     * ettn (isteğe bağlı): çok satırlı döviz fişinde her satır ayrı e-Döviz belgesidir (ayrı ETTN, aynı belge no); verilirse
+     * yalnız o satırın belgesi okunur (mobil cari çıktısı, docs/MOBIL_CARI_YOL_HARITASI.md). Verilmezse eski davranış.
+     */
     static async fisDetay(p, ctx) {
         if (!p.fisId && !p.belgeNo)
             throw ApiError.badRequest("fisId veya belgeNo verilmelidir.");
         const pool = await this.pool(ctx);
         const res = await pool.request()
             .input("id", sql.Int, p.fisId || null)
+            .input("ettn", sql.VarChar(60), p.ettn?.trim() || null)
             .input("no", sql.VarChar(40), p.belgeNo?.trim().toUpperCase() || null).query(`
       -- FIS_* kolonları: XSLT görünümünde tutar/vezne yoksa belgeVeri bunlara düşer.
       SELECT TOP 2 D.*, RTRIM(I.KOD) AS ISTATISTIK_KOD, I.FIS_TIPI AS ISTATISTIK_FIS_TIPI,
@@ -104,7 +109,7 @@ export class BelgeSqlRepository {
       LEFT JOIN dbo.TODVZ_FIS F ON F.FIS_ID=D.BELGE_ID
       LEFT JOIN dbo.TODVZ_VEZNE VZ ON VZ.VEZNE_ID=F.VEZNE_ID
       LEFT JOIN dbo.TODVZ_ISTATISTIK I ON I.ISTATISTIK_ID=F.ISTATISTIK_ID
-      WHERE (@id IS NULL OR D.BELGE_ID=@id) AND (@no IS NULL OR RTRIM(D.BELGE_NO)=@no);
+      WHERE (@id IS NULL OR D.BELGE_ID=@id) AND (@no IS NULL OR RTRIM(D.BELGE_NO)=@no) AND (@ettn IS NULL OR RTRIM(D.ETTN)=@ettn);
     `);
         const basliklar = res.recordset;
         if (basliklar.length === 0)
@@ -114,8 +119,9 @@ export class BelgeSqlRepository {
         const baslik = basliklar[0];
         let detay = {};
         try {
-            const x = await pool.request().input("id", sql.Int, baslik.BELGE_ID).input("no", sql.VarChar(40), String(baslik.BELGE_NO || "").trim()).query(`
-        SELECT TOP 1 X.* FROM dbo.VODVZ_E_DOVIZ_BELGESI_XSLT X WHERE X.FIS_ID=@id AND RTRIM(X.ID)=@no`);
+            const x = await pool.request().input("id", sql.Int, baslik.BELGE_ID).input("no", sql.VarChar(40), String(baslik.BELGE_NO || "").trim())
+                .input("ettn", sql.VarChar(60), p.ettn?.trim() || null).query(`
+        SELECT TOP 1 X.* FROM dbo.VODVZ_E_DOVIZ_BELGESI_XSLT X WHERE X.FIS_ID=@id AND RTRIM(X.ID)=@no AND (@ettn IS NULL OR RTRIM(X.UUID)=@ettn)`);
             detay = x.recordset[0] || {};
         }
         catch (e) {

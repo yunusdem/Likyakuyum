@@ -28,6 +28,9 @@ export const isCtrlNEvent = (e: KeyboardEvent): boolean => {
  * Returns true if an action button was found and clicked, or an event was dispatched.
  */
 export const triggerGlobalNewRecord = (): boolean => {
+  if (typeof window !== "undefined" && window.location.pathname.includes("duzeltme")) {
+    return false;
+  }
   // 1. If an active modal is open, check if it has a "Yeni Kayıt" button
   const openModal = document.querySelector(".modal.show, .modal[style*='display: block']");
   if (openModal) {

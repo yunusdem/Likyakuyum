@@ -1046,7 +1046,8 @@ export const CariHareketPage: React.FC = () => {
       {/* 1. ERP Toolbar */}
       <ERPToolbar
         pageTitle={pageTitle}
-        onNew={handleNewRecord}
+        onNew={isEditMode ? undefined : handleNewRecord}
+        hideNew={isEditMode}
         onSave={handleSave}
         onSearch={isEditMode ? handleOpenSearchModal : undefined}
         onDelete={isEditMode && currentHareketId ? () => setShowDeleteModal(true) : undefined}

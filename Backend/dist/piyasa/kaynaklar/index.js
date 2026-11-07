@@ -6,7 +6,7 @@ import { AltinkaynakKaynak } from "./altinkaynak.js";
 import { DovizcomKaynak } from "./dovizcom.js";
 import { HakanKaynak } from "./hakan.js";
 import { OzbagKaynak } from "./ozbag.js";
-/** Panodaki sıra. Yeni site: bağdaştırıcı dosyası + buraya bir satır. */
+/** Tüm siteler (Kur Kaynağı seçimi bu listeden). Yeni site: bağdaştırıcı dosyası + buraya bir satır. */
 export const KAYNAKLAR = [
     new HaremKaynak(),
     new KapalicarsiKaynak(),
@@ -17,3 +17,8 @@ export const KAYNAKLAR = [
     new HakanKaynak(),
     new OzbagKaynak(),
 ];
+/** Piyasa ekranında gösterilmeyen siteler; Kur Kaynağı olarak seçilebilir kalır */
+const PANODA_YOK = new Set(["dovizcom"]);
+export const panodaMi = (kod) => !PANODA_YOK.has(kod);
+/** Piyasa ekranındaki siteler, ekrandaki sırayla */
+export const PANO_KAYNAKLARI = KAYNAKLAR.filter((k) => panodaMi(k.kod));

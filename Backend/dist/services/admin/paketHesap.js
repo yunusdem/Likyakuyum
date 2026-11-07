@@ -1,4 +1,4 @@
-import { modulleriDuzenle } from "./modulAgaci.js";
+import { acikcaAcilanMi, modulleriDuzenle } from "./modulAgaci.js";
 /** Açılan kodun tüm üstlerini ekler (ağaç kuralı üstü kapalı olanı kapattığı için). */
 export const ustleriyle = (katalog, kodlar) => {
     const ust = new Map(katalog.map((m) => [m.modulKodu, m.ustKodu]));
@@ -16,8 +16,9 @@ export const paketTabani = (katalog, paketler, urunler) => {
     if (urunler.length === 0)
         return [];
     const secili = paketler.filter((p) => p.cekirdek || urunler.includes(p.paketKodu));
+    // ERP katalogun tamamıdır; yalnız açıkça açılan modüller (Mobil) hariç — onlar EK istisnasıyla açılır
     if (secili.some((p) => p.hepsi && urunler.includes(p.paketKodu)))
-        return katalog.map((m) => m.modulKodu);
+        return katalog.map((m) => m.modulKodu).filter((k) => !acikcaAcilanMi(k));
     return modulleriDuzenle(katalog, [...ustleriyle(katalog, secili.flatMap((p) => p.moduller))]);
 };
 /** Taban + istisnalar → firmanın açık modülleri. */

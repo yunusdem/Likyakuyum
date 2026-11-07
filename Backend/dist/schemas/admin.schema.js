@@ -41,6 +41,14 @@ export const adminIdSchema = z.object({ params: idParam });
 export const adminFirmaPanoSchema = z.object({ params: idParam.extend({ panoId: z.coerce.number().int().positive() }) });
 // ---------------------------------------------------------------- Firmalar ---
 const secmeli = (azami) => z.string().trim().max(azami).nullish();
+// Mobil cari erişimi (docs/MOBIL_CARI_YOL_HARITASI.md K7, K26, V1): firma başına mobil kullanıcı sınırı + kısa ad
+export const adminMobilSchema = z.object({
+    params: idParam,
+    body: z.object({
+        kullaniciLimiti: z.coerce.number().int().min(0, "Sınır 0 ya da daha büyük olmalıdır").max(100000),
+        kisaAd: secmeli(40),
+    }),
+});
 const gun = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-AA-GG biçiminde olmalıdır").refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), "Geçersiz tarih");
 const firmaGovdesi = z.object({
     firmaKodu: z
@@ -203,7 +211,7 @@ export const girisLogSchema = z.object({
     query: z.object({
         ...sayfalama,
         firmaId: z.coerce.number().int().positive().optional(),
-        tur: z.enum(["ADMIN", "KULLANICI"]).optional(),
+        tur: z.enum(["ADMIN", "KULLANICI", "MOBIL"]).optional(),
         basarili: z
             .enum(["true", "false"])
             .optional()
