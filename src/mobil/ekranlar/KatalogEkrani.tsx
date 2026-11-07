@@ -4,9 +4,9 @@ import { IconMinus, IconPlus, IconShoppingBag, IconTrash } from "@tabler/icons-r
 import { MobilHata, istek, tl } from "../api";
 
 /**
- * Ticari katalog + sepet (docs/MOBIL_CARI_YOL_HARITASI.md Faz 8, V8): firmanın seçtiği ürünler, carinin fiyatıyla (KDV
- * dahil). Stok miktarı görünmez; yalnız "stokta var / yok". Sepet onaylanınca fiyatlar sabitlenir ve sipariş firma onayına
- * düşer; süre içinde onaylanmazsa düşer. Durum Al / Sat › Emirlerim'de görünür.
+ * Ticari katalog + sepet (docs/MOBIL_CARI_YOL_HARITASI.md Faz 8, V8, §8 T7): firmanın seçtiği ürünler, carinin fiyatıyla
+ * (KDV dahil). Stok miktarı görünmez; yalnız "stokta var / yok". Sepet onaylanınca fiyatlar sabitlenir ve sipariş firma
+ * onayına düşer; süre içinde onaylanmazsa düşer. Durum Al / Sat › Emirlerim'de görünür.
  */
 
 export interface KatalogUrunu {
@@ -114,12 +114,24 @@ const KatalogEkrani: React.FC<{ firmaId: number }> = ({ firmaId }) => {
     return hata ? (
       <Alert variant="warning">{hata}</Alert>
     ) : (
-      <div className="text-center py-5">
+      <div className="m-yukleniyor">
         <Spinner animation="border" />
       </div>
     );
 
   const siparisAcik = !!bilgi?.acik && !!bilgi?.alis;
+
+  const sayacKutusu = (u: KatalogUrunu, metin: string, genis = false) => (
+    <div className="m-sayac-kutu">
+      <button type="button" aria-label="Azalt" onClick={() => arttir(u, -1)}>
+        <IconMinus size={16} />
+      </button>
+      <input inputMode="decimal" value={metin} style={genis ? { width: 60 } : undefined} aria-label={`${u.ad} miktarı`} onChange={(e) => setSepet((s) => ({ ...s, [u.stokKartId]: e.target.value }))} />
+      <button type="button" aria-label="Arttır" onClick={() => arttir(u, 1)}>
+        <IconPlus size={16} />
+      </button>
+    </div>
+  );
 
   return (
     <>
@@ -134,112 +146,87 @@ const KatalogEkrani: React.FC<{ firmaId: number }> = ({ firmaId }) => {
         </Alert>
       )}
       <div className="m-kart">
-        <div className="m-baslik">Katalog</div>
-        {bilgi && !siparisAcik && <div className="small text-muted mb-2">{bilgi.kapaliNedeni || "Sipariş yetkiniz yok; yalnız fiyatları görebilirsiniz."}</div>}
+        <div className="m-kart-ust">
+          <div className="m-baslik">Katalog</div>
+          <span className="m-ipucu">Fiyatlar KDV dahil</span>
+        </div>
+        {bilgi && !siparisAcik && <div className="m-ipucu mb-2">{bilgi.kapaliNedeni || "Sipariş yetkiniz yok; yalnız fiyatları görebilirsiniz."}</div>}
         <Form.Control className="mb-2" placeholder="Ürün ara" value={arama} onChange={(e) => setArama(e.target.value)} />
         {gruplar.length > 1 && (
-          <div className="d-flex gap-1 flex-wrap mb-2">
-            <Button size="sm" variant={!grup ? "primary" : "outline-primary"} onClick={() => setGrup("")}>
+          <div className="m-cipler mb-2">
+            <button type="button" className={`m-cip${!grup ? " secili" : ""}`} onClick={() => setGrup("")}>
               Tümü
-            </Button>
+            </button>
             {gruplar.map((g) => (
-              <Button key={g} size="sm" variant={grup === g ? "primary" : "outline-primary"} onClick={() => setGrup(g)}>
+              <button key={g} type="button" className={`m-cip${grup === g ? " secili" : ""}`} onClick={() => setGrup(g)}>
                 {g}
-              </Button>
+              </button>
             ))}
           </div>
         )}
-        {urunler.length === 0 && <div className="text-muted">Katalogda ürün yok.</div>}
-        {urunler.length > 0 && gorunen.length === 0 && <div className="text-muted">Aramaya uyan ürün yok.</div>}
+        {urunler.length === 0 && <div className="m-bos">Katalogda ürün yok.</div>}
+        {urunler.length > 0 && gorunen.length === 0 && <div className="m-bos">Aramaya uyan ürün yok.</div>}
         <div className="m-urun-izgara">
-        {gorunen.map((u) => {
-          const m = sepet[u.stokKartId];
-          return (
-            <div key={u.stokKartId} className="m-dokum-satir align-items-center">
-              <div className="sol">
-                <div className="fw-semibold">{u.ad}</div>
-                <div className="soluk">
-                  {u.kod} · {u.stokta ? <span className="text-success">Stokta var</span> : <span className="text-danger">Stokta yok</span>}
+          {gorunen.map((u) => {
+            const m = sepet[u.stokKartId];
+            return (
+              <div key={u.stokKartId} className="m-urun">
+                <div className="ic">
+                  <div className="ad">{u.ad}</div>
+                  <div className="alt">
+                    <span>{u.kod}</span>
+                    <span className={`stok ${u.stokta ? "var" : "yok"}`}>{u.stokta ? "Stokta var" : "Stokta yok"}</span>
+                  </div>
+                  <div className="fiyat">
+                    {tl(u.fiyat, 2)} TL <span className="birim">/ {u.birim}</span>
+                  </div>
                 </div>
-                <div className="fw-bold">
-                  {tl(u.fiyat, 2)} TL <span className="soluk fw-normal">/ {u.birim}</span>
-                </div>
-              </div>
-              {siparisAcik && (
-                <div className="d-flex align-items-center gap-1">
-                  {m ? (
-                    <>
-                      <Button size="sm" variant="outline-secondary" aria-label="Azalt" onClick={() => arttir(u, -1)}>
-                        <IconMinus size={16} />
-                      </Button>
-                      <Form.Control
-                        size="sm"
-                        inputMode="decimal"
-                        style={{ width: 64, textAlign: "center" }}
-                        value={m}
-                        aria-label={`${u.ad} miktarı`}
-                        onChange={(e) => setSepet((s) => ({ ...s, [u.stokKartId]: e.target.value }))}
-                      />
-                      <Button size="sm" variant="outline-secondary" aria-label="Arttır" onClick={() => arttir(u, 1)}>
-                        <IconPlus size={16} />
-                      </Button>
-                    </>
+                {siparisAcik &&
+                  (m ? (
+                    sayacKutusu(u, m)
                   ) : (
-                    <Button size="sm" variant="outline-primary" onClick={() => arttir(u, 1)}>
+                    <button type="button" className="m-ekle" onClick={() => arttir(u, 1)}>
                       Sepete ekle
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+                    </button>
+                  ))}
+              </div>
+            );
+          })}
         </div>
-        <div className="small text-muted mt-2">Fiyatlar KDV dahildir.</div>
       </div>
 
       {satirlar.length > 0 && (
         <div className="m-sepet-cubugu">
-          <Button className="w-100 m-buyuk-dugme d-flex justify-content-between align-items-center" onClick={() => setSepetAcik(true)}>
-            <span>
-              <IconShoppingBag size={20} className="me-1" />
-              Sepet ({satirlar.length})
+          <Button className="w-100 m-buyuk-dugme m-cta d-flex justify-content-between align-items-center" onClick={() => setSepetAcik(true)}>
+            <span className="d-flex align-items-center gap-2">
+              <IconShoppingBag size={20} />
+              Sepet · {satirlar.length} ürün
             </span>
             <span>{tl(toplam, 2)} TL</span>
           </Button>
         </div>
       )}
 
-      <Modal show={sepetAcik} onHide={() => setSepetAcik(false)} centered fullscreen="sm-down">
+      <Modal show={sepetAcik} onHide={() => setSepetAcik(false)} centered scrollable className="m-sheet">
         <Modal.Header closeButton>
-          <Modal.Title className="fs-6">Sepetim</Modal.Title>
+          <Modal.Title>Sepetim</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {satirlar.map((s) => (
-            <div key={s.u.stokKartId} className="m-dokum-satir align-items-center">
-              <div className="sol">
-                <div className="fw-semibold">{s.u.ad}</div>
-                <div className="soluk">
+            <div key={s.u.stokKartId} className="m-urun">
+              <div className="ic">
+                <div className="ad">{s.u.ad}</div>
+                <div className="alt">
                   {tl(s.u.fiyat, 2)} TL / {s.u.birim}
-                  {!gecerliSatir(s) && <span className="text-danger"> · {adetMi(s.u.birim) ? "adet tam sayı olmalı" : "miktar geçersiz"}</span>}
+                  {!gecerliSatir(s) && <span className="text-danger">{adetMi(s.u.birim) ? "adet tam sayı olmalı" : "miktar geçersiz"}</span>}
                 </div>
+                <div className="fiyat">{gecerliSatir(s) ? `${tl(Math.round(s.miktar * s.u.fiyat * 100) / 100, 2)} TL` : "—"}</div>
               </div>
               <div className="d-flex align-items-center gap-1">
-                <Form.Control
-                  size="sm"
-                  inputMode="decimal"
-                  style={{ width: 72, textAlign: "center" }}
-                  value={s.metin}
-                  aria-label={`${s.u.ad} miktarı`}
-                  onChange={(e) => setSepet((x) => ({ ...x, [s.u.stokKartId]: e.target.value }))}
-                />
-                <span className="small" style={{ minWidth: 80, textAlign: "right" }}>
-                  {gecerliSatir(s) ? `${tl(Math.round(s.miktar * s.u.fiyat * 100) / 100, 2)} TL` : "-"}
-                </span>
-                <Button
-                  size="sm"
-                  variant="link"
-                  className="text-danger p-1"
+                {sayacKutusu(s.u, s.metin, true)}
+                <button
+                  type="button"
+                  className="btn btn-link text-danger p-1"
                   aria-label="Sepetten çıkar"
                   onClick={() =>
                     setSepet((x) => {
@@ -249,26 +236,32 @@ const KatalogEkrani: React.FC<{ firmaId: number }> = ({ firmaId }) => {
                     })
                   }
                 >
-                  <IconTrash size={16} />
-                </Button>
+                  <IconTrash size={18} />
+                </button>
               </div>
             </div>
           ))}
-          <div className="d-flex justify-content-between align-items-baseline my-3">
-            <span className="text-muted">Toplam (KDV dahil)</span>
-            <span className="fs-4 fw-bold">{tl(toplam, 2)} TL</span>
+          <div className="m-ozet mt-3">
+            <div className="toplam" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
+              <span className="etiket">Toplam (KDV dahil)</span>
+              <span className="deger">{tl(toplam, 2)} TL</span>
+            </div>
           </div>
           {bilgi && bilgi.tercihler.length > 0 && (
-            <Form.Group className="mb-2">
-              <Form.Label>Ödeme / teslim tercihiniz</Form.Label>
-              {bilgi.tercihler.map((t) => (
-                <Form.Check key={t.kod} type="radio" id={`ktercih-${t.kod}`} name="ktercih" label={t.ad} checked={tercih === t.kod} onChange={() => setTercih(t.kod)} />
-              ))}
-            </Form.Group>
+            <div className="m-alan">
+              <div className="m-etiket">Ödeme / teslim tercihiniz</div>
+              <div className="m-cipler" role="radiogroup" aria-label="Ödeme / teslim tercihi">
+                {bilgi.tercihler.map((t) => (
+                  <button key={t.kod} type="button" role="radio" aria-checked={tercih === t.kod} className={`m-cip${tercih === t.kod ? " secili" : ""}`} onClick={() => setTercih(t.kod)}>
+                    {t.ad}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
           <Form.Control as="textarea" rows={2} maxLength={500} placeholder="Not (isteğe bağlı)" value={not} onChange={(e) => setNot(e.target.value)} />
           {bilgi && (
-            <div className="small text-muted mt-2">
+            <div className="m-ipucu mt-2">
               Fiyatlar {sure(bilgi.gecerlilikSn)} sabittir. Firma bu süre içinde onaylarsa siparişiniz kesinleşir; onaylanmazsa düşer.
               {bilgi.sinirlar.gunlukKalanTl !== null && <> Bugün kalan sınırınız {tl(bilgi.sinirlar.gunlukKalanTl, 0)} TL.</>}
             </div>
@@ -283,7 +276,7 @@ const KatalogEkrani: React.FC<{ firmaId: number }> = ({ firmaId }) => {
           <Button variant="secondary" onClick={() => setSepetAcik(false)}>
             Alışverişe dön
           </Button>
-          <Button className="m-buyuk-dugme px-4" disabled={!sepetGecerli || mesgul || !siparisAcik} onClick={() => void gonder()}>
+          <Button className="m-buyuk-dugme m-cta px-4" disabled={!sepetGecerli || mesgul || !siparisAcik} onClick={() => void gonder()}>
             {mesgul ? <Spinner size="sm" animation="border" /> : "Siparişi gönder"}
           </Button>
         </Modal.Footer>

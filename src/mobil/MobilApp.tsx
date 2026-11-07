@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Dropdown, Form, Spinner } from "react-bootstrap";
-import { IconBuildingStore, IconCoin, IconDotsVertical, IconFileText, IconShoppingCart } from "@tabler/icons-react";
+import { IconBuildingStore, IconCoin, IconEye, IconEyeOff, IconFileText, IconShoppingCart } from "@tabler/icons-react";
 import { BenYaniti, GirisYaniti, MobilHata, OTURUM_BITTI, hatirla, istek, jetonOku, jetonYaz } from "./api";
 import FiyatEkrani from "./ekranlar/FiyatEkrani";
 import HesapEkrani from "./ekranlar/HesapEkrani";
-import IslemEkrani from "./ekranlar/IslemEkrani";
+import IslemEkrani, { IslemBaslangici } from "./ekranlar/IslemEkrani";
 import KatalogEkrani from "./ekranlar/KatalogEkrani";
 
 /**
- * Mobil cari sitesi (mobil.likyaerp.com; docs/MOBIL_CARI_YOL_HARITASI.md). Akış: müşteri no → kullanıcı adı + şifre →
- * (ilk girişte) şifre değiştirme → (birden çok veritabanında) seçim → ana ekran. Solda firmanın kısa adı (K2).
+ * Mobil cari sitesi (mobil.likyaerp.com; docs/MOBIL_CARI_YOL_HARITASI.md §8). Akış: müşteri no → kullanıcı adı + şifre →
+ * (ilk girişte) şifre değiştirme → (birden çok veritabanında) seçim → ana ekran. Üst çubukta solda firmanın adı (K2, T2):
+ * cari değiştiremez; /ben düzenli yenilendiği için panelde ad değişince burada da değişir.
  */
 
 type Sekme = "fiyat" | "hesap" | "islem" | "katalog";
@@ -20,6 +21,21 @@ const parametre = (ad: string): string => {
   } catch {
     return "";
   }
+};
+
+const basHarf = (ad: string | null | undefined): string => (String(ad || "").trim().charAt(0) || "L").toLocaleUpperCase("tr-TR");
+
+/** Şifre kutusu: göster / gizle düğmeli */
+const SifreAlani: React.FC<{ id: string; value: string; onChange: (v: string) => void; autoComplete: string; autoFocus?: boolean }> = (p) => {
+  const [acik, setAcik] = useState(false);
+  return (
+    <div className="m-sifre-kutu">
+      <Form.Control id={p.id} type={acik ? "text" : "password"} autoComplete={p.autoComplete} autoFocus={p.autoFocus} value={p.value} onChange={(e) => p.onChange(e.target.value)} />
+      <button type="button" aria-label={acik ? "Şifreyi gizle" : "Şifreyi göster"} onClick={() => setAcik((a) => !a)}>
+        {acik ? <IconEyeOff size={20} /> : <IconEye size={20} />}
+      </button>
+    </div>
+  );
 };
 
 // ------------------------------------------------------------------ Giriş ---
@@ -72,50 +88,56 @@ const GirisEkrani: React.FC<{ onGiris: (y: GirisYaniti) => void }> = ({ onGiris 
   };
 
   return (
-    <div className="m-giris">
-      <div className="m-giris-marka">
+    <div className="m-giris-sayfa">
+      <div className="m-giris-ust">
+        <div className="madalyon">{basHarf(kisaAd || "Likya")}</div>
         <div className="ad">{kisaAd || "Likya"}</div>
-        <div className="alt">{kisaAd ? "Likya Mobil" : "Mobil müşteri girişi"}</div>
+        <div className="alt">Mobil müşteri girişi</div>
       </div>
-      {hata && <Alert variant="danger">{hata}</Alert>}
-      {!kisaAd ? (
-        <Form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void musteriSorgula(musteriNo);
-          }}
-        >
-          <Form.Group className="mb-3" controlId="musteriNo">
-            <Form.Label>Müşteri no</Form.Label>
-            <Form.Control autoFocus autoCapitalize="characters" autoComplete="off" value={musteriNo} onChange={(e) => setMusteriNo(e.target.value.toUpperCase())} />
-            <Form.Text>Firmanızın size verdiği müşteri no.</Form.Text>
-          </Form.Group>
-          <Button type="submit" className="w-100 m-buyuk-dugme" disabled={mesgul || !musteriNo.trim()}>
-            {mesgul ? <Spinner size="sm" animation="border" /> : "Devam"}
-          </Button>
-        </Form>
-      ) : (
-        <Form onSubmit={giris}>
-          <div className="small text-muted mb-2 d-flex justify-content-between">
-            <span>Müşteri no: {musteriNo}</span>
-            <Button variant="link" size="sm" className="p-0" onClick={() => setKisaAd(null)}>
-              Değiştir
+      <div className="m-giris-kart">
+        {hata && <Alert variant="danger">{hata}</Alert>}
+        {!kisaAd ? (
+          <Form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void musteriSorgula(musteriNo);
+            }}
+          >
+            <Form.Group className="m-alan" controlId="musteriNo">
+              <Form.Label>Müşteri no</Form.Label>
+              <Form.Control autoFocus autoCapitalize="characters" autoComplete="off" value={musteriNo} onChange={(e) => setMusteriNo(e.target.value.toUpperCase())} />
+              <Form.Text>Firmanızın size verdiği müşteri no.</Form.Text>
+            </Form.Group>
+            <Button type="submit" className="w-100 m-buyuk-dugme m-cta" disabled={mesgul || !musteriNo.trim()}>
+              {mesgul ? <Spinner size="sm" animation="border" /> : "Devam"}
             </Button>
-          </div>
-          <Form.Group className="mb-3" controlId="kullaniciAdi">
-            <Form.Label>Kullanıcı adı</Form.Label>
-            <Form.Control autoCapitalize="none" autoCorrect="off" autoComplete="username" value={kullaniciAdi} onChange={(e) => setKullaniciAdi(e.target.value)} />
-          </Form.Group>
-          <Form.Group className="mb-3" controlId="sifre">
-            <Form.Label>Şifre</Form.Label>
-            <Form.Control type="password" autoComplete="current-password" autoFocus={!!kullaniciAdi} value={sifre} onChange={(e) => setSifre(e.target.value)} />
-          </Form.Group>
-          <Button type="submit" className="w-100 m-buyuk-dugme" disabled={mesgul || !kullaniciAdi || !sifre}>
-            {mesgul ? <Spinner size="sm" animation="border" /> : "Giriş"}
-          </Button>
-          <div className="small text-muted text-center mt-3">Şifrenizi unuttuysanız firmanızdan yeni şifre isteyin.</div>
-        </Form>
-      )}
+          </Form>
+        ) : (
+          <Form onSubmit={giris}>
+            <div className="m-musteri">
+              <span>
+                Müşteri no <span className="no">{musteriNo}</span>
+              </span>
+              <button type="button" onClick={() => setKisaAd(null)}>
+                Değiştir
+              </button>
+            </div>
+            <Form.Group className="m-alan" controlId="kullaniciAdi">
+              <Form.Label>Kullanıcı adı</Form.Label>
+              <Form.Control autoCapitalize="none" autoCorrect="off" autoComplete="username" value={kullaniciAdi} onChange={(e) => setKullaniciAdi(e.target.value)} />
+            </Form.Group>
+            <Form.Group className="m-alan" controlId="sifre">
+              <Form.Label>Şifre</Form.Label>
+              <SifreAlani id="sifre" autoComplete="current-password" autoFocus={!!kullaniciAdi} value={sifre} onChange={setSifre} />
+            </Form.Group>
+            <Button type="submit" className="w-100 m-buyuk-dugme m-cta" disabled={mesgul || !kullaniciAdi || !sifre}>
+              {mesgul ? <Spinner size="sm" animation="border" /> : "Giriş yap"}
+            </Button>
+            <div className="m-not">Şifrenizi unuttuysanız firmanızdan yeni şifre isteyin.</div>
+          </Form>
+        )}
+      </div>
+      <div className="m-giris-imza">Likya Mobil</div>
     </div>
   );
 };
@@ -145,28 +167,29 @@ const SifreEkrani: React.FC<{ zorunlu: boolean; onTamam: (y: GirisYaniti) => voi
 
   return (
     <div className="m-kart">
-      <div className="fw-bold mb-1">{zorunlu ? "Yeni şifrenizi belirleyin" : "Şifre değiştir"}</div>
-      {zorunlu && <div className="small text-muted mb-3">İlk girişte size verilen şifreyi değiştirmeniz gerekiyor.</div>}
+      <div className="m-baslik mb-1">{zorunlu ? "Yeni şifre" : "Şifre değiştir"}</div>
+      <div className="fw-bold fs-5 mb-1">{zorunlu ? "Yeni şifrenizi belirleyin" : "Şifrenizi güncelleyin"}</div>
+      {zorunlu && <div className="m-ipucu mb-3">İlk girişte size verilen şifreyi değiştirmeniz gerekiyor.</div>}
       {hata && <Alert variant="danger">{hata}</Alert>}
       <Form onSubmit={kaydet}>
-        <Form.Group className="mb-2" controlId="mevcut">
+        <Form.Group className="m-alan" controlId="mevcut">
           <Form.Label>{zorunlu ? "Size verilen şifre" : "Mevcut şifre"}</Form.Label>
-          <Form.Control type="password" autoComplete="current-password" value={mevcut} onChange={(e) => setMevcut(e.target.value)} />
+          <SifreAlani id="mevcut" autoComplete="current-password" value={mevcut} onChange={setMevcut} />
         </Form.Group>
-        <Form.Group className="mb-2" controlId="yeni">
+        <Form.Group className="m-alan" controlId="yeni">
           <Form.Label>Yeni şifre</Form.Label>
-          <Form.Control type="password" autoComplete="new-password" value={yeni} onChange={(e) => setYeni(e.target.value)} />
+          <SifreAlani id="yeni" autoComplete="new-password" value={yeni} onChange={setYeni} />
           <Form.Text>En az 8 karakter; harf ve rakam içermeli.</Form.Text>
         </Form.Group>
-        <Form.Group className="mb-3" controlId="tekrar">
+        <Form.Group className="m-alan" controlId="tekrar">
           <Form.Label>Yeni şifre (tekrar)</Form.Label>
-          <Form.Control type="password" autoComplete="new-password" value={tekrar} onChange={(e) => setTekrar(e.target.value)} />
+          <SifreAlani id="tekrar" autoComplete="new-password" value={tekrar} onChange={setTekrar} />
         </Form.Group>
-        <Button type="submit" className="w-100 m-buyuk-dugme" disabled={mesgul || !mevcut || !yeni || !tekrar}>
+        <Button type="submit" className="w-100 m-buyuk-dugme m-cta" disabled={mesgul || !mevcut || !yeni || !tekrar}>
           {mesgul ? <Spinner size="sm" animation="border" /> : "Kaydet"}
         </Button>
         {!zorunlu && onVazgec && (
-          <Button variant="link" className="w-100 mt-2" onClick={onVazgec}>
+          <Button variant="link" className="w-100 mt-2 text-decoration-none fw-semibold" onClick={onVazgec}>
             Vazgeç
           </Button>
         )}
@@ -185,6 +208,8 @@ const MobilApp: React.FC = () => {
   const [sifreAcik, setSifreAcik] = useState(false);
   // Ticari katalog (Faz 8): firma katalogda ürün seçtiyse sekme görünür
   const [katalogVar, setKatalogVar] = useState(false);
+  // Fiyattan işleme kısayol (T1): Fiyatlar'da dokunulan ürün + yön, Al / Sat açılınca seçili gelir
+  const [islemBaslangici, setIslemBaslangici] = useState<IslemBaslangici | null>(null);
 
   const benYukle = useCallback(async () => {
     if (!jetonOku()) {
@@ -210,6 +235,21 @@ const MobilApp: React.FC = () => {
     window.addEventListener(OTURUM_BITTI, bitti);
     return () => window.removeEventListener(OTURUM_BITTI, bitti);
   }, [benYukle]);
+
+  // Firma adı / yetkiler panelde değişirse oturum kapanmadan yansısın (T2): dakikada bir ve sekme öne gelince
+  const oturumAcik = !!ben;
+  useEffect(() => {
+    if (!oturumAcik) return;
+    const t = setInterval(() => void benYukle(), 60_000);
+    const gorunur = () => {
+      if (document.visibilityState === "visible") void benYukle();
+    };
+    document.addEventListener("visibilitychange", gorunur);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", gorunur);
+    };
+  }, [oturumAcik, benYukle]);
 
   const katalogAnahtari = ben && !ben.kullanici.sifreDegismeli && ben.seciliFirmaId !== null && ben.yetkiler?.fiyat ? ben.seciliFirmaId : null;
   useEffect(() => {
@@ -249,10 +289,18 @@ const MobilApp: React.FC = () => {
     setBen(null);
   };
 
+  const fiyattanIslem = useCallback((urunId: number, yon: "AL" | "SAT") => {
+    setIslemBaslangici({ urunId, yon, sayac: Date.now() });
+    setSekme("islem");
+    window.scrollTo({ top: 0 });
+  }, []);
+
   if (yukleniyor)
     return (
-      <div className="m-giris text-center">
-        <Spinner animation="border" />
+      <div className="m-giris-sayfa">
+        <div className="m-yukleniyor tam">
+          <Spinner animation="border" />
+        </div>
       </div>
     );
 
@@ -268,43 +316,55 @@ const MobilApp: React.FC = () => {
       </>
     );
 
+  const kimlik = ben.kullanici.adSoyad || ben.kullanici.kullaniciAdi;
+  // Üst çubuk alt satırı: kimin girdiği (cari adı); yoksa firmanın ünvanı
+  const altSatir = ben.cari?.ad || (ben.unvan && ben.unvan !== ben.kisaAd ? ben.unvan : kimlik);
+
   // Üst çubuk. Geniş ekranda (masaüstü) sekmeler alt menü yerine burada durur; telefonda gizlidir (mobil.scss)
   const ustCubukCiz = (sekmeDugmeleri?: React.ReactNode) => (
-    <div className="m-ust">
+    <header className="m-ust">
       <div className="m-ust-ic">
-      <div className="m-ust-satir">
-      <div className="m-marka">{ben.kisaAd}</div>
-      {sekmeDugmeleri && <nav className="m-ust-sekmeler">{sekmeDugmeleri}</nav>}
-      <span className="m-likya">Likya</span>
-      <Dropdown align="end">
-        <Dropdown.Toggle as={Button} variant="link" aria-label="Menü" className="after-none">
-          <IconDotsVertical size={20} />
-        </Dropdown.Toggle>
-        <Dropdown.Menu>
-          <Dropdown.ItemText className="small text-muted">
-            {ben.kullanici.adSoyad || ben.kullanici.kullaniciAdi}
-            {ben.cari?.ad ? <div>{ben.cari.ad}</div> : null}
-          </Dropdown.ItemText>
-          <Dropdown.Divider />
-          <Dropdown.Item onClick={() => setSifreAcik(true)}>Şifre değiştir</Dropdown.Item>
-          <Dropdown.Item onClick={() => void cikis()}>Çıkış</Dropdown.Item>
-        </Dropdown.Menu>
-      </Dropdown>
+        <div className="m-ust-satir">
+          <div className="m-marka">
+            <div className="m-marka-ad" title={ben.unvan || ben.kisaAd}>
+              {ben.kisaAd}
+            </div>
+            {altSatir && <div className="m-marka-alt">{altSatir}</div>}
+          </div>
+          {sekmeDugmeleri && <nav className="m-ust-sekmeler">{sekmeDugmeleri}</nav>}
+          <Dropdown align="end" className="m-kullanici">
+            <Dropdown.Toggle as="button" type="button" className="m-avatar" aria-label="Hesap menüsü">
+              {basHarf(kimlik)}
+            </Dropdown.Toggle>
+            <Dropdown.Menu className="m-menu">
+              <div className="m-menu-baslik">
+                <div className="ad">{kimlik}</div>
+                {ben.cari?.ad ? <div className="alt">{ben.cari.ad}</div> : null}
+                {ben.unvan ? <div className="alt">{ben.unvan}</div> : null}
+              </div>
+              <Dropdown.Divider />
+              <Dropdown.Item onClick={() => setSifreAcik(true)}>Şifre değiştir</Dropdown.Item>
+              <Dropdown.Item className="text-danger" onClick={() => void cikis()}>
+                Çıkış yap
+              </Dropdown.Item>
+              <div className="m-menu-imza">Likya Mobil</div>
+            </Dropdown.Menu>
+          </Dropdown>
+        </div>
+        {/* Birden çok veritabanı (K25): üstten geçiş, firma adını kesmesin diye ikinci satırda */}
+        {ben.veritabanlari.length > 1 && !ben.kullanici.sifreDegismeli && (
+          <Form.Select size="sm" aria-label="Hesap" className="m-ust-hesap" value={ben.seciliFirmaId ?? ""} onChange={(e) => void veritabaniSec(Number(e.target.value))}>
+            {ben.seciliFirmaId === null && <option value="">Hesap seçin…</option>}
+            {ben.veritabanlari.map((v) => (
+              <option key={v.firmaId} value={v.firmaId}>
+                {v.unvan}
+                {v.cariAd ? ` — ${v.cariAd}` : ""}
+              </option>
+            ))}
+          </Form.Select>
+        )}
       </div>
-      {/* Birden çok veritabanı (K25): üstten geçiş, kısa adı kesmesin diye ikinci satırda */}
-      {ben.veritabanlari.length > 1 && !ben.kullanici.sifreDegismeli && (
-        <Form.Select size="sm" aria-label="Hesap" className="mt-2 m-ust-hesap" value={ben.seciliFirmaId ?? ""} onChange={(e) => void veritabaniSec(Number(e.target.value))}>
-          {ben.seciliFirmaId === null && <option value="">Hesap seçin…</option>}
-          {ben.veritabanlari.map((v) => (
-            <option key={v.firmaId} value={v.firmaId}>
-              {v.unvan}
-              {v.cariAd ? ` — ${v.cariAd}` : ""}
-            </option>
-          ))}
-        </Form.Select>
-      )}
-      </div>
-    </div>
+    </header>
   );
   const ustCubuk = ustCubukCiz();
 
@@ -325,14 +385,16 @@ const MobilApp: React.FC = () => {
         {ustCubuk}
         <div className="m-govde">
           {hata && <Alert variant="warning">{hata}</Alert>}
-          {ben.veritabanlari.length === 0 && <div className="m-kart text-muted">Açık hesabınız kalmadı. Firmanızla görüşün.</div>}
+          {ben.veritabanlari.length === 0 && <div className="m-kart m-bos">Açık hesabınız kalmadı. Firmanızla görüşün.</div>}
           <div className="m-kart">
-            <div className="fw-bold mb-2">Hesap seçin</div>
+            <div className="m-baslik mb-2">Hesap seçin</div>
             {ben.veritabanlari.map((v) => (
-              <Button key={v.firmaId} variant="outline-primary" className="w-100 mb-2 text-start m-buyuk-dugme" onClick={() => void veritabaniSec(v.firmaId)}>
-                {v.unvan}
-                {v.cariAd && <div className="small text-muted">{v.cariAd}</div>}
-              </Button>
+              <button key={v.firmaId} type="button" className="m-liste-satir" onClick={() => void veritabaniSec(v.firmaId)}>
+                <div className="ic">
+                  <div className="ust">{v.unvan}</div>
+                  {v.cariAd && <div className="alt">{v.cariAd}</div>}
+                </div>
+              </button>
             ))}
           </div>
         </div>
@@ -348,11 +410,12 @@ const MobilApp: React.FC = () => {
   ];
   const aciklar = sekmeler.filter((s) => s.acik);
   const gecerliSekme = aciklar.some((s) => s.k === sekme) ? sekme : aciklar[0]?.k;
+  const islemAcik = !!(y?.alis || y?.satis);
 
   const sekmeDugmeleri =
     aciklar.length > 1
       ? aciklar.map((s) => (
-          <button key={s.k} className={gecerliSekme === s.k ? "secili" : ""} onClick={() => setSekme(s.k)}>
+          <button key={s.k} type="button" className={gecerliSekme === s.k ? "secili" : ""} onClick={() => setSekme(s.k)}>
             {s.ikon}
             {s.ad}
           </button>
@@ -368,9 +431,9 @@ const MobilApp: React.FC = () => {
             {hata}
           </Alert>
         )}
-        {aciklar.length === 0 && <div className="m-kart text-muted">Hesabınıza henüz bir yetki tanımlanmamış. Firmanızla görüşün.</div>}
-        {gecerliSekme === "fiyat" && <FiyatEkrani firmaId={ben.seciliFirmaId} />}
-        {gecerliSekme === "islem" && <IslemEkrani firmaId={ben.seciliFirmaId} yetkiler={y!} />}
+        {aciklar.length === 0 && <div className="m-kart m-bos">Hesabınıza henüz bir yetki tanımlanmamış. Firmanızla görüşün.</div>}
+        {gecerliSekme === "fiyat" && <FiyatEkrani firmaId={ben.seciliFirmaId} yetkiler={y} onIslem={islemAcik ? fiyattanIslem : undefined} />}
+        {gecerliSekme === "islem" && <IslemEkrani firmaId={ben.seciliFirmaId} yetkiler={y!} baslangic={islemBaslangici} />}
         {gecerliSekme === "katalog" && <KatalogEkrani firmaId={ben.seciliFirmaId} />}
         {gecerliSekme === "hesap" && <HesapEkrani firmaId={ben.seciliFirmaId} yetkiler={y!} />}
       </div>
