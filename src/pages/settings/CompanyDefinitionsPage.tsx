@@ -1161,6 +1161,13 @@ export const CompanyDefinitionsPage: React.FC = () => {
             sanitized.URETIM_HESABI_ID = Number(storedUretim);
           }
           setFormData(sanitized || emptyCompanyData);
+          const fAdi = (sanitized?.FIRMA_ADI || "").trim();
+          if (fAdi) {
+            try {
+              localStorage.setItem("kuyumcu_erp_firma_adi", fAdi);
+            } catch {}
+            document.title = fAdi;
+          }
         }
         CompanyService.getKlasor().then(setFirmaKlasoru).catch(() => setFirmaKlasoru(null));
         CompanyService.getAlanlar().then((al) => {
@@ -1238,6 +1245,13 @@ export const CompanyDefinitionsPage: React.FC = () => {
       const cleanData = sanitizeData(formData);
       const updated = await CompanyService.updateDefinitions(cleanData);
       setFormData(sanitizeData(updated) || cleanData);
+      const savedFirmaAdi = (updated?.FIRMA_ADI || cleanData?.FIRMA_ADI || "").trim();
+      if (savedFirmaAdi) {
+        try {
+          localStorage.setItem("kuyumcu_erp_firma_adi", savedFirmaAdi);
+        } catch {}
+        document.title = savedFirmaAdi;
+      }
       // Yeni yazılan posta kodu referans tabloya eklenmiş olabilir; liste tazelenmeden metin eşlenemez.
       if (cleanData.POSTA_KODU !== undefined) {
         CariService.getLookups(true).then((lk) => lk && setLookups(lk)).catch(() => undefined);
