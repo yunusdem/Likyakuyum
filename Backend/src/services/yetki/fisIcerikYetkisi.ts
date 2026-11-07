@@ -73,6 +73,9 @@ export async function dovizKurDenetle(req: Request, y: KullaniciYetkisi, dto: an
     if (!gise) return;
     s.giseKuru = gise.kur;
     const d = kurDenetle(y, gise, sayi(s?.kur), `${i + 1}. satırın kuru`, SUNUCU_KUR_PAYI);
+    if (d.sinirKur) {
+      s.kur = d.sinirKur;
+    }
     if (d.hata) throw ApiError.forbidden(d.hata);
   });
 }
@@ -90,6 +93,9 @@ export async function sarrafKurDenetle(req: Request, y: KullaniciYetkisi, dto: a
     const iskontosuz = sayi(s?.iskontosuzKur);
     const kur = iskontosuz > 0 && sayi(s?.kur) <= iskontosuz + 1e-9 ? iskontosuz : sayi(s?.kur);
     const d = kurDenetle(y, gise, kur, `${i + 1}. satırın kuru`, SUNUCU_KUR_PAYI);
+    if (d.sinirKur) {
+      s.kur = d.sinirKur;
+    }
     if (d.hata) throw ApiError.forbidden(d.hata);
   });
 }

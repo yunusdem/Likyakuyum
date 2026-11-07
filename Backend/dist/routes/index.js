@@ -39,13 +39,15 @@ import gibRoutes from "./gib.routes.js";
 import piyasaRoutes from "./piyasa.routes.js";
 import acikPanoRoutes from "./acikPano.routes.js";
 import panoEntegrasyonRoutes from "./panoEntegrasyon.routes.js";
+import mobilYonetimRoutes from "./mobilYonetim.routes.js";
+import mobilRoutes from "./mobil.routes.js";
 import hizliSatisRoutes from "./hizliSatis.routes.js";
 import posRoutes from "./pos.routes.js";
 import { PosController } from "../controllers/pos.controller.js";
 import { EBankaController } from "../controllers/ebanka.controller.js";
 import { DONUS_YOLU } from "../services/ebankaVposOdeme.service.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
-import { modulKapisi } from "../middlewares/modul.middleware.js";
+import { mobilModulKapisi, modulKapisi } from "../middlewares/modul.middleware.js";
 import { lisansKapisi } from "../middlewares/lisans.middleware.js";
 import { KurulumController } from "../controllers/kurulum.controller.js";
 import merkezRoutes from "./merkez.routes.js";
@@ -79,6 +81,8 @@ apiRouter.use("/destek-panel", destekPanelRoutes);
 apiRouter.use("/iletisim", iletisimRoutes);
 // Pano Entegrasyonu açık uçları (docs/PANO_API_YOL_HARITASI.md): oturumsuz, anahtar adreste; HTML sayfası app.ts'te
 apiRouter.use("/acik", acikPanoRoutes);
+// Mobil cari uçları (docs/MOBIL_CARI_YOL_HARITASI.md): kendi kimlik doğrulaması (mobil token), personel oturumu istemez
+apiRouter.use("/mobil", mobilRoutes);
 apiRouter.use("/auth", authRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);
@@ -131,6 +135,8 @@ apiRouter.use("/gib", gibRoutes);
 apiRouter.use("/kur", kurRoutes);
 apiRouter.use("/piyasa", kapi("/piyasa"), piyasaRoutes);
 apiRouter.use("/pano-entegrasyonu", kapi("/pano-entegrasyonu"), panoEntegrasyonRoutes);
+// Mobil cari erişimi, firma tarafı (docs/MOBIL_CARI_YOL_HARITASI.md): Mobil açıkça açılan modüldür (kısıtsız firmada kapalı)
+apiRouter.use("/mobil-yonetim", authenticate, mobilModulKapisi, mobilYonetimRoutes);
 apiRouter.use("/pano", kapi("/pano"), panoRoutes);
 apiRouter.use("/kur/pano-tanimi", kapi("/pano"), panoRoutes);
 apiRouter.use("/banknot", banknotRoutes);

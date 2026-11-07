@@ -341,7 +341,8 @@ export const KasaHesapKayitPage: React.FC = () => {
           if (hesapId) setShowDeleteHesapConfirm(true);
           else showNotif("warning", "Silinecek bir hesap kartı seçiniz.");
         }}
-        onNew={handleNew}
+        onNew={isEditPage ? undefined : handleNew}
+        hideNew={isEditPage}
         onRefresh={loadAll}
         onSearch={() => setShowHesapLookup(true)}
         onPrint={() => window.print()}

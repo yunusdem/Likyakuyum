@@ -545,7 +545,8 @@ export const KasaHareketPage: React.FC = () => {
           if (hesapHareketiId) setShowDeleteConfirm(true);
           else showNotif("warning", "Geri alınacak bir kasa hareketi seçiniz.");
         }}
-        onNew={handleNew}
+        onNew={isEditPage ? undefined : handleNew}
+        hideNew={isEditPage}
         onRefresh={loadAll}
         onSearch={() => setShowHareketLookup(true)}
         onPrint={() => window.print()}

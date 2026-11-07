@@ -304,18 +304,15 @@ export const kurDenetle = (y, gise, girilen, etiket = "Kur", pay = 0) => {
     const fark = Math.abs(sapma) > 1e-9;
     if (!fark)
         return { hata: null, sapma, uyari: null };
-    // 1. Yok: Kuru değiştiremez
+    // 1. Yok: Kuru değiştiremez (gişe kuruna yuvarla)
     if (y.kurYetkisi === "Yok") {
-        if (Math.abs(sapma) > pay + 1e-9) {
-            return { hata: `${etiket} değiştirme yetkiniz yok (gişe kuru: ${ref}).`, sapma, uyari: null };
-        }
-        return { hata: null, sapma: 0, uyari: null };
+        return { hata: null, sinirKur: ref, sapma: 0, uyari: null };
     }
     // 2. Var: İstediğini yazar
     if (y.kurYetkisi === "Var") {
         return { hata: null, sapma, uyari: y.sapmaUyarisiYok ? null : `${etiket} gişe kurundan %${yuzde(sapma)} farklı (gişe ${ref}).` };
     }
-    // 3. Esnek: Yalnızca alış ile satış kuru arasında değerler yazabilir
+    // 3. Esnek: Yalnızca alış ile satış kuru arasında değerler yazabilir (aralık dışındaysa sınıra yuvarla)
     if (y.kurYetkisi === "Esnek") {
         const alis = Number(gise?.alis) || 0;
         const satis = Number(gise?.satis) || 0;
@@ -324,9 +321,18 @@ export const kurDenetle = (y, gise, girilen, etiket = "Kur", pay = 0) => {
         if (minKur > 0 && maxKur > 0) {
             const alt = minKur * (1 - pay / 100);
             const ust = maxKur * (1 + pay / 100);
-            if (k < alt - 1e-9 || k > ust + 1e-9) {
+            if (k < alt - 1e-9) {
                 return {
-                    hata: `${etiket} yalnızca alış–satış kuru arasında (${minKur} – ${maxKur}) olabilir (girilen: ${k}).`,
+                    hata: null,
+                    sinirKur: Number(minKur.toFixed(4)),
+                    sapma,
+                    uyari: null,
+                };
+            }
+            if (k > ust + 1e-9) {
+                return {
+                    hata: null,
+                    sinirKur: Number(maxKur.toFixed(4)),
                     sapma,
                     uyari: null,
                 };
@@ -334,13 +340,16 @@ export const kurDenetle = (y, gise, girilen, etiket = "Kur", pay = 0) => {
         }
         return { hata: null, sapma, uyari: y.sapmaUyarisiYok ? null : `${etiket} gişe kurundan %${yuzde(sapma)} farklı (gişe ${ref}).` };
     }
-    // 4. Yüzde: Kuru maksimum bu yüzde kadar değiştirebilir (örn: yüzde 1, kur 100 ise 99–101)
+    // 4. Yüzde: Kuru maksimum bu yüzde kadar değiştirebilir (örn: yüzde 1, kur 100 ise 99–101). Aralık dışındaysa o sınıra yuvarlar.
     if (y.kurYetkisi === "Yüzde" || y.kurYetkisi === "Limitli") {
         if (Math.abs(sapma) > y.kurTolerans + pay + 1e-9) {
             const alt = parseFloat((ref * (1 - y.kurTolerans / 100)).toFixed(4));
             const ust = parseFloat((ref * (1 + y.kurTolerans / 100)).toFixed(4));
+            const sinirKur = k < alt ? alt : ust;
+            // Kullanıcı talebi: Bu uyarıyı vermesin, direk yuvarlasın o değere
             return {
-                hata: `${etiket} gişe kurundan en çok %${yuzde(y.kurTolerans)} farklı olabilir (İzin verilen aralık: ${alt} – ${ust}, gişe: ${ref}, girilen: ${k}).`,
+                hata: null,
+                sinirKur,
                 sapma,
                 uyari: null,
             };

@@ -527,8 +527,12 @@ export class AltinUrunSqlRepository {
             hasKuru1: r.HAS_KURU_1 !== null && r.HAS_KURU_1 !== undefined ? Number(r.HAS_KURU_1) : null,
             hasKuru2: r.HAS_KURU_2 !== null && r.HAS_KURU_2 !== undefined ? Number(r.HAS_KURU_2) : null,
             altinKuru: r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null,
-            usdKuru1: r.USD_KURU_1 !== null && r.USD_KURU_1 !== undefined ? Number(r.USD_KURU_1) : (r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null),
-            usdKuru2: r.USD_KURU_2 !== null && r.USD_KURU_2 !== undefined ? Number(r.USD_KURU_2) : (r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined ? Number(r.ALTIN_KURU) : null),
+            usdKuru1: r.USD_KURU_1 !== null && r.USD_KURU_1 !== undefined
+                ? Number(r.USD_KURU_1)
+                : (r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined && Number(r.ALTIN_KURU) > 0 && Number(r.ALTIN_KURU) < 500 ? Number(r.ALTIN_KURU) : null),
+            usdKuru2: r.USD_KURU_2 !== null && r.USD_KURU_2 !== undefined
+                ? Number(r.USD_KURU_2)
+                : (r.ALTIN_KURU !== null && r.ALTIN_KURU !== undefined && Number(r.ALTIN_KURU) > 0 && Number(r.ALTIN_KURU) < 500 ? Number(r.ALTIN_KURU) : null),
             resim: r.RESIM ? (Buffer.isBuffer(r.RESIM) ? `data:image/jpeg;base64,${r.RESIM.toString("base64")}` : (typeof r.RESIM === "string" ? r.RESIM : null)) : null,
             vezneId: r.VEZNE_ID !== null && r.VEZNE_ID !== undefined ? Number(r.VEZNE_ID) : null,
             vezneKod: r.VEZNE_KOD ? (r.VEZNE_KOD || "").trim() : undefined,
@@ -672,7 +676,9 @@ export class AltinUrunSqlRepository {
         LEFT JOIN TODVZ_MENU m ON m.MENU_ID = u.MENU_ID
         WHERE u.BARKOD = @BARKOD
            OR (u.GRUP_KODU + CAST(u.URUN_NO AS VARCHAR(20))) = @BARKOD
+           OR (u.GRUP_KODU + RIGHT('000' + CAST(u.URUN_NO AS VARCHAR(20)), 3)) = @BARKOD
            OR (u.GRUP_KODU + '-' + CAST(u.URUN_NO AS VARCHAR(20))) = @BARKOD
+           OR (u.GRUP_KODU + '-' + RIGHT('000' + CAST(u.URUN_NO AS VARCHAR(20)), 3)) = @BARKOD
            OR u.ORJINAL_KOD = @BARKOD
       `);
         if (!res.recordset || res.recordset.length === 0)
@@ -1258,10 +1264,11 @@ export class AltinUrunSqlRepository {
         }
         if (!savedId)
             throw ApiError.internal("Altın ürün kaydedildi ancak kimlik bilgisi alınamadı.");
-        // Update USD_KURU, VEZNE_ID, KATALOG, MENU_ID columns to guarantee persistence
+        // Update SATIS_DOVIZ, USD_KURU, VEZNE_ID, KATALOG, MENU_ID columns to guarantee persistence
         try {
             await pool.request()
                 .input("SAVED_ID", sql.Int, savedId)
+                .input("SATIS_DOVIZ", sql.Float, satisDovizVal)
                 .input("USD_1", sql.Float, usdKuru1Val)
                 .input("USD_2", sql.Float, usdKuru2Val)
                 .input("VEZNE_ID", sql.Int, vezneIdVal)
@@ -1269,7 +1276,8 @@ export class AltinUrunSqlRepository {
                 .input("MENU_ID", sql.Int, menuIdVal)
                 .query(`
           UPDATE dbo.TODVZ_ALTIN_URUN
-          SET USD_KURU_1 = COALESCE(@USD_1, USD_KURU_1),
+          SET SATIS_DOVIZ = COALESCE(@SATIS_DOVIZ, SATIS_DOVIZ),
+              USD_KURU_1 = COALESCE(@USD_1, USD_KURU_1),
               USD_KURU_2 = COALESCE(@USD_2, USD_KURU_2),
               VEZNE_ID = COALESCE(@VEZNE_ID, VEZNE_ID),
               KATALOG = @KATALOG,

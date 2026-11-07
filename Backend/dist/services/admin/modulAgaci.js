@@ -1,4 +1,15 @@
 /**
+ * Yalnız açıkça açılan ana modüller (docs/MOBIL_CARI_YOL_HARITASI.md, K11): firmaya dışarıdan erişim verdikleri için
+ * modül ayarı yapılmamış (kısıtsız) firmada ve ERP ("hepsi") paketinde KAPALI sayılır; panelden tek tek açılır.
+ */
+export const ACIKCA_ACILAN_MODULLER = ["mobil"];
+/** Kod (ana modül ya da altındaki sayfa) açıkça açılan bir modüle mi ait */
+export const acikcaAcilanMi = (kod) => ACIKCA_ACILAN_MODULLER.some((a) => kod === a || kod.startsWith(`${a}:`));
+/**
+ * Açıkça açılan modül firmaya açık mı: acik === null (kısıtsız) iken de KAPALI. Diğer modüllerde null "her şey açık"tır.
+ */
+export const acikcaAcikMi = (acik, kod) => !!acik && acik.includes(kod);
+/**
  * Ağaç kuralları: ana modül kapalıysa altındakiler de kapalıdır; alt öğesi olan bir ana modülün hiçbir alt öğesi
  * açık değilse ana modül de kapalıdır. Katalogda olmayan kodlar atılır.
  */

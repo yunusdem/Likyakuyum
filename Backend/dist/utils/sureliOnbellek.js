@@ -49,4 +49,8 @@ export class SureliOnbellek {
     get boyut() {
         return this.kayitlar.size;
     }
+    /** Bütün kayıtları atar (uçuştaki sorgular kendi sonucunu yine döner) */
+    temizle() {
+        this.kayitlar.clear();
+    }
 }

@@ -580,7 +580,8 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
         disableShortcuts
         pageTitle={isDuzeltme ? "B- Satış Fişi Düzeltme" : "A- Satış Fişi"}
         pageIcon={<IconShoppingBag size={20} />}
-        onNew={() => (isDuzeltme ? navigate("/ticari/satis-fisi") : void temizle())}
+        onNew={isDuzeltme ? undefined : () => void temizle()}
+        hideNew={isDuzeltme}
         onSave={() => void kaydet(false)}
         onPrint={onizle}
         onSaveAndPrint={() => void kaydet(true)}

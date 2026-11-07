@@ -176,16 +176,18 @@ const DashboardLayout: React.FC = () => {
       const cleanTitle = (titleToApply || "").trim();
       if (cleanTitle) {
         document.title = cleanTitle;
+      } else if (user?.merkez?.firmaUnvan?.trim()) {
+        document.title = user.merkez.firmaUnvan.trim();
       } else if (brand?.fullTitle) {
         document.title = `${brand.fullTitle} - Bulut Yönetim`;
       }
     };
 
     // İlk etapta hafızadaki veya state'deki unvanı uygula
-    applyTitle(firmaUnvani);
+    applyTitle(firmaUnvani || user?.merkez?.firmaUnvan);
 
-    // Firma tanımlarını getir ve güncelle
-    CompanyService.getDefinitions()
+    // Firma tanımlarını getir ve güncelle (forceRefresh ile güncel veritabanından)
+    CompanyService.getDefinitions(true)
       .then((defs) => {
         if (!active) return;
         const name = (defs?.FIRMA_ADI || "").trim();
@@ -195,6 +197,8 @@ const DashboardLayout: React.FC = () => {
             localStorage.setItem("kuyumcu_erp_firma_adi", name);
           } catch {}
           applyTitle(name);
+        } else if (user?.merkez?.firmaUnvan?.trim()) {
+          applyTitle(user.merkez.firmaUnvan.trim());
         }
       })
       .catch(() => {});
@@ -229,7 +233,17 @@ const DashboardLayout: React.FC = () => {
       active = false;
       window.removeEventListener("company_definitions_updated", handleCompanyUpdate);
     };
-  }, [brand?.fullTitle, firmaUnvani]);
+  }, [brand?.fullTitle, firmaUnvani, user?.merkez?.firmaUnvan]);
+
+  // Sayfa yönlendirmelerinde başlığın firma unvanında kalmasını garantile
+  useEffect(() => {
+    try {
+      const currentStored = (localStorage.getItem("kuyumcu_erp_firma_adi") || firmaUnvani || user?.merkez?.firmaUnvan || "").trim();
+      if (currentStored) {
+        document.title = currentStored;
+      }
+    } catch {}
+  }, [location.pathname, firmaUnvani, user?.merkez?.firmaUnvan]);
 
   // Collapsed / Expanded durumunu html elementine güvenle yansıt
   useEffect(() => {

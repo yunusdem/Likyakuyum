@@ -58,6 +58,8 @@ interface ParaItem {
   kur?: number;
   caprazKur?: number;
   parite?: number;
+  tlKur?: number;
+  giseKuru?: number;
 }
 
 export interface GridRowState {
@@ -123,7 +125,19 @@ export const CariEmanetDekontPage: React.FC = () => {
   const [teslimEden, setTeslimEden] = useState<string>("");
   const [teslimAlan, setTeslimAlan] = useState<string>("");
 
-  useERPAutoFocus({ dependencies: [cariDekontId] });
+  const islemTuruRef = useRef<HTMLSelectElement | null>(null);
+
+  useERPAutoFocus({
+    preferredSelector: "#islemTuruSelect",
+    dependencies: [cariDekontId, isLoadingLookups],
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      islemTuruRef.current?.focus();
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [location.pathname, cariDekontId]);
 
   // Vezne (Ana Kasa)
   const [vezneId, setVezneId] = useState<number>(1);
@@ -377,24 +391,68 @@ export const CariEmanetDekontPage: React.FC = () => {
     return sagSatirlar.reduce((acc, r) => acc + getRowEquivalent(r, mutabakatTuru), 0);
   }, [sagSatirlar, mutabakatTuru, getRowEquivalent]);
 
-  // Otomatik Denkleştirme Fonksiyonu (Sağ paneli sol panele eşitleyecek miktarı hesaplar)
+  // Otomatik Denkleştirme Fonksiyonu (Sağ veya sol paneli karşı tarafa eşitleyecek miktarı hesaplar)
   const autoBalanceRow = useCallback(
-    (targetRows: GridRowState[], rowIndex: number, mutabakat: MutabakatType, baseTotalTarget: number): GridRowState[] => {
+    (
+      targetRows: GridRowState[],
+      rowIndex: number,
+      mutabakat: MutabakatType,
+      baseTotalTarget: number,
+      oppositeRows?: GridRowState[]
+    ): GridRowState[] => {
+      const targetIdx = Math.max(0, Math.min(rowIndex, targetRows.length - 1));
       return targetRows.map((r, idx) => {
-        if (idx !== rowIndex) return r;
-        const rate = parseFloat(String(r.kur ?? 1).replace(/,/g, ".")) || 1.0;
-        const has = parseFloat(String(r.hasOrani ?? 1).replace(/,/g, ".")) || 1.0;
+        if (idx !== targetIdx) return r;
 
-        // Önceki satırların baz toplamı
-        const priorTotal = targetRows
-          .slice(0, idx)
-          .reduce((acc, prevRow) => acc + getRowEquivalent(prevRow, mutabakat), 0);
+        let rowToBalance = { ...r };
 
-        const remainingBase = Math.max(0, baseTotalTarget - priorTotal);
+        // Eğer para seçili değilse uygun bir para birimi ata
+        if (!rowToBalance.paraKodu || !rowToBalance.paraKodu.trim()) {
+          let defaultP: ParaItem | undefined;
+          if (mutabakat === "has") {
+            defaultP = paraList.find((p) => p.kod === "HAS") || paraList[0];
+          } else if (mutabakat === "kur") {
+            defaultP = paraList.find((p) => p.kod === "TL") || paraList[0];
+          } else {
+            const oppParaKod = oppositeRows?.[0]?.paraKodu;
+            if (oppParaKod && oppParaKod !== "USD") {
+              defaultP = paraList.find((p) => p.kod === "USD") || paraList[0];
+            } else if (oppParaKod === "USD") {
+              defaultP = paraList.find((p) => p.kod === "EUR") || paraList.find((p) => p.kod === "USD") || paraList[0];
+            } else {
+              defaultP = paraList.find((p) => p.kod === "USD") || paraList[0];
+            }
+          }
+
+          if (defaultP) {
+            const has = defaultP.hasOrani && defaultP.hasOrani > 0 ? defaultP.hasOrani : 1.0;
+            let targetKur: number | string = defaultP.caprazKur ?? defaultP.parite ?? (defaultP.kod === "USD" ? 1.0 : 1.0);
+            if (mutabakat === "has") targetKur = has;
+            else if (mutabakat === "kur") targetKur = defaultP.giseKuru ?? defaultP.tlKur ?? 1.0;
+
+            rowToBalance.paraId = defaultP.id;
+            rowToBalance.paraKodu = (defaultP.kod || "").trim().toUpperCase();
+            rowToBalance.paraAdi = (defaultP.ad || "").trim();
+            rowToBalance.hasOrani = has;
+            rowToBalance.kur = targetKur;
+            rowToBalance.giseKuru = defaultP.giseKuru ?? defaultP.tlKur ?? 1.0;
+          }
+        }
+
+        const rate = parseFloat(String(rowToBalance.kur ?? 1).replace(/,/g, ".")) || 1.0;
+        const has = parseFloat(String(rowToBalance.hasOrani ?? 1).replace(/,/g, ".")) || 1.0;
+
+        // Bu satır haricindeki diğer satırların baz toplamı
+        const otherRowsTotal = targetRows
+          .filter((_, i) => i !== targetIdx)
+          .reduce((acc, otherRow) => acc + getRowEquivalent(otherRow, mutabakat), 0);
+
+        const remainingBase = Math.max(0, baseTotalTarget - otherRowsTotal);
 
         let calculatedMiktar = 0;
         if (mutabakat === "capraz") {
-          calculatedMiktar = rate > 0 ? Number((remainingBase / rate).toFixed(2)) : 0;
+          const isGold = (rowToBalance.paraKodu || "").includes("HAS") || (rowToBalance.paraKodu || "").includes("ALT");
+          calculatedMiktar = rate > 0 ? Number((remainingBase / rate).toFixed(isGold ? 3 : 2)) : 0;
         } else if (mutabakat === "has") {
           calculatedMiktar = has > 0 ? Number((remainingBase / has).toFixed(3)) : 0;
         } else {
@@ -402,13 +460,82 @@ export const CariEmanetDekontPage: React.FC = () => {
         }
 
         return {
-          ...r,
+          ...rowToBalance,
           meblag: calculatedMiktar > 0 ? calculatedMiktar : "",
         };
       });
     },
-    [getRowEquivalent]
+    [getRowEquivalent, paraList]
   );
+
+  // Mutabakat Türü Değiştiğinde Tablolardaki Kurları Otomatik Güncelle
+  const handleMutabakatTuruChange = useCallback(
+    (newMutabakat: MutabakatType) => {
+      setMutabakatTuru(newMutabakat);
+      const updateRows = (rows: GridRowState[]) =>
+        rows.map((r) => {
+          if (!r.paraKodu) return r;
+          const matched = paraList.find((p) => (p.kod || "").toUpperCase() === r.paraKodu.toUpperCase());
+          if (!matched) return r;
+          let newKur: number | string = r.kur;
+          if (newMutabakat === "capraz") {
+            newKur = matched.caprazKur ?? matched.parite ?? (matched.kod === "USD" ? 1.0 : 1.0);
+          } else if (newMutabakat === "has") {
+            newKur = matched.hasOrani ?? 1.0;
+          } else {
+            newKur = matched.giseKuru ?? matched.tlKur ?? 1.0;
+          }
+          return {
+            ...r,
+            kur: newKur,
+            hasOrani: matched.hasOrani ?? r.hasOrani,
+          };
+        });
+
+      setSolSatirlar(updateRows);
+      setSagSatirlar(updateRows);
+    },
+    [paraList]
+  );
+
+  // Boş Satırları Otomatik Temizleme: İlk satır haricinde boş bir satır varsa bir yere tıklayınca otomatik kalkar
+  useEffect(() => {
+    const handleDocumentMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const clickedRowId = target?.closest("tr")?.getAttribute("data-row-id");
+
+      setSolSatirlar((prev) => {
+        if (prev.length <= 1) return prev;
+        const filtered = prev.filter((r, idx) => {
+          if (idx === 0) return true; // İlk satır daima korunur
+          const isEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || Number(r.meblag) === 0);
+          if (isEmpty && r.id !== clickedRowId) {
+            return false;
+          }
+          return true;
+        });
+        if (filtered.length === prev.length) return prev;
+        return filtered.map((r, i) => ({ ...r, satirNo: i + 1 }));
+      });
+
+      setSagSatirlar((prev) => {
+        if (prev.length <= 1) return prev;
+        const filtered = prev.filter((r, idx) => {
+          if (idx === 0) return true; // İlk satır daima korunur
+          const isEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || Number(r.meblag) === 0);
+          if (isEmpty && r.id !== clickedRowId) {
+            return false;
+          }
+          return true;
+        });
+        if (filtered.length === prev.length) return prev;
+        return filtered.map((r, i) => ({ ...r, satirNo: i + 1 }));
+      });
+    };
+
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+    return () => document.removeEventListener("mousedown", handleDocumentMouseDown);
+  }, []);
 
   // Formu sıfırla / temizle (Kayıt modunda her yer boş gelecek)
   const resetFormToBlank = useCallback((showAlert: boolean = false) => {
@@ -627,25 +754,53 @@ export const CariEmanetDekontPage: React.FC = () => {
         });
       }
 
+      // 1. USD'nin TL satış kurunu belirle (Çapraz kur ve TL pariteleri için baz alınır)
+      let usdTLRate = 1.0;
+      if (kurTabloRes?.satirlar && Array.isArray(kurTabloRes.satirlar)) {
+        const usdItem = kurTabloRes.satirlar.find((k: any) => (k.kod || "").toUpperCase().trim() === "USD");
+        if (usdItem) {
+          usdTLRate = Number(usdItem.dovizSatis || usdItem.efektifSatis || usdItem.dovizAlis || 1.0);
+        }
+      }
+      if (usdTLRate <= 0) usdTLRate = 1.0;
+
       const enrichedParalar: ParaItem[] = baseParalar.map((p) => {
         const cleanKod = (p.kod || "").toUpperCase().trim();
         const k = kurMap.get(p.id) || kurCodeMap.get(cleanKod);
 
-        // A-Anlık Fiyat Listesi Parite Oranı = Kur (Kullanıcı: "bu parite oranı Kur oluyor")
-        let pariteOrani = k?.parite != null && Number(k.parite) > 0 ? Number(k.parite) : null;
-        if (pariteOrani == null) {
-          if (cleanKod === "USD") pariteOrani = 1.0;
-          else if (cleanKod === "TL" || cleanKod === "TRY") pariteOrani = 1.0;
-          else if (p.parite != null && Number(p.parite) > 0) pariteOrani = Number(p.parite);
-          else if (k?.efektifSatis) pariteOrani = Number(k.efektifSatis);
-          else if (p.kur) pariteOrani = Number(p.kur);
-          else pariteOrani = 1.0;
+        // Gişe TL Satış Kuru
+        let tlKur = 1.0;
+        if (cleanKod === "TL" || cleanKod === "TRY") {
+          tlKur = 1.0;
+        } else if (k) {
+          tlKur = Number(k.dovizSatis || k.efektifSatis || k.dovizAlis || (k.parite ? k.parite * usdTLRate : 1.0));
+        } else if (cleanKod === "USD") {
+          tlKur = usdTLRate;
         }
 
+        // Çapraz Kur / Parite (USD Bazında)
+        let pariteOrani = 1.0;
+        if (cleanKod === "USD") {
+          pariteOrani = 1.0;
+        } else if (cleanKod === "TL" || cleanKod === "TRY") {
+          // TL'nin USD karşılığı: 1 TL = 1 / usdTLRate
+          pariteOrani = usdTLRate > 0 ? Number((1.0 / usdTLRate).toFixed(6)) : 1.0;
+        } else if (k?.parite != null && Number(k.parite) > 0) {
+          pariteOrani = Number(Number(k.parite).toFixed(6));
+        } else if (tlKur > 0 && usdTLRate > 0) {
+          pariteOrani = Number((tlKur / usdTLRate).toFixed(6));
+        }
+
+        // Has Oranı (Milyem)
         let has = p.hasOrani && p.hasOrani > 0 ? p.hasOrani : 1.0;
-        if (cleanKod === "HAS" || cleanKod === "ALT") has = 1.0;
-        else if (cleanKod === "22A") has = 0.916;
-        else if (cleanKod === "14A") has = 0.585;
+        if (cleanKod === "HAS" || cleanKod === "ALT" || cleanKod === "24A" || cleanKod === "24") has = 1.0;
+        else if (cleanKod === "22A" || cleanKod === "22") has = 0.916;
+        else if (cleanKod === "18A" || cleanKod === "18") has = 0.750;
+        else if (cleanKod === "14A" || cleanKod === "14") has = 0.585;
+        else if (cleanKod === "8A" || cleanKod === "8") has = 0.333;
+        else if (k?.hasOrani && Number(k.hasOrani) > 0) {
+          has = Number(k.hasOrani) > 10 ? Number(k.hasOrani) / 1000 : Number(k.hasOrani);
+        }
 
         return {
           ...p,
@@ -653,8 +808,10 @@ export const CariEmanetDekontPage: React.FC = () => {
           ad: (p.ad || "").trim(),
           hasOrani: has,
           parite: pariteOrani,
-          kur: pariteOrani, // Parite oranı Kur oluyor
           caprazKur: pariteOrani,
+          tlKur,
+          giseKuru: tlKur,
+          kur: pariteOrani,
         };
       });
 
@@ -709,9 +866,13 @@ export const CariEmanetDekontPage: React.FC = () => {
     const isLeft = side === "sol";
     const setter = isLeft ? setSolSatirlar : setSagSatirlar;
 
-    // A-Anlık Fiyat Listesi Parite Oranı = Kur (Kullanıcı: "bu parite oranı Kur oluyor")
-    const pariteKur = p.parite ?? p.caprazKur ?? p.kur ?? (p.kod === "USD" ? 1.0 : 1.0);
     const has = p.hasOrani && p.hasOrani > 0 ? p.hasOrani : 1.0;
+    let targetKur: number | string = p.caprazKur ?? p.parite ?? (p.kod === "USD" ? 1.0 : 1.0);
+    if (mutabakatTuru === "has") {
+      targetKur = has;
+    } else if (mutabakatTuru === "kur") {
+      targetKur = p.giseKuru ?? p.tlKur ?? (p.kod === "TL" ? 1.0 : 1.0);
+    }
 
     setter((prevRows) => {
       const rows = [...prevRows];
@@ -723,8 +884,8 @@ export const CariEmanetDekontPage: React.FC = () => {
         paraKodu: (p.kod || "").trim().toUpperCase(),
         paraAdi: (p.ad || "").trim(),
         hasOrani: has,
-        kur: pariteKur,
-        giseKuru: pariteKur,
+        kur: targetKur,
+        giseKuru: p.giseKuru ?? p.tlKur ?? 1.0,
       };
       rows[index] = updatedRow;
 
@@ -778,9 +939,14 @@ export const CariEmanetDekontPage: React.FC = () => {
           updatedRow.paraAdi = matchedPara.ad;
           const has = matchedPara.hasOrani && matchedPara.hasOrani > 0 ? matchedPara.hasOrani : 1.0;
           updatedRow.hasOrani = has;
-          const pariteKur = matchedPara.parite ?? matchedPara.caprazKur ?? matchedPara.kur ?? (matchedPara.kod === "USD" ? 1.0 : 1.0);
-          updatedRow.kur = pariteKur;
-          updatedRow.giseKuru = pariteKur;
+          let targetKur: number | string = matchedPara.caprazKur ?? matchedPara.parite ?? (matchedPara.kod === "USD" ? 1.0 : 1.0);
+          if (mutabakatTuru === "has") {
+            targetKur = has;
+          } else if (mutabakatTuru === "kur") {
+            targetKur = matchedPara.giseKuru ?? matchedPara.tlKur ?? (matchedPara.kod === "TL" ? 1.0 : 1.0);
+          }
+          updatedRow.kur = targetKur;
+          updatedRow.giseKuru = matchedPara.giseKuru ?? matchedPara.tlKur ?? 1.0;
         }
       }
 
@@ -792,24 +958,21 @@ export const CariEmanetDekontPage: React.FC = () => {
   const handleHesapKapat = useCallback(() => {
     if (solBazToplam <= 0) return;
     const targetIdx = selectedSagIndex >= 0 ? selectedSagIndex : sagSatirlar.length - 1;
-    const balanced = autoBalanceRow(sagSatirlar, targetIdx, mutabakatTuru, solBazToplam);
+    const balanced = autoBalanceRow(sagSatirlar, targetIdx, mutabakatTuru, solBazToplam, solSatirlar);
     setSagSatirlar(balanced);
     setAlertInfo({
       type: "success",
       message: "Hesap kapatıldı: İki tarafın toplamı eşitlendi.",
     });
     setTimeout(() => setAlertInfo(null), 3000);
-  }, [solBazToplam, selectedSagIndex, sagSatirlar, mutabakatTuru, autoBalanceRow]);
+  }, [solBazToplam, selectedSagIndex, sagSatirlar, mutabakatTuru, autoBalanceRow, solSatirlar]);
 
   // Yeni Satır Ekle
   const handleAddRow = (side: "sol" | "sag") => {
-    const isLeft = side === "sol";
-    const setter = isLeft ? setSolSatirlar : setSagSatirlar;
+    const setter = side === "sol" ? setSolSatirlar : setSagSatirlar;
     setter((prev) => {
-      const defaultP = isLeft
-        ? (paraList.find((p) => p.kod === "USD") || paraList[0])
-        : (paraList.find((p) => p.kod === "EUR") || paraList[1] || paraList[0]);
-      return [...prev, createEmptyRow(prev.length + 1, defaultP)];
+      // Kesinlikle otomatik USD veya EUR seçili gelmeyecek, tamamen boş satır açılacak
+      return [...prev, createEmptyRow(prev.length + 1)];
     });
   };
 
@@ -830,8 +993,85 @@ export const CariEmanetDekontPage: React.FC = () => {
     }
   };
 
-  // Sağ tık menüsü eylemleri (Satırı Sil & Yeni Satır Ekle)
+  // Sağ tık menüsü eylemleri (Kalanı Kapat, Satırı Sil & Yeni Satır Ekle)
   useEffect(() => {
+    const handleGridKapat = (e: any) => {
+      const rowId = e.detail?.rowId;
+      const tableType = e.detail?.tableType;
+
+      let isSag = tableType === "sag";
+      let isSol = tableType === "sol";
+      let targetRowIndex = -1;
+
+      if (rowId) {
+        const foundSag = sagSatirlar.findIndex((r) => r.id === rowId);
+        if (foundSag !== -1) {
+          isSag = true;
+          isSol = false;
+          targetRowIndex = foundSag;
+        } else {
+          const foundSol = solSatirlar.findIndex((r) => r.id === rowId);
+          if (foundSol !== -1) {
+            isSol = true;
+            isSag = false;
+            targetRowIndex = foundSol;
+          }
+        }
+      }
+
+      if (!isSag && !isSol) {
+        if (activeSide === "sag" || solBazToplam > sagBazToplam) {
+          isSag = true;
+          targetRowIndex = selectedSagIndex >= 0 ? selectedSagIndex : sagSatirlar.length - 1;
+        } else {
+          isSol = true;
+          targetRowIndex = selectedSolIndex >= 0 ? selectedSolIndex : solSatirlar.length - 1;
+        }
+      }
+
+      if (isSag) {
+        if (solBazToplam <= 0) {
+          setAlertInfo({
+            type: "warning",
+            message: "Kapatılacak bakiye yok: Karşı tarafın (sol) toplamı 0.",
+          });
+          setTimeout(() => setAlertInfo(null), 3000);
+          return;
+        }
+        const targetIdx = targetRowIndex >= 0 ? targetRowIndex : sagSatirlar.length - 1;
+        const balanced = autoBalanceRow(sagSatirlar, targetIdx, mutabakatTuru, solBazToplam, solSatirlar);
+        setSagSatirlar(balanced);
+        setSelectedSagIndex(targetIdx);
+        setActiveSide("sag");
+        setActiveRowIndex(targetIdx);
+        setAlertInfo({
+          type: "success",
+          message: "Kalan bakiye otomatik kapatıldı.",
+        });
+        setTimeout(() => setAlertInfo(null), 3000);
+      } else {
+        if (sagBazToplam <= 0) {
+          setAlertInfo({
+            type: "warning",
+            message: "Kapatılacak bakiye yok: Karşı tarafın (sağ) toplamı 0.",
+          });
+          setTimeout(() => setAlertInfo(null), 3000);
+          return;
+        }
+        const targetIdx = targetRowIndex >= 0 ? targetRowIndex : solSatirlar.length - 1;
+        const balanced = autoBalanceRow(solSatirlar, targetIdx, mutabakatTuru, sagBazToplam, sagSatirlar);
+        setSolSatirlar(balanced);
+        setSelectedSolIndex(targetIdx);
+        setActiveSide("sol");
+        setActiveRowIndex(targetIdx);
+        setAlertInfo({
+          type: "success",
+          message: "Kalan bakiye otomatik kapatıldı.",
+        });
+        setTimeout(() => setAlertInfo(null), 3000);
+      }
+    };
+
     const handleGridDelete = (e: any) => {
       const rowId = e.detail?.rowId;
       if (!rowId) return;
@@ -846,21 +1086,42 @@ export const CariEmanetDekontPage: React.FC = () => {
       }
     };
 
-    const handleGridAdd = () => {
-      if (activeSide === "sol") {
+    const handleGridAdd = (e: any) => {
+      const tableType = e.detail?.tableType;
+      const rowId = e.detail?.rowId;
+      let targetSide = activeSide;
+      if (tableType === "sag" || (rowId && sagSatirlar.some((r) => r.id === rowId))) {
+        targetSide = "sag";
+      } else if (tableType === "sol" || (rowId && solSatirlar.some((r) => r.id === rowId))) {
+        targetSide = "sol";
+      }
+
+      if (targetSide === "sol") {
         setSolSatirlar((prev) => [...prev, createEmptyRow(prev.length + 1)]);
       } else {
         setSagSatirlar((prev) => [...prev, createEmptyRow(prev.length + 1)]);
       }
     };
 
+    window.addEventListener("erp-grid-row-kapat", handleGridKapat);
     window.addEventListener("erp-grid-row-delete", handleGridDelete);
     window.addEventListener("erp-grid-row-add", handleGridAdd);
     return () => {
+      window.removeEventListener("erp-grid-row-kapat", handleGridKapat);
       window.removeEventListener("erp-grid-row-delete", handleGridDelete);
       window.removeEventListener("erp-grid-row-add", handleGridAdd);
     };
-  }, [solSatirlar, sagSatirlar, activeSide]);
+  }, [
+    solSatirlar,
+    sagSatirlar,
+    activeSide,
+    selectedSolIndex,
+    selectedSagIndex,
+    solBazToplam,
+    sagBazToplam,
+    mutabakatTuru,
+    autoBalanceRow,
+  ]);
 
   // Bildirimlerin 3.5 sn sonra otomatik kapanması
   useEffect(() => {
@@ -898,7 +1159,185 @@ export const CariEmanetDekontPage: React.FC = () => {
     });
   }, [activeSide, activeRowIndex, activeField, solSatirlar, sagSatirlar]);
 
-  // Hücreler İçi Klavye (Yön Okları ile Gezinme ve Enter ile Yeni Satır)
+  // Odaklama Yardımcısı
+  const focusElement = (id: string, selectText: boolean = true) => {
+    const el = document.getElementById(id) as HTMLElement | null;
+    if (!el) return false;
+    el.focus();
+    if (selectText && el instanceof HTMLInputElement) {
+      try {
+        if (el.type !== "date") {
+          el.select();
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return true;
+  };
+
+  // Üst Form Kartları ve Şerit İçi 2D Klavye Gezinmesi (Sağ, Sol, Yukarı, Aşağı)
+  const handleHeaderKeyDown = (
+    e: React.KeyboardEvent<HTMLElement>,
+    currentFieldId: string
+  ) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+      return;
+    }
+
+    const isInput = e.currentTarget instanceof HTMLInputElement;
+    if (isInput && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      const input = e.currentTarget as HTMLInputElement;
+      if (input.type !== "date") {
+        const { selectionStart, selectionEnd, value } = input;
+        if (e.key === "ArrowLeft") {
+          const isAtStart =
+            (selectionStart === 0 && selectionEnd === 0) ||
+            (selectionStart === 0 && selectionEnd === value.length);
+          if (!isAtStart) return;
+        } else if (e.key === "ArrowRight") {
+          const isAtEnd =
+            (selectionStart === value.length && selectionEnd === value.length) ||
+            (selectionStart === 0 && selectionEnd === value.length);
+          if (!isAtEnd) return;
+        }
+      }
+    }
+
+    e.preventDefault();
+
+    switch (currentFieldId) {
+      // --- KOLON 1 ---
+      case "islemTuruSelect":
+        if (e.key === "ArrowDown") focusElement("tarihInput");
+        else if (e.key === "ArrowRight") focusElement("cariKodAdInput");
+        break;
+
+      case "tarihInput":
+        if (e.key === "ArrowUp") focusElement("islemTuruSelect");
+        else if (e.key === "ArrowDown") focusElement("evrakTuruSelect");
+        else if (e.key === "ArrowRight") focusElement("vadeInput");
+        break;
+
+      case "vadeInput":
+        if (e.key === "ArrowUp") focusElement("islemTuruSelect");
+        else if (e.key === "ArrowDown") focusElement("evrakTuruSelect");
+        else if (e.key === "ArrowLeft") focusElement("tarihInput");
+        else if (e.key === "ArrowRight") focusElement("cariTelefonInput") || focusElement("mutabakatSelect") || focusElement("cariKodAdInput");
+        break;
+
+      case "evrakTuruSelect":
+        if (e.key === "ArrowUp") focusElement("tarihInput");
+        else if (e.key === "ArrowDown") focusElement("grid-input-sol-0-smb") || focusElement("solPanelKodInput");
+        else if (e.key === "ArrowRight") focusElement("teslimAlanInput");
+        break;
+
+      // --- KOLON 2 ---
+      case "cariKodAdInput":
+        if (e.key === "ArrowLeft") focusElement("islemTuruSelect");
+        else if (e.key === "ArrowRight") focusElement("dekontNoInput");
+        else if (e.key === "ArrowDown") {
+          if (tip === 2 && document.getElementById("cari2Input")) focusElement("cari2Input");
+          else focusElement("cariTelefonInput") || focusElement("mutabakatSelect");
+        }
+        break;
+
+      case "cari2Input":
+        if (e.key === "ArrowLeft") focusElement("islemTuruSelect");
+        else if (e.key === "ArrowRight") focusElement("dekontNoInput");
+        else if (e.key === "ArrowUp") focusElement("cariKodAdInput");
+        else if (e.key === "ArrowDown") focusElement("cariTelefonInput") || focusElement("mutabakatSelect");
+        break;
+
+      case "cariTelefonInput":
+        if (e.key === "ArrowLeft") focusElement("vadeInput") || focusElement("tarihInput");
+        else if (e.key === "ArrowRight") focusElement("mutabakatSelect");
+        else if (e.key === "ArrowUp") {
+          if (tip === 2 && document.getElementById("cari2Input")) focusElement("cari2Input");
+          else focusElement("cariKodAdInput");
+        } else if (e.key === "ArrowDown") focusElement("teslimAlanInput");
+        break;
+
+      case "mutabakatSelect":
+        if (e.key === "ArrowLeft") focusElement("cariTelefonInput");
+        else if (e.key === "ArrowRight") focusElement("durumSelect");
+        else if (e.key === "ArrowUp") {
+          if (tip === 2 && document.getElementById("cari2Input")) focusElement("cari2Input");
+          else focusElement("cariKodAdInput");
+        } else if (e.key === "ArrowDown") focusElement("teslimAlanInput");
+        break;
+
+      case "teslimAlanInput":
+        if (e.key === "ArrowLeft") focusElement("evrakTuruSelect");
+        else if (e.key === "ArrowRight") focusElement("aciklamaInput") || focusElement("oncekiBelgeInput");
+        else if (e.key === "ArrowUp") focusElement("cariTelefonInput") || focusElement("mutabakatSelect");
+        else if (e.key === "ArrowDown") focusElement("grid-input-sol-0-smb") || focusElement("solPanelKodInput");
+        break;
+
+      // --- KOLON 3 ---
+      case "dekontNoInput":
+        if (e.key === "ArrowLeft") focusElement("cariKodAdInput");
+        else if (e.key === "ArrowDown") focusElement("durumSelect");
+        break;
+
+      case "durumSelect":
+        if (e.key === "ArrowLeft") focusElement("mutabakatSelect") || focusElement("cariTelefonInput");
+        else if (e.key === "ArrowRight") {
+          if (document.getElementById("iptalTarihiInput")) focusElement("iptalTarihiInput");
+        } else if (e.key === "ArrowUp") focusElement("dekontNoInput");
+        else if (e.key === "ArrowDown") focusElement("oncekiBelgeInput");
+        break;
+
+      case "iptalTarihiInput":
+        if (e.key === "ArrowLeft") focusElement("durumSelect");
+        else if (e.key === "ArrowUp") focusElement("dekontNoInput");
+        else if (e.key === "ArrowDown") focusElement("oncekiBelgeInput");
+        break;
+
+      case "oncekiBelgeInput":
+        if (e.key === "ArrowLeft") focusElement("mutabakatSelect");
+        else if (e.key === "ArrowUp") focusElement("durumSelect");
+        else if (e.key === "ArrowDown") focusElement("aciklamaInput");
+        break;
+
+      case "aciklamaInput":
+        if (e.key === "ArrowLeft") focusElement("teslimAlanInput");
+        else if (e.key === "ArrowUp") focusElement("oncekiBelgeInput");
+        else if (e.key === "ArrowDown") focusElement("grid-input-sag-0-smb") || focusElement("sagPanelKodInput");
+        break;
+
+      // --- RIBBON SOL ---
+      case "solPanelKodInput":
+        if (e.key === "ArrowUp") focusElement("teslimAlanInput") || focusElement("evrakTuruSelect");
+        else if (e.key === "ArrowDown") focusElement("grid-input-sol-0-smb");
+        else if (e.key === "ArrowRight") focusElement("solPanelAdInput");
+        else if (e.key === "ArrowLeft") focusElement("evrakTuruSelect");
+        break;
+
+      case "solPanelAdInput":
+        if (e.key === "ArrowUp") focusElement("teslimAlanInput");
+        else if (e.key === "ArrowDown") focusElement("grid-input-sol-0-smb");
+        else if (e.key === "ArrowLeft") focusElement("solPanelKodInput");
+        else if (e.key === "ArrowRight") focusElement("sagPanelKodInput");
+        break;
+
+      // --- RIBBON SAĞ ---
+      case "sagPanelKodInput":
+        if (e.key === "ArrowUp") focusElement("aciklamaInput");
+        else if (e.key === "ArrowDown") focusElement("grid-input-sag-0-smb");
+        else if (e.key === "ArrowLeft") focusElement("solPanelAdInput");
+        else if (e.key === "ArrowRight") focusElement("sagPanelAdInput");
+        break;
+
+      case "sagPanelAdInput":
+        if (e.key === "ArrowUp") focusElement("aciklamaInput");
+        else if (e.key === "ArrowDown") focusElement("grid-input-sag-0-smb");
+        else if (e.key === "ArrowLeft") focusElement("sagPanelKodInput");
+        break;
+    }
+  };
+
+  // Hücreler İçi Klavye (Yön Okları ile 2D Gezinme ve Enter ile Yeni Satır)
   const handleCellKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
     side: "sol" | "sag",
@@ -914,64 +1353,60 @@ export const CariEmanetDekontPage: React.FC = () => {
     const rows = isLeft ? solSatirlar : sagSatirlar;
     const maxRow = rows.length - 1;
 
-    // SMB Açılır Öneri Gezinmesi
-    if (field === "smb" && activeSmbSuggest?.side === side && activeSmbSuggest?.index === rowIndex && smbSuggestions.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSmbSuggestIndex((prev) => {
-          const next = (prev + 1) % smbSuggestions.length;
-          setTimeout(() => {
-            const itemEl = document.getElementById(`smb-suggest-item-${next}`);
-            itemEl?.scrollIntoView({ block: "nearest" });
-          }, 10);
-          return next;
-        });
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSmbSuggestIndex((prev) => {
-          const next = (prev - 1 + smbSuggestions.length) % smbSuggestions.length;
-          setTimeout(() => {
-            const itemEl = document.getElementById(`smb-suggest-item-${next}`);
-            itemEl?.scrollIntoView({ block: "nearest" });
-          }, 10);
-          return next;
-        });
-        return;
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        const selected = smbSuggestions[smbSuggestIndex] || smbSuggestions[0];
-        if (selected) {
-          handleSelectParaForRow(side, rowIndex, selected);
-          return;
-        }
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setActiveSmbSuggest(null);
-        return;
-      }
-    }
-
     // Enter Tuşu Davranışı: smb -> meblag -> kur -> otomatik yeni satır
     if (e.key === "Enter") {
       e.preventDefault();
       if (field === "smb") {
-        if (activeSmbSuggest?.side === side && activeSmbSuggest?.index === rowIndex && smbSuggestions.length > 0) {
-          const selected = smbSuggestions[smbSuggestIndex] || smbSuggestions[0];
-          handleSelectParaForRow(side, rowIndex, selected);
+        const row = rows[rowIndex];
+        const val = (row?.paraKodu || "").trim().toUpperCase();
+
+        if (!val) {
+          // Boşsa arama modalı açılmaz, sonraki hücreye (meblağ) odaklanır
+          const nextEl = document.getElementById(`grid-input-${side}-${rowIndex}-meblag`) as HTMLInputElement | null;
+          if (nextEl) {
+            nextEl.focus();
+            nextEl.select();
+            setActiveField("meblag");
+          }
           return;
         }
-        const nextEl = document.getElementById(`grid-input-${side}-${rowIndex}-meblag`) as HTMLInputElement | null;
-        if (nextEl) {
-          nextEl.focus();
-          nextEl.select();
-          setActiveField("meblag");
+
+        // 1. Birebir kod eşleşmesi kontrolü
+        const exact = paraList.find((p) => (p.kod || "").trim().toUpperCase() === val);
+        if (exact) {
+          handleSelectParaForRow(side, rowIndex, exact);
+          return;
         }
+
+        // 2. Kısmi eşleşme kontrolü (kod veya ad içerenler)
+        const matches = paraList.filter(
+          (p) =>
+            (p.kod && p.kod.trim().toUpperCase().includes(val)) ||
+            (p.ad && p.ad.trim().toLocaleUpperCase("tr-TR").includes(val))
+        );
+
+        if (matches.length === 1) {
+          // Tek kayıt varsa direk seç ve sonraki hücreye (meblağ) odaklan
+          handleSelectParaForRow(side, rowIndex, matches[0]);
+          return;
+        }
+
+        // Birden fazla kayıt varsa veya hiç eşleşme yoksa modalı aç
+        setShowParaLookupTarget({ side, index: rowIndex });
         return;
       } else if (field === "meblag") {
+        const row = rows[rowIndex];
+        const isMissing = Boolean(row?.paraKodu && (!row?.meblag || Number(row?.meblag) <= 0));
+        if (isMissing) {
+          // Miktar girilmemişse kızarsın ve buradan çıkamasın / yeni satır açılmasın
+          const meblagEl = document.getElementById(`grid-input-${side}-${rowIndex}-meblag`) as HTMLInputElement | null;
+          if (meblagEl) {
+            meblagEl.focus();
+            meblagEl.select();
+          }
+          return;
+        }
+
         const nextEl = document.getElementById(`grid-input-${side}-${rowIndex}-kur`) as HTMLInputElement | null;
         if (nextEl) {
           nextEl.focus();
@@ -980,6 +1415,76 @@ export const CariEmanetDekontPage: React.FC = () => {
         }
         return;
       } else if (field === "kur") {
+        const currentRow = rows[rowIndex];
+        const isMissingMeblag = Boolean(
+          currentRow?.paraKodu && (!currentRow?.meblag || Number(currentRow?.meblag) <= 0)
+        );
+
+        // 1. Eğer miktar girilmemişse kesinlikle yeni satır açma, miktar hücresine geri dön
+        if (isMissingMeblag) {
+          const meblagEl = document.getElementById(`grid-input-${side}-${rowIndex}-meblag`) as HTMLInputElement | null;
+          if (meblagEl) {
+            meblagEl.focus();
+            meblagEl.select();
+            setActiveField("meblag");
+          }
+          return;
+        }
+
+        const isCurrentRowEmpty =
+          (!currentRow?.paraKodu || !currentRow?.paraKodu.trim()) &&
+          (!currentRow?.meblag || Number(currentRow?.meblag) <= 0);
+
+        // 2. Eğer aralardaki bir satırdaysak (son satır değilsek), bir alt satıra geç (yeni satır açma)
+        if (rowIndex < maxRow) {
+          const nextIdx = rowIndex + 1;
+          setActiveRowIndex(nextIdx);
+          if (side === "sol") setSelectedSolIndex(nextIdx);
+          else setSelectedSagIndex(nextIdx);
+          setActiveField("smb");
+          requestAnimationFrame(() => {
+            const nextInput = document.getElementById(`grid-input-${side}-${nextIdx}-smb`) as HTMLInputElement | null;
+            if (nextInput) {
+              nextInput.focus();
+              nextInput.select();
+            }
+          });
+          return;
+        }
+
+        // 3. Son satırdayız:
+        // Eğer mevcut satır boşsa veya tabloda herhangi bir boş satır / eksik miktarlı satır varsa YENİ SATIR AÇMA!
+        // Başa (ilk satıra) dön.
+        const hasAnyEmptyOrIncompleteRow = rows.some((r, rIdx) => {
+          if (rIdx === rowIndex) return false;
+          const rEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || Number(r.meblag) <= 0);
+          const rMissing = Boolean(r.paraKodu && (!r.meblag || Number(r.meblag) <= 0));
+          return rEmpty || rMissing;
+        });
+
+        if (
+          isCurrentRowEmpty ||
+          hasAnyEmptyOrIncompleteRow ||
+          !currentRow?.paraKodu ||
+          !currentRow?.meblag ||
+          Number(currentRow?.meblag) <= 0
+        ) {
+          setActiveRowIndex(0);
+          if (side === "sol") setSelectedSolIndex(0);
+          else setSelectedSagIndex(0);
+          setActiveField("smb");
+          requestAnimationFrame(() => {
+            const firstInput = document.getElementById(`grid-input-${side}-0-smb`) as HTMLInputElement | null;
+            if (firstInput) {
+              firstInput.focus();
+              firstInput.select();
+            }
+          });
+          return;
+        }
+
+        // 4. Mevcut son satır tamamen dolu (paraKodu var ve miktar > 0) ve tabloda başka boş/eksik satır yok:
+        // Yeni satır aç (otomatik para seçilmeden, tamamen boş) ve yeni satırın SMB hücresine odaklan.
         const nextIdx = rows.length;
         handleAddRow(side);
         setActiveRowIndex(nextIdx);
@@ -997,9 +1502,11 @@ export const CariEmanetDekontPage: React.FC = () => {
       }
     }
 
-    // Yön Okları
+    // Yön Okları (Sağ, Sol, Yukarı, Aşağı ve Tablolar Arası Geçiş)
     if (e.key === "ArrowRight") {
-      const isAtEnd = el.selectionStart === el.selectionEnd && el.selectionStart === el.value.length;
+      const isAtEnd =
+        (el.selectionStart === el.selectionEnd && el.selectionStart === el.value.length) ||
+        (el.selectionStart === 0 && el.selectionEnd === el.value.length);
       if (isAtEnd) {
         if (field === "smb") {
           e.preventDefault();
@@ -1017,21 +1524,36 @@ export const CariEmanetDekontPage: React.FC = () => {
             nextEl.select();
             setActiveField("kur");
           }
-        } else if (field === "kur" && rowIndex < maxRow) {
+        } else if (field === "kur") {
           e.preventDefault();
-          const nextEl = document.getElementById(`grid-input-${side}-${rowIndex + 1}-smb`) as HTMLInputElement | null;
-          if (nextEl) {
-            nextEl.focus();
-            nextEl.select();
-            setActiveRowIndex(rowIndex + 1);
-            if (side === "sol") setSelectedSolIndex(rowIndex + 1);
-            else setSelectedSagIndex(rowIndex + 1);
-            setActiveField("smb");
+          if (side === "sol") {
+            // SOL panelden SAĞ panele aynı satırın SMB hücresine geçiş
+            const targetRow = Math.min(rowIndex, sagSatirlar.length - 1);
+            const nextEl = document.getElementById(`grid-input-sag-${targetRow}-smb`) as HTMLInputElement | null;
+            if (nextEl) {
+              setActiveSide("sag");
+              setActiveRowIndex(targetRow);
+              setSelectedSagIndex(targetRow);
+              setActiveField("smb");
+              nextEl.focus();
+              nextEl.select();
+            }
+          } else if (rowIndex < maxRow) {
+            const nextEl = document.getElementById(`grid-input-sag-${rowIndex + 1}-smb`) as HTMLInputElement | null;
+            if (nextEl) {
+              setActiveRowIndex(rowIndex + 1);
+              setSelectedSagIndex(rowIndex + 1);
+              setActiveField("smb");
+              nextEl.focus();
+              nextEl.select();
+            }
           }
         }
       }
     } else if (e.key === "ArrowLeft") {
-      const isAtStart = el.selectionStart === 0 && el.selectionEnd === 0;
+      const isAtStart =
+        (el.selectionStart === 0 && el.selectionEnd === 0) ||
+        (el.selectionStart === 0 && el.selectionEnd === el.value.length);
       if (isAtStart) {
         if (field === "kur") {
           e.preventDefault();
@@ -1049,16 +1571,29 @@ export const CariEmanetDekontPage: React.FC = () => {
             prevEl.select();
             setActiveField("smb");
           }
-        } else if (field === "smb" && rowIndex > 0) {
+        } else if (field === "smb") {
           e.preventDefault();
-          const prevEl = document.getElementById(`grid-input-${side}-${rowIndex - 1}-kur`) as HTMLInputElement | null;
-          if (prevEl) {
-            prevEl.focus();
-            prevEl.select();
-            setActiveRowIndex(rowIndex - 1);
-            if (side === "sol") setSelectedSolIndex(rowIndex - 1);
-            else setSelectedSagIndex(rowIndex - 1);
-            setActiveField("kur");
+          if (side === "sag") {
+            // SAĞ panelden SOL panele aynı satırın KUR hücresine geçiş
+            const targetRow = Math.min(rowIndex, solSatirlar.length - 1);
+            const prevEl = document.getElementById(`grid-input-sol-${targetRow}-kur`) as HTMLInputElement | null;
+            if (prevEl) {
+              setActiveSide("sol");
+              setActiveRowIndex(targetRow);
+              setSelectedSolIndex(targetRow);
+              setActiveField("kur");
+              prevEl.focus();
+              prevEl.select();
+            }
+          } else if (rowIndex > 0) {
+            const prevEl = document.getElementById(`grid-input-sol-${rowIndex - 1}-kur`) as HTMLInputElement | null;
+            if (prevEl) {
+              setActiveRowIndex(rowIndex - 1);
+              setSelectedSolIndex(rowIndex - 1);
+              setActiveField("kur");
+              prevEl.focus();
+              prevEl.select();
+            }
           }
         }
       }
@@ -1085,6 +1620,14 @@ export const CariEmanetDekontPage: React.FC = () => {
           if (side === "sol") setSelectedSolIndex(rowIndex - 1);
           else setSelectedSagIndex(rowIndex - 1);
         }
+      } else if (rowIndex === 0) {
+        // En üst satırdayken yukarı oka basılırsa forma geçiş
+        e.preventDefault();
+        if (side === "sol") {
+          focusElement("teslimAlanInput") || focusElement("solPanelKodInput");
+        } else {
+          focusElement("aciklamaInput") || focusElement("sagPanelKodInput");
+        }
       }
     }
   };
@@ -1104,6 +1647,34 @@ export const CariEmanetDekontPage: React.FC = () => {
     } else {
       setTeslimAlan(cleanAd);
     }
+    // Seçildikten sonra sonraki alana (2. Cari varsa 2. Cari, yoksa Telefon'a) odaklan
+    setTimeout(() => {
+      if (tip === 2) {
+        const c2 = document.getElementById("cari2Input");
+        if (c2) {
+          c2.focus();
+          (c2 as HTMLInputElement).select?.();
+          return;
+        }
+      }
+      const telEl = document.getElementById("cariTelefonInput");
+      if (telEl) {
+        telEl.focus();
+        (telEl as HTMLInputElement).select?.();
+        return;
+      }
+      const teslimAlanEl = document.getElementById("teslimAlanInput");
+      if (teslimAlanEl) {
+        teslimAlanEl.focus();
+        (teslimAlanEl as HTMLInputElement).select?.();
+        return;
+      }
+      const firstCell = document.getElementById("grid-input-sol-0-smb") as HTMLInputElement | null;
+      if (firstCell) {
+        firstCell.focus();
+        firstCell.select();
+      }
+    }, 60);
   };
 
   // Cari Kodu / Adı klavye ile yazıldığında
@@ -1120,14 +1691,6 @@ export const CariEmanetDekontPage: React.FC = () => {
       return;
     }
 
-    const matches = cariList.filter(
-      (c) =>
-        (c.kod && c.kod.toLowerCase().includes(trimmed)) ||
-        (c.ad && c.ad.toLowerCase().includes(trimmed))
-    );
-    setCariSuggestions(matches.slice(0, 10));
-    setShowCariSuggest(matches.length > 0);
-
     const exact = cariList.find(
       (c) =>
         (c.kod && c.kod.replace(/\s+/g, " ").trim().toLowerCase() === trimmed) ||
@@ -1143,6 +1706,8 @@ export const CariEmanetDekontPage: React.FC = () => {
       setCariTelefon((exact.telefon || "").trim());
       if (tip === 0) setTeslimEden(cleanAd);
       else setTeslimAlan(cleanAd);
+    } else {
+      setCariKartId(null);
     }
   };
 
@@ -1160,6 +1725,32 @@ export const CariEmanetDekontPage: React.FC = () => {
     setOncekiId(item.cariDekontId);
     setOncekiInputText(item.dekontNo || `DK-${String(item.cariDekontId).padStart(6, "0")}`);
     setShowOncekiLookupModal(false);
+    setTimeout(() => {
+      const aciklamaEl = document.getElementById("aciklamaInput");
+      if (aciklamaEl) {
+        aciklamaEl.focus();
+        (aciklamaEl as HTMLInputElement).select?.();
+        return;
+      }
+      const firstCell = document.getElementById("grid-input-sol-0-smb") as HTMLInputElement | null;
+      if (firstCell) {
+        firstCell.focus();
+        firstCell.select();
+      }
+    }, 60);
+    setTimeout(() => {
+      const aciklamaEl = document.getElementById("aciklamaInput");
+      if (aciklamaEl) {
+        aciklamaEl.focus();
+        (aciklamaEl as HTMLInputElement).select?.();
+        return;
+      }
+      const firstCell = document.getElementById("grid-input-sol-0-smb") as HTMLInputElement | null;
+      if (firstCell) {
+        firstCell.focus();
+        firstCell.select();
+      }
+    }, 60);
   };
 
   // Kaydetme İşlemi
@@ -1328,9 +1919,11 @@ export const CariEmanetDekontPage: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCtrlN = isCtrlNEvent(e);
       if (isCtrlN) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleNew();
+        if (!isDuzeltmeMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleNew();
+        }
         return;
       }
 
@@ -1430,11 +2023,13 @@ export const CariEmanetDekontPage: React.FC = () => {
   }, [tip, vezneKod, vezneAd, cariKod, cariAd, cari2Kod, cari2Ad]);
 
   return (
-    <div className="w-100 pb-3" style={{ fontFamily: "Tahoma, 'Segoe UI', Arial, sans-serif", overflowX: "hidden" }}>
+    <div className="w-100 pb-2" style={{ fontFamily: "Tahoma, 'Segoe UI', Arial, sans-serif", overflowX: "hidden" }}>
       {/* 1. ERP Toolbar */}
       <ERPToolbar
         pageTitle={isDuzeltmeMode ? "F- Cari Emanet Dekont Düzeltme" : "E- Cari Emanet Dekont Kayıt"}
-        onNew={handleNew}
+        pageIcon={<IconFileText size={20} />}
+        onNew={isDuzeltmeMode ? undefined : handleNew}
+        hideNew={isDuzeltmeMode}
         onSave={handleSave}
         onDelete={isDuzeltmeMode ? handleDelete : undefined}
         onSearch={isDuzeltmeMode ? () => setShowDekontSearchModal(true) : undefined}
@@ -1451,14 +2046,47 @@ export const CariEmanetDekontPage: React.FC = () => {
         onClear={handleNew}
         onPrint={() => window.print()}
         disabled={isSaving}
+        modeText={isDuzeltmeMode ? "Düzeltme Modu" : "Yeni Kayıt Modu"}
+        centerContent={
+          <div className="d-flex align-items-center gap-2">
+            <div
+              style={{
+                border: tip === 0 ? "2px solid #16a34a" : tip === 1 ? "2px solid #dc2626" : "2px solid #2563eb",
+                backgroundColor: tip === 0 ? "#f0fdf4" : tip === 1 ? "#fef2f2" : "#eff6ff",
+                color: tip === 0 ? "#15803d" : tip === 1 ? "#b91c1c" : "#1d4ed8",
+                fontWeight: 800,
+                fontSize: "13px",
+                letterSpacing: "2px",
+                minWidth: "190px",
+                padding: "3px 18px",
+                borderRadius: "6px",
+                height: "28px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                textTransform: "uppercase",
+              }}
+            >
+              {tip === 0 ? "EMANET ALMA" : tip === 1 ? "EMANET VERME" : "DEKONT / VİRMAN"}
+            </div>
+          </div>
+        }
         rightContent={
-          cariDekontId ? (
-            <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2">
+            {cariDekontId && (
               <Badge bg="secondary" className="px-2 py-1 font-monospace">
                 {dekontNo || `ID: ${cariDekontId}`}
               </Badge>
+            )}
+            <div className="d-flex align-items-center gap-2 px-2 py-0.5 bg-white rounded border shadow-2xs small font-monospace" style={{ fontSize: "11px" }}>
+              <span className="text-muted" style={{ fontSize: "10.5px" }}>Sol:</span>
+              <strong className="text-dark" style={{ fontSize: "11px" }}>{formatNumberDisplay(solBazToplam)}</strong>
+              <span className="text-secondary opacity-50">|</span>
+              <span className="text-muted" style={{ fontSize: "10.5px" }}>Sağ:</span>
+              <strong className="text-dark" style={{ fontSize: "11px" }}>{formatNumberDisplay(sagBazToplam)}</strong>
             </div>
-          ) : undefined
+          </div>
         }
       />
 
@@ -1490,322 +2118,383 @@ export const CariEmanetDekontPage: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Dekont Başlık ve Parametre Alanları Kartı */}
-      <Card className="shadow-xs border border-secondary-subtle rounded-2 overflow-hidden mb-2.5">
-        <Card.Body className="p-2.5 bg-body">
-          <Row className="g-2.5">
-            {/* Sol Sütun: İşlem Türü & Tarih & Vezne & Dekont No */}
-            <Col xs={12} md={6} lg={4}>
-              <div className="p-2 border rounded bg-white shadow-2xs h-100 d-flex flex-column justify-content-between">
-                {/* 1. İşlem Türü - EN BAŞTA! */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">İşlem Türü</Form.Label>
-                  </Col>
-                  <Col xs={8}>
-                    <Form.Select
-                      size="sm"
-                      value={tip}
-                      onChange={(e) => setTip(Number(e.target.value))}
-                      className="fw-semibold"
-                    >
-                      <option value={0}>Emanet alma</option>
-                      <option value={1}>Emanet verme</option>
-                      <option value={2}>Dekont / Virman</option>
-                    </Form.Select>
-                  </Col>
-                </Row>
+      {/* 2. Dekont Başlık ve Parametre Alanları Kartı (Kompakt ve Dolu Dolu ERP Tasarımı) */}
+      <Card className="shadow-xs border border-secondary-subtle rounded-2 mb-2 bg-light">
+        <Card.Body className="p-2">
+          <Row className="g-2">
+            {/* Kolon 1: İşlem Türü, Tarih / Vade, Vezne, Evrak Türü */}
+            <Col xs={12} lg={4}>
+              <div className="p-2 bg-white rounded border border-secondary-subtle d-flex flex-column shadow-2xs" style={{ gap: "3.5px" }}>
+                {/* İşlem Türü */}
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "82px", minWidth: "82px", fontSize: "12px" }}>
+                    İşlem Türü
+                  </label>
+                  <Form.Select
+                    id="islemTuruSelect"
+                    ref={islemTuruRef}
+                    autoFocus
+                    size="sm"
+                    value={tip}
+                    onChange={(e) => setTip(Number(e.target.value))}
+                    onKeyDown={(e) => handleHeaderKeyDown(e, "islemTuruSelect")}
+                    className="fw-bold"
+                    style={{
+                      height: "26px",
+                      fontSize: "12px",
+                      color: tip === 0 ? "#15803d" : tip === 1 ? "#dc2626" : "#2563eb",
+                    }}
+                  >
+                    <option value={0}>Emanet alma</option>
+                    <option value={1}>Emanet verme</option>
+                    <option value={2}>Dekont / Virman</option>
+                  </Form.Select>
+                </div>
 
-                {/* 2. İşlem Tarihi */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">İşlem Tarihi</Form.Label>
-                  </Col>
-                  <Col xs={8}>
+                {/* İşlem Tarihi & Vade */}
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "82px", minWidth: "82px", fontSize: "12px" }}>
+                    Tarih / Vade
+                  </label>
+                  <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: 0 }}>
                     <Form.Control
+                      id="tarihInput"
                       type="date"
                       size="sm"
                       value={tarih}
                       onChange={(e) => setTarih(e.target.value)}
+                      onKeyDown={(e) => handleHeaderKeyDown(e, "tarihInput")}
                       disabled={!tarihYetkisi}
-                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
-                      className="font-monospace"
+                      title={tarihYetkisi ? "İşlem Tarihi" : "Tarih değiştirme yetkiniz yok"}
+                      className="font-monospace px-1.5"
+                      style={{ height: "26px", fontSize: "12px" }}
                     />
-                  </Col>
-                </Row>
-
-                {/* 3. Vade Tarihi */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Vade Tarihi</Form.Label>
-                  </Col>
-                  <Col xs={8}>
                     <Form.Control
+                      id="vadeInput"
                       type="date"
                       size="sm"
                       value={vade}
                       onChange={(e) => setVade(e.target.value)}
-                      className="font-monospace"
+                      onKeyDown={(e) => handleHeaderKeyDown(e, "vadeInput")}
+                      title="Vade Tarihi"
+                      className="font-monospace px-1.5"
+                      style={{ height: "26px", fontSize: "12px" }}
                     />
-                  </Col>
-                </Row>
+                  </div>
+                </div>
 
-                {/* 4. Vezne */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Vezne</Form.Label>
-                  </Col>
-                  <Col xs={8}>
-                    <InputGroup size="sm">
-                      <Form.Control
-                        value={vezneAd ? `${vezneKod} - ${vezneAd}` : (vezneKod || "Ana Vezne")}
-                        readOnly
-                        className="bg-light text-secondary fw-semibold"
-                        title="Vezne"
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        onClick={() => setShowVezneLookup(true)}
-                        title="Vezne Seç"
-                        className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
-                        style={{ borderColor: "#ced4da" }}
-                      >
-                        <IconBinoculars size={15} />
-                      </Button>
-                    </InputGroup>
-                  </Col>
-                </Row>
-
-                {/* 5. Evrak Türü */}
-                <Row className="g-2 align-items-center">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Evrak Türü</Form.Label>
-                  </Col>
-                  <Col xs={8}>
-                    <Form.Select
-                      size="sm"
-                      value={evrakTuru}
-                      onChange={(e) => setEvrakTuru(Number(e.target.value))}
+                {/* Vezne */}
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "82px", minWidth: "82px", fontSize: "12px" }}>
+                    Vezne
+                  </label>
+                  <InputGroup size="sm" style={{ height: "26px" }}>
+                    <Form.Control
+                      value={vezneAd ? `${vezneKod} - ${vezneAd}` : (vezneKod || "Ana Vezne")}
+                      readOnly
+                      className="bg-light text-secondary fw-semibold"
+                      style={{ height: "26px", fontSize: "12px" }}
+                      title="Vezne"
+                    />
+                    <Button
+                      variant="outline-secondary"
+                      onClick={() => setShowVezneLookup(true)}
+                      title="Vezne Seç"
+                      className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
+                      style={{ borderColor: "#ced4da", height: "26px" }}
                     >
-                      <option value={0}>0 - Cari Dekont</option>
-                      <option value={1}>1 - Dönüşüm / Fiş</option>
-                    </Form.Select>
-                  </Col>
-                </Row>
+                      <IconBinoculars size={14} />
+                    </Button>
+                  </InputGroup>
+                </div>
+
+                {/* Evrak Türü */}
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "82px", minWidth: "82px", fontSize: "12px" }}>
+                    Evrak Türü
+                  </label>
+                  <Form.Select
+                    id="evrakTuruSelect"
+                    size="sm"
+                    value={evrakTuru}
+                    onChange={(e) => setEvrakTuru(Number(e.target.value))}
+                    onKeyDown={(e) => handleHeaderKeyDown(e, "evrakTuruSelect")}
+                    style={{ height: "26px", fontSize: "12px" }}
+                  >
+                    <option value={0}>0 - Cari Dekont</option>
+                    <option value={1}>1 - Dönüşüm / Fiş</option>
+                  </Form.Select>
+                </div>
               </div>
             </Col>
 
-            {/* Orta Sütun: Cari Hesap Seçimi & İletişim & Mutabakat */}
-            <Col xs={12} md={6} lg={4}>
-              <div className="p-2 border rounded bg-white shadow-2xs h-100 d-flex flex-column justify-content-between">
-                {/* 1. Cari Kodu / Adı with Dürbün */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">
-                      {tip === 2 ? "1. Cari (Çıkış)" : "Cari Kodu / Adı"}
-                    </Form.Label>
-                  </Col>
-                  <Col xs={8} className="position-relative">
-                    <InputGroup size="sm">
+            {/* Kolon 2: Cari Seçimi, 2. Cari (Dekont ise), Telefon / Mutabakat, Teslim Alan */}
+            <Col xs={12} lg={4}>
+              <div className="p-2 bg-white rounded border border-secondary-subtle d-flex flex-column shadow-2xs" style={{ gap: "3.5px" }}>
+                {/* 1. Cari (Çıkış) / Cari Kodu/Adı */}
+                <div className="d-flex align-items-center gap-2 position-relative">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "85px", minWidth: "85px", fontSize: "12px" }}>
+                    {tip === 2 ? "1. Cari (Çıkış)" : "Cari Kod/Ad"}
+                  </label>
+                  <div className="flex-grow-1 position-relative" style={{ minWidth: 0 }}>
+                    <InputGroup size="sm" style={{ height: "26px" }}>
                       <Form.Control
+                        id="cariKodAdInput"
                         value={cariInputText || (cariKod ? (cariAd ? `${cariKod} - ${cariAd}` : cariKod) : "")}
                         onChange={(e) => handleCariInputChange(e.target.value)}
-                        onFocus={() => {
-                          if (cariInputText.trim()) {
-                            const trimmed = cariInputText.trim().toLowerCase();
+                        onKeyDown={(e) => {
+                          handleHeaderKeyDown(e, "cariKodAdInput");
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const term = (cariInputText || cariKod || "").trim().toLowerCase();
+                            if (!term) {
+                              if (tip === 2 && document.getElementById("cari2Input")) {
+                                focusElement("cari2Input");
+                              } else {
+                                focusElement("cariTelefonInput") || focusElement("teslimAlanInput");
+                              }
+                              return;
+                            }
+                            const exact = cariList.find(
+                              (c) =>
+                                (c.kod && c.kod.toLowerCase() === term) ||
+                                (c.ad && c.ad.toLowerCase() === term) ||
+                                `${(c.kod || "").toLowerCase()} - ${(c.ad || "").toLowerCase()}` === term
+                            );
+                            if (exact) {
+                              handleSelectCari(exact);
+                              return;
+                            }
                             const matches = cariList.filter(
                               (c) =>
-                                (c.kod && c.kod.toLowerCase().includes(trimmed)) ||
-                                (c.ad && c.ad.toLowerCase().includes(trimmed))
+                                (c.kod && c.kod.toLowerCase().includes(term)) ||
+                                (c.ad && c.ad.toLowerCase().includes(term))
                             );
-                            setCariSuggestions(matches.slice(0, 10));
-                            setShowCariSuggest(matches.length > 0);
-                          }
-                        }}
-                        onBlur={() => {
-                          setTimeout(() => setShowCariSuggest(false), 250);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && showCariSuggest && cariSuggestions.length > 0) {
-                            e.preventDefault();
-                            handleSelectCari(cariSuggestions[0]);
+                            if (matches.length === 1) {
+                              handleSelectCari(matches[0]);
+                              return;
+                            }
+                            setShowCariLookupTarget("cari1");
                           }
                         }}
                         className={cariKartId ? "bg-white fw-bold text-dark" : "bg-white"}
+                        style={{ height: "26px", fontSize: "12px" }}
                       />
                       <Button
                         variant="outline-secondary"
                         onClick={() => setShowCariLookupTarget("cari1")}
                         title="Cari Hesap Listesi"
                         className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
-                        style={{ borderColor: "#ced4da" }}
+                        style={{ borderColor: "#ced4da", height: "26px" }}
                       >
-                        <IconBinoculars size={15} />
+                        <IconBinoculars size={14} />
                       </Button>
                     </InputGroup>
-                    {showCariSuggest && cariSuggestions.length > 0 && (
-                      <div
-                        className="position-absolute bg-white border rounded shadow-lg"
-                        style={{
-                          zIndex: 1050,
-                          maxHeight: "220px",
-                          overflowY: "auto",
-                          top: "100%",
-                          left: "8px",
-                          right: "8px",
-                          marginTop: "2px",
-                        }}
-                      >
-                        {cariSuggestions.map((c) => (
-                          <div
-                            key={c.id}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              handleSelectCari(c);
-                            }}
-                            className="px-2.5 py-1.5 border-bottom d-flex align-items-center justify-content-between cursor-pointer small"
-                            style={{ cursor: "pointer" }}
-                          >
-                            <span className="font-monospace fw-bold text-primary">{c.kod}</span>
-                            <span className="text-truncate ms-2 flex-grow-1 text-dark">{c.ad}</span>
-                            {c.telefon && <span className="text-muted ms-2 smaller">{c.telefon}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Col>
-                </Row>
+                  </div>
+                </div>
 
                 {/* Eğer tip === 2 (Dekont / Virman) ise 2. Cari göster */}
                 {tip === 2 && (
-                  <Row className="g-2 align-items-center mb-1.5">
-                    <Col xs={4}>
-                      <Form.Label className="small fw-semibold mb-0 text-dark">2. Cari (Giriş)</Form.Label>
-                    </Col>
-                    <Col xs={8}>
-                      <InputGroup size="sm">
-                        <Form.Control
-                          value={cari2Kod ? (cari2Ad ? `${cari2Kod} - ${cari2Ad}` : cari2Kod) : ""}
-                          onChange={(e) => setCari2Kod(e.target.value)}
-                          className={cari2KartId ? "bg-white fw-bold text-dark" : "bg-white"}
-                        />
-                        <Button
-                          variant="outline-secondary"
-                          onClick={() => setShowCariLookupTarget("cari2")}
-                          title="2. Cari Listesi"
-                          className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
-                          style={{ borderColor: "#ced4da" }}
-                        >
-                          <IconBinoculars size={15} />
-                        </Button>
-                      </InputGroup>
-                    </Col>
-                  </Row>
+                  <div className="d-flex align-items-center gap-2">
+                    <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "85px", minWidth: "85px", fontSize: "12px" }}>
+                      2. Cari (Giriş)
+                    </label>
+                    <InputGroup size="sm" style={{ height: "26px" }}>
+                      <Form.Control
+                        id="cari2Input"
+                        value={cari2Kod ? (cari2Ad ? `${cari2Kod} - ${cari2Ad}` : cari2Kod) : ""}
+                        onChange={(e) => setCari2Kod(e.target.value)}
+                        onKeyDown={(e) => {
+                          handleHeaderKeyDown(e, "cari2Input");
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const term = (cari2Kod || "").trim().toLowerCase();
+                            if (!term) {
+                              focusElement("cariTelefonInput") || focusElement("teslimAlanInput");
+                              return;
+                            }
+                            const exact = cariList.find(
+                              (c) =>
+                                (c.kod && c.kod.toLowerCase() === term) ||
+                                (c.ad && c.ad.toLowerCase() === term)
+                            );
+                            if (exact) {
+                              setCari2KartId(exact.id);
+                              setCari2Kod(exact.kod);
+                              setCari2Ad(exact.ad);
+                              setCari2Telefon(exact.telefon || "");
+                              setTimeout(() => {
+                                const telEl = document.getElementById("cariTelefonInput");
+                                if (telEl) {
+                                  telEl.focus();
+                                  (telEl as HTMLInputElement).select?.();
+                                } else {
+                                  const teslimEl = document.getElementById("teslimAlanInput");
+                                  teslimEl?.focus();
+                                }
+                              }, 60);
+                              return;
+                            }
+                            const matches = cariList.filter(
+                              (c) =>
+                                (c.kod && c.kod.toLowerCase().includes(term)) ||
+                                (c.ad && c.ad.toLowerCase().includes(term))
+                            );
+                            if (matches.length === 1) {
+                              setCari2KartId(matches[0].id);
+                              setCari2Kod(matches[0].kod);
+                              setCari2Ad(matches[0].ad);
+                              setCari2Telefon(matches[0].telefon || "");
+                              setTimeout(() => {
+                                const telEl = document.getElementById("cariTelefonInput");
+                                if (telEl) {
+                                  telEl.focus();
+                                  (telEl as HTMLInputElement).select?.();
+                                } else {
+                                  const teslimEl = document.getElementById("teslimAlanInput");
+                                  teslimEl?.focus();
+                                }
+                              }, 60);
+                              return;
+                            }
+                            setShowCariLookupTarget("cari2");
+                          }
+                        }}
+                        className={cari2KartId ? "bg-white fw-bold text-dark" : "bg-white"}
+                        style={{ height: "26px", fontSize: "12px" }}
+                      />
+                      <Button
+                        variant="outline-secondary"
+                        onClick={() => setShowCariLookupTarget("cari2")}
+                        title="2. Cari Listesi"
+                        className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
+                        style={{ borderColor: "#ced4da", height: "26px" }}
+                      >
+                        <IconBinoculars size={14} />
+                      </Button>
+                    </InputGroup>
+                  </div>
                 )}
 
-                {/* Telefon */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Telefon</Form.Label>
-                  </Col>
-                  <Col xs={8}>
+                {/* Telefon & Mutabakat Türü */}
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "85px", minWidth: "85px", fontSize: "12px" }}>
+                    Tel / Mutabakat
+                  </label>
+                  <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: 0 }}>
                     <Form.Control
+                      id="cariTelefonInput"
                       size="sm"
                       value={cariTelefon}
-                      readOnly
-                      className="bg-light text-muted font-monospace"
+                      onChange={(e) => setCariTelefon(e.target.value)}
+                      onKeyDown={(e) => {
+                        handleHeaderKeyDown(e, "cariTelefonInput");
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          focusElement("mutabakatSelect") || focusElement("teslimAlanInput");
+                        }
+                      }}
+                      className="bg-white font-monospace"
+                      style={{ height: "26px", fontSize: "12px", width: "115px", flexShrink: 0 }}
                     />
-                  </Col>
-                </Row>
-
-                {/* Mutabakat */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Mutabakat</Form.Label>
-                  </Col>
-                  <Col xs={8}>
                     <Form.Select
+                      id="mutabakatSelect"
                       size="sm"
                       value={mutabakatTuru}
-                      onChange={(e) => setMutabakatTuru(e.target.value as MutabakatType)}
+                      onChange={(e) => handleMutabakatTuruChange(e.target.value as MutabakatType)}
+                      onKeyDown={(e) => {
+                        handleHeaderKeyDown(e, "mutabakatSelect");
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          focusElement("teslimAlanInput");
+                        }
+                      }}
+                      style={{ height: "26px", fontSize: "12px" }}
+                      title="Mutabakat Türü"
                     >
                       <option value="capraz">Çapraz kur</option>
                       <option value="has">Has</option>
                       <option value="kur">Ana Para / TL</option>
                     </Form.Select>
-                  </Col>
-                </Row>
-
-                {/* Tarih */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Tarih</Form.Label>
-                  </Col>
-                  <Col xs={8}>
-                    <Form.Control
-                      type="date"
-                      size="sm"
-                      value={tarih}
-                      onChange={(e) => setTarih(e.target.value)}
-                      disabled={!tarihYetkisi}
-                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
-                      className="font-monospace"
-                    />
-                  </Col>
-                </Row>
+                  </div>
+                </div>
 
                 {/* Teslim Alan */}
-                <Row className="g-2 align-items-center">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Teslim Alan</Form.Label>
-                  </Col>
-                  <Col xs={8}>
-                    <Form.Control
-                      size="sm"
-                      maxLength={50}
-                      value={teslimAlan}
-                      onChange={(e) => setTeslimAlan(e.target.value)}
-                    />
-                  </Col>
-                </Row>
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "85px", minWidth: "85px", fontSize: "12px" }}>
+                    Teslim Alan
+                  </label>
+                  <Form.Control
+                    id="teslimAlanInput"
+                    size="sm"
+                    maxLength={50}
+                    value={teslimAlan}
+                    onChange={(e) => setTeslimAlan(e.target.value)}
+                    onKeyDown={(e) => {
+                      handleHeaderKeyDown(e, "teslimAlanInput");
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const firstCell = document.getElementById("grid-input-sol-0-smb") as HTMLInputElement | null;
+                        firstCell?.focus();
+                        firstCell?.select();
+                      }
+                    }}
+                    style={{ height: "26px", fontSize: "12px" }}
+                  />
+                </div>
               </div>
             </Col>
 
-            {/* Sağ Sütun: Evrak Türü & Satır Durumu & Açıklama */}
-            <Col xs={12} md={12} lg={4}>
-              <div className="p-2 border rounded bg-white shadow-2xs h-100 d-flex flex-column justify-content-between">
-                {/* 1. Dekont No with Dürbün - EN SAĞDA EN ÜSTTE! */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Dekont No</Form.Label>
-                  </Col>
-                  <Col xs={8}>
-                    <InputGroup size="sm">
+            {/* Kolon 3: Dekont No, Durum & İptal Tarihi, Önceki Belge, Açıklama */}
+            <Col xs={12} lg={4}>
+              <div className="p-2 bg-white rounded border border-secondary-subtle d-flex flex-column shadow-2xs" style={{ gap: "3.5px" }}>
+                {/* Dekont No (Yalnızca Düzeltme modunda Dürbün ikonu bulunur) */}
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "85px", minWidth: "85px", fontSize: "12px" }}>
+                    Dekont No
+                  </label>
+                  {isDuzeltmeMode ? (
+                    <InputGroup size="sm" style={{ height: "26px" }}>
                       <Form.Control
+                        id="dekontNoInput"
                         value={dekontNo}
                         onChange={(e) => setDekontNo(e.target.value)}
+                        onKeyDown={(e) => handleHeaderKeyDown(e, "dekontNoInput")}
+                        placeholder="Otomatik"
                         className="font-monospace fw-bold text-primary"
+                        style={{ height: "26px", fontSize: "12px" }}
                       />
                       <Button
                         variant="outline-secondary"
                         onClick={() => setShowDekontSearchModal(true)}
                         title="Dekont Ara (Dürbün)"
                         className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
-                        style={{ borderColor: "#ced4da" }}
+                        style={{ borderColor: "#ced4da", height: "26px" }}
                       >
-                        <IconBinoculars size={15} />
+                        <IconBinoculars size={14} />
                       </Button>
                     </InputGroup>
-                  </Col>
-                </Row>
+                  ) : (
+                    <Form.Control
+                      id="dekontNoInput"
+                      value={dekontNo}
+                      onChange={(e) => setDekontNo(e.target.value)}
+                      onKeyDown={(e) => handleHeaderKeyDown(e, "dekontNoInput")}
+                      placeholder="Otomatik"
+                      className="font-monospace fw-bold text-primary"
+                      style={{ height: "26px", fontSize: "12px" }}
+                    />
+                  )}
+                </div>
 
-                {/* Satır Durumu */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Durum</Form.Label>
-                  </Col>
-                  <Col xs={8}>
+                {/* Satır Durumu & İptal Tarihi */}
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "85px", minWidth: "85px", fontSize: "12px" }}>
+                    Durum
+                  </label>
+                  <div className="d-flex align-items-center gap-1 flex-grow-1" style={{ minWidth: 0 }}>
                     <Form.Select
+                      id="durumSelect"
                       size="sm"
                       value={satirDurumu}
                       onChange={(e) => {
@@ -1817,223 +2506,262 @@ export const CariEmanetDekontPage: React.FC = () => {
                           setIptalTarihi("");
                         }
                       }}
+                      onKeyDown={(e) => handleHeaderKeyDown(e, "durumSelect")}
+                      style={{
+                        height: "26px",
+                        fontSize: "12px",
+                        color: satirDurumu === 1 ? "#dc2626" : satirDurumu === 2 ? "#d97706" : "#16a34a",
+                        fontWeight: 600,
+                      }}
                     >
                       <option value={0}>0 - Normal (Aktif)</option>
                       <option value={1}>1 - İptal Edildi</option>
                       <option value={2}>2 - Beklemede</option>
                     </Form.Select>
-                  </Col>
-                </Row>
-
-                {/* İptal Tarihi */}
-                {satirDurumu === 1 && (
-                  <Row className="g-2 align-items-center mb-1.5">
-                    <Col xs={4}>
-                      <Form.Label className="small fw-semibold mb-0 text-danger">İptal Tarihi</Form.Label>
-                    </Col>
-                    <Col xs={8}>
+                    {satirDurumu === 1 && (
                       <Form.Control
+                        id="iptalTarihiInput"
                         type="date"
                         size="sm"
                         value={iptalTarihi}
                         onChange={(e) => setIptalTarihi(e.target.value)}
-                        className="font-monospace border-danger"
+                        onKeyDown={(e) => handleHeaderKeyDown(e, "iptalTarihiInput")}
+                        title="İptal Tarihi"
+                        className="font-monospace border-danger px-1"
+                        style={{ height: "26px", fontSize: "12px", width: "120px", flexShrink: 0 }}
                       />
-                    </Col>
-                  </Row>
-                )}
+                    )}
+                  </div>
+                </div>
 
                 {/* Önceki Belge */}
-                <Row className="g-2 align-items-center mb-1.5">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark" title="Dönüşen önceki dekont / fiş kaydı">
-                      Önceki Belge
-                    </Form.Label>
-                  </Col>
-                  <Col xs={8}>
-                    <InputGroup size="sm">
-                      <Form.Control
-                        type="text"
-                        value={oncekiInputText}
-                        onChange={(e) => handleOncekiInputChange(e.target.value)}
-                        className={oncekiId ? "font-monospace fw-bold text-dark" : "font-monospace"}
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        onClick={() => setShowOncekiLookupModal(true)}
-                        title="Önceki Dekont Listesi"
-                        className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
-                        style={{ borderColor: "#ced4da" }}
-                      >
-                        <IconBinoculars size={15} />
-                      </Button>
-                    </InputGroup>
-                  </Col>
-                </Row>
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "85px", minWidth: "85px", fontSize: "12px" }} title="Dönüşen önceki dekont / fiş kaydı">
+                    Önceki Belge
+                  </label>
+                  <InputGroup size="sm" style={{ height: "26px" }}>
+                    <Form.Control
+                      id="oncekiBelgeInput"
+                      type="text"
+                      value={oncekiInputText}
+                      onChange={(e) => handleOncekiInputChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        handleHeaderKeyDown(e, "oncekiBelgeInput");
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const term = (oncekiInputText || "").trim().toLowerCase();
+                          if (!term) {
+                            focusElement("aciklamaInput");
+                            return;
+                          }
+                          const exact = savedDekonts.find(
+                            (d) =>
+                              (d.dekontNo && d.dekontNo.toLowerCase() === term) ||
+                              String(d.cariDekontId) === term
+                          );
+                          if (exact) {
+                            handleSelectOncekiDekont(exact);
+                            return;
+                          }
+                          const matches = savedDekonts.filter(
+                            (d) =>
+                              (d.dekontNo && d.dekontNo.toLowerCase().includes(term)) ||
+                              (d.cariKod && d.cariKod.toLowerCase().includes(term)) ||
+                              (d.cariAd && d.cariAd.toLowerCase().includes(term))
+                          );
+                          if (matches.length === 1) {
+                            handleSelectOncekiDekont(matches[0]);
+                            return;
+                          }
+                          setShowOncekiLookupModal(true);
+                        }
+                      }}
+                      className={oncekiId ? "font-monospace fw-bold text-dark" : "font-monospace"}
+                      style={{ height: "26px", fontSize: "12px" }}
+                    />
+                    <Button
+                      variant="outline-secondary"
+                      onClick={() => setShowOncekiLookupModal(true)}
+                      title="Önceki Dekont Listesi"
+                      className="d-flex align-items-center justify-content-center px-2 bg-light border-start-0"
+                      style={{ borderColor: "#ced4da", height: "26px" }}
+                    >
+                      <IconBinoculars size={14} />
+                    </Button>
+                  </InputGroup>
+                </div>
 
                 {/* Açıklama */}
-                <Row className="g-2 align-items-center">
-                  <Col xs={4}>
-                    <Form.Label className="small fw-semibold mb-0 text-dark">Açıklama</Form.Label>
-                  </Col>
-                  <Col xs={8}>
-                    <Form.Control
-                      size="sm"
-                      maxLength={100}
-                      value={aciklama}
-                      onChange={(e) => setAciklama(e.target.value)}
-                    />
-                  </Col>
-                </Row>
+                <div className="d-flex align-items-center gap-2">
+                  <label className="text-secondary fw-semibold small text-nowrap" style={{ width: "85px", minWidth: "85px", fontSize: "12px" }}>
+                    Açıklama
+                  </label>
+                  <Form.Control
+                    id="aciklamaInput"
+                    size="sm"
+                    maxLength={100}
+                    value={aciklama}
+                    onChange={(e) => setAciklama(e.target.value)}
+                    onKeyDown={(e) => {
+                      handleHeaderKeyDown(e, "aciklamaInput");
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const firstCell = document.getElementById("grid-input-sol-0-smb") as HTMLInputElement | null;
+                        firstCell?.focus();
+                        firstCell?.select();
+                      }
+                    }}
+                    style={{ height: "26px", fontSize: "12px" }}
+                  />
+                </div>
               </div>
             </Col>
           </Row>
         </Card.Body>
       </Card>
 
-      {/* 3. Ana Bölüm: Çift Taraflı Tablolar ve Alt Kısım (Sayfa dış kenarlığı kaldırıldı) */}
+      {/* 3. Ana Bölüm: Çift Taraflı Grid Bölümü (Sol Panel ve Sağ Panel) */}
       <div className="w-100 bg-transparent">
-        {/* ÇİFT TARAFLI GRID BÖLÜMÜ (Sol Panel ve Sağ Panel - Belirgin Ayrım) */}
-        <Row className="gx-4 gy-3 mt-1">
+        <Row className="g-2 mt-0">
           {/* ===================== SOL PANEL ===================== */}
           <Col xs={12} lg={6}>
             <div
-              className="p-3 bg-white h-100 d-flex flex-column justify-content-between"
+              className="p-2 bg-white h-100 d-flex flex-column justify-content-between rounded border shadow-2xs"
               style={{
-                border: "1.5px solid #64748b",
-                borderRadius: "8px",
-                boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.08), 0 1px 3px -1px rgba(15, 23, 42, 0.06)",
+                borderColor: "#94a3b8",
+                borderWidth: "1.5px",
               }}
             >
-              {/* Kod ve Ad Alanları */}
-              <div className="mb-2">
-                <div className="d-flex align-items-center mb-1">
-                  <span className="small text-dark me-2" style={{ width: "35px" }}>
-                    Kod
-                  </span>
-                  <InputGroup size="sm" style={{ height: "23px", maxWidth: "260px" }}>
-                    <Form.Control
-                      value={panelRoles.sol.kod}
-                      onChange={(e) => {
-                        if (!panelRoles.sol.isVezne) setCariKod(e.target.value);
-                      }}
-                      readOnly={panelRoles.sol.isVezne}
-                      style={{
-                        height: "23px",
-                        fontSize: "12px",
-                        border: "1px solid #7f9db9",
-                        borderRadius: "2px 0 0 2px",
-                        backgroundColor: "#ffffff",
-                        padding: "0 6px",
-                      }}
-                    />
-                    <Button
-                      variant="light"
-                      className="p-0 px-1 border border-start-0 d-flex align-items-center justify-content-center"
-                      style={{ borderColor: "#7f9db9", height: "23px" }}
-                      onClick={() => {
-                        if (panelRoles.sol.isVezne) setShowVezneLookup(true);
-                        else setShowCariLookupTarget("cari1");
-                      }}
-                      title="Ara"
-                    >
-                      <IconBinoculars size={13} />
-                    </Button>
-                  </InputGroup>
-                </div>
-
-                <div className="d-flex align-items-center">
-                  <span className="small text-dark me-2" style={{ width: "35px" }}>
-                    Ad
-                  </span>
-                  <InputGroup size="sm" style={{ height: "23px" }}>
-                    <Form.Control
-                      value={panelRoles.sol.ad}
-                      onChange={(e) => {
-                        if (!panelRoles.sol.isVezne) setCariAd(e.target.value);
-                      }}
-                      readOnly={panelRoles.sol.isVezne}
-                      style={{
-                        height: "23px",
-                        fontSize: "12px",
-                        border: "1px solid #7f9db9",
-                        borderRadius: "2px 0 0 2px",
-                        backgroundColor: "#ffffff",
-                        padding: "0 6px",
-                      }}
-                    />
-                    <Button
-                      variant="light"
-                      className="p-0 px-1 border border-start-0 d-flex align-items-center justify-content-center"
-                      style={{ borderColor: "#7f9db9", height: "23px" }}
-                      onClick={() => {
-                        if (panelRoles.sol.isVezne) setShowVezneLookup(true);
-                        else setShowCariLookupTarget("cari1");
-                      }}
-                      title="Ara"
-                    >
-                      <IconBinoculars size={13} />
-                    </Button>
-                  </InputGroup>
-                </div>
-              </div>
-
-              {/* Tablo Konteyneri - Düzgün kenarlık ve estetik görünüm */}
-              <div
-                style={{
-                  border: "1px solid #7f9db9",
-                  borderRadius: "6px",
-                  overflow: "hidden",
-                  backgroundColor: "#ffffff",
-                }}
-              >
+              {/* Üst Şerit: Başlık Ribbon + Kod & Ad Tek Satırda */}
+              <div className="mb-1.5 rounded overflow-hidden border" style={{ borderColor: "#cbd5e1" }}>
                 {/* Pembe / Normal Başlık Şeridi */}
                 <div
-                  className="w-100 text-center fw-bold text-nowrap"
+                  className="w-100 text-center fw-bold text-nowrap text-uppercase"
                   style={{
-                    height: "24px",
-                    lineHeight: "24px",
+                    height: "25px",
+                    lineHeight: "25px",
                     fontSize: "12px",
-                    backgroundColor: panelRoles.sol.isPink ? "#ff66cc" : "#f1f5f9",
+                    backgroundColor: panelRoles.sol.isPink ? "#ff66cc" : "#e2e8f0",
                     color: "#000000",
-                    letterSpacing: "0.5px",
-                    borderBottom: "1px solid #7f9db9",
+                    letterSpacing: "0.8px",
+                    borderBottom: "1px solid #cbd5e1",
                   }}
                 >
                   {panelRoles.sol.title}
                 </div>
 
-                {/* Grid Tablosu */}
+                {/* Kod ve Ad Alanları (Tek satırda, yan yana) */}
+                <div className="d-flex align-items-center gap-2 p-1.5 bg-light">
+                  <div className="d-flex align-items-center gap-1" style={{ minWidth: "150px", maxWidth: "180px" }}>
+                    <span className="small fw-semibold text-secondary" style={{ fontSize: "11.5px" }}>Kod:</span>
+                    <InputGroup size="sm" style={{ height: "24px" }}>
+                      <Form.Control
+                        id="solPanelKodInput"
+                        value={panelRoles.sol.kod}
+                        onChange={(e) => {
+                          if (!panelRoles.sol.isVezne) setCariKod(e.target.value);
+                        }}
+                        onKeyDown={(e) => handleHeaderKeyDown(e, "solPanelKodInput")}
+                        readOnly={panelRoles.sol.isVezne}
+                        style={{
+                          height: "24px",
+                          fontSize: "11.5px",
+                          padding: "0 6px",
+                          backgroundColor: panelRoles.sol.isVezne ? "#f8fafc" : "#ffffff",
+                        }}
+                      />
+                      <Button
+                        variant="light"
+                        className="p-0 px-1 border border-start-0 d-flex align-items-center justify-content-center"
+                        style={{ height: "24px" }}
+                        onClick={() => {
+                          if (panelRoles.sol.isVezne) setShowVezneLookup(true);
+                          else setShowCariLookupTarget("cari1");
+                        }}
+                        title="Ara"
+                      >
+                        <IconBinoculars size={13} />
+                      </Button>
+                    </InputGroup>
+                  </div>
+
+                  <div className="d-flex align-items-center gap-1 flex-grow-1">
+                    <span className="small fw-semibold text-secondary" style={{ fontSize: "11.5px" }}>Ad:</span>
+                    <InputGroup size="sm" style={{ height: "24px" }}>
+                      <Form.Control
+                        id="solPanelAdInput"
+                        value={panelRoles.sol.ad}
+                        onChange={(e) => {
+                          if (!panelRoles.sol.isVezne) setCariAd(e.target.value);
+                        }}
+                        onKeyDown={(e) => handleHeaderKeyDown(e, "solPanelAdInput")}
+                        readOnly={panelRoles.sol.isVezne}
+                        style={{
+                          height: "24px",
+                          fontSize: "11.5px",
+                          padding: "0 6px",
+                          backgroundColor: panelRoles.sol.isVezne ? "#f8fafc" : "#ffffff",
+                        }}
+                      />
+                      <Button
+                        variant="light"
+                        className="p-0 px-1 border border-start-0 d-flex align-items-center justify-content-center"
+                        style={{ height: "24px" }}
+                        onClick={() => {
+                          if (panelRoles.sol.isVezne) setShowVezneLookup(true);
+                          else setShowCariLookupTarget("cari1");
+                        }}
+                        title="Ara"
+                      >
+                        <IconBinoculars size={13} />
+                      </Button>
+                    </InputGroup>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tablo Konteyneri */}
+              <div
+                style={{
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "4px",
+                  overflow: "hidden",
+                  backgroundColor: "#ffffff",
+                }}
+              >
                 <div
                   style={{
-                    minHeight: "220px",
-                    maxHeight: "320px",
+                    minHeight: "100px",
+                    maxHeight: "350px",
                     overflowY: "auto",
                   }}
                 >
                   <table
                     className="w-100"
+                    data-table-type="sol"
                     style={{
                       borderCollapse: "collapse",
-                      fontSize: "12.5px",
+                      fontSize: "12px",
                       color: "#000000",
                     }}
                   >
                     <thead>
                       <tr
                         style={{
-                          backgroundColor: "#b8d7fe",
-                          height: "24px",
-                          color: "#0f3e74",
+                          backgroundColor: "#dbeafe",
+                          height: "25px",
+                          color: "#1e3a8a",
                           textAlign: "center",
                           position: "sticky",
                           top: 0,
                           zIndex: 1,
+                          borderBottom: "1px solid #93c5fd",
+                          fontWeight: 700,
                         }}
                       >
-                        <th style={{ width: "100px", padding: "1px 4px", borderRight: "1px solid #8ab8ee" }}>SMB</th>
-                        <th style={{ width: "150px", padding: "1px 6px", borderRight: "1px solid #8ab8ee" }}>Miktar</th>
-                        <th style={{ padding: "1px 6px" }}>{col3Header}</th>
+                        <th style={{ width: "95px", padding: "2px 4px", borderRight: "1px solid #bfdbfe" }}>SMB</th>
+                        <th style={{ width: "140px", padding: "2px 6px", borderRight: "1px solid #bfdbfe" }}>Miktar</th>
+                        <th style={{ padding: "2px 6px" }}>{col3Header}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2041,10 +2769,11 @@ export const CariEmanetDekontPage: React.FC = () => {
                         <tr
                           key={row.id}
                           data-row-id={row.id}
+                          data-table-type="sol"
                           style={{
-                            height: "24px",
-                            borderBottom: "1px solid #e0e0e0",
-                            backgroundColor: idx === selectedSolIndex && activeSide === "sol" ? "#f1f5f9" : idx === selectedSolIndex ? "#f8fafc" : "#ffffff",
+                            height: "25px",
+                            borderBottom: "1px solid #e2e8f0",
+                            backgroundColor: idx === selectedSolIndex && activeSide === "sol" ? "#eff6ff" : idx === selectedSolIndex ? "#f8fafc" : "#ffffff",
                           }}
                           onClick={() => {
                             setSelectedSolIndex(idx);
@@ -2053,7 +2782,7 @@ export const CariEmanetDekontPage: React.FC = () => {
                           }}
                         >
                           {/* 1. SMB */}
-                          <td style={{ padding: 0, borderRight: "1px solid #e0e0e0" }}>
+                          <td style={{ padding: 0, borderRight: "1px solid #e2e8f0" }}>
                             <div className="d-flex align-items-center">
                               <input
                                 id={`grid-input-sol-${idx}-smb`}
@@ -2061,9 +2790,6 @@ export const CariEmanetDekontPage: React.FC = () => {
                                 value={row.paraKodu || ""}
                                 onChange={(e) => {
                                   const val = e.target.value.toUpperCase();
-                                  setSmbSearchTerm(val);
-                                  setSmbSuggestIndex(0);
-                                  setActiveSmbSuggest({ side: "sol", index: idx });
                                   handleGridChange("sol", idx, "paraKodu", val);
                                 }}
                                 onFocus={() => {
@@ -2071,23 +2797,15 @@ export const CariEmanetDekontPage: React.FC = () => {
                                   setActiveRowIndex(idx);
                                   setSelectedSolIndex(idx);
                                   setActiveField("smb");
-                                  setSmbSearchTerm(row.paraKodu || "");
-                                  setSmbSuggestIndex(0);
-                                  setActiveSmbSuggest({ side: "sol", index: idx });
-                                }}
-                                onBlur={() => {
-                                  setTimeout(() => {
-                                    setActiveSmbSuggest((curr) => (curr?.side === "sol" && curr?.index === idx ? null : curr));
-                                  }, 220);
                                 }}
                                 onKeyDown={(e) => handleCellKeyDown(e, "sol", idx, "smb")}
                                 style={{
                                   width: "100%",
-                                  height: "22px",
+                                  height: "24px",
                                   border: "none",
                                   outline: "none",
                                   padding: "0 4px",
-                                  fontSize: "12.5px",
+                                  fontSize: "12px",
                                   fontWeight: 600,
                                   color: "#0f172a",
                                   backgroundColor: "transparent",
@@ -2106,7 +2824,13 @@ export const CariEmanetDekontPage: React.FC = () => {
                           </td>
 
                           {/* 2. Miktar */}
-                          <td style={{ padding: 0, borderRight: "1px solid #e0e0e0" }}>
+                          <td
+                            style={{
+                              padding: 0,
+                              borderRight: "1px solid #e2e8f0",
+                              backgroundColor: row.paraKodu && (!row.meblag || Number(row.meblag) <= 0) ? "#fef2f2" : "transparent",
+                            }}
+                          >
                             <input
                               id={`grid-input-sol-${idx}-meblag`}
                               type="text"
@@ -2127,21 +2851,35 @@ export const CariEmanetDekontPage: React.FC = () => {
                               onKeyDown={(e) => handleCellKeyDown(e, "sol", idx, "meblag")}
                               style={{
                                 width: "100%",
-                                height: "22px",
-                                border: "none",
+                                height: "24px",
+                                border:
+                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                    ? "1.5px solid #dc2626"
+                                    : "none",
+                                borderRadius: row.paraKodu && (!row.meblag || Number(row.meblag) <= 0) ? "2px" : "0",
                                 outline: "none",
                                 padding: "0 6px",
-                                fontSize: "12.5px",
+                                fontSize: "12px",
                                 textAlign: "right",
-                                fontWeight: 500,
-                                color: "#0f172a",
-                                backgroundColor: "transparent",
+                                fontWeight: 600,
+                                color:
+                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                    ? "#b91c1c"
+                                    : "#0f172a",
+                                backgroundColor:
+                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                    ? "#fef2f2"
+                                    : "transparent",
+                                boxShadow:
+                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                    ? "inset 0 0 0 1px #dc2626"
+                                    : "none",
                               }}
                             />
                           </td>
 
                           {/* 3. Çapraz kur / Has / Kur */}
-                          <td style={{ padding: 0, borderRight: "1px solid #e0e0e0" }}>
+                          <td style={{ padding: 0, borderRight: "1px solid #e2e8f0" }}>
                             <input
                               id={`grid-input-sol-${idx}-kur`}
                               type="text"
@@ -2171,11 +2909,11 @@ export const CariEmanetDekontPage: React.FC = () => {
                               onKeyDown={(e) => handleCellKeyDown(e, "sol", idx, "kur")}
                               style={{
                                 width: "100%",
-                                height: "22px",
+                                height: "24px",
                                 border: "none",
                                 outline: "none",
                                 padding: "0 6px",
-                                fontSize: "12.5px",
+                                fontSize: "12px",
                                 textAlign: "right",
                                 fontWeight: 500,
                                 color: "#0f172a",
@@ -2190,15 +2928,18 @@ export const CariEmanetDekontPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Dip Toplam (Satır Ekle butonu kaldırıldı, Enter tuşu ile çapraz kurdayken otomatik eklenir) */}
-              <div className="d-flex align-items-center justify-content-end mt-2 pt-2 border-top">
+              {/* Dip Toplam */}
+              <div className="d-flex align-items-center justify-content-between mt-1.5 pt-1.5 border-top">
+                <span className="small text-muted" style={{ fontSize: "11px" }}>
+                  {solSatirlar.filter((r) => r.paraKodu || r.meblag).length} kalem
+                </span>
                 <div className="d-flex align-items-center gap-2">
                   <span className="fw-semibold text-dark" style={{ fontSize: "12px" }}>
-                    {dipToplamLabel}
+                    {dipToplamLabel}:
                   </span>
                   <span
-                    className="fw-bold font-monospace text-dark px-2.5 py-1 border bg-light"
-                    style={{ fontSize: "13px", minWidth: "100px", textAlign: "right", borderRadius: "4px" }}
+                    className="fw-bold font-monospace text-primary px-2.5 py-0.5 border rounded bg-light"
+                    style={{ fontSize: "13px", minWidth: "110px", textAlign: "right" }}
                   >
                     {formatNumberDisplay(solBazToplam)}
                   </span>
@@ -2210,146 +2951,146 @@ export const CariEmanetDekontPage: React.FC = () => {
           {/* ===================== SAĞ PANEL ===================== */}
           <Col xs={12} lg={6}>
             <div
-              className="p-3 bg-white h-100 d-flex flex-column justify-content-between"
+              className="p-2 bg-white h-100 d-flex flex-column justify-content-between rounded border shadow-2xs"
               style={{
-                border: "1.5px solid #64748b",
-                borderRadius: "8px",
-                boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.08), 0 1px 3px -1px rgba(15, 23, 42, 0.06)",
+                borderColor: "#94a3b8",
+                borderWidth: "1.5px",
               }}
             >
-              {/* Kod ve Ad Alanları */}
-              <div className="mb-2">
-                <div className="d-flex align-items-center mb-1">
-                  <span className="small text-dark me-2" style={{ width: "35px" }}>
-                    Kod
-                  </span>
-                  <InputGroup size="sm" style={{ height: "23px", maxWidth: "260px" }}>
-                    <Form.Control
-                      value={panelRoles.sag.kod}
-                      onChange={(e) => {
-                        if (panelRoles.sag.cariTarget === "cari1") setCariKod(e.target.value);
-                        else if (panelRoles.sag.cariTarget === "cari2") setCari2Kod(e.target.value);
-                      }}
-                      readOnly={panelRoles.sag.isVezne}
-                      style={{
-                        height: "23px",
-                        fontSize: "12px",
-                        border: "1px solid #7f9db9",
-                        borderRadius: "2px 0 0 2px",
-                        backgroundColor: "#ffffff",
-                        padding: "0 6px",
-                      }}
-                    />
-                    <Button
-                      variant="light"
-                      className="p-0 px-1 border border-start-0 d-flex align-items-center justify-content-center"
-                      style={{ borderColor: "#7f9db9", height: "23px" }}
-                      onClick={() => {
-                        if (panelRoles.sag.isVezne) setShowVezneLookup(true);
-                        else if (panelRoles.sag.cariTarget === "cari2") setShowCariLookupTarget("cari2");
-                        else setShowCariLookupTarget("cari1");
-                      }}
-                      title="Ara"
-                    >
-                      <IconBinoculars size={13} />
-                    </Button>
-                  </InputGroup>
-                </div>
-
-                <div className="d-flex align-items-center">
-                  <span className="small text-dark me-2" style={{ width: "35px" }}>
-                    Ad
-                  </span>
-                  <InputGroup size="sm" style={{ height: "23px" }}>
-                    <Form.Control
-                      value={panelRoles.sag.ad}
-                      onChange={(e) => {
-                        if (panelRoles.sag.cariTarget === "cari1") setCariAd(e.target.value);
-                        else if (panelRoles.sag.cariTarget === "cari2") setCari2Ad(e.target.value);
-                      }}
-                      readOnly={panelRoles.sag.isVezne}
-                      style={{
-                        height: "23px",
-                        fontSize: "12px",
-                        border: "1px solid #7f9db9",
-                        borderRadius: "2px 0 0 2px",
-                        backgroundColor: "#ffffff",
-                        padding: "0 6px",
-                      }}
-                    />
-                    <Button
-                      variant="light"
-                      className="p-0 px-1 border border-start-0 d-flex align-items-center justify-content-center"
-                      style={{ borderColor: "#7f9db9", height: "23px" }}
-                      onClick={() => {
-                        if (panelRoles.sag.isVezne) setShowVezneLookup(true);
-                        else if (panelRoles.sag.cariTarget === "cari2") setShowCariLookupTarget("cari2");
-                        else setShowCariLookupTarget("cari1");
-                      }}
-                      title="Ara"
-                    >
-                      <IconBinoculars size={13} />
-                    </Button>
-                  </InputGroup>
-                </div>
-              </div>
-
-              {/* Tablo Konteyneri - Düzgün kenarlık ve estetik görünüm */}
-              <div
-                style={{
-                  border: "1px solid #7f9db9",
-                  borderRadius: "6px",
-                  overflow: "hidden",
-                  backgroundColor: "#ffffff",
-                }}
-              >
+              {/* Üst Şerit: Başlık Ribbon + Kod & Ad Tek Satırda */}
+              <div className="mb-1.5 rounded overflow-hidden border" style={{ borderColor: "#cbd5e1" }}>
                 {/* Pembe / Normal Başlık Şeridi */}
                 <div
-                  className="w-100 text-center fw-bold text-nowrap"
+                  className="w-100 text-center fw-bold text-nowrap text-uppercase"
                   style={{
-                    height: "24px",
-                    lineHeight: "24px",
+                    height: "25px",
+                    lineHeight: "25px",
                     fontSize: "12px",
-                    backgroundColor: panelRoles.sag.isPink ? "#ff66cc" : "#f1f5f9",
+                    backgroundColor: panelRoles.sag.isPink ? "#ff66cc" : "#e2e8f0",
                     color: "#000000",
-                    letterSpacing: "0.5px",
-                    borderBottom: "1px solid #7f9db9",
+                    letterSpacing: "0.8px",
+                    borderBottom: "1px solid #cbd5e1",
                   }}
                 >
                   {panelRoles.sag.title}
                 </div>
 
-                {/* Grid Tablosu */}
+                {/* Kod ve Ad Alanları (Tek satırda, yan yana) */}
+                <div className="d-flex align-items-center gap-2 p-1.5 bg-light">
+                  <div className="d-flex align-items-center gap-1" style={{ minWidth: "150px", maxWidth: "180px" }}>
+                    <span className="small fw-semibold text-secondary" style={{ fontSize: "11.5px" }}>Kod:</span>
+                    <InputGroup size="sm" style={{ height: "24px" }}>
+                      <Form.Control
+                        id="sagPanelKodInput"
+                        value={panelRoles.sag.kod}
+                        onChange={(e) => {
+                          if (panelRoles.sag.cariTarget === "cari1") setCariKod(e.target.value);
+                          else if (panelRoles.sag.cariTarget === "cari2") setCari2Kod(e.target.value);
+                        }}
+                        onKeyDown={(e) => handleHeaderKeyDown(e, "sagPanelKodInput")}
+                        readOnly={panelRoles.sag.isVezne}
+                        style={{
+                          height: "24px",
+                          fontSize: "11.5px",
+                          padding: "0 6px",
+                          backgroundColor: panelRoles.sag.isVezne ? "#f8fafc" : "#ffffff",
+                        }}
+                      />
+                      <Button
+                        variant="light"
+                        className="p-0 px-1 border border-start-0 d-flex align-items-center justify-content-center"
+                        style={{ height: "24px" }}
+                        onClick={() => {
+                          if (panelRoles.sag.isVezne) setShowVezneLookup(true);
+                          else if (panelRoles.sag.cariTarget === "cari2") setShowCariLookupTarget("cari2");
+                          else setShowCariLookupTarget("cari1");
+                        }}
+                        title="Ara"
+                      >
+                        <IconBinoculars size={13} />
+                      </Button>
+                    </InputGroup>
+                  </div>
+
+                  <div className="d-flex align-items-center gap-1 flex-grow-1">
+                    <span className="small fw-semibold text-secondary" style={{ fontSize: "11.5px" }}>Ad:</span>
+                    <InputGroup size="sm" style={{ height: "24px" }}>
+                      <Form.Control
+                        id="sagPanelAdInput"
+                        value={panelRoles.sag.ad}
+                        onChange={(e) => {
+                          if (panelRoles.sag.cariTarget === "cari1") setCariAd(e.target.value);
+                          else if (panelRoles.sag.cariTarget === "cari2") setCari2Ad(e.target.value);
+                        }}
+                        onKeyDown={(e) => handleHeaderKeyDown(e, "sagPanelAdInput")}
+                        readOnly={panelRoles.sag.isVezne}
+                        style={{
+                          height: "24px",
+                          fontSize: "11.5px",
+                          padding: "0 6px",
+                          backgroundColor: panelRoles.sag.isVezne ? "#f8fafc" : "#ffffff",
+                        }}
+                      />
+                      <Button
+                        variant="light"
+                        className="p-0 px-1 border border-start-0 d-flex align-items-center justify-content-center"
+                        style={{ height: "24px" }}
+                        onClick={() => {
+                          if (panelRoles.sag.isVezne) setShowVezneLookup(true);
+                          else if (panelRoles.sag.cariTarget === "cari2") setShowCariLookupTarget("cari2");
+                          else setShowCariLookupTarget("cari1");
+                        }}
+                        title="Ara"
+                      >
+                        <IconBinoculars size={13} />
+                      </Button>
+                    </InputGroup>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tablo Konteyneri */}
+              <div
+                style={{
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "4px",
+                  overflow: "hidden",
+                  backgroundColor: "#ffffff",
+                }}
+              >
                 <div
                   style={{
-                    minHeight: "220px",
-                    maxHeight: "320px",
+                    minHeight: "100px",
+                    maxHeight: "350px",
                     overflowY: "auto",
                   }}
                 >
                   <table
                     className="w-100"
+                    data-table-type="sag"
                     style={{
                       borderCollapse: "collapse",
-                      fontSize: "12.5px",
+                      fontSize: "12px",
                       color: "#000000",
                     }}
                   >
                     <thead>
                       <tr
                         style={{
-                          backgroundColor: "#b8d7fe",
-                          height: "24px",
-                          color: "#0f3e74",
+                          backgroundColor: "#dbeafe",
+                          height: "25px",
+                          color: "#1e3a8a",
                           textAlign: "center",
                           position: "sticky",
                           top: 0,
                           zIndex: 1,
+                          borderBottom: "1px solid #93c5fd",
+                          fontWeight: 700,
                         }}
                       >
-                        <th style={{ width: "100px", padding: "1px 4px", borderRight: "1px solid #8ab8ee" }}>SMB</th>
-                        <th style={{ width: "150px", padding: "1px 6px", borderRight: "1px solid #8ab8ee" }}>Miktar</th>
-                        <th style={{ padding: "1px 6px" }}>{col3Header}</th>
+                        <th style={{ width: "95px", padding: "2px 4px", borderRight: "1px solid #bfdbfe" }}>SMB</th>
+                        <th style={{ width: "140px", padding: "2px 6px", borderRight: "1px solid #bfdbfe" }}>Miktar</th>
+                        <th style={{ padding: "2px 6px" }}>{col3Header}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2357,10 +3098,11 @@ export const CariEmanetDekontPage: React.FC = () => {
                         <tr
                           key={row.id}
                           data-row-id={row.id}
+                          data-table-type="sag"
                           style={{
-                            height: "24px",
-                            borderBottom: "1px solid #e0e0e0",
-                            backgroundColor: idx === selectedSagIndex && activeSide === "sag" ? "#f1f5f9" : idx === selectedSagIndex ? "#f8fafc" : "#ffffff",
+                            height: "25px",
+                            borderBottom: "1px solid #e2e8f0",
+                            backgroundColor: idx === selectedSagIndex && activeSide === "sag" ? "#eff6ff" : idx === selectedSagIndex ? "#f8fafc" : "#ffffff",
                           }}
                           onClick={() => {
                             setSelectedSagIndex(idx);
@@ -2369,7 +3111,7 @@ export const CariEmanetDekontPage: React.FC = () => {
                           }}
                         >
                           {/* 1. SMB */}
-                          <td style={{ padding: 0, borderRight: "1px solid #e0e0e0" }}>
+                          <td style={{ padding: 0, borderRight: "1px solid #e2e8f0" }}>
                             <div className="d-flex align-items-center">
                               <input
                                 id={`grid-input-sag-${idx}-smb`}
@@ -2377,9 +3119,6 @@ export const CariEmanetDekontPage: React.FC = () => {
                                 value={row.paraKodu || ""}
                                 onChange={(e) => {
                                   const val = e.target.value.toUpperCase();
-                                  setSmbSearchTerm(val);
-                                  setSmbSuggestIndex(0);
-                                  setActiveSmbSuggest({ side: "sag", index: idx });
                                   handleGridChange("sag", idx, "paraKodu", val);
                                 }}
                                 onFocus={() => {
@@ -2387,23 +3126,15 @@ export const CariEmanetDekontPage: React.FC = () => {
                                   setActiveRowIndex(idx);
                                   setSelectedSagIndex(idx);
                                   setActiveField("smb");
-                                  setSmbSearchTerm(row.paraKodu || "");
-                                  setSmbSuggestIndex(0);
-                                  setActiveSmbSuggest({ side: "sag", index: idx });
-                                }}
-                                onBlur={() => {
-                                  setTimeout(() => {
-                                    setActiveSmbSuggest((curr) => (curr?.side === "sag" && curr?.index === idx ? null : curr));
-                                  }, 220);
                                 }}
                                 onKeyDown={(e) => handleCellKeyDown(e, "sag", idx, "smb")}
                                 style={{
                                   width: "100%",
-                                  height: "22px",
+                                  height: "24px",
                                   border: "none",
                                   outline: "none",
                                   padding: "0 4px",
-                                  fontSize: "12.5px",
+                                  fontSize: "12px",
                                   fontWeight: 600,
                                   color: "#0f172a",
                                   backgroundColor: "transparent",
@@ -2422,7 +3153,13 @@ export const CariEmanetDekontPage: React.FC = () => {
                           </td>
 
                           {/* 2. Miktar */}
-                          <td style={{ padding: 0, borderRight: "1px solid #e0e0e0" }}>
+                          <td
+                            style={{
+                              padding: 0,
+                              borderRight: "1px solid #e2e8f0",
+                              backgroundColor: row.paraKodu && (!row.meblag || Number(row.meblag) <= 0) ? "#fef2f2" : "transparent",
+                            }}
+                          >
                             <input
                               id={`grid-input-sag-${idx}-meblag`}
                               type="text"
@@ -2443,21 +3180,35 @@ export const CariEmanetDekontPage: React.FC = () => {
                               onKeyDown={(e) => handleCellKeyDown(e, "sag", idx, "meblag")}
                               style={{
                                 width: "100%",
-                                height: "22px",
-                                border: "none",
+                                height: "24px",
+                                border:
+                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                    ? "1.5px solid #dc2626"
+                                    : "none",
+                                borderRadius: row.paraKodu && (!row.meblag || Number(row.meblag) <= 0) ? "2px" : "0",
                                 outline: "none",
                                 padding: "0 6px",
-                                fontSize: "12.5px",
+                                fontSize: "12px",
                                 textAlign: "right",
-                                fontWeight: 500,
-                                color: "#0f172a",
-                                backgroundColor: "transparent",
+                                fontWeight: 600,
+                                color:
+                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                    ? "#b91c1c"
+                                    : "#0f172a",
+                                backgroundColor:
+                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                    ? "#fef2f2"
+                                    : "transparent",
+                                boxShadow:
+                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                    ? "inset 0 0 0 1px #dc2626"
+                                    : "none",
                               }}
                             />
                           </td>
 
                           {/* 3. Çapraz kur / Has / Kur */}
-                          <td style={{ padding: 0, borderRight: "1px solid #e0e0e0" }}>
+                          <td style={{ padding: 0, borderRight: "1px solid #e2e8f0" }}>
                             <input
                               id={`grid-input-sag-${idx}-kur`}
                               type="text"
@@ -2487,11 +3238,11 @@ export const CariEmanetDekontPage: React.FC = () => {
                               onKeyDown={(e) => handleCellKeyDown(e, "sag", idx, "kur")}
                               style={{
                                 width: "100%",
-                                height: "22px",
+                                height: "24px",
                                 border: "none",
                                 outline: "none",
                                 padding: "0 6px",
-                                fontSize: "12.5px",
+                                fontSize: "12px",
                                 textAlign: "right",
                                 fontWeight: 500,
                                 color: "#0f172a",
@@ -2506,15 +3257,18 @@ export const CariEmanetDekontPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Dip Toplam (Satır Ekle butonu kaldırıldı, Enter tuşu ile çapraz kurdayken otomatik eklenir) */}
-              <div className="d-flex align-items-center justify-content-end mt-2 pt-2 border-top">
+              {/* Dip Toplam */}
+              <div className="d-flex align-items-center justify-content-between mt-1.5 pt-1.5 border-top">
+                <span className="small text-muted" style={{ fontSize: "11px" }}>
+                  {sagSatirlar.filter((r) => r.paraKodu || r.meblag).length} kalem
+                </span>
                 <div className="d-flex align-items-center gap-2">
                   <span className="fw-semibold text-dark" style={{ fontSize: "12px" }}>
-                    {dipToplamLabel}
+                    {dipToplamLabel}:
                   </span>
                   <span
-                    className="fw-bold font-monospace text-dark px-2.5 py-1 border bg-light"
-                    style={{ fontSize: "13px", minWidth: "100px", textAlign: "right", borderRadius: "4px" }}
+                    className="fw-bold font-monospace text-primary px-2.5 py-0.5 border rounded bg-light"
+                    style={{ fontSize: "13px", minWidth: "110px", textAlign: "right" }}
                   >
                     {formatNumberDisplay(sagBazToplam)}
                   </span>
@@ -2524,41 +3278,53 @@ export const CariEmanetDekontPage: React.FC = () => {
           </Col>
         </Row>
 
-        {/* 4. Alt Kısım: Ref No (En alttaki kaydet butonu kaldırıldı, üstteki kaydet ikonu veya F1 kullanılır) */}
-        <div className="d-flex align-items-center justify-content-between mt-2 pt-2 border-top">
-          <div className="d-flex align-items-center">
-            <span className="small text-dark me-2" style={{ width: "50px" }}>
-              Ref no
+        {/* 4. Alt Kısım: Ref No & Bakiye Farkı / Denge Kontrolü */}
+        <div className="d-flex align-items-center justify-content-between mt-2 pt-1.5 border-top bg-white p-2 rounded border">
+          <div className="d-flex align-items-center gap-2">
+            <span className="small fw-semibold text-secondary" style={{ fontSize: "12px" }}>
+              Ref No:
             </span>
             <Form.Control
               size="sm"
               value={refNo}
               onChange={(e) => setRefNo(e.target.value)}
               style={{
-                height: "25px",
+                height: "26px",
                 width: "160px",
-                fontSize: "12.5px",
-                border: "1px solid #7f9db9",
-                borderRadius: "2px",
+                fontSize: "12px",
               }}
             />
           </div>
 
-          <div className="text-muted small">
+          <div className="d-flex align-items-center gap-2">
+            {(solBazToplam > 0 || sagBazToplam > 0) && (
+              Math.abs(solBazToplam - sagBazToplam) < 0.005 ? (
+                <span className="badge bg-success-subtle text-success border border-success-subtle px-2.5 py-1 fw-bold font-monospace" style={{ fontSize: "11.5px" }}>
+                  ✓ DENGEDE (Fark: 0.00)
+                </span>
+              ) : (
+                <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-2.5 py-1 fw-bold font-monospace" style={{ fontSize: "11.5px" }}>
+                  Fark: {formatNumberDisplay(Math.abs(solBazToplam - sagBazToplam))}
+                </span>
+              )
+            )}
+          </div>
+
+          <div className="text-muted small" style={{ fontSize: "11.5px" }}>
             Kaydetmek için üst araç çubuğundaki <IconDeviceFloppy size={14} className="align-text-bottom text-primary" /> simgesini veya <strong>F1</strong> tuşunu kullanabilirsiniz.
           </div>
         </div>
 
-        {/* 5. Alt Cyan Durum Çubuğu (Görseldeki Gibi Kısayol Tuşları) */}
+        {/* 5. Alt Cyan Durum Çubuğu (Kısayol Tuşları) */}
         <div
-          className="w-100 text-center text-nowrap fw-semibold mt-2 px-2"
+          className="w-100 text-center text-nowrap fw-semibold mt-1.5 px-2"
           style={{
             height: "24px",
             lineHeight: "24px",
             backgroundColor: "#d5f3fe",
             color: "#0369a1",
             fontSize: "11.5px",
-            borderRadius: "2px",
+            borderRadius: "4px",
             border: "1px solid #bae6fd",
             userSelect: "none",
           }}
@@ -2587,14 +3353,16 @@ export const CariEmanetDekontPage: React.FC = () => {
           <span className="me-3">
             <strong>F10)</strong> Kes
           </span>
-          <span
-            className="cursor-pointer text-success fw-bold"
-            onClick={handleNew}
-            style={{ cursor: "pointer" }}
-            title="Yeni Kayıt (Ctrl+N)"
-          >
-            <strong>Ctrl+N)</strong> Yeni Kayıt
-          </span>
+          {!isDuzeltmeMode && (
+            <span
+              className="cursor-pointer text-success fw-bold"
+              onClick={handleNew}
+              style={{ cursor: "pointer" }}
+              title="Yeni Kayıt (Ctrl+N)"
+            >
+              <strong>Ctrl+N)</strong> Yeni Kayıt
+            </span>
+          )}
         </div>
       </div>
 
@@ -2660,6 +3428,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         onHide={() => setShowCariLookupTarget(null)}
         title="Cari Hesap Seçimi"
         searchPlaceholder="Cari kodu, adı veya telefonu ile ara..."
+        initialSearchTerm={showCariLookupTarget === "cari2" ? (cari2Kod || "") : (cariInputText || cariKod || "")}
         items={cariList}
         isLoading={isLoadingLookups}
         filterFn={(item, term) => {
@@ -2692,6 +3461,10 @@ export const CariEmanetDekontPage: React.FC = () => {
             setCari2Kod(c.kod);
             setCari2Ad(c.ad);
             setCari2Telefon(c.telefon || "");
+            setTimeout(() => {
+              const teslimEl = document.getElementById("teslimAlanInput");
+              teslimEl?.focus();
+            }, 60);
           } else {
             handleSelectCari(c);
           }
@@ -2705,6 +3478,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         onHide={() => setShowOncekiLookupModal(false)}
         title="Önceki Dekont / Fiş Kaydı Seçimi"
         searchPlaceholder="Dekont no, cari veya tarih ile ara..."
+        initialSearchTerm={oncekiInputText || ""}
         items={savedDekonts}
         isLoading={isLoadingLookups}
         filterFn={(item, term) => {
@@ -2779,6 +3553,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         onHide={() => setShowParaLookupTarget(null)}
         title="Para Birimi / Maden Seçimi"
         searchPlaceholder="Sembol (USD, EUR, HAS...) veya ad ile ara..."
+        initialSearchTerm={showParaLookupTarget ? ((showParaLookupTarget.side === "sol" ? solSatirlar[showParaLookupTarget.index]?.paraKodu : sagSatirlar[showParaLookupTarget.index]?.paraKodu) || "") : ""}
         items={paraList}
         isLoading={isLoadingLookups}
         filterFn={(item, term) => {
@@ -2843,106 +3618,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* 6. SMB Floating Suggestion Dropdown (Table taşmalarından ve scrollbar'dan asla etkilenmeyen fixed popup) */}
-      {activeSmbSuggest && smbSuggestions.length > 0 && suggestDropdownPos && (
-        <div
-          style={{
-            position: "fixed",
-            top: suggestDropdownPos.top,
-            left: suggestDropdownPos.left,
-            width: suggestDropdownPos.width,
-            maxHeight: "240px",
-            overflowY: "auto",
-            backgroundColor: "#ffffff",
-            border: "1.5px solid #2563eb",
-            boxShadow: "0 10px 25px -3px rgba(0, 0, 0, 0.25), 0 4px 6px -2px rgba(0, 0, 0, 0.1)",
-            zIndex: 99999,
-            borderRadius: "6px",
-          }}
-        >
-          <div
-            style={{
-              padding: "4px 8px",
-              backgroundColor: "#f1f5f9",
-              borderBottom: "1px solid #e2e8f0",
-              fontSize: "11px",
-              fontWeight: 700,
-              color: "#475569",
-              display: "flex",
-              justifyContent: "space-between",
-            }}
-          >
-            <span>DÖVİZ / MADEN SEÇİMİ</span>
-            <span>PARİTE (KUR)</span>
-          </div>
-          {smbSuggestions.map((p, pIdx) => {
-            const isSelected = pIdx === smbSuggestIndex;
-            const pariteVal = p.parite != null ? p.parite : (p.kur != null ? Number(p.kur) : 1.0);
-            return (
-              <div
-                id={`smb-suggest-item-${pIdx}`}
-                key={p.id}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  handleSelectParaForRow(activeSmbSuggest.side, activeSmbSuggest.index, p);
-                }}
-                style={{
-                  padding: "6px 8px",
-                  cursor: "pointer",
-                  fontSize: "12px",
-                  backgroundColor: isSelected ? "#2563eb" : pIdx % 2 === 0 ? "#ffffff" : "#f8fafc",
-                  color: isSelected ? "#ffffff" : "#0f172a",
-                  borderBottom: "1px solid #f1f5f9",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-                onMouseEnter={() => setSmbSuggestIndex(pIdx)}
-              >
-                <div className="d-flex align-items-center gap-2" style={{ overflow: "hidden" }}>
-                  <span
-                    style={{
-                      fontWeight: 700,
-                      fontFamily: "monospace",
-                      fontSize: "12px",
-                      backgroundColor: isSelected ? "#1d4ed8" : "#e0e7ff",
-                      color: isSelected ? "#ffffff" : "#1e40af",
-                      padding: "1px 5px",
-                      borderRadius: "3px",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {p.kod}
-                  </span>
-                  <span
-                    style={{
-                      fontWeight: 500,
-                      color: isSelected ? "#ffffff" : "#334155",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {p.ad}
-                  </span>
-                </div>
-                <span
-                  style={{
-                    fontSize: "11.5px",
-                    fontFamily: "monospace",
-                    fontWeight: 600,
-                    color: isSelected ? "#fef08a" : "#059669",
-                    marginLeft: "8px",
-                    flexShrink: 0,
-                  }}
-                >
-                  {pariteVal.toFixed(4)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+
     </div>
   );
 };

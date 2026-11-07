@@ -6830,10 +6830,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const h = (e: KeyboardEvent) => {
       const isCtrlN = isCtrlNEvent(e);
       if (isCtrlN) {
-        e.preventDefault();
-        e.stopPropagation();
-        closeAllModals();
-        handleNew();
+        if (!isDuzeltmeMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeAllModals();
+          handleNew();
+        }
         return;
       }
 
@@ -7064,7 +7066,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       <ERPToolbar
         disableShortcuts
         pageTitle={displayTitle}
-        onNew={handleNew}
+        onNew={isDuzeltmeMode ? undefined : handleNew}
+        hideNew={isDuzeltmeMode}
         onSave={() => handleSave(false, false)}
         onSearch={isDuzeltmeMode ? handleOpenFisModal : undefined}
         onDetailSearch={openDetayModal}

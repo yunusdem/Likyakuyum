@@ -1,0 +1,87 @@
+import { MobilFirmaSqlRepository } from "../../models/mobilFirmaSql.repository.js";
+import { ApiError } from "../../utils/ApiError.js";
+import { BOS_MAKAS, birimAdi, makasBosMu, makasDuzenle, makasUygula } from "./mobilKural.js";
+export class MobilFiyatService {
+    /** Carinin gördüğü liste: firmanın seçtiği ürünler, son fiyat ± cariye özel makas */
+    static async liste(ctx, cariKartId) {
+        const [urunler, son, makaslar, ondalik] = await Promise.all([
+            MobilFirmaSqlRepository.paraUrunleri(ctx),
+            MobilFirmaSqlRepository.sonFiyatlar(ctx),
+            MobilFirmaSqlRepository.cariMakaslari(ctx, cariKartId),
+            MobilFirmaSqlRepository.kurOndalik(ctx),
+        ]);
+        const satirlar = [];
+        for (const u of urunler.filter((x) => x.secili)) {
+            const f = son.fiyatlar.get(u.urunId);
+            if (!f)
+                continue;
+            const s = makasUygula(f, makaslar.get(u.urunId), ondalik);
+            if (s.alis === null && s.satis === null)
+                continue;
+            satirlar.push({ urunId: u.urunId, kod: u.kod, ad: u.ad, birim: birimAdi(u.urunTipi, u.birim, u.kod), alis: s.alis, satis: s.satis });
+        }
+        return { zaman: son.zaman, urunler: satirlar };
+    }
+    /** Tek ürünün o anki fiyatı (emir için) */
+    static async urunFiyati(ctx, cariKartId, urunId) {
+        const l = await this.liste(ctx, cariKartId);
+        const satir = l.urunler.find((u) => u.urunId === urunId);
+        return satir ? { satir, zaman: l.zaman } : null;
+    }
+    // ------------------------------------------------------------------ Firma tarafı ---
+    static urunler(ctx) {
+        return MobilFirmaSqlRepository.paraUrunleri(ctx);
+    }
+    static async urunSecimiYaz(ctx, g) {
+        const ids = Array.isArray(g?.urunIdleri) ? g.urunIdleri.map((x) => Number(x)) : [];
+        if (ids.some((x) => !Number.isInteger(x) || x <= 0))
+            throw ApiError.badRequest("Ürün listesi geçersiz.");
+        if (new Set(ids).size !== ids.length)
+            throw ApiError.badRequest("Aynı ürün iki kez seçilmiş.");
+        const gecerli = new Set((await MobilFirmaSqlRepository.paraUrunleri(ctx)).map((u) => u.urunId));
+        const yok = ids.find((x) => !gecerli.has(x));
+        if (yok)
+            throw ApiError.badRequest(`Ürün bulunamadı: ${yok}`);
+        await MobilFirmaSqlRepository.urunSecimiYaz(ctx, "PARA", ids);
+        return MobilFirmaSqlRepository.paraUrunleri(ctx);
+    }
+    /** Cari kartı › makas tablosu: mobilde görünen ürünler, liste fiyatı, makas ve carinin göreceği sonuç (K29) */
+    static async cariMakas(ctx, cariKartId) {
+        const [urunler, son, makaslar, ondalik] = await Promise.all([
+            MobilFirmaSqlRepository.paraUrunleri(ctx),
+            MobilFirmaSqlRepository.sonFiyatlar(ctx),
+            MobilFirmaSqlRepository.cariMakaslari(ctx, cariKartId),
+            MobilFirmaSqlRepository.kurOndalik(ctx),
+        ]);
+        const satirlar = urunler
+            .filter((u) => u.secili || makaslar.has(u.urunId))
+            .map((u) => {
+            const liste = son.fiyatlar.get(u.urunId) || { alis: null, satis: null };
+            const makas = makaslar.get(u.urunId) || { ...BOS_MAKAS };
+            return { urunId: u.urunId, kod: u.kod, ad: u.ad, birim: birimAdi(u.urunTipi, u.birim, u.kod), liste, makas, sonuc: makasUygula(liste, makas, ondalik) };
+        });
+        return { zaman: son.zaman, ondalik, satirlar };
+    }
+    static async cariMakasYaz(ctx, cariKartId, g, kim) {
+        if (!(await MobilFirmaSqlRepository.cari(ctx, cariKartId)))
+            throw ApiError.notFound("Cari kart bulunamadı.");
+        const ham = Array.isArray(g?.satirlar) ? g.satirlar : [];
+        const gecerli = new Set((await MobilFirmaSqlRepository.paraUrunleri(ctx)).map((u) => u.urunId));
+        const satirlar = [];
+        for (const s of ham) {
+            const urunId = Number(s?.urunId);
+            if (!gecerli.has(urunId))
+                throw ApiError.badRequest(`Ürün bulunamadı: ${s?.urunId}`);
+            const { makas, hata } = makasDuzenle(s);
+            if (hata)
+                throw ApiError.badRequest(hata);
+            if (!makasBosMu(makas))
+                satirlar.push({ urunId, makas });
+        }
+        if (new Set(satirlar.map((s) => s.urunId)).size !== satirlar.length)
+            throw ApiError.badRequest("Aynı ürün iki kez yazılmış.");
+        void kim;
+        await MobilFirmaSqlRepository.cariMakasYaz(ctx, cariKartId, "PARA", satirlar);
+        return this.cariMakas(ctx, cariKartId);
+    }
+}

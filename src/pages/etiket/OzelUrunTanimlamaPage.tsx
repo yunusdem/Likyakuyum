@@ -1556,9 +1556,11 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCtrlN = isCtrlNEvent(e);
       if (isCtrlN) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleNew();
+        if (!isDuzeltmeMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleNew();
+        }
         return;
       }
 
@@ -2680,7 +2682,8 @@ export const OzelUrunTanimlamaPage: React.FC = () => {
       <ERPToolbar
         pageTitle={isDuzeltmeMode ? "E- Özel Ürün Düzeltme" : "D- Özel Ürün Barkodlama"}
         pageIcon={<IconDiamond size={20} />}
-        onNew={handleNew}
+        onNew={isDuzeltmeMode ? undefined : handleNew}
+        hideNew={isDuzeltmeMode}
         onSave={handleSave}
         onDelete={isDuzeltmeMode ? () => setShowDeleteConfirm(true) : undefined}
         onSearch={isDuzeltmeMode ? () => setShowLookup(true) : undefined}

@@ -168,7 +168,7 @@ export const StokGirisFisiPage: React.FC = () => {
   return (
     <div className="container-fluid p-2">
       <ERPToolbar pageTitle={id ? `D- Stok Giriş Fişi — Düzeltme (${fisNo})` : "D- Stok Giriş Fişi"} pageIcon={<IconPackageImport size={20} />}
-        onNew={() => (id ? navigate("/ticari/stok-giris-fisi") : void temizle())} onSave={() => void kaydet()} onDelete={id ? () => void sil() : undefined}
+        onNew={id ? undefined : () => void temizle()} hideNew={!!id} onSave={() => void kaydet()} onDelete={id ? () => void sil() : undefined}
         hideDelete={!id} hidePrint hideSearch disabled={kaydediliyor} modeText={id ? "Düzeltme Modu" : "Yeni Kayıt Modu"} />
       {yukleniyor ? <div className="text-center py-5"><Spinner size="sm" className="me-2" />Yükleniyor...</div> : (
         <>
