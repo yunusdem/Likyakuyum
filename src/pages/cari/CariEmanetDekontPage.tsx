@@ -41,7 +41,7 @@ import {
 import { KurService } from "../../services/kurService";
 import { useAuth } from "../../context/AuthContext";
 import { printReportTable } from "../../utils/printReport";
-import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
+import { onlyDecimal, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 interface VezneItem {
@@ -320,12 +320,12 @@ export const CariEmanetDekontPage: React.FC = () => {
     return scoredList.map((s) => s.para).slice(0, 15);
   }, [activeSmbSuggest, smbSearchTerm, paraList]);
 
-  // Format Helper for Numbers (Dip Toplamlar için)
+  // Format Helper for Numbers (Dip Toplamlar için - Türkçe standartlarında nokta ile binlik ayırma)
   const formatNumberDisplay = (val: number | string | undefined | null): string => {
-    if (val === "" || val === null || val === undefined) return "0.00";
-    const cleanNum = parseFloat(String(val).replace(/,/g, "."));
-    if (isNaN(cleanNum)) return "0.00";
-    return cleanNum.toLocaleString("en-US", {
+    if (val === "" || val === null || val === undefined) return "0,00";
+    const cleanNum = parseDecimal(val);
+    if (isNaN(cleanNum)) return "0,00";
+    return cleanNum.toLocaleString("tr-TR", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
@@ -365,7 +365,7 @@ export const CariEmanetDekontPage: React.FC = () => {
   // Tekil Satırın Baz Eşdeğerini Hesapla
   const getRowEquivalent = useCallback(
     (row: GridRowState, mutabakat: MutabakatType): number => {
-      const m = parseFloat(String(row.meblag || 0).replace(/,/g, ".")) || 0;
+      const m = parseDecimal(row.meblag);
       if (m === 0) return 0;
 
       if (mutabakat === "capraz") {
@@ -461,7 +461,7 @@ export const CariEmanetDekontPage: React.FC = () => {
 
         return {
           ...rowToBalance,
-          meblag: calculatedMiktar > 0 ? calculatedMiktar : "",
+          meblag: calculatedMiktar > 0 ? formatMiktar(calculatedMiktar) : "",
         };
       });
     },
@@ -508,7 +508,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         if (prev.length <= 1) return prev;
         const filtered = prev.filter((r, idx) => {
           if (idx === 0) return true; // İlk satır daima korunur
-          const isEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || Number(r.meblag) === 0);
+          const isEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || parseDecimal(r.meblag) <= 0);
           if (isEmpty && r.id !== clickedRowId) {
             return false;
           }
@@ -522,7 +522,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         if (prev.length <= 1) return prev;
         const filtered = prev.filter((r, idx) => {
           if (idx === 0) return true; // İlk satır daima korunur
-          const isEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || Number(r.meblag) === 0);
+          const isEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || parseDecimal(r.meblag) <= 0);
           if (isEmpty && r.id !== clickedRowId) {
             return false;
           }
@@ -647,7 +647,7 @@ export const CariEmanetDekontPage: React.FC = () => {
               paraId: s.paraId,
               paraKodu: (s.paraKodu || "").trim(),
               paraAdi: (s.paraAdi || "").trim(),
-              meblag: s.meblag,
+              meblag: s.meblag != null ? formatMiktar(s.meblag) : "",
               hasOrani: s.hasOrani || 1.0,
               hasMiktar: s.hasMiktar,
               kur: s.kur || 1.0,
@@ -889,8 +889,8 @@ export const CariEmanetDekontPage: React.FC = () => {
       };
       rows[index] = updatedRow;
 
-      if (!isLeft && solBazToplam > 0 && (!updatedRow.meblag || Number(updatedRow.meblag) === 0)) {
-        return autoBalanceRow(rows, index, mutabakatTuru, solBazToplam);
+      if (!isLeft && solBazToplam > 0 && (!updatedRow.meblag || parseDecimal(updatedRow.meblag) === 0)) {
+        return autoBalanceRow(rows, index, mutabakatTuru, solBazToplam, solSatirlar);
       }
       return rows;
     });
@@ -1396,7 +1396,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         return;
       } else if (field === "meblag") {
         const row = rows[rowIndex];
-        const isMissing = Boolean(row?.paraKodu && (!row?.meblag || Number(row?.meblag) <= 0));
+        const isMissing = Boolean(row?.paraKodu && (!row?.meblag || parseDecimal(row?.meblag) <= 0));
         if (isMissing) {
           // Miktar girilmemişse kızarsın ve buradan çıkamasın / yeni satır açılmasın
           const meblagEl = document.getElementById(`grid-input-${side}-${rowIndex}-meblag`) as HTMLInputElement | null;
@@ -1405,6 +1405,11 @@ export const CariEmanetDekontPage: React.FC = () => {
             meblagEl.select();
           }
           return;
+        }
+
+        // Değeri nokta ile binlik formatına getir
+        if (row?.meblag) {
+          handleGridChange(side, rowIndex, "meblag", formatMiktar(row.meblag));
         }
 
         const nextEl = document.getElementById(`grid-input-${side}-${rowIndex}-kur`) as HTMLInputElement | null;
@@ -1417,7 +1422,7 @@ export const CariEmanetDekontPage: React.FC = () => {
       } else if (field === "kur") {
         const currentRow = rows[rowIndex];
         const isMissingMeblag = Boolean(
-          currentRow?.paraKodu && (!currentRow?.meblag || Number(currentRow?.meblag) <= 0)
+          currentRow?.paraKodu && (!currentRow?.meblag || parseDecimal(currentRow?.meblag) <= 0)
         );
 
         // 1. Eğer miktar girilmemişse kesinlikle yeni satır açma, miktar hücresine geri dön
@@ -1433,7 +1438,7 @@ export const CariEmanetDekontPage: React.FC = () => {
 
         const isCurrentRowEmpty =
           (!currentRow?.paraKodu || !currentRow?.paraKodu.trim()) &&
-          (!currentRow?.meblag || Number(currentRow?.meblag) <= 0);
+          (!currentRow?.meblag || parseDecimal(currentRow?.meblag) <= 0);
 
         // 2. Eğer aralardaki bir satırdaysak (son satır değilsek), bir alt satıra geç (yeni satır açma)
         if (rowIndex < maxRow) {
@@ -1457,8 +1462,8 @@ export const CariEmanetDekontPage: React.FC = () => {
         // Başa (ilk satıra) dön.
         const hasAnyEmptyOrIncompleteRow = rows.some((r, rIdx) => {
           if (rIdx === rowIndex) return false;
-          const rEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || Number(r.meblag) <= 0);
-          const rMissing = Boolean(r.paraKodu && (!r.meblag || Number(r.meblag) <= 0));
+          const rEmpty = (!r.paraKodu || !r.paraKodu.trim()) && (!r.meblag || parseDecimal(r.meblag) <= 0);
+          const rMissing = Boolean(r.paraKodu && (!r.meblag || parseDecimal(r.meblag) <= 0));
           return rEmpty || rMissing;
         });
 
@@ -1467,7 +1472,7 @@ export const CariEmanetDekontPage: React.FC = () => {
           hasAnyEmptyOrIncompleteRow ||
           !currentRow?.paraKodu ||
           !currentRow?.meblag ||
-          Number(currentRow?.meblag) <= 0
+          parseDecimal(currentRow?.meblag) <= 0
         ) {
           setActiveRowIndex(0);
           if (side === "sol") setSelectedSolIndex(0);
@@ -1764,8 +1769,8 @@ export const CariEmanetDekontPage: React.FC = () => {
       return;
     }
 
-    const validSol = solSatirlar.filter((k) => (parseFloat(String(k.meblag).replace(/,/g, ".")) || 0) > 0);
-    const validSag = sagSatirlar.filter((k) => (parseFloat(String(k.meblag).replace(/,/g, ".")) || 0) > 0);
+    const validSol = solSatirlar.filter((k) => parseDecimal(k.meblag) > 0);
+    const validSag = sagSatirlar.filter((k) => parseDecimal(k.meblag) > 0);
 
     if (validSol.length === 0 && validSag.length === 0) {
       setAlertInfo({
@@ -1781,7 +1786,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         satirNo: seqCounter++,
         tip: 1, // Sol taraf
         paraId: line.paraId || 1,
-        meblag: parseFloat(String(line.meblag).replace(/,/g, ".")) || 0,
+        meblag: parseDecimal(line.meblag),
         hasOrani: parseFloat(String(line.hasOrani).replace(/,/g, ".")) || 1.0,
         kur: parseFloat(String(line.kur).replace(/,/g, ".")) || 1.0,
         giseKuru: parseFloat(String(line.giseKuru).replace(/,/g, ".")) || 1.0,
@@ -1791,7 +1796,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         satirNo: seqCounter++,
         tip: 0, // Sağ taraf
         paraId: line.paraId || 1,
-        meblag: parseFloat(String(line.meblag).replace(/,/g, ".")) || 0,
+        meblag: parseDecimal(line.meblag),
         hasOrani: parseFloat(String(line.hasOrani).replace(/,/g, ".")) || 1.0,
         kur: parseFloat(String(line.kur).replace(/,/g, ".")) || 1.0,
         giseKuru: parseFloat(String(line.giseKuru).replace(/,/g, ".")) || 1.0,
@@ -2828,21 +2833,43 @@ export const CariEmanetDekontPage: React.FC = () => {
                             style={{
                               padding: 0,
                               borderRight: "1px solid #e2e8f0",
-                              backgroundColor: row.paraKodu && (!row.meblag || Number(row.meblag) <= 0) ? "#fef2f2" : "transparent",
+                              backgroundColor: row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0) ? "#fef2f2" : "transparent",
                             }}
                           >
                             <input
                               id={`grid-input-sol-${idx}-meblag`}
                               type="text"
                               inputMode="decimal"
+                              autoComplete="off"
+                              autoCorrect="off"
+                              autoCapitalize="off"
+                              spellCheck={false}
+                              data-lpignore="true"
+                              data-form-type="other"
                               value={row.meblag !== undefined && row.meblag !== null ? String(row.meblag) : ""}
                               onChange={(e) => {
-                                const val = e.target.value.replace(/,/g, ".");
-                                if (val === "" || /^\d*\.?\d*$/.test(val)) {
-                                  handleGridChange("sol", idx, "meblag", val);
+                                const input = e.target;
+                                let rawVal = onlyDecimal(input.value);
+                                if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
+                                  rawVal = rawVal.replace(/^0+/, "") || "0";
+                                }
+                                const isAtEnd = (input.selectionStart ?? rawVal.length) >= rawVal.length - 1;
+                                const formatted = rawVal ? formatMiktar(rawVal) : "";
+                                handleGridChange("sol", idx, "meblag", formatted);
+                                if (isAtEnd) {
+                                  requestAnimationFrame(() => {
+                                    input.setSelectionRange(formatted.length, formatted.length);
+                                  });
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const val = e.target.value.trim();
+                                if (val !== "") {
+                                  handleGridChange("sol", idx, "meblag", formatMiktar(val));
                                 }
                               }}
                               onFocus={() => {
+                                setActiveSmbSuggest(null);
                                 setActiveSide("sol");
                                 setActiveRowIndex(idx);
                                 setSelectedSolIndex(idx);
@@ -2853,25 +2880,25 @@ export const CariEmanetDekontPage: React.FC = () => {
                                 width: "100%",
                                 height: "24px",
                                 border:
-                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                  row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0)
                                     ? "1.5px solid #dc2626"
                                     : "none",
-                                borderRadius: row.paraKodu && (!row.meblag || Number(row.meblag) <= 0) ? "2px" : "0",
+                                borderRadius: row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0) ? "2px" : "0",
                                 outline: "none",
                                 padding: "0 6px",
                                 fontSize: "12px",
                                 textAlign: "right",
                                 fontWeight: 600,
                                 color:
-                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                  row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0)
                                     ? "#b91c1c"
                                     : "#0f172a",
                                 backgroundColor:
-                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                  row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0)
                                     ? "#fef2f2"
                                     : "transparent",
                                 boxShadow:
-                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                  row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0)
                                     ? "inset 0 0 0 1px #dc2626"
                                     : "none",
                               }}
@@ -2884,6 +2911,12 @@ export const CariEmanetDekontPage: React.FC = () => {
                               id={`grid-input-sol-${idx}-kur`}
                               type="text"
                               inputMode="decimal"
+                              autoComplete="off"
+                              autoCorrect="off"
+                              autoCapitalize="off"
+                              spellCheck={false}
+                              data-lpignore="true"
+                              data-form-type="other"
                               readOnly={mutabakatTuru !== "has" && !kurAcik}
                               value={
                                 mutabakatTuru === "has"
@@ -3157,21 +3190,43 @@ export const CariEmanetDekontPage: React.FC = () => {
                             style={{
                               padding: 0,
                               borderRight: "1px solid #e2e8f0",
-                              backgroundColor: row.paraKodu && (!row.meblag || Number(row.meblag) <= 0) ? "#fef2f2" : "transparent",
+                              backgroundColor: row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0) ? "#fef2f2" : "transparent",
                             }}
                           >
                             <input
                               id={`grid-input-sag-${idx}-meblag`}
                               type="text"
                               inputMode="decimal"
+                              autoComplete="off"
+                              autoCorrect="off"
+                              autoCapitalize="off"
+                              spellCheck={false}
+                              data-lpignore="true"
+                              data-form-type="other"
                               value={row.meblag !== undefined && row.meblag !== null ? String(row.meblag) : ""}
                               onChange={(e) => {
-                                const val = e.target.value.replace(/,/g, ".");
-                                if (val === "" || /^\d*\.?\d*$/.test(val)) {
-                                  handleGridChange("sag", idx, "meblag", val);
+                                const input = e.target;
+                                let rawVal = onlyDecimal(input.value);
+                                if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
+                                  rawVal = rawVal.replace(/^0+/, "") || "0";
+                                }
+                                const isAtEnd = (input.selectionStart ?? rawVal.length) >= rawVal.length - 1;
+                                const formatted = rawVal ? formatMiktar(rawVal) : "";
+                                handleGridChange("sag", idx, "meblag", formatted);
+                                if (isAtEnd) {
+                                  requestAnimationFrame(() => {
+                                    input.setSelectionRange(formatted.length, formatted.length);
+                                  });
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const val = e.target.value.trim();
+                                if (val !== "") {
+                                  handleGridChange("sag", idx, "meblag", formatMiktar(val));
                                 }
                               }}
                               onFocus={() => {
+                                setActiveSmbSuggest(null);
                                 setActiveSide("sag");
                                 setActiveRowIndex(idx);
                                 setSelectedSagIndex(idx);
@@ -3182,25 +3237,25 @@ export const CariEmanetDekontPage: React.FC = () => {
                                 width: "100%",
                                 height: "24px",
                                 border:
-                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                  row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0)
                                     ? "1.5px solid #dc2626"
                                     : "none",
-                                borderRadius: row.paraKodu && (!row.meblag || Number(row.meblag) <= 0) ? "2px" : "0",
+                                borderRadius: row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0) ? "2px" : "0",
                                 outline: "none",
                                 padding: "0 6px",
                                 fontSize: "12px",
                                 textAlign: "right",
                                 fontWeight: 600,
                                 color:
-                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                  row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0)
                                     ? "#b91c1c"
                                     : "#0f172a",
                                 backgroundColor:
-                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                  row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0)
                                     ? "#fef2f2"
                                     : "transparent",
                                 boxShadow:
-                                  row.paraKodu && (!row.meblag || Number(row.meblag) <= 0)
+                                  row.paraKodu && (!row.meblag || parseDecimal(row.meblag) <= 0)
                                     ? "inset 0 0 0 1px #dc2626"
                                     : "none",
                               }}
@@ -3213,6 +3268,12 @@ export const CariEmanetDekontPage: React.FC = () => {
                               id={`grid-input-sag-${idx}-kur`}
                               type="text"
                               inputMode="decimal"
+                              autoComplete="off"
+                              autoCorrect="off"
+                              autoCapitalize="off"
+                              spellCheck={false}
+                              data-lpignore="true"
+                              data-form-type="other"
                               readOnly={mutabakatTuru !== "has" && !kurAcik}
                               value={
                                 mutabakatTuru === "has"
@@ -3300,7 +3361,7 @@ export const CariEmanetDekontPage: React.FC = () => {
             {(solBazToplam > 0 || sagBazToplam > 0) && (
               Math.abs(solBazToplam - sagBazToplam) < 0.005 ? (
                 <span className="badge bg-success-subtle text-success border border-success-subtle px-2.5 py-1 fw-bold font-monospace" style={{ fontSize: "11.5px" }}>
-                  ✓ DENGEDE (Fark: 0.00)
+                  ✓ DENGEDE (Fark: 0,00)
                 </span>
               ) : (
                 <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-2.5 py-1 fw-bold font-monospace" style={{ fontSize: "11.5px" }}>
