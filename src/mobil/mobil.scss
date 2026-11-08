@@ -238,6 +238,28 @@ button {
 }
 
 /* ───────────── Fiyatlar (T1, T4) ───────────── */
+/* Grup sekmeleri: Hepsi / Döviz / Altın / Gümüş / Ziynet; beş sekme dar telefona sığmazsa yana kayar.
+   Seçici .m-segment.kucuk'u ezsin diye üçlü. */
+.m-segment.kucuk.m-fiyat-grup {
+  margin-bottom: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  button {
+    white-space: nowrap;
+    min-width: max-content;
+  }
+  @media (max-width: 359.98px) {
+    gap: 2px;
+    button {
+      padding: 8px 4px;
+      font-size: 0.78rem;
+    }
+  }
+}
+
 .m-fiyat-satir {
   display: flex;
   align-items: center;
@@ -1343,6 +1365,10 @@ button {
   }
   .m-bakiye {
     padding: 22px 22px 16px;
+  }
+  .m-segment.kucuk.m-fiyat-grup {
+    max-width: 520px;
+    margin-bottom: 10px;
   }
   /* Fiyatlar iki sütun */
   .m-fiyat-liste {

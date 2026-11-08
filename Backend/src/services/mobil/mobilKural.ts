@@ -290,6 +290,22 @@ export const birimAdi = (urunTipi: number | null, birim: number | null, kod: str
   return kod.trim();
 };
 
+/**
+ * Fiyat ekranındaki grup sekmesi (Hepsi / Döviz / Altın / Gümüş / Ziynet). Ürün tipi: 0 Döviz, 1 Altın, 2 Gümüş, 3 Ziynet.
+ * Altın ayar kartlarında ürün tipi 0 kalabildiği için (22 / 14 / 18 ayar) tip 0 ya da boşsa kod ve ada da bakılır. Saf fonksiyon.
+ */
+export type FiyatGrubu = "doviz" | "altin" | "gumus" | "ziynet";
+export const fiyatGrubu = (urunTipi: number | null, kod: string, ad: string): FiyatGrubu => {
+  if (urunTipi === 1) return "altin";
+  if (urunTipi === 2) return "gumus";
+  if (urunTipi === 3) return "ziynet";
+  const metin = `${kod} ${ad}`.toLocaleUpperCase("tr");
+  if (/G[ÜU]M[ÜU][ŞS]/.test(metin)) return "gumus";
+  if (/[ÇC]EYREK|YARIM|Z[İI]YNET|CUMHUR|RE[ŞS]AT|GREMSE|\bATA\b/.test(metin)) return "ziynet";
+  if (/ALTIN|AYAR/.test(metin) || kod.trim().toLocaleUpperCase("tr") === "HAS") return "altin";
+  return "doviz";
+};
+
 // ------------------------------------------------------------------ Faz 6: emir ---
 
 /** Firma ayarı + cariye özel ayar → bu cari için geçerli kurallar (K20; cariye özel değer firma varsayılanını ezer) */

@@ -1,6 +1,6 @@
 import { DbBaglam, MobilFirmaSqlRepository } from "../../models/mobilFirmaSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
-import { BOS_MAKAS, Makas, birimAdi, makasBosMu, makasDuzenle, makasUygula } from "./mobilKural.js";
+import { BOS_MAKAS, FiyatGrubu, Makas, birimAdi, fiyatGrubu, makasBosMu, makasDuzenle, makasUygula } from "./mobilKural.js";
 
 /**
  * Mobil fiyat (docs/MOBIL_CARI_YOL_HARITASI.md K12–K14, K27, K29). Fiyat, Anlık Fiyat Listesi'nin son kaydıdır
@@ -13,6 +13,8 @@ export interface MobilFiyatSatiri {
   kod: string;
   ad: string;
   birim: string;
+  /** Fiyat ekranındaki grup sekmesi */
+  grup: FiyatGrubu;
   alis: number | null;
   satis: number | null;
 }
@@ -47,7 +49,15 @@ export class MobilFiyatService {
       if (!f) continue;
       const s = makasUygula(f, makaslar.get(u.urunId), ondalik);
       if (s.alis === null && s.satis === null) continue;
-      satirlar.push({ urunId: u.urunId, kod: u.kod, ad: u.ad, birim: birimAdi(u.urunTipi, u.birim, u.kod), alis: s.alis, satis: s.satis });
+      satirlar.push({
+        urunId: u.urunId,
+        kod: u.kod,
+        ad: u.ad,
+        birim: birimAdi(u.urunTipi, u.birim, u.kod),
+        grup: fiyatGrubu(u.urunTipi, u.kod, u.ad),
+        alis: s.alis,
+        satis: s.satis,
+      });
     }
     return { zaman: son.zaman, urunler: satirlar };
   }

@@ -1,24 +1,49 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Spinner } from "react-bootstrap";
-import { MobilYetkiler, istek, tl } from "../api";
+import { MobilYetkiler, hatirla, istek, tl } from "../api";
 
 /**
  * Fiyatlar (docs/MOBIL_CARI_YOL_HARITASI.md K12, K14, §8 T1, T4): firmanın seçtiği ürünlerin carinin göreceği son fiyatı.
  * Dükkân panosundaki gibi Alış / Satış; 15 saniyede bir yenilenir. Ham kur ve komisyon gelmez.
  * Kısayol (T1): Satış fiyatına dokunan cari o ürünü almak ister (firmanın sattığı fiyat), Alış fiyatına dokunan satmak
  * ister. Yetkisi olmayan yön soluk ve dokunulmaz. Bir yenilemeden ötekine değişen fiyat kısa süre yeşil / kırmızı parlar.
+ * Üstte grup sekmeleri (Hepsi / Döviz / Altın / Gümüş / Ziynet): yalnız listede ürünü olan gruplar çıkar, tek grup varsa
+ * sekme gösterilmez. Seçim bu cihazda hatırlanır.
  */
+
+export type FiyatGrubu = "doviz" | "altin" | "gumus" | "ziynet";
 
 export interface MobilFiyat {
   urunId: number;
   kod: string;
   ad: string;
   birim: string;
+  /** Sunucu ürün tipinden verir; eski sunucuda yoksa ad / koddan tahmin edilir */
+  grup?: FiyatGrubu;
   alis: number | null;
   satis: number | null;
 }
 
 type Degisim = "yukari" | "asagi";
+type GrupSecimi = "hepsi" | FiyatGrubu;
+
+const GRUPLAR: { kod: GrupSecimi; ad: string }[] = [
+  { kod: "hepsi", ad: "Hepsi" },
+  { kod: "doviz", ad: "Döviz" },
+  { kod: "altin", ad: "Altın" },
+  { kod: "gumus", ad: "Gümüş" },
+  { kod: "ziynet", ad: "Ziynet" },
+];
+
+/** Sunucu grup vermediyse: ad / koddan, olmazsa birimden (altın / gümüş / ziynet gr ya da adet, döviz kendi kodu) */
+const grubu = (u: MobilFiyat): FiyatGrubu => {
+  if (u.grup) return u.grup;
+  const metin = `${u.kod} ${u.ad}`.toLocaleUpperCase("tr");
+  if (/G[ÜU]M[ÜU][ŞS]/.test(metin)) return "gumus";
+  if (/[ÇC]EYREK|YARIM|Z[İI]YNET|CUMHUR|RE[ŞS]AT|GREMSE|\bATA\b/.test(metin)) return "ziynet";
+  if (/ALTIN|AYAR/.test(metin) || u.kod.trim().toLocaleUpperCase("tr") === "HAS") return "altin";
+  return u.birim === "gr" || u.birim === "adet" ? "altin" : "doviz";
+};
 
 const basamak = (v: number | null) => (v !== null && v >= 1000 ? 2 : v !== null && v < 10 ? 4 : 3);
 const saatYaz = (z: string | null) =>
@@ -105,6 +130,19 @@ const FiyatEkrani: React.FC<{
   const satabilir = islemVar && !!yetkiler?.satis;
   const alabilir = islemVar && !!yetkiler?.alis;
 
+  const [grup, setGrup] = useState<GrupSecimi>(() => (hatirla.oku("fiyat_grup") as GrupSecimi) || "hepsi");
+  const grupSec = (g: GrupSecimi) => {
+    setGrup(g);
+    hatirla.yaz("fiyat_grup", g);
+  };
+  // Yalnız ürünü olan gruplar; tek grup varsa sekme yok. Seçili grup listeden kalktıysa Hepsi.
+  const sekmeler = useMemo(() => {
+    const var_ = new Set((veri?.urunler || []).map(grubu));
+    return var_.size > 1 ? GRUPLAR.filter((g) => g.kod === "hepsi" || var_.has(g.kod as FiyatGrubu)) : [];
+  }, [veri]);
+  const etkinGrup: GrupSecimi = sekmeler.some((s) => s.kod === grup) ? grup : "hepsi";
+  const gorunen = etkinGrup === "hepsi" ? veri?.urunler || [] : (veri?.urunler || []).filter((u) => grubu(u) === etkinGrup);
+
   return (
     <>
       {hata && <Alert variant="warning">{hata}</Alert>}
@@ -122,9 +160,25 @@ const FiyatEkrani: React.FC<{
             </div>
             {veri.zaman && <span className="m-canli">{saatYaz(veri.zaman)}</span>}
           </div>
+          {sekmeler.length > 0 && (
+            <div className="m-segment kucuk m-fiyat-grup" role="tablist" aria-label="Fiyat grubu">
+              {sekmeler.map((s) => (
+                <button
+                  key={s.kod}
+                  type="button"
+                  role="tab"
+                  aria-selected={etkinGrup === s.kod}
+                  className={etkinGrup === s.kod ? "secili" : ""}
+                  onClick={() => grupSec(s.kod)}
+                >
+                  {s.ad}
+                </button>
+              ))}
+            </div>
+          )}
           {veri.urunler.length === 0 && <div className="m-bos">Şu an gösterilecek fiyat yok.</div>}
           <div className="m-fiyat-liste">
-            {veri.urunler.map((u) => (
+            {gorunen.map((u) => (
               <div className="m-fiyat-satir" key={u.urunId}>
                 <div className="ad">
                   <div className="ad-metin">{u.ad}</div>
