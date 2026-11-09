@@ -148,7 +148,9 @@ export interface OdemeRow {
   cariKod?: string | null;
   bankaId?: number | null;
   posCihaziId?: number | null;
+  iskontoId?: number | null;
   urunTipi?: number;
+  birimFiyat?: number | string;
 }
 
 /** Önizleme fişinin ödeme satırları (kayıtlı fişte sunucudan gelir); POS satırı fişte "POS TL" yazar. */
@@ -775,7 +777,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   useEffect(() => {
     if (posCihazlari.length > 0 || bankaHesaplari.length > 0) {
       setOdemeRows((prev) =>
-        prev.map((r) => {
+        (prev || []).filter(Boolean).map((r) => {
           if (r.odemeAraciTuru === 2 && posCihazlari.length > 0 && r.bankaId && !r.cariKod) {
             const match = posCihazlari.find((p) => p.posCihaziId === r.bankaId);
             if (match) {
@@ -836,27 +838,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const [iskontoSearchTerm, setIskontoSearchTerm] = useState<string>("");
   const [showIskontoModal, setShowIskontoModal] = useState<boolean>(false);
 
-  // Combined Payment Products + Active Discounts for Tahsilat/Ödeme table
+  // Tahsilat/Ödeme tablosu için Para ve Ürünler (İskonto içermez; İskonto sadece Hesap seçildiğinde kullanılır)
   const allOdemeUrunler = useMemo<UrunItem[]>(() => {
-    const iskontoUrunler: UrunItem[] = (iskontolar || []).map((isk) => ({
-      id: 100000 + Number(isk.iskontoId || 1),
-      paraId: 100000 + Number(isk.iskontoId || 1),
-      kod: (isk.kod || `ISK-${isk.iskontoId || 1}`).toUpperCase().trim(),
-      ad: isk.tanim ? (isk.tanim.toUpperCase().includes("İSKONTO") || isk.tanim.toUpperCase().includes("ISKONTO") ? isk.tanim : `İskonto: ${isk.tanim}`) : "İskonto",
-      urunTipi: 99,
-      gramaj: 0,
-      hasOrani: 0,
-      alisMilyem: 0,
-      satisMilyem: 0,
-      isIskonto: true,
-      rawIskonto: isk,
-    } as any));
-
-    return [...odemeUrunList, ...iskontoUrunler];
-  }, [odemeUrunList, iskontolar]);
+    return odemeUrunList.filter((u) => {
+      const k = (u.kod || "").toUpperCase().trim();
+      return k !== "VERESIYE" && k !== "VERESİYE" && k !== "ACIKHESAP" && k !== "AÇIK HESAP";
+    });
+  }, [odemeUrunList]);
 
   const hasCariInOdeme = useMemo(() => {
-    return odemeRows.some((r) => r.odemeAraciTuru === 1 || Boolean(r.cariKartId));
+    return (odemeRows || []).some((r) => Boolean(r && (r.odemeAraciTuru === 1 || r.cariKartId)));
   }, [odemeRows]);
 
   const currencyOptions = useMemo(() => {
@@ -979,16 +970,20 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         parseDecimal(r.toplamTutar) > 0
     );
     if (hasItemData) return true;
-    return odemeRows.some(
+    return (odemeRows || []).some(
       (r) =>
-        Boolean((r.paraKodu || "").trim()) ||
-        Boolean((r.paraAdi || "").trim()) ||
-        Boolean((r.cariKod || "").trim()) ||
-        Boolean(r.cariKartId) ||
-        Boolean(r.bankaId) ||
-        parseDecimal(r.adet) > 0 ||
-        parseDecimal(r.miktar) > 0 ||
-        parseDecimal(r.tutar) > 0
+        Boolean(
+          r && (
+            (r.paraKodu || "").trim() ||
+            (r.paraAdi || "").trim() ||
+            (r.cariKod || "").trim() ||
+            r.cariKartId ||
+            r.bankaId ||
+            parseDecimal(r.adet) > 0 ||
+            parseDecimal(r.miktar) > 0 ||
+            parseDecimal(r.tutar) > 0
+          )
+        )
     );
   }, [currentFaturaId, cariKartId, cariKod, aliciUnvan, aliciVknTckn, telefon, adres, selectedIskontoId, iskontoKodu, iskontoOrani, iskontoTutari, items, odemeRows]);
 
@@ -2712,14 +2707,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   const genelToplam = Math.max(0, Math.round((brutToplam - calculatedIskontoTutari) * 100) / 100);
 
-  const totalOdemeAdet = odemeRows.reduce((s, r) => s + (parseDecimal(r.adet) || 0), 0);
-  const totalOdemeMiktar = odemeRows.reduce((s, r) => {
+  const totalOdemeAdet = (odemeRows || []).reduce((s, r) => s + (r ? (parseDecimal(r.adet) || 0) : 0), 0);
+  const totalOdemeMiktar = (odemeRows || []).reduce((s, r) => {
+    if (!r) return s;
     const isMetal = isAltinOrGumusRow(r, odemeUrunList);
     if (!isMetal) return s;
     return s + (parseDecimal(r.miktar) || 0);
   }, 0);
-  const totalOdemeHas = odemeRows.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
-  const totalOdemeTutar = odemeRows.reduce((s, r) => s + (parseDecimal(r.tutar) || 0), 0);
+  const totalOdemeHas = (odemeRows || []).reduce((s, r) => s + (r ? (parseDecimal(r.hasGram) || 0) : 0), 0);
+  const totalOdemeTutar = (odemeRows || []).reduce((s, r) => s + (r ? (parseDecimal(r.tutar) || 0) : 0), 0);
 
   const alisHas = useMemo(() => {
     if (totalHasGrams > 0) return totalHasGrams;
@@ -2733,7 +2729,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const farkTL = genelToplam - totalOdemeTutar;
 
   const odemeHas = useMemo(() => {
-    const explicitOdemeHas = odemeRows.reduce((s, r) => s + (parseDecimal(r.hasGram) || 0), 0);
+    const explicitOdemeHas = (odemeRows || []).reduce((s, r) => s + (r ? (parseDecimal(r.hasGram) || 0) : 0), 0);
     if (explicitOdemeHas > 0 && Math.abs(totalOdemeTutar) < 0.01) {
       return explicitOdemeHas;
     }
@@ -2877,7 +2873,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       }
     });
 
-    odemeRows.forEach((o) => {
+    (odemeRows || []).forEach((o) => {
+      if (!o) return;
       const kod = (o.paraKodu || "").trim().toUpperCase();
       const ad = (o.paraAdi || "").trim();
       const m = parseDecimal(o.miktar);
@@ -4209,6 +4206,162 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     [brutToplam, altinHasKuru, showError, showSuccess, focusOdemeGridCell]
   );
 
+  const defaultIskonto = useMemo<IskontoItem | null>(() => {
+    const defId = companyDefinitions?.ISKONTO_ID || companyDefinitionsRef.current?.ISKONTO_ID;
+    if (defId && iskontolar.length > 0) {
+      const match = iskontolar.find((x) => x.iskontoId === defId || Number(x.iskontoId) === Number(defId));
+      if (match) return match;
+    }
+    return iskontolar[0] || null;
+  }, [companyDefinitions?.ISKONTO_ID, iskontolar]);
+
+  const applyIskontoToOdemeRow = useCallback((rowId: string, item: IskontoItem) => {
+    const curHasKuru = Number(altinHasKuru) || 0;
+    const baseTotal = genelToplam > 0 ? genelToplam : brutToplam;
+    let discountAmount = 0;
+    if (item.iskontoTipi === 1) {
+      const oranVal = Number(item.oran) || 0;
+      discountAmount = Math.round(((baseTotal * oranVal) / 100) * 100) / 100;
+    } else if (item.iskontoTipi === 2) {
+      const tutarVal = Number(item.tutar) || 0;
+      discountAmount = baseTotal > 0 ? Math.min(baseTotal, tutarVal) : tutarVal;
+    } else if (item.iskontoTipi === 3) {
+      const hasVal = Number(item.hasTutar) || 0;
+      const hasKur = curHasKuru > 0 ? curHasKuru : 1;
+      discountAmount = Math.round(hasVal * hasKur * 100) / 100;
+      if (baseTotal > 0) discountAmount = Math.min(baseTotal, discountAmount);
+    } else {
+      discountAmount = Number(item.tutar) || 0;
+    }
+
+    const maxCap = Number(item.maxIskontoTutari) || 0;
+    if (maxCap > 0 && discountAmount > maxCap) {
+      discountAmount = maxCap;
+    }
+
+    const iskKod = (item.kod || `ISK-${item.iskontoId}`).toUpperCase().trim();
+    const iskAd = item.tanim ? (item.tanim.toUpperCase().includes("İSKONTO") || item.tanim.toUpperCase().includes("ISKONTO") ? item.tanim : `İSKONTO - ${item.tanim}`) : "İSKONTO";
+    const finalAmount = discountAmount > 0 ? discountAmount : (item.tutar || item.oran || "");
+
+    setOdemeRows((prev) => prev.map((r) => {
+      if (r.id !== rowId) return r;
+      const iskAdet = r.adet && parseDecimal(r.adet) > 0 ? formatMiktar(r.adet) : "1";
+      const unitPrice = typeof finalAmount === "number" ? finalAmount : (parseDecimal(finalAmount) || 0);
+      const totalAmount = unitPrice > 0 ? Math.round(unitPrice * parseDecimal(iskAdet) * 100) / 100 : finalAmount;
+      const updated: OdemeRow = {
+        ...r,
+        odemeAraciTuru: 3,
+        cariKod: iskKod,
+        cariUnvan: iskAd,
+        iskontoId: item.iskontoId || null,
+        bankaId: null,
+        posCihaziId: null,
+        cariKartId: null,
+        paraId: null,
+        paraKodu: iskKod,
+        paraAdi: iskAd,
+        adet: iskAdet,
+        miktar: "",
+        milyem: "",
+        hasGram: "",
+        kur: "",
+        tutar: totalAmount,
+        urunTipi: 0,
+        birimFiyat: unitPrice > 0 ? unitPrice : undefined,
+      };
+      return updated;
+    }));
+  }, [genelToplam, brutToplam, altinHasKuru]);
+
+  const applyHesapToOdemeRow = useCallback((rowId: string, item: BankaHesapItem) => {
+    const desc = item.hesapAdi ? `${item.bankaAdi ? item.bankaAdi + " - " : ""}${item.hesapAdi}` : (item.bankaAdi || "BANKA HAVALE / EFT");
+    setOdemeRows((prev) => prev.map((r) => {
+      if (r.id !== rowId) return r;
+      const updated: OdemeRow = {
+        ...r,
+        odemeAraciTuru: 3,
+        bankaId: item.bankaId || null,
+        cariKartId: null,
+        cariKod: item.hesapNo || "",
+        cariUnvan: desc,
+        paraAdi: desc,
+        iskontoId: null,
+        paraId: r.paraId ?? null,
+        paraKodu: r.paraKodu || "TL",
+        kur: r.kur || 1,
+      };
+      return updated;
+    }));
+  }, []);
+
+  const odemeHesapVeIskontoColumns: LookupColumn<any>[] = [
+    {
+      header: "Tür",
+      render: (i) => (
+        <span className="badge bg-warning text-dark" style={{ fontSize: "10px" }}>
+          {i.tur}
+        </span>
+      ),
+      width: "80px",
+      highlight: false,
+    },
+    { header: "İskonto Kodu", render: (i) => <strong className="text-primary font-monospace">{i.kod}</strong>, width: "130px", highlight: true },
+    { header: "İskonto Tanımı", render: (i) => <span className="fw-semibold">{i.ad}</span>, highlight: false },
+    { header: "Detay / Oran", render: (i) => <span className="text-muted small">{i.detay || "-"}</span>, width: "160px", highlight: false },
+  ];
+
+  const odemeHesapVeIskontoItems = useMemo<any[]>(() => {
+    const list: any[] = [];
+    (iskontolar || []).forEach((isk) => {
+      let detay = "Serbest İskonto";
+      if (isk.iskontoTipi === 1) detay = `%${isk.oran || 0} İskonto`;
+      else if (isk.iskontoTipi === 2) detay = `${(isk.tutar || 0).toLocaleString("tr-TR")} TL İskonto`;
+      else if (isk.iskontoTipi === 3) detay = `${isk.hasTutar || 0} Has Gr İskonto`;
+      else if (isk.oran) detay = `%${isk.oran} İskonto`;
+      else if (isk.tutar) detay = `${(isk.tutar || 0).toLocaleString("tr-TR")} TL İskonto`;
+
+      list.push({
+        id: `isk-${isk.iskontoId}`,
+        tur: "İskonto",
+        kod: (isk.kod || `ISK-${isk.iskontoId}`).toUpperCase().trim(),
+        ad: isk.tanim,
+        detay,
+        rawIskonto: isk,
+      });
+    });
+
+    if (list.length === 0) {
+      list.push({
+        id: "isk-default",
+        tur: "İskonto",
+        kod: "İSKONTO",
+        ad: "Genel İskonto",
+        detay: "Serbest İskonto",
+        rawIskonto: {
+          iskontoId: 0,
+          kod: "İSKONTO",
+          tanim: "Genel İskonto",
+          iskontoTipi: null,
+          oran: null,
+          tutar: null,
+        },
+      });
+    }
+
+    const defId = companyDefinitions?.ISKONTO_ID || companyDefinitionsRef.current?.ISKONTO_ID;
+    if (defId) {
+      list.sort((a, b) => {
+        const aIsDef = a.rawIskonto && (a.rawIskonto.iskontoId === defId || Number(a.rawIskonto.iskontoId) === Number(defId));
+        const bIsDef = b.rawIskonto && (b.rawIskonto.iskontoId === defId || Number(b.rawIskonto.iskontoId) === Number(defId));
+        if (aIsDef && !bIsDef) return -1;
+        if (!aIsDef && bIsDef) return 1;
+        return 0;
+      });
+    }
+
+    return list;
+  }, [iskontolar, companyDefinitions?.ISKONTO_ID]);
+
   // Helper to determine navigable columns for payment rows (Kur & Tutar are readOnly/calculated)
   // Helper to determine navigable columns for payment rows (Kur & Tutar are readOnly/calculated)
   const getNavigableOdemeCols = useCallback((row?: OdemeRow): OdemeGridColKey[] => {
@@ -4624,11 +4777,18 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const openOdemeUrunModal = (rowId: string, initialTerm?: string) => {
     lastOdemeRowIdRef.current = rowId;
     setActiveOdemeRowIdForUrun(rowId);
+    const row = odemeRows.find((r) => r.id === rowId);
+    if (row?.odemeAraciTuru === 3) {
+      // Hesap seçili: Sadece İskonto modalı açılır!
+      setPendingBankaRowId(rowId);
+      setBankaSearchTerm(initialTerm || row.cariKod || "");
+      setShowBankaModal(true);
+      return;
+    }
     const term = initialTerm !== undefined ? initialTerm : "";
     const cleanTerm = (term.toUpperCase() === "TL" || term.toUpperCase() === "TRY" || term.toUpperCase() === "TRL") ? "" : term;
     setOdemeSearchTerm(cleanTerm);
     setShowOdemeUrunModal(true);
-    loadIskontolar();
     loadOdemeUrunler();
   };
 
@@ -5824,8 +5984,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       return;
     }
 
-    const missingBankaRow = odemeRows.find(
-      (r) => r.odemeAraciTuru === 3 && !r.bankaId && (!r.cariKod || !r.cariKod.trim())
+    const missingBankaRow = (odemeRows || []).find(
+      (r) => r && r.odemeAraciTuru === 3 && !r.bankaId && (!r.cariKod || !r.cariKod.trim())
     );
     if (missingBankaRow) {
       showWarning("Banka / Hesap türü seçilen satırda lütfen bir banka hesabı seçiniz!");
@@ -5835,11 +5995,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
     // Fiş Toplamı ve Ödeme Kontrolü:
     const rawDiffTL = parseFloat((genelToplam - totalOdemeTutar).toFixed(2));
-    const hasVeresiye = odemeRows.some(
+    const hasVeresiye = (odemeRows || []).some(
       (r) =>
-        r.paraKodu?.trim().toUpperCase() === "VERESIYE" ||
-        r.paraAdi?.toUpperCase().includes("VERESİYE") ||
-        r.paraAdi?.toUpperCase().includes("AÇIK HESAP")
+        r && (
+          r.paraKodu?.trim().toUpperCase() === "VERESIYE" ||
+          r.paraAdi?.toUpperCase().includes("VERESİYE") ||
+          r.paraAdi?.toUpperCase().includes("AÇIK HESAP")
+        )
     );
 
     if (rawDiffTL < -0.05) {
@@ -5850,13 +6012,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     }
 
     // Veresiye varsa Cari Kart zorunluluğu: satırda veya başlıkta kayıtlı bir cari kart olmalıdır
-    const anonymousVeresiye = odemeRows.find(
+    const anonymousVeresiye = (odemeRows || []).find(
       (r) =>
-        (r.paraKodu?.trim().toUpperCase() === "VERESIYE" ||
-          r.paraAdi?.toUpperCase().includes("VERESİYE") ||
-          r.paraAdi?.toUpperCase().includes("AÇIK HESAP")) &&
-        !r.cariKartId &&
-        (!cariKartId || aliciUnvan.trim() === "NİHAİ TÜKETİCİ")
+        r && (
+          (r.paraKodu?.trim().toUpperCase() === "VERESIYE" ||
+            r.paraAdi?.toUpperCase().includes("VERESİYE") ||
+            r.paraAdi?.toUpperCase().includes("AÇIK HESAP")) &&
+          !r.cariKartId &&
+          (!cariKartId || aliciUnvan.trim() === "NİHAİ TÜKETİCİ")
+        )
     );
 
     if (anonymousVeresiye) {
@@ -8230,7 +8394,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                       </tr>
                     </thead>
                     <tbody>
-                      {odemeRows.map((oRow, rowIndex) => {
+                      {(odemeRows || []).filter(Boolean).map((oRow, rowIndex) => {
                         const isTLRow =
                           (oRow.paraKodu || "").trim().toUpperCase() === "TL" ||
                           (oRow.paraKodu || "").trim().toUpperCase() === "TRY" ||
@@ -8251,9 +8415,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                               oRow.paraAdi?.toUpperCase().includes("AÇIK HESAP")));
 
                         const isIskontoRow =
+                          Boolean(oRow.iskontoId) ||
                           oRow.paraKodu?.trim().toUpperCase().startsWith("ISK") ||
                           oRow.paraAdi?.toUpperCase().includes("İSKONTO") ||
                           oRow.paraAdi?.toUpperCase().includes("ISKONTO") ||
+                          (oRow.odemeAraciTuru === 3 && (oRow.cariKod?.toUpperCase().startsWith("ISK") || oRow.cariUnvan?.toUpperCase().includes("İSKONTO") || oRow.cariUnvan?.toUpperCase().includes("ISKONTO"))) ||
                           (oRow.paraId !== undefined && oRow.paraId !== null && Number(oRow.paraId) >= 100000);
 
                         const isOverpaidVeresiye = farkTL < -0.01 && isVeresiyeRow;
@@ -8287,9 +8453,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             : undefined;
 
                         const hasPayment = Boolean((oRow.paraKodu && oRow.paraKodu.trim() !== "") || (oRow.paraAdi && oRow.paraAdi.trim() !== "") || (oRow.odemeAraciTuru !== 0 && oRow.odemeAraciTuru !== undefined) || (oRow.cariKod && oRow.cariKod.trim() !== "") || (oRow.kur && Number(oRow.kur) > 0));
-                        const isAdetOpen = isOdemeZD || oRow.odemeAraciTuru === 2;
+                        const isAltinOrGumus = !isIskontoRow && !isZiynet && !isForeignDoviz && !isTLRow && (oRow.urunTipi === 1 || oRow.urunTipi === 2 || isAltinOrGumusRow(oRow, odemeUrunList));
+                        const isAdetOpen = !isAltinOrGumus;
+                        const isMiktarOpen = isAltinOrGumus;
                         const isOdemeAdetMissing = hasPayment && isAdetOpen && (!oRow.adet || String(oRow.adet).trim() === "" || parseDecimal(oRow.adet) <= 0);
-                        const isOdemeMiktarMissing = hasPayment && !isAdetOpen && (!oRow.miktar || String(oRow.miktar).trim() === "" || parseDecimal(oRow.miktar) <= 0);
+                        const isOdemeMiktarMissing = hasPayment && isMiktarOpen && (!oRow.miktar || String(oRow.miktar).trim() === "" || parseDecimal(oRow.miktar) <= 0);
 
                         return (
                           <tr
@@ -8345,6 +8513,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                       defKod = "TL";
                                       defAd = "KREDİ KARTI / POS";
                                     } else if (val === 3) {
+                                      if (defaultIskonto) {
+                                        applyIskontoToOdemeRow(oRow.id, defaultIskonto);
+                                        return;
+                                      }
                                       defKod = "TL";
                                       defAd = "BANKA HAVALE / EFT";
                                     }
@@ -8358,6 +8530,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                       cariKod: defCariKod,
                                       cariUnvan: defCariUnvan,
                                       bankaId: null,
+                                      iskontoId: null,
                                       adet: "",
                                       miktar: val === 1 ? "" : r.miktar,
                                       milyem: "",
@@ -8372,8 +8545,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                     e.preventDefault();
                                     e.stopPropagation();
                                     let nextVal = ((oRow.odemeAraciTuru ?? 0) + 1) % 4;
-                                    // Banka hesabı (Hesap) yalnız "Fiş banka hesabı seçme" yetkisinde
-                                    if (nextVal === 3 && !kYetkiRef.current.bankaHesabiSecme) nextVal = 0;
+                                    if (nextVal === 3 && defaultIskonto) {
+                                      applyIskontoToOdemeRow(oRow.id, defaultIskonto);
+                                      return;
+                                    }
                                     setOdemeRows((prev) => prev.map((r) => {
                                       if (r.id !== oRow.id) return r;
                                       let defKod = "TL";
@@ -8404,6 +8579,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                         cariKod: defCariKod,
                                         cariUnvan: defCariUnvan,
                                         bankaId: null,
+                                        iskontoId: null,
                                         adet: "",
                                         miktar: nextVal === 1 ? "" : r.miktar,
                                         milyem: "",
@@ -8426,7 +8602,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                 <option value={0}>Vezne</option>
                                 <option value={1}>Cari</option>
                                 <option value={2}>POS</option>
-                                {(kYetki.bankaHesabiSecme || oRow.odemeAraciTuru === 3) && <option value={3} disabled={!kYetki.bankaHesabiSecme}>Hesap</option>}
+                                <option value={3}>Hesap</option>
                               </Form.Select>
                             </td>
 
@@ -8635,35 +8811,55 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                   <Form.Control
                                     ref={(el) => { odemeInputRefs.current[`${oRow.id}_cariKod`] = el; }}
                                     value={oRow.cariKod ?? ""}
-                                    placeholder="Hesap No / Dürbün"
+                                    placeholder="İskonto / Hesap / Dürbün"
                                     onChange={(e) => {
                                       const val = e.target.value;
                                       if (!val) {
-                                        setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: "", bankaId: null, paraAdi: "" } : r));
+                                        setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: "", bankaId: null, iskontoId: null, paraAdi: "" } : r));
                                         return;
                                       }
                                       setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? { ...r, cariKod: val } : r));
-                                      const match = bankaHesaplari.find((b) => (b.hesapNo || "").trim().toLowerCase() === val.trim().toLowerCase());
+                                      const exactIsk = (iskontolar || []).find((isk) =>
+                                        (isk.kod && isk.kod.trim().toLowerCase() === val.trim().toLowerCase()) ||
+                                        (isk.tanim && isk.tanim.trim().toLowerCase() === val.trim().toLowerCase())
+                                      );
+                                      if (exactIsk) {
+                                        applyIskontoToOdemeRow(oRow.id, exactIsk);
+                                        return;
+                                      }
+                                      const match = bankaHesaplari.find((b) =>
+                                        (b.hesapNo || "").trim().toLowerCase() === val.trim().toLowerCase() ||
+                                        (b.hesapAdi || "").trim().toLowerCase() === val.trim().toLowerCase()
+                                      );
                                       if (match) {
-                                        setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? {
-                                          ...r,
-                                          cariKod: match.hesapNo,
-                                          paraAdi: match.hesapAdi || "BANKA HAVALE / EFT",
-                                          bankaId: match.bankaId,
-                                        } : r));
+                                        applyHesapToOdemeRow(oRow.id, match);
                                       }
                                     }}
                                     onBlur={(e) => {
                                       const val = e.target.value.trim();
                                       if (val) {
-                                        const match = bankaHesaplari.find((b) => (b.hesapNo || "").toLowerCase() === val.toLowerCase());
+                                        const exactIsk = (iskontolar || []).find((isk) =>
+                                          (isk.kod && isk.kod.toLowerCase() === val.toLowerCase()) ||
+                                          (isk.tanim && isk.tanim.toLowerCase() === val.toLowerCase())
+                                        );
+                                        if (exactIsk) {
+                                          applyIskontoToOdemeRow(oRow.id, exactIsk);
+                                          return;
+                                        }
+                                        const iskMatches = (iskontolar || []).filter((isk) =>
+                                          (isk.kod && isk.kod.toLowerCase().includes(val.toLowerCase())) ||
+                                          (isk.tanim && isk.tanim.toLowerCase().includes(val.toLowerCase()))
+                                        );
+                                        if (iskMatches.length === 1) {
+                                          applyIskontoToOdemeRow(oRow.id, iskMatches[0]);
+                                          return;
+                                        }
+                                        const match = bankaHesaplari.find((b) =>
+                                          (b.hesapNo || "").toLowerCase() === val.toLowerCase() ||
+                                          (b.hesapAdi || "").toLowerCase() === val.toLowerCase()
+                                        );
                                         if (match) {
-                                          setOdemeRows((prev) => prev.map((r) => r.id === oRow.id ? {
-                                            ...r,
-                                            cariKod: match.hesapNo,
-                                            paraAdi: match.hesapAdi || "BANKA HAVALE / EFT",
-                                            bankaId: match.bankaId,
-                                          } : r));
+                                          applyHesapToOdemeRow(oRow.id, match);
                                         }
                                       }
                                     }}
@@ -8706,7 +8902,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                       setBankaSearchTerm(oRow.cariKod || "");
                                       setShowBankaModal(true);
                                     }}
-                                    title="Banka Hesabı Seç (F3/F4)"
+                                    title="Hesap / İskonto Seç (F3/F4)"
                                     style={{
                                       backgroundColor: rowBg,
                                     }}
@@ -8846,17 +9042,18 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                             </td>
 
                             {/* Adet */}
-                            <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth, padding: "2px 4px", backgroundColor: isOdemeAdetMissing ? "#fee2e2" : rowBg, borderColor: isOdemeAdetMissing ? "#dc2626" : rowBorderColor, verticalAlign: "middle" }}>
+                            <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth, padding: "2px 4px", backgroundColor: isAltinOrGumus ? "#e9ecef" : (isOdemeAdetMissing ? "#fee2e2" : rowBg), borderColor: isOdemeAdetMissing ? "#dc2626" : rowBorderColor, verticalAlign: "middle" }}>
                               <Form.Control
                                 ref={(el) => { odemeInputRefs.current[`${oRow.id}_adet`] = el; }}
                                 inputMode="numeric"
                                 size="sm"
                                 className={`text-end font-monospace ${isOdemeAdetMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""}`}
-                                value={!isAdetOpen ? "" : (oRow.adet || "")}
-                                readOnly={!isAdetOpen}
-                                disabled={!isAdetOpen}
-                                tabIndex={!isAdetOpen ? -1 : undefined}
-                                onChange={(e) => updateOdemeRow(oRow.id, "adet", e.target.value)}
+                                value={isAltinOrGumus ? "" : (oRow.adet || "")}
+                                placeholder={isAltinOrGumus ? "-" : undefined}
+                                readOnly={isAltinOrGumus}
+                                disabled={isAltinOrGumus}
+                                tabIndex={isAltinOrGumus ? -1 : undefined}
+                                onChange={(e) => !isAltinOrGumus && updateOdemeRow(oRow.id, "adet", e.target.value)}
                                 onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "adet", oRow.id)}
                                 onFocus={() => {
                                   setActiveOdemeRowIndex(rowIndex);
@@ -8866,28 +9063,29 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                 style={{
                                   fontSize: "11px",
                                   padding: "1px 4px",
-                                  backgroundColor: !isAdetOpen ? "#e9ecef" : (isOdemeAdetMissing ? "#fee2e2" : rowBg),
-                                  color: !isAdetOpen ? "#6c757d" : (isOdemeAdetMissing ? "#dc2626" : rowTextColor),
-                                  cursor: !isAdetOpen ? "not-allowed" : undefined,
+                                  backgroundColor: isAltinOrGumus ? "#e9ecef" : (isOdemeAdetMissing ? "#fee2e2" : rowBg),
+                                  color: isAltinOrGumus ? "#6c757d" : (isOdemeAdetMissing ? "#dc2626" : rowTextColor),
+                                  cursor: isAltinOrGumus ? "not-allowed" : undefined,
                                   border: isOdemeAdetMissing ? "2px solid #dc2626" : undefined,
                                   boxShadow: isOdemeAdetMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                                 }}
-                                title={!isAdetOpen ? "Altın/Gümüş ödemelerinde miktar kullanılır" : isOdemeAdetMissing ? "Lütfen adet giriniz" : undefined}
+                                title={isAltinOrGumus ? "Altın ve gümüş ödemelerinde miktar (gram) kullanılır, adet pasiftir" : isOdemeAdetMissing ? "Lütfen adet giriniz" : undefined}
                               />
                             </td>
 
                             {/* Miktar */}
-                            <td style={{ padding: "2px 4px", backgroundColor: isOdemeMiktarMissing ? "#fee2e2" : rowBg, borderColor: isOdemeMiktarMissing ? "#dc2626" : rowBorderColor, verticalAlign: "middle" }}>
+                            <td style={{ padding: "2px 4px", backgroundColor: !isMiktarOpen ? "#e9ecef" : (isOdemeMiktarMissing ? "#fee2e2" : rowBg), borderColor: isOdemeMiktarMissing ? "#dc2626" : rowBorderColor, verticalAlign: "middle" }}>
                               <Form.Control
                                 ref={(el) => { odemeInputRefs.current[`${oRow.id}_miktar`] = el; }}
                                 inputMode="decimal"
                                 size="sm"
                                 className={`text-end font-monospace fw-semibold ${isOdemeMiktarMissing ? "is-invalid border-danger border-2 text-danger" : ""}`}
-                                value={isAdetOpen ? "" : (oRow.miktar ?? "")}
-                                readOnly={isAdetOpen}
-                                disabled={isAdetOpen}
-                                tabIndex={isAdetOpen ? -1 : undefined}
-                                onChange={(e) => updateOdemeRow(oRow.id, "miktar", e.target.value)}
+                                value={!isMiktarOpen ? "" : (oRow.miktar ?? "")}
+                                placeholder={!isMiktarOpen ? "-" : undefined}
+                                readOnly={!isMiktarOpen}
+                                disabled={!isMiktarOpen}
+                                tabIndex={!isMiktarOpen ? -1 : undefined}
+                                onChange={(e) => isMiktarOpen && updateOdemeRow(oRow.id, "miktar", e.target.value)}
                                 onBlur={() => updateOdemeRow(oRow.id, "miktar", oRow.miktar)}
                                 onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "miktar", oRow.id)}
                                 onFocus={() => {
@@ -8898,13 +9096,13 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                 style={{
                                   fontSize: "11px",
                                   padding: "1px 4px",
-                                  backgroundColor: isOdemeZD ? "#e9ecef" : (isOdemeMiktarMissing ? "#fee2e2" : rowBg),
-                                  color: isOdemeZD ? "#6c757d" : (isOdemeMiktarMissing ? "#dc2626" : rowTextColor),
-                                  cursor: isOdemeZD ? "not-allowed" : undefined,
+                                  backgroundColor: !isMiktarOpen ? "#e9ecef" : (isOdemeMiktarMissing ? "#fee2e2" : rowBg),
+                                  color: !isMiktarOpen ? "#6c757d" : (isOdemeMiktarMissing ? "#dc2626" : rowTextColor),
+                                  cursor: !isMiktarOpen ? "not-allowed" : undefined,
                                   border: isOdemeMiktarMissing ? "2px solid #dc2626" : undefined,
                                   boxShadow: isOdemeMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                                 }}
-                                title={isOdemeZD ? "Ziynet/Döviz ödemelerinde adet kullanılır" : isOdemeMiktarMissing ? "Lütfen miktar giriniz" : undefined}
+                                title={!isMiktarOpen ? "Para, döviz, ziynet ve POS işlemlerinde adet kullanılır" : isOdemeMiktarMissing ? "Lütfen miktar giriniz" : undefined}
                               />
                             </td>
 
@@ -9345,7 +9543,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             }, 50);
           }
         }}
-        title="Ödeme Para / İskonto Seçimi"
+        title="Para / Döviz Seç"
         items={allOdemeUrunler.filter((u) => {
           const k = (u.kod || "").toUpperCase().trim();
           return k !== "VERESIYE" && k !== "VERESİYE" && k !== "ACIKHESAP" && k !== "AÇIK HESAP";
@@ -9447,8 +9645,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         }}
       />
 
-      {/* Banka Hesap Seçim Modalı */}
-      <LookupModal<BankaHesapItem>
+      {/* İskonto Seçim Modalı (Hesap) */}
+      <LookupModal<any>
         show={showBankaModal}
         onHide={() => {
           setShowBankaModal(false);
@@ -9458,36 +9656,27 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           }
           setPendingBankaRowId(null);
         }}
-        title="Banka Hesabı Seçimi"
-        items={bankaHesaplari}
+        title="İskonto Seç (Hesap)"
+        items={odemeHesapVeIskontoItems}
         initialSearchTerm={bankaSearchTerm}
-        selectedId={
-          bankaSearchTerm
-            ? bankaSearchTerm
-            : (odemeRows.find((r) => r.id === pendingBankaRowId)?.bankaId ||
-              odemeRows.find((r) => r.id === pendingBankaRowId)?.cariKod ||
-              undefined)
-        }
-        columns={[
-          { header: "Hesap No", width: "130px", render: (b) => <span className="fw-bold font-monospace text-primary">{b.hesapNo}</span>, highlight: true },
-          { header: "Hesap Adı", render: (b) => <span className="fw-semibold text-dark">{b.hesapAdi}</span>, highlight: false },
-          { header: "IBAN", width: "220px", render: (b) => <span className="small text-muted font-monospace">{b.iban || "-"}</span>, highlight: false },
-        ]}
-        filterFn={(b, term) => {
-          const t = term.toLowerCase().trim();
-          return (b.hesapNo || "").toLowerCase().includes(t) ||
-            (b.hesapAdi || "").toLowerCase().includes(t) ||
-            (b.iban || "").toLowerCase().includes(t);
+        columns={odemeHesapVeIskontoColumns}
+        filterFn={(item, term) => {
+          const t = (term || "").toLowerCase().trim();
+          if (!t) return true;
+          return (
+            (item.kod || "").toLowerCase().includes(t) ||
+            (item.ad || "").toLowerCase().includes(t) ||
+            (item.detay || "").toLowerCase().includes(t)
+          );
         }}
-        onSelect={(banka) => {
-          if (banka && pendingBankaRowId) {
+        onSelect={(item) => {
+          if (item && pendingBankaRowId) {
             const targetRowId = pendingBankaRowId;
-            setOdemeRows((prev) => prev.map((r) => r.id === targetRowId ? {
-              ...r,
-              cariKod: banka.hesapNo,
-              paraAdi: banka.hesapAdi || "BANKA HAVALE / EFT",
-              bankaId: banka.bankaId,
-            } : r));
+            if (item.rawIskonto) {
+              applyIskontoToOdemeRow(targetRowId, item.rawIskonto);
+            } else if (item.rawBanka) {
+              applyHesapToOdemeRow(targetRowId, item.rawBanka);
+            }
             setTimeout(() => {
               focusNextOdemeCell(targetRowId, "cariKod");
             }, 50);

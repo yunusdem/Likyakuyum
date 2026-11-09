@@ -20,8 +20,14 @@ function parseMssqlError(err: any): string | null {
     return "⚠️ Benzersizlik Çakışması: Girilen önek veya kod başka bir tanımda zaten kullanılıyor. Lütfen farklı bir önek belirleyiniz.";
   }
 
-  // 2. Foreign key conflict
-  if (msg.includes("FOREIGN KEY constraint")) {
+  // 2. Foreign key / Reference conflict
+  if (msg.includes("FOREIGN KEY constraint") || msg.includes("REFERENCE constraint")) {
+    if (msg.includes("DELETE statement conflicted with the REFERENCE constraint") || msg.includes("The DELETE statement conflicted")) {
+      const tableMatch = msg.match(/table\s+["']?(?:dbo\.)?([^"',\s]+)["']?/i);
+      const tableName = tableMatch ? tableMatch[1] : "";
+      const tblDesc = tableName ? `'${tableName}'` : "ilişkili";
+      return `⚠️ Silme Engellendi: Bu kayıt veritabanında ${tblDesc} tablosunda hareket veya kayıtlara bağlı olduğu için silinemez. Lütfen önce ilişkili kayıtları siliniz veya başka bir hesaba aktarınız.`;
+    }
     const match = msg.match(/column '([^']+)'/i) || msg.match(/constraint "([^"]+)"/i);
     const colName = match ? match[1] : "";
     return `⚠️ Bağlantılı Kayıt Hatası (${colName}): Seçilen bağlantılı ID veritabanında bulunamadı. Lütfen listeden geçerli bir seçenek belirleyiniz.`;

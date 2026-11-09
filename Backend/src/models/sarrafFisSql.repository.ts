@@ -307,9 +307,12 @@ export class SarrafFisSqlRepository {
 
       const h = (await pool.request().input("id", sql.Int, sarrafFisiId)
         .query(`SELECT SF.*, 
-                       IST.KOD AS LOADED_ISTATISTIK_KODU
+                       IST.KOD AS LOADED_ISTATISTIK_KODU,
+                       LTRIM(RTRIM(ISNULL(C.KOD, ''))) AS LOADED_CARI_KODU,
+                       LTRIM(RTRIM(ISNULL(C.AD, ''))) AS LOADED_CARI_UNVAN
                 FROM [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK)
                   LEFT JOIN [dbo].[TODVZ_ISTATISTIK] IST WITH (NOLOCK) ON IST.ISTATISTIK_ID = SF.ISTATISTIK_ID
+                  LEFT JOIN [dbo].[TODVZ_CARI_KART] C WITH (NOLOCK) ON C.CARI_KART_ID = SF.CARI_KART_ID
                 WHERE SF.SARRAF_FISI_ID = @id`)).recordset[0];
       if (!h) return null;
       const satirlar = (await pool.request().input("id2", sql.Int, sarrafFisiId)
@@ -354,7 +357,12 @@ export class SarrafFisSqlRepository {
         alisKuru: Number(h.ALIS_KURU) || 0, satisKuru: Number(h.SATIS_KURU) || 0,
         gumusHasKuru: Number(h.GUMUS_HAS_KURU) || 0, kdvOrani: h.KDV_ORANI ?? null, kdv: h.KDV ?? null,
         istisnaKodu: h.E_BELGE_ISTISNA_KODU ? String(h.E_BELGE_ISTISNA_KODU).trim() : null,
-        unvan: h.UNVAN || "", cariKartId: h.CARI_KART_ID ?? null, vezneId: h.VEZNE_ID ?? null,
+        unvan: h.UNVAN || h.LOADED_CARI_UNVAN || "",
+        cariKartId: h.CARI_KART_ID ?? null,
+        cariKodu: (h.LOADED_CARI_KODU || "").trim(),
+        cariKod: (h.LOADED_CARI_KODU || "").trim(),
+        cariUnvan: (h.LOADED_CARI_UNVAN || h.UNVAN || "").trim(),
+        vezneId: h.VEZNE_ID ?? null,
         belgeTuru: h.BELGE_TURU ?? 0, kisilikTipi: h.KISILIK_TIPI ?? null,
         uyrukId: h.UYRUK_ID ?? null, ulkeId: h.ULKE_ID ?? null,
         pasaportNo: h.PASAPORT_NO ? (h.PASAPORT_NO as string).trim() : null,
@@ -435,6 +443,7 @@ export class SarrafFisSqlRepository {
             posCihaziId: r.POS_CIHAZI_ID ?? (rawOat === 2 ? r.CARI_KART_ID : null),
             paraId: r.PARA_ID ?? null, paraKodu: effectiveParaKodu, paraAdi: effectiveParaAdi,
             iskontoId: r.ISKONTO_ID ?? null,
+            adet: Number(r.ADET) || 0,
             miktar: Number(r.MIKTAR) || 0, milyem: mVal, hasGram: Number(r.HAS_GRAM) || 0,
             kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0,
           };
@@ -695,6 +704,8 @@ export class SarrafFisSqlRepository {
       req.input(`${p}_iskId`, sql.Int, o.iskontoId ? Number(o.iskontoId) : null);
       req.input(`${p}_ckId`, sql.Int, cariKartId ? Number(cariKartId) : null);
       req.input(`${p}_pos`, sql.Int, isPos && posCihaziId ? Number(posCihaziId) : null);
+      req.input(`${p}_ad`, sql.Int, Math.round(parseNum(o.adet)));
+      req.input(`${p}_bankaId`, sql.Int, o.bankaId ? Number(o.bankaId) : null);
       req.input(`${p}_mik`, sql.Float, mik);
       req.input(`${p}_mil`, sql.Float, parseNum(o.milyem));
       req.input(`${p}_hg`, sql.Float, parseNum(o.hasGram));
@@ -1131,7 +1142,9 @@ export class SarrafFisSqlRepository {
         UPDATE [dbo].[TODVZ_ODEME_SATIRI]
         SET ISKONTO_ID = COALESCE(@o_${idx}_iskId, (SELECT TOP 1 ISKONTO_ID FROM [dbo].[TODVZ_ISKONTO] WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@o_${idx}_pkod) OR UPPER(LTRIM(RTRIM(TANIM))) = UPPER(@o_${idx}_pad))),
             PARA_KODU = NULLIF(@o_${idx}_pkod, ''),
-            PARA_ADI = NULLIF(@o_${idx}_pad, '')
+            PARA_ADI = NULLIF(@o_${idx}_pad, ''),
+            ADET = @o_${idx}_ad,
+            BANKA_ID = @o_${idx}_bankaId
         WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID AND SATIR_NO = @o_${idx}_sNo;
         `).join("\n")}
 
@@ -1202,6 +1215,83 @@ export class SarrafFisSqlRepository {
               @IN_KULLANICI_ID, GETDATE(), @IN_KULLANICI_ID, GETDATE()
             );
           END;
+        END;
+
+        -- Hesap (ODEME_ARACI_TURU = 3) hareketlerini TODVZ_HESAP_HAREKETI tablosuna işleme
+        DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] 
+        WHERE ACIKLAMA LIKE '%Sarraf Fişi Ödeme%' AND ACIKLAMA LIKE '%' + LTRIM(RTRIM(@OUT_FIS_NO)) + '%';
+
+        ${validOdemeler.map((o, idx) => {
+          const rawOat = parseNum(o.odemeAraciTuru);
+          if (rawOat !== 3) return "";
+          return `
+        BEGIN
+          DECLARE @TARGET_HESAP_ID_${idx} INT = NULL;
+          IF (@o_${idx}_iskId IS NOT NULL)
+          BEGIN
+            SELECT TOP 1 @TARGET_HESAP_ID_${idx} = HESAP_ID FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) WHERE ISKONTO_ID = @o_${idx}_iskId;
+          END;
+          IF (@TARGET_HESAP_ID_${idx} IS NULL AND LEN(LTRIM(RTRIM(@o_${idx}_pkod))) > 0)
+          BEGIN
+            SELECT TOP 1 @TARGET_HESAP_ID_${idx} = HESAP_ID FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
+            WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@o_${idx}_pkod) OR UPPER(LTRIM(RTRIM(AD))) = UPPER(@o_${idx}_pkod);
+          END;
+          IF (@TARGET_HESAP_ID_${idx} IS NULL AND LEN(LTRIM(RTRIM(@o_${idx}_pad))) > 0)
+          BEGIN
+            SELECT TOP 1 @TARGET_HESAP_ID_${idx} = HESAP_ID FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
+            WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@o_${idx}_pad) OR UPPER(LTRIM(RTRIM(AD))) = UPPER(@o_${idx}_pad);
+          END;
+          IF (@TARGET_HESAP_ID_${idx} IS NULL)
+          BEGIN
+            SELECT TOP 1 @TARGET_HESAP_ID_${idx} = HESAP_ID FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) ORDER BY HESAP_ID ASC;
+          END;
+
+          IF (@TARGET_HESAP_ID_${idx} IS NOT NULL AND @o_${idx}_tut > 0)
+          BEGIN
+            DECLARE @H_ACIK_${idx} VARCHAR(200) = 'Sarraf Fişi Ödeme - Fiş No: ' + LTRIM(RTRIM(@OUT_FIS_NO)) + ' (Satır ' + CAST(@o_${idx}_sNo AS VARCHAR) + ')';
+            DECLARE @H_TIP_${idx} TINYINT = CASE WHEN @IN_TIP = 1 THEN 0 ELSE 1 END;
+
+            INSERT INTO [dbo].[TODVZ_HESAP_HAREKETI] (
+              HESAP_ID, TARIH, ACIKLAMA, PARA_ID, MEBLAG, KDV_ORANI, KDV, TIP, VEZNE_ID,
+              MIKTAR, HAS_TUTARI, KUR,
+              EKLEYEN_ID, EKLEME_ZAMANI, GUNCELLEYEN_ID, GUNCELLEME_ZAMANI
+            ) VALUES (
+              @TARGET_HESAP_ID_${idx}, @IN_TARIH, @H_ACIK_${idx}, @DEFAULT_TL_PARA_ID, @o_${idx}_tut,
+              0, 0, @H_TIP_${idx}, @IN_VEZNE_ID,
+              @o_${idx}_mik, @o_${idx}_hg, @o_${idx}_kur,
+              @IN_KULLANICI_ID, GETDATE(), @IN_KULLANICI_ID, GETDATE()
+            );
+          END;
+        END;
+          `;
+        }).filter(Boolean).join("\n")}
+
+        -- POS (ODEME_ARACI_TURU = 2) hareketlerini TODVZ_POS_ISLEM tablosuna işleme
+        IF OBJECT_ID('dbo.TODVZ_POS_ISLEM', 'U') IS NOT NULL
+        BEGIN
+          DELETE FROM [dbo].[TODVZ_POS_ISLEM] 
+          WHERE BELGE_TURU = 'sarraf' AND (BELGE_ID = @OUT_SARRAF_FISI_ID OR BELGE_NO = @OUT_FIS_NO);
+
+          ${validOdemeler.map((o, idx) => {
+            const rawOat = parseNum(o.odemeAraciTuru);
+            if (rawOat !== 2) return "";
+            return `
+          IF (@o_${idx}_tut > 0)
+          BEGIN
+            INSERT INTO [dbo].[TODVZ_POS_ISLEM] (
+              ISTEK_KIMLIK, POS_TERMINAL_ID, ENTEGRASYON, MOD, BELGE_TURU,
+              BELGE_ID, BELGE_NO, BELGE_TIPI, TUTAR, DURUM,
+              ELLE, ELLE_KULLANICI_ID, ELLE_ZAMANI, IADE_DURUMU,
+              POS_CIHAZI_ID, OLUSTURMA, SONUC_ZAMANI, VEZNE_ID, KULLANICI_ID
+            ) VALUES (
+              NEWID(), NULL, 'yok', 'canli', 'sarraf',
+              @OUT_SARRAF_FISI_ID, @OUT_FIS_NO, 'earsiv', @o_${idx}_tut, 'ONAY',
+              1, @IN_KULLANICI_ID, GETDATE(), 0,
+              @o_${idx}_pos, GETDATE(), GETDATE(), @IN_VEZNE_ID, @IN_KULLANICI_ID
+            );
+          END;
+            `;
+          }).filter(Boolean).join("\n")}
         END;
       END;
 
@@ -1323,9 +1413,19 @@ export class SarrafFisSqlRepository {
       req.output("SARRAF_FISI_ID", sql.Int, sarrafFisiId);
       req.input("KULLANICI_ID", sql.Int, kullaniciId);
       await req.execute("SODVZ_SARRAF_FISI_SIL");
-      if (fisNo) await pool.request().input("A", sql.VarChar(200), `Sarraf Fişi İşçilik - Fiş No: ${fisNo}`)
-        .query(`IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE ACIKLAMA = @A`)
-        .catch((e: any) => logger.warn("Sarraf fişi işçilik kaydı silinemedi:", e?.message));
+      if (fisNo) {
+        await pool.request()
+          .input("A_ISC", sql.VarChar(200), `Sarraf Fişi İşçilik - Fiş No: ${fisNo}`)
+          .input("A_ODE", sql.VarChar(200), `%Sarraf Fişi Ödeme - Fiş No: ${fisNo}%`)
+          .query(`IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE ACIKLAMA = @A_ISC OR ACIKLAMA LIKE @A_ODE`)
+          .catch((e: any) => logger.warn("Sarraf fişi hesap kaydı silinemedi:", e?.message));
+
+        await pool.request()
+          .input("FID", sql.Int, sarrafFisiId)
+          .input("FNO", sql.VarChar(50), fisNo)
+          .query(`IF OBJECT_ID('dbo.TODVZ_POS_ISLEM','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_POS_ISLEM] WHERE BELGE_TURU = 'sarraf' AND (BELGE_ID = @FID OR BELGE_NO = @FNO)`)
+          .catch((e: any) => logger.warn("Sarraf fişi POS kaydı silinemedi:", e?.message));
+      }
     } catch (err: any) {
       logger.error("deleteFis error:", err);
       throw ApiError.internal("Sarraf fişi silinemedi: " + (err?.message || ""));

@@ -1293,7 +1293,8 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       setAlertSuccess(`✅ "${selectedCari.ad}" [${selectedCari.kod}] cari kartı başarıyla silindi.`);
       await loadData(Math.max(0, selectedIndex - 1));
     } catch (err: any) {
-      setAlertError(`❌ Silme Başarısız: ${err.message || "Cari kart silinirken bir hata oluştu."}`);
+      const msg = err.message || "Cari kart silinirken bir hata oluştu.";
+      setAlertError(`❌ Silme Başarısız:\n${msg}`);
     } finally {
       setIsSaving(false);
     }
@@ -1460,9 +1461,18 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
           )}
 
           {alertError && (
-            <Alert variant="danger" className="erp-toast-item d-flex align-items-center gap-2 py-2 mb-0 shadow border-0" dismissible onClose={() => setAlertError(null)}>
-              <IconAlertCircle size={18} />
-              <span>{alertError}</span>
+            <Alert
+              variant="danger"
+              className="erp-toast-item d-flex align-items-start gap-2 py-2 mb-0 shadow border-0"
+              style={{ maxWidth: "560px", minWidth: "320px", wordBreak: "break-word" }}
+              data-no-autoclose="true"
+              dismissible
+              onClose={() => setAlertError(null)}
+            >
+              <IconAlertCircle size={20} className="flex-shrink-0 mt-1" />
+              <div style={{ whiteSpace: "pre-line", fontSize: "0.875rem", lineHeight: "1.45" }}>
+                {alertError}
+              </div>
             </Alert>
           )}
         </div>

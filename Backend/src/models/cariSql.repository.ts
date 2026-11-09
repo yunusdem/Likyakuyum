@@ -306,29 +306,16 @@ export class CariSqlRepository {
 
             UNION ALL
 
-            -- 2a. TODVZ_SARRAF_FISI (Ana fiş kalemleri / altın-maden)
-            SELECT 
-              SF.[CARI_KART_ID],
-              ISNULL(SFS.[URUN_ID], 1) AS [PARA_ID],
-              CASE WHEN SF.[TIP] = 1 THEN ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) ELSE 0 END AS [BORC],
-              CASE WHEN SF.[TIP] = 0 THEN ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) ELSE 0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] SFS WITH (NOLOCK)
-            INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON SFS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
-            WHERE SF.[CARI_KART_ID] IS NOT NULL AND SF.[CARI_KART_ID] > 0
-
-            UNION ALL
-
-            -- 2b. TODVZ_SARRAF_FISI (Ödeme / Tahsilat satırları)
-            -- Ödeme / Tahsilat tablosunda seçilen cari doğrudan borçlu olur (BORÇ)
+            -- 2. TODVZ_SARRAF_FISI (Ödeme / Tahsilat satırları: Satış -> Alacak, Alış -> Borç)
             SELECT 
               COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
               ISNULL(OS.[PARA_ID], 1) AS [PARA_ID],
-              ISNULL(NULLIF(OS.[TUTAR], 0), OS.[MIKTAR]) AS [BORC],
-              0.0 AS [ALACAK]
+              CASE WHEN SF.[TIP] = 0 THEN ISNULL(NULLIF(OS.[ADET], 0), ISNULL(NULLIF(OS.[MIKTAR], 0), OS.[TUTAR])) ELSE 0.0 END AS [BORC],
+              CASE WHEN SF.[TIP] = 1 THEN ISNULL(NULLIF(OS.[ADET], 0), ISNULL(NULLIF(OS.[MIKTAR], 0), OS.[TUTAR])) ELSE 0.0 END AS [ALACAK]
             FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
             INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
             WHERE (OS.[CARI_KART_ID] IS NOT NULL AND OS.[CARI_KART_ID] > 0)
-               OR (SF.[CARI_KART_ID] IS NOT NULL AND SF.[CARI_KART_ID] > 0 AND (OS.[ODEME_ARACI_TURU] = 1 OR OS.[CARI_KART_ID] IS NOT NULL))
+               OR (SF.[CARI_KART_ID] IS NOT NULL AND SF.[CARI_KART_ID] > 0 AND (OS.[ODEME_ARACI_TURU] = 1 OR OS.[ISLEME_YERI] = 1 OR OS.[CARI_KART_ID] IS NULL))
 
             UNION ALL
 
@@ -875,14 +862,109 @@ export class CariSqlRepository {
     }
   }
 
+  private static readonly CARI_TABLE_LABELS: Record<string, string> = {
+  TODVZ_CARI_HAREKET: "Cari Hareket",
+  TODVZ_CARI_HAREKET_SATIRI: "Cari Hareket Satırı",
+  TODVZ_SARRAF_FISI: "Sarraf Fişi",
+  TODVZ_SARRAF_FISI_SATIRI: "Sarraf Fişi Satırı",
+  TODVZ_ODEME_SATIRI: "Ödeme / Tahsilat Satırı",
+  TODVZ_FATURA: "Fatura",
+  TODVZ_FATURA_SATIRI: "Fatura Satırı",
+  TODVZ_FATURA_ODEME: "Fatura Ödeme Satırı",
+  TODVZ_FIS: "Döviz Fişi",
+  TODVZ_FIS_SATIRI: "Döviz Fişi Satırı",
+  TODVZ_CARI_DEKONT: "Cari Dekont",
+  TODVZ_CARI_DEKONT_SATIRI: "Cari Dekont Satırı",
+  TODVZ_BANKA_HAREKET: "Banka Hareketi",
+  TODVZ_CEK_SENET: "Çek / Senet Kaydı",
+  TODVZ_EMANET: "Emanet Kaydı",
+  TODVZ_POS_CIHAZI: "POS Cihazı Tanımı",
+  TODVZ_KULLANICI: "Kullanıcı Tanımı",
+  TODVZ_URUN_STOK: "Ürün Stok Kaydı",
+  TODVZ_STOK_HAREKET: "Stok Hareketi",
+  TODVZ_VERESIYE: "Veresiye Kaydı",
+  TODVZ_SIPARIS: "Sipariş Kaydı",
+  TODVZ_TEKLIF: "Teklif Kaydı",
+  TODVZ_TANIM: "Firma Tanımları (Varsayılan Sistem Hesabı)",
+  TODVZ_CARI_KART_GRUBU: "Cari Kart Grubu",
+  TODVZ_STOK_CARI_FIYAT_LISTESI: "Özel Fiyat Listesi",
+  LKY_MOBIL_EMIR: "Mobil Alış/Satış Emri",
+  LKY_MOBIL_CARI_AYAR: "Mobil Cari Ayarı",
+  LKY_MOBIL_CARI_MAKAS: "Mobil Makas Tanımı",
+};
+
+  /**
+   * Cari karta bağlı hareket ve kayıtları kontrol edip detaylı liste döndürür.
+   */
+  public static async getCariKartDependencies(
+    idNum: number,
+    pool: sql.ConnectionPool
+  ): Promise<string[]> {
+    const reasons: string[] = [];
+
+    try {
+      const q = `
+        SELECT DISTINCT
+          t.name AS tableName,
+          c.name AS columnName
+        FROM sys.tables t
+        INNER JOIN sys.columns c ON t.object_id = c.object_id
+        WHERE c.name IN ('CARI_KART_ID', 'BORCLU_ID', 'ALACAKLI_ID')
+          AND t.name NOT IN ('TODVZ_CARI_KART', 'TODVZ_FOTOGRAF', 'TODVZ_CARI_FOTOGRAF')
+          AND t.is_ms_shipped = 0;
+      `;
+      const res = await pool.request().query<{ tableName: string; columnName: string }>(q);
+
+      const tableCounts = new Map<string, number>();
+
+      for (const row of res.recordset || []) {
+        try {
+          const cntRes = await pool
+            .request()
+            .input("id", sql.Int, idNum)
+            .query<{ cnt: number }>(
+              `SELECT COUNT(1) AS cnt FROM dbo.[${row.tableName}] WITH (NOLOCK) WHERE [${row.columnName}] = @id`
+            );
+          const cnt = cntRes.recordset[0]?.cnt || 0;
+          if (cnt > 0) {
+            tableCounts.set(row.tableName, (tableCounts.get(row.tableName) || 0) + cnt);
+          }
+        } catch {}
+      }
+
+      for (const [tableName, count] of tableCounts.entries()) {
+        const label = CariSqlRepository.CARI_TABLE_LABELS[tableName] || tableName;
+        reasons.push(`${count} adet ${label}`);
+      }
+    } catch (err: any) {
+      logger.warn("CariSqlRepository.getCariKartDependencies warning:", err);
+    }
+
+    return reasons;
+  }
+
   public static async deleteViaProcedure(
     id: number | string,
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<boolean> {
+    const idNum = parseInt(String(id), 10);
+    if (!idNum || isNaN(idNum)) {
+      throw ApiError.badRequest("Geçersiz Cari Kart ID.");
+    }
+
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+
+    // 1. Silme işlemi öncesinde ilişkili kayıt ve hareket kontrolü
+    const dependencies = await CariSqlRepository.getCariKartDependencies(idNum, pool);
+    if (dependencies.length > 0) {
+      const reasonList = dependencies.map((d) => `• ${d}`).join("\n");
+      throw ApiError.badRequest(
+        `Bu cari kart silinemez! Karta ait ilişkili hareket ve kayıtlar bulunmaktadır:\n\n${reasonList}\n\nLütfen cari kartı silmeden önce bu kayıtları siliniz veya başka bir hesaba aktarınız.`
+      );
+    }
+
     try {
-      const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       const request = pool.request();
-      const idNum = parseInt(String(id), 10);
       request.input("CARI_KART_ID", sql.Int, idNum);
 
       logger.info(`[SODVZ_CARI_KART_SIL] Çağrılıyor: CARI_KART_ID=${idNum}`);
@@ -895,8 +977,45 @@ export class CariSqlRepository {
       return true;
     } catch (error: any) {
       logger.error(`CariSqlRepository.deleteViaProcedure(${id}) error:`, error);
-      const msg = error?.message || "Cari kart silinemedi.";
-      throw ApiError.badRequest(msg);
+
+      // Hata durumunda tekrar bağımlılık kontrolü yapıp varsa net raporla
+      const afterDeps = await CariSqlRepository.getCariKartDependencies(idNum, pool);
+      if (afterDeps.length > 0) {
+        const reasonList = afterDeps.map((d) => `• ${d}`).join("\n");
+        throw ApiError.badRequest(
+          `Bu cari kart silinemez! Karta ait ilişkili hareket ve kayıtlar bulunmaktadır:\n\n${reasonList}\n\nLütfen cari kartı silmeden önce bu kayıtları siliniz veya başka bir hesaba aktarınız.`
+        );
+      }
+
+      // Preceding errors veya raw error mesajından yabancı anahtar tablosunu bul
+      const allMsgs = [
+        error?.message || "",
+        ...(error?.precedingErrors || []).map((pe: any) => pe?.message || ""),
+      ].join(" ");
+
+      if (allMsgs.includes("REFERENCE constraint") || allMsgs.includes("FOREIGN KEY constraint")) {
+        const tableMatch = allMsgs.match(/table\s+["']?(?:dbo\.)?([^"',\s]+)["']?/i);
+        const tbl = tableMatch ? tableMatch[1].toUpperCase() : "";
+        const desc = CariSqlRepository.CARI_TABLE_LABELS[tbl] || tbl || "başka tablolar";
+        throw ApiError.badRequest(
+          `Bu cari kart silinemez! Veritabanında "${desc}" ile ilişkili bağlantılı kayıtlar bulunmaktadır. Lütfen önce bu kayıtları siliniz veya aktarınız.`
+        );
+      }
+
+      // SQL Server stored procedure RAISERROR temizliği
+      const cleanMsg = (error?.message || "")
+        .replace(/.*(?:Error:|Msg \d+, Level \d+, State \d+, Procedure \w+, Line \d+)/i, "")
+        .trim();
+
+      if (cleanMsg && cleanMsg !== "Cari kart silinemedi") {
+        throw ApiError.badRequest(
+          cleanMsg.startsWith("Bu cari") ? cleanMsg : `Bu cari kart silinemez: ${cleanMsg}`
+        );
+      }
+
+      throw ApiError.badRequest(
+        "Bu cari kart veritabanında ilişkili hareketler veya bakiye bulunduğu için silinemez."
+      );
     }
   }
 
