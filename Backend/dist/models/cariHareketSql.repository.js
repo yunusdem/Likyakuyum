@@ -139,8 +139,8 @@ export class CariHareketSqlRepository {
         WHERE ${chWhere.join(" AND ")}
       `);
             if (!onlyCariHareket) {
-                // 2. TODVZ_SARRAF_FISI (with Cari)
-                let sfWhere = ["(COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) IS NOT NULL OR OS.[ODEME_ARACI_TURU] = 1)"];
+                // 2. TODVZ_SARRAF_FISI (Sadece Türü Cari (ODEME_ARACI_TURU = 1) olan Ödeme Satırları)
+                let sfWhere = ["OS.[ODEME_ARACI_TURU] = 1", "(COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) IS NOT NULL)"];
                 if (startParam)
                     sfWhere.push("SF.[TARIH] >= @startDate");
                 if (endParam)
@@ -150,8 +150,8 @@ export class CariHareketSqlRepository {
                 if (filters?.vezneId)
                     sfWhere.push("SF.[VEZNE_ID] = @vezneId");
                 if (filters?.tip !== undefined && filters?.tip !== null && String(filters?.tip) !== "-1") {
-                    // SF.TIP: 0 Alış (Alacak=1), 1 Satış (Borç=0)
-                    sfWhere.push("(CASE WHEN SF.[TIP] = 0 THEN 1 ELSE 0 END) = @tip");
+                    // SF.TIP: 1 Satış (Alacak=1), 0 Alış (Borç=0)
+                    sfWhere.push("(CASE WHEN SF.[TIP] = 1 THEN 1 ELSE 0 END) = @tip");
                 }
                 if (filters?.hareketTipi !== undefined && filters?.hareketTipi !== null && String(filters?.hareketTipi) !== "-1") {
                     // Sarraf fişleri hareketTipi = 10
@@ -162,17 +162,14 @@ export class CariHareketSqlRepository {
                     sfWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR SF.[UNVAN] LIKE @search OR SF.[FIS_NO] LIKE @search)");
                 }
                 queries.push(`
-        SELECT 
+        SELECT DISTINCT
           SF.[SARRAF_FISI_ID] AS [ID],
           'SARRAF_FISI' AS [KAYNAK],
           COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
           SF.[TARIH],
           10 AS [HAREKET_TIPI],
           CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
-          CASE WHEN OS.[CARI_KART_ID] IS NOT NULL AND OS.[CARI_KART_ID] > 0 THEN 0
-               WHEN SF.[TIP] = 0 THEN 1 
-               ELSE 0 
-          END AS [TIP],
+          CASE WHEN SF.[TIP] = 1 THEN 1 ELSE 0 END AS [TIP],
           1 AS [EKLEYEN_ID],
           ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
           1 AS [GUNCELLEYEN_ID],
@@ -184,7 +181,7 @@ export class CariHareketSqlRepository {
           LTRIM(RTRIM(ISNULL(V.[KOD], ''))) AS [VEZNE_KOD],
           LTRIM(RTRIM(ISNULL(V.[AD], ''))) AS [VEZNE_AD]
         FROM [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK)
-        LEFT JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID] AND (OS.[ODEME_ARACI_TURU] = 1 OR OS.[CARI_KART_ID] IS NOT NULL)
+        INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
         LEFT JOIN [dbo].[TODVZ_CARI_KART] C WITH (NOLOCK) ON C.[CARI_KART_ID] = COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0))
         LEFT JOIN [dbo].[TODVZ_VEZNE] V WITH (NOLOCK) ON SF.[VEZNE_ID] = V.[VEZNE_ID]
         WHERE ${sfWhere.join(" AND ")}
@@ -348,35 +345,23 @@ export class CariHareketSqlRepository {
                     });
                 }
             }
-            // Fetch lines for Sarraf Fisi
-            const sfIds = headers.filter((h) => h.KAYNAK === "SARRAF_FISI").map((h) => h.CARI_HAREKET_ID);
+            // Fetch lines for Sarraf Fisi (Sadece Ödeme / Tahsilat Tablosundaki Satırlar)
+            const sfIds = Array.from(new Set(headers.filter((h) => h.KAYNAK === "SARRAF_FISI").map((h) => h.CARI_HAREKET_ID)));
             const sfLinesMap = new Map();
             if (sfIds.length > 0) {
                 const sfQuery = `
           SELECT 
             OS.[SARRAF_FISI_ID],
             OS.[SATIR_NO],
-            OS.[PARA_ID],
-            OS.[TUTAR] AS [MEBLAG],
+            ISNULL(OS.[PARA_ID], 1) AS [PARA_ID],
+            ISNULL(NULLIF(OS.[ADET], 0), ISNULL(NULLIF(OS.[MIKTAR], 0), OS.[TUTAR])) AS [MEBLAG],
             ISNULL(NULLIF(RTRIM(OS.[PARA_KODU]), ''), RTRIM(P.[KOD])) AS [PARA_KOD],
             ISNULL(NULLIF(RTRIM(OS.[PARA_ADI]), ''), RTRIM(P.[AD])) AS [PARA_AD],
             ISNULL(P.[HAS_ORANI], 1) AS [HAS_ORANI]
           FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
           LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON OS.[PARA_ID] = P.[PARA_ID]
           WHERE OS.[SARRAF_FISI_ID] IN (${sfIds.join(",")})
-          UNION ALL
-          SELECT
-            SFS.[SARRAF_FISI_ID],
-            SFS.[SATIR_NO],
-            ISNULL(SFS.[URUN_ID], 1) AS [PARA_ID],
-            ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) AS [MEBLAG],
-            ISNULL(RTRIM(P.[KOD]), 'HAS') AS [PARA_KOD],
-            ISNULL(RTRIM(P.[AD]), 'Has Altın') AS [PARA_AD],
-            ISNULL(P.[HAS_ORANI], 1) AS [HAS_ORANI]
-          FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] SFS WITH (NOLOCK)
-          LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON SFS.[URUN_ID] = P.[PARA_ID]
-          WHERE SFS.[SARRAF_FISI_ID] IN (${sfIds.join(",")})
-            AND NOT EXISTS (SELECT 1 FROM [dbo].[TODVZ_ODEME_SATIRI] WHERE SARRAF_FISI_ID = SFS.SARRAF_FISI_ID);
+          ORDER BY OS.[SARRAF_FISI_ID] ASC, OS.[SATIR_NO] ASC;
         `;
                 const sfRes = await pool.request().query(sfQuery);
                 for (const line of sfRes.recordset || []) {
@@ -465,7 +450,16 @@ export class CariHareketSqlRepository {
                 11: "Döviz Fişi",
                 12: "Perakende Faturası",
             };
-            return headers.map((h) => {
+            const uniqueHeaders = [];
+            const seenHeaders = new Set();
+            for (const h of headers) {
+                const key = `${h.KAYNAK}_${h.CARI_HAREKET_ID}_${h.CARI_KART_ID}`;
+                if (!seenHeaders.has(key)) {
+                    seenHeaders.add(key);
+                    uniqueHeaders.push(h);
+                }
+            }
+            return uniqueHeaders.map((h) => {
                 let lines = [];
                 if (h.KAYNAK === "CARI_HAREKET")
                     lines = chLinesMap.get(h.CARI_HAREKET_ID) || [];
@@ -547,10 +541,7 @@ export class CariHareketSqlRepository {
             SF.[TARIH],
             10 AS [HAREKET_TIPI],
             CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
-            CASE WHEN OS.[CARI_KART_ID] IS NOT NULL AND OS.[CARI_KART_ID] > 0 THEN 0
-               WHEN SF.[TIP] = 0 THEN 1 
-               ELSE 0 
-          END AS [TIP],
+            CASE WHEN SF.[TIP] = 1 THEN 1 ELSE 0 END AS [TIP],
             1 AS [EKLEYEN_ID],
             ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
             1 AS [GUNCELLEYEN_ID],
@@ -562,7 +553,7 @@ export class CariHareketSqlRepository {
             LTRIM(RTRIM(ISNULL(V.[KOD], ''))) AS [VEZNE_KOD],
             LTRIM(RTRIM(ISNULL(V.[AD], ''))) AS [VEZNE_AD]
           FROM [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK)
-          LEFT JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID] AND (OS.[ODEME_ARACI_TURU] = 1 OR OS.[CARI_KART_ID] IS NOT NULL)
+          INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID] AND OS.[ODEME_ARACI_TURU] = 1
           LEFT JOIN [dbo].[TODVZ_CARI_KART] C WITH (NOLOCK) ON C.[CARI_KART_ID] = COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0))
           LEFT JOIN [dbo].[TODVZ_VEZNE] V WITH (NOLOCK) ON SF.[VEZNE_ID] = V.[VEZNE_ID]
           WHERE SF.[SARRAF_FISI_ID] = @id;
@@ -572,14 +563,14 @@ export class CariHareketSqlRepository {
                     const sfLinesRes = await pool.request().input("id", sql.Int, parseInt(String(id), 10)).query(`
             SELECT 
               OS.[SATIR_NO],
-              OS.[PARA_ID],
-              OS.[TUTAR] AS [MEBLAG],
+              ISNULL(OS.[PARA_ID], 1) AS [PARA_ID],
+              ISNULL(NULLIF(OS.[ADET], 0), ISNULL(NULLIF(OS.[MIKTAR], 0), OS.[TUTAR])) AS [MEBLAG],
               LTRIM(RTRIM(ISNULL(P.[KOD], ''))) AS [PARA_KOD],
               LTRIM(RTRIM(ISNULL(P.[AD], ''))) AS [PARA_AD],
               ISNULL(P.[HAS_ORANI], 1) AS [HAS_ORANI]
             FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
             LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON OS.[PARA_ID] = P.[PARA_ID]
-            WHERE OS.[SARRAF_FISI_ID] = @id
+            WHERE OS.[SARRAF_FISI_ID] = @id AND OS.[ODEME_ARACI_TURU] = 1
             ORDER BY OS.[SATIR_NO] ASC;
           `);
                     let lines = (sfLinesRes.recordset || []).map((l) => ({
@@ -590,29 +581,6 @@ export class CariHareketSqlRepository {
                         meblag: l.MEBLAG || 0,
                         hasOrani: l.HAS_ORANI ?? 1,
                     }));
-                    if (lines.length === 0) {
-                        const sfItemLinesRes = await pool.request().input("id", sql.Int, parseInt(String(id), 10)).query(`
-              SELECT 
-                SFS.[SATIR_NO],
-                ISNULL(SFS.[URUN_ID], 1) AS [PARA_ID],
-                ISNULL(SFS.[TUTAR], SFS.[HAS_GRAM]) AS [MEBLAG],
-                LTRIM(RTRIM(ISNULL(U.[KOD], 'HAS'))) AS [PARA_KOD],
-                LTRIM(RTRIM(ISNULL(U.[AD], 'Has Altın'))) AS [PARA_AD],
-                ISNULL(U.[HAS_ORANI], 1) AS [HAS_ORANI]
-              FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] SFS WITH (NOLOCK)
-              LEFT JOIN [dbo].[TODVZ_PARA] U WITH (NOLOCK) ON SFS.[URUN_ID] = U.[PARA_ID]
-              WHERE SFS.[SARRAF_FISI_ID] = @id
-              ORDER BY SFS.[SATIR_NO] ASC;
-            `);
-                        lines = (sfItemLinesRes.recordset || []).map((l) => ({
-                            satirNo: l.SATIR_NO || 1,
-                            paraId: l.PARA_ID || 1,
-                            paraKodu: l.PARA_KOD || "HAS",
-                            paraAdi: l.PARA_AD || "",
-                            meblag: l.MEBLAG || 0,
-                            hasOrani: l.HAS_ORANI ?? 1,
-                        }));
-                    }
                     const ozet = lines
                         .map((l) => `${new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(l.meblag)} ${l.paraKodu}`)
                         .join(", ");
@@ -963,6 +931,48 @@ export class CariHareketSqlRepository {
             else {
                 throw ApiError.badRequest(`Seçilen Cari Kart (#${data.cariKartId}${data.cariKod ? ` - ${data.cariKod}` : ""}) veritabanında bulunamadı. Lütfen sayfayı yenileyip güncel cari listesinden seçim yapınız.`);
             }
+            const sfCheck = await new sql.Request(transaction).input("SF_ID", sql.Int, numId).query(`
+        SELECT [SARRAF_FISI_ID] FROM [dbo].[TODVZ_SARRAF_FISI] WITH (NOLOCK) WHERE [SARRAF_FISI_ID] = @SF_ID;
+      `);
+            if (sfCheck.recordset.length > 0) {
+                // Sarraf Fişi sadece Cari ödeme satırlarını güncelle (Vezne, POS, Hesap satırlarına dokunma!)
+                const delOdeme = new sql.Request(transaction);
+                delOdeme.input("SF_ID", sql.Int, numId);
+                await delOdeme.query("DELETE FROM [dbo].[TODVZ_ODEME_SATIRI] WHERE [SARRAF_FISI_ID] = @SF_ID AND [ODEME_ARACI_TURU] = 1;");
+                // Mevcut en büyük SATIR_NO'yu bul
+                const maxSnoRes = await new sql.Request(transaction).input("SF_ID", sql.Int, numId).query(`
+          SELECT ISNULL(MAX(SATIR_NO), 0) AS MAX_SNO FROM [dbo].[TODVZ_ODEME_SATIRI] WHERE [SARRAF_FISI_ID] = @SF_ID;
+        `);
+                const startSno = maxSnoRes.recordset[0]?.MAX_SNO || 0;
+                const validLines = (data.satirlar || []).filter((s) => s.paraId && s.meblag > 0);
+                for (let i = 0; i < validLines.length; i++) {
+                    const l = validLines[i];
+                    const insOdeme = new sql.Request(transaction);
+                    insOdeme.input("SARRAF_FISI_ID", sql.Int, numId);
+                    insOdeme.input("SATIR_NO", sql.Int, startSno + i + 1);
+                    insOdeme.input("ISLEME_YERI", sql.Int, 1);
+                    insOdeme.input("ODEME_ARACI_TURU", sql.Int, 1);
+                    insOdeme.input("PARA_ID", sql.Int, l.paraId);
+                    insOdeme.input("MIKTAR", sql.Float, l.meblag);
+                    insOdeme.input("KUR", sql.Float, 1);
+                    insOdeme.input("TUTAR", sql.Float, l.meblag);
+                    insOdeme.input("CARI_KART_ID", sql.Int, effectiveCariKartId);
+                    await insOdeme.query(`
+            INSERT INTO [dbo].[TODVZ_ODEME_SATIRI] (
+              SARRAF_FISI_ID, SATIR_NO, ISLEME_YERI, ODEME_ARACI_TURU, PARA_ID,
+              MIKTAR, KUR, TUTAR, CARI_KART_ID
+            ) VALUES (
+              @SARRAF_FISI_ID, @SATIR_NO, @ISLEME_YERI, @ODEME_ARACI_TURU, @PARA_ID,
+              @MIKTAR, @KUR, @TUTAR, @CARI_KART_ID
+            );
+          `);
+                }
+                await transaction.commit();
+                const updated = await CariHareketSqlRepository.findById(numId, dbContext);
+                if (!updated)
+                    throw ApiError.notFound("Güncellenen Sarraf Fişi bulunamadı.");
+                return updated;
+            }
             const headerRequest = new sql.Request(transaction);
             headerRequest.input("CARI_HAREKET_ID", sql.Int, numId);
             headerRequest.input("CARI_KART_ID", sql.Int, effectiveCariKartId);
@@ -1056,10 +1066,20 @@ export class CariHareketSqlRepository {
             await CariHareketSqlRepository.ensureTablesExist(pool);
             // baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
             const query = `
-        SELECT [CARI_HAREKET_ID]
-        FROM [dbo].[TODVZ_CARI_HAREKET]
-        ${baslangic ? "WHERE [TARIH] >= CAST(@BAS AS date)" : ""}
-        ORDER BY [CARI_HAREKET_ID] ASC;
+        WITH AllIds AS (
+          SELECT [CARI_HAREKET_ID] AS [ID], [TARIH]
+          FROM [dbo].[TODVZ_CARI_HAREKET] WITH (NOLOCK)
+          WHERE 1=1 ${baslangic ? "AND [TARIH] >= CAST(@BAS AS date)" : ""}
+          UNION
+          SELECT SF.[SARRAF_FISI_ID] AS [ID], SF.[TARIH]
+          FROM [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK)
+          INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
+          WHERE OS.[ODEME_ARACI_TURU] = 1 AND (COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) IS NOT NULL)
+          ${baslangic ? "AND SF.[TARIH] >= CAST(@BAS AS date)" : ""}
+        )
+        SELECT [ID] AS [CARI_HAREKET_ID]
+        FROM AllIds
+        ORDER BY [TARIH] ASC, [ID] ASC;
       `;
             const navReq = pool.request();
             if (baslangic)
@@ -1109,163 +1129,91 @@ export class CariHareketSqlRepository {
         `);
             const cari = cariRes.recordset[0] || { CARI_KART_ID: id, KOD: "", AD: "" };
             let rawRecordset = [];
-            // 2. Try calling SODVZC_CARI_BAKIYE stored procedure first
-            try {
-                const spRes = await pool
-                    .request()
-                    .input("CARI_KART_ID", sql.Int, id)
-                    .input("DEVIRDEN", sql.Bit, 0)
-                    .query(`
-            SET NOCOUNT ON;
-            IF OBJECT_ID('dbo.SODVZC_CARI_BAKIYE') IS NOT NULL
-            BEGIN
-              EXEC dbo.SODVZC_CARI_BAKIYE @CARI_KART_ID = @CARI_KART_ID, @DEVIRDEN = @DEVIRDEN;
-            END
-            ELSE
-            BEGIN
-              SELECT 1 AS NO_SP;
-            END
-          `);
-                const rsets = spRes.recordsets;
-                if (Array.isArray(rsets) && rsets.length > 0) {
-                    for (let i = rsets.length - 1; i >= 0; i--) {
-                        const rs = rsets[i];
-                        if (Array.isArray(rs) && rs.length > 0 && rs[0]?.PARA_ID !== undefined) {
-                            rawRecordset = rs;
-                            break;
-                        }
-                    }
-                }
-                if (rawRecordset.length === 0 && spRes.recordset && spRes.recordset.length > 0 && spRes.recordset[0]?.NO_SP === undefined) {
-                    rawRecordset = spRes.recordset;
-                }
-            }
-            catch (spErr) {
-                logger.warn(`SODVZC_CARI_BAKIYE SP failed, falling back to direct query:`, spErr);
-            }
-            // 3. Fallback query matching exact logic of SODVZC_CARI_BAKIYE + all movements
-            if (rawRecordset.length === 0) {
-                const bakiyeQuery = `
-          SET NOCOUNT ON;
-          WITH MovementUnion AS (
-            -- 1. Cari Hareket
-            SELECT 
-              S.[PARA_ID],
-              CASE WHEN H.[TIP] = 0 THEN S.[MEBLAG] ELSE 0.0 END AS [BORC],
-              CASE WHEN H.[TIP] = 1 THEN S.[MEBLAG] ELSE 0.0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_CARI_HAREKET_SATIRI] S WITH (NOLOCK)
-              INNER JOIN [dbo].[TODVZ_CARI_HAREKET] H WITH (NOLOCK) ON S.[CARI_HAREKET_ID] = H.[CARI_HAREKET_ID]
-            WHERE H.[CARI_KART_ID] = @id
-
-            UNION ALL
-
-            -- 2. Cari Dekont (Borçlu)
-            SELECT 
-              CDS.[PARA_ID],
-              CDS.[MEBLAG] AS [BORC],
-              0.0 AS [ALACAK]
-            FROM [dbo].[TODVZ_CARI_DEKONT] CD WITH (NOLOCK)
-              INNER JOIN [dbo].[TODVZ_CARI_DEKONT_SATIRI] CDS WITH (NOLOCK) ON CD.[CARI_DEKONT_ID] = CDS.[CARI_DEKONT_ID]
-              LEFT OUTER JOIN [dbo].[TODVZ_CARI_DEKONT] PRV WITH (NOLOCK) ON PRV.[ONCEKI_ID] = CD.[CARI_DEKONT_ID]
-            WHERE CD.[BORCLU_ID] = @id AND CD.[IPTAL_TARIHI] IS NULL AND PRV.[CARI_DEKONT_ID] IS NULL AND CDS.[TIP] = 0 AND CD.[TIP] <> 0
-
-            UNION ALL
-
-            -- 3. Cari Dekont (Alacaklı)
-            SELECT 
-              CDS.[PARA_ID],
-              0.0 AS [BORC],
-              CDS.[MEBLAG] AS [ALACAK]
-            FROM [dbo].[TODVZ_CARI_DEKONT] CD WITH (NOLOCK)
-              INNER JOIN [dbo].[TODVZ_CARI_DEKONT_SATIRI] CDS WITH (NOLOCK) ON CD.[CARI_DEKONT_ID] = CDS.[CARI_DEKONT_ID]
-              LEFT OUTER JOIN [dbo].[TODVZ_CARI_DEKONT] PRV WITH (NOLOCK) ON PRV.[ONCEKI_ID] = CD.[CARI_DEKONT_ID]
-            WHERE CD.[ALACAKLI_ID] = @id AND CD.[IPTAL_TARIHI] IS NULL AND PRV.[CARI_DEKONT_ID] IS NULL AND CDS.[TIP] = 1 AND CD.[TIP] <> 1
-
-            UNION ALL
-
-            -- 4. Döviz Fişi Satırı (Banka / Cari)
-            SELECT 
-              FS.[PARA_ID],
-              CASE WHEN F.[TIP] = 0 THEN FS.[MIKTAR] ELSE 0.0 END AS [BORC],
-              CASE WHEN F.[TIP] = 1 THEN FS.[MIKTAR] ELSE 0.0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
-              INNER JOIN [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK) ON FS.[FIS_ID] = F.[FIS_ID]
-            WHERE (FS.[BANKA_HESABI_ID] = @id OR F.[CARI_KART_ID] = @id) AND ISNULL(F.[IPTAL], 0) = 0
-
-            UNION ALL
-
-            -- 5. Döviz Fişi TL Karşılığı
-            SELECT 
-              1 AS [PARA_ID],
-              CASE WHEN F.[TIP] = 1 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [BORC],
-              CASE WHEN F.[TIP] = 0 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
-            WHERE (F.[BANKA_HESABI_ID] = @id OR F.[CARI_KART_ID] = @id) AND ISNULL(F.[IPTAL], 0) = 0
-
-            UNION ALL
-
-            -- 6. Sarraf Fişi Ödeme Satırı
-            SELECT 
-              ISNULL(S.[PARA_ID], 1) AS [PARA_ID],
-              ISNULL(NULLIF(S.[TUTAR], 0), S.[MIKTAR]) AS [BORC],
-              0.0 AS [ALACAK]
-            FROM [dbo].[TODVZ_SARRAF_FISI] F WITH (NOLOCK)
-              INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] S WITH (NOLOCK) ON S.[SARRAF_FISI_ID] = F.[SARRAF_FISI_ID]
-            WHERE S.[CARI_KART_ID] = @id OR (F.[CARI_KART_ID] = @id AND S.[ISLEME_YERI] = 1)
-
-            UNION ALL
-
-            -- 7. Sarraf Fişi Kalem Satırı (Has / Maden)
-            SELECT 
-              ISNULL(S.[URUN_ID], 1) AS [PARA_ID],
-              CASE WHEN F.[TIP] = 0 THEN (CASE WHEN PR2.[BIRIM] = 0 THEN S.[ADET] ELSE S.[MIKTAR] END) ELSE 0.0 END AS [BORC],
-              CASE WHEN F.[TIP] = 1 THEN (CASE WHEN PR2.[BIRIM] = 0 THEN S.[ADET] ELSE S.[MIKTAR] END) ELSE 0.0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_SARRAF_FISI] F WITH (NOLOCK)
-              INNER JOIN [dbo].[TODVZ_SARRAF_FISI_SATIRI] S WITH (NOLOCK) ON S.[SARRAF_FISI_ID] = F.[SARRAF_FISI_ID]
-              INNER JOIN [dbo].[TODVZ_PARA] PR2 WITH (NOLOCK) ON PR2.[PARA_ID] = S.[URUN_ID]
-            WHERE F.[CARI_KART_ID] = @id
-
-            UNION ALL
-
-            -- 8. Sarraf Fişi İşçilik HAS Altın
-            SELECT 
-              T.[HAS_ALTIN_PARA_ID] AS [PARA_ID],
-              CASE WHEN F.[TIP] = 0 THEN S.[ISCILIK_HAS_GRAM] ELSE 0.0 END AS [BORC],
-              CASE WHEN F.[TIP] = 1 THEN S.[ISCILIK_HAS_GRAM] ELSE 0.0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_SARRAF_FISI] F WITH (NOLOCK)
-              INNER JOIN [dbo].[TODVZ_SARRAF_FISI_SATIRI] S WITH (NOLOCK) ON S.[SARRAF_FISI_ID] = F.[SARRAF_FISI_ID],
-              [dbo].[TODVZ_TANIM] T WITH (NOLOCK)
-            WHERE F.[CARI_KART_ID] = @id AND S.[URUN_TIPI] = 1 AND S.[ISCILIK_HAS_GRAM] > 0.0 AND T.[HAS_ALTIN_PARA_ID] IS NOT NULL
-
-            UNION ALL
-
-            -- 9. Sarraf Fişi İşçilik HAS Gümüş
-            SELECT 
-              T.[HAS_GUMUS_PARA_ID] AS [PARA_ID],
-              CASE WHEN F.[TIP] = 0 THEN S.[ISCILIK_HAS_GRAM] ELSE 0.0 END AS [BORC],
-              CASE WHEN F.[TIP] = 1 THEN S.[ISCILIK_HAS_GRAM] ELSE 0.0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_SARRAF_FISI] F WITH (NOLOCK)
-              INNER JOIN [dbo].[TODVZ_SARRAF_FISI_SATIRI] S WITH (NOLOCK) ON S.[SARRAF_FISI_ID] = F.[SARRAF_FISI_ID],
-              [dbo].[TODVZ_TANIM] T WITH (NOLOCK)
-            WHERE F.[CARI_KART_ID] = @id AND S.[URUN_TIPI] = 2 AND S.[ISCILIK_HAS_GRAM] > 0.0 AND T.[HAS_GUMUS_PARA_ID] IS NOT NULL
-          )
+            // Calculate real-time balance for Cari across movements (Sarraf Fişi sadece Ödeme / Tahsilat satırları yansıtılır)
+            const bakiyeQuery = `
+        SET NOCOUNT ON;
+        WITH MovementUnion AS (
+          -- 1. Cari Hareket
           SELECT 
-            PR.[PARA_ID],
-            LTRIM(RTRIM(ISNULL(PR.[KOD], 'TL'))) AS [KOD],
-            LTRIM(RTRIM(ISNULL(PR.[AD], 'Türk Lirası'))) AS [AD],
-            ISNULL(PR.[HAS_ORANI], 0) AS [HAS_ORANI],
-            ISNULL(PR.[SIRA_NO], 99) AS [SIRA_NO],
-            SUM(ISNULL(M.[BORC], 0.0)) AS [BORC_BAKIYE],
-            SUM(ISNULL(M.[ALACAK], 0.0)) AS [ALACAK_BAKIYE]
-          FROM MovementUnion M
-            INNER JOIN [dbo].[TODVZ_PARA] PR WITH (NOLOCK) ON M.[PARA_ID] = PR.[PARA_ID]
-          GROUP BY PR.[PARA_ID], PR.[KOD], PR.[AD], PR.[HAS_ORANI], PR.[SIRA_NO]
-          HAVING SUM(ISNULL(M.[BORC], 0.0)) <> 0 OR SUM(ISNULL(M.[ALACAK], 0.0)) <> 0
-          ORDER BY ISNULL(PR.[SIRA_NO], 99) ASC, PR.[KOD] ASC;
-        `;
-                const qRes = await pool.request().input("id", sql.Int, id).query(bakiyeQuery);
-                rawRecordset = qRes.recordset || [];
-            }
+            S.[PARA_ID],
+            CASE WHEN H.[TIP] = 0 THEN S.[MEBLAG] ELSE 0.0 END AS [BORC],
+            CASE WHEN H.[TIP] = 1 THEN S.[MEBLAG] ELSE 0.0 END AS [ALACAK]
+          FROM [dbo].[TODVZ_CARI_HAREKET_SATIRI] S WITH (NOLOCK)
+            INNER JOIN [dbo].[TODVZ_CARI_HAREKET] H WITH (NOLOCK) ON S.[CARI_HAREKET_ID] = H.[CARI_HAREKET_ID]
+          WHERE H.[CARI_KART_ID] = @id
+
+          UNION ALL
+
+          -- 2. Cari Dekont (Borçlu)
+          SELECT 
+            CDS.[PARA_ID],
+            CDS.[MEBLAG] AS [BORC],
+            0.0 AS [ALACAK]
+          FROM [dbo].[TODVZ_CARI_DEKONT] CD WITH (NOLOCK)
+            INNER JOIN [dbo].[TODVZ_CARI_DEKONT_SATIRI] CDS WITH (NOLOCK) ON CD.[CARI_DEKONT_ID] = CDS.[CARI_DEKONT_ID]
+            LEFT OUTER JOIN [dbo].[TODVZ_CARI_DEKONT] PRV WITH (NOLOCK) ON PRV.[ONCEKI_ID] = CD.[CARI_DEKONT_ID]
+          WHERE CD.[BORCLU_ID] = @id AND CD.[IPTAL_TARIHI] IS NULL AND PRV.[CARI_DEKONT_ID] IS NULL AND CDS.[TIP] = 0 AND CD.[TIP] <> 0
+
+          UNION ALL
+
+          -- 3. Cari Dekont (Alacaklı)
+          SELECT 
+            CDS.[PARA_ID],
+            0.0 AS [BORC],
+            CDS.[MEBLAG] AS [ALACAK]
+          FROM [dbo].[TODVZ_CARI_DEKONT] CD WITH (NOLOCK)
+            INNER JOIN [dbo].[TODVZ_CARI_DEKONT_SATIRI] CDS WITH (NOLOCK) ON CD.[CARI_DEKONT_ID] = CDS.[CARI_DEKONT_ID]
+            LEFT OUTER JOIN [dbo].[TODVZ_CARI_DEKONT] PRV WITH (NOLOCK) ON PRV.[ONCEKI_ID] = CD.[CARI_DEKONT_ID]
+          WHERE CD.[ALACAKLI_ID] = @id AND CD.[IPTAL_TARIHI] IS NULL AND PRV.[CARI_DEKONT_ID] IS NULL AND CDS.[TIP] = 1 AND CD.[TIP] <> 1
+
+          UNION ALL
+
+          -- 4. Döviz Fişi Satırı (Banka / Cari)
+          SELECT 
+            FS.[PARA_ID],
+            CASE WHEN F.[TIP] = 0 THEN FS.[MIKTAR] ELSE 0.0 END AS [BORC],
+            CASE WHEN F.[TIP] = 1 THEN FS.[MIKTAR] ELSE 0.0 END AS [ALACAK]
+          FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
+            INNER JOIN [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK) ON FS.[FIS_ID] = F.[FIS_ID]
+          WHERE (FS.[BANKA_HESABI_ID] = @id OR F.[CARI_KART_ID] = @id) AND ISNULL(F.[IPTAL], 0) = 0
+
+          UNION ALL
+
+          -- 5. Döviz Fişi TL Karşılığı
+          SELECT 
+            1 AS [PARA_ID],
+            CASE WHEN F.[TIP] = 1 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [BORC],
+            CASE WHEN F.[TIP] = 0 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [ALACAK]
+          FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
+          WHERE (F.[BANKA_HESABI_ID] = @id OR F.[CARI_KART_ID] = @id) AND ISNULL(F.[IPTAL], 0) = 0
+
+          UNION ALL
+
+          -- 6. Sarraf Fişi Ödeme / Tahsilat Satırı (Sadece Türü Cari olan Ödeme Satırları: Satış -> Alacak (1), Alış -> Borç (0))
+          SELECT 
+            ISNULL(S.[PARA_ID], 1) AS [PARA_ID],
+            CASE WHEN F.[TIP] = 0 THEN ISNULL(NULLIF(S.[ADET], 0), ISNULL(NULLIF(S.[MIKTAR], 0), S.[TUTAR])) ELSE 0.0 END AS [BORC],
+            CASE WHEN F.[TIP] = 1 THEN ISNULL(NULLIF(S.[ADET], 0), ISNULL(NULLIF(S.[MIKTAR], 0), S.[TUTAR])) ELSE 0.0 END AS [ALACAK]
+          FROM [dbo].[TODVZ_SARRAF_FISI] F WITH (NOLOCK)
+            INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] S WITH (NOLOCK) ON S.[SARRAF_FISI_ID] = F.[SARRAF_FISI_ID]
+          WHERE S.[ODEME_ARACI_TURU] = 1 AND (S.[CARI_KART_ID] = @id OR (S.[CARI_KART_ID] IS NULL AND F.[CARI_KART_ID] = @id))
+        )
+        SELECT 
+          PR.[PARA_ID],
+          LTRIM(RTRIM(ISNULL(PR.[KOD], 'TL'))) AS [KOD],
+          LTRIM(RTRIM(ISNULL(PR.[AD], 'Türk Lirası'))) AS [AD],
+          ISNULL(PR.[HAS_ORANI], 0) AS [HAS_ORANI],
+          ISNULL(PR.[SIRA_NO], 99) AS [SIRA_NO],
+          SUM(ISNULL(M.[BORC], 0.0)) AS [BORC_BAKIYE],
+          SUM(ISNULL(M.[ALACAK], 0.0)) AS [ALACAK_BAKIYE]
+        FROM MovementUnion M
+          INNER JOIN [dbo].[TODVZ_PARA] PR WITH (NOLOCK) ON M.[PARA_ID] = PR.[PARA_ID]
+        GROUP BY PR.[PARA_ID], PR.[KOD], PR.[AD], PR.[HAS_ORANI], PR.[SIRA_NO]
+        HAVING SUM(ISNULL(M.[BORC], 0.0)) <> 0 OR SUM(ISNULL(M.[ALACAK], 0.0)) <> 0
+        ORDER BY ISNULL(PR.[SIRA_NO], 99) ASC, PR.[KOD] ASC;
+      `;
+            const qRes = await pool.request().input("id", sql.Int, id).query(bakiyeQuery);
+            rawRecordset = qRes.recordset || [];
             // Fetch Para metadata if needed
             const paraMetaRes = await pool.request().query(`
         SELECT [PARA_ID], LTRIM(RTRIM(ISNULL([KOD], ''))) AS [KOD], LTRIM(RTRIM(ISNULL([AD], ''))) AS [AD], ISNULL([HAS_ORANI], 0) AS [HAS_ORANI], ISNULL([SIRA_NO], 99) AS [SIRA_NO], [URUN_TIPI]

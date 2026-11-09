@@ -76,6 +76,9 @@ export interface SarrafFisModel {
   istisnaKodu?: string | null;
   unvan?: string;
   cariKartId?: number | null;
+  cariKodu?: string | null;
+  cariKod?: string | null;
+  cariUnvan?: string | null;
   vezneId?: number;
   belgeTuru: number;
   kisilikTipi?: number | null;

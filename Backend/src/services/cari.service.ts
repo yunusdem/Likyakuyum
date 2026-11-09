@@ -154,12 +154,15 @@ export class CariService {
       throw ApiError.notFound(`Silinecek cari kart (ID: ${id}) bulunamadı.`);
     }
 
-    // İlişkili fotoğrafı temizle
+    // Önce cari kart silmeyi dene (ilişkili hareketler varsa repository anlaşılır hata fırlatır)
+    const result = await CariSqlRepository.delete(id, dbContext);
+
+    // Silme başarılıysa ilişkili fotoğrafı temizle
     try {
       await CariFotografSqlRepository.deleteFotograf(id, undefined, dbContext);
     } catch {}
 
-    return CariSqlRepository.delete(id, dbContext);
+    return result;
   }
 
   // ─── Fotoğraf Özel Metodları (TODVZ_FOTOGRAF & SODVZ_FOTOGRAF_KAYDET) ───────
