@@ -16,6 +16,7 @@ import { EBankaService, MutabakatSatiri } from "../../services/ebankaService";
 import { recomputeRow, resolveEffectiveUrunTipi, isZiynetProduct } from "../vezne/SarrafFisiPage";
 import { ALTIN_KODU } from "../../../Backend/src/services/kuyumKodlari";
 import { EB_VARSAYILAN_KDV } from "./ebankaIscilik";
+import { ebankaHareketHesabi, ebankaHesapAciklamasi } from "./useEBankaFisKesimi";
 import {
   TfIstatistik, TfKur, TfMusteri, TfOdeme, fisIstatistigi, gumusKuru, hasKuru, kayitVerisi, kurlariBirlestir, masakEksikleri,
   masakSiniriAsildi, satirHasKuru, topluSatir, urunKuru, varsayilanIstatistik, varsayilanVezne,
@@ -218,7 +219,9 @@ export const EBankaTopluFisKes: React.FC<{
     if (!(hedef > 0)) return { tamam: false as const, neden: "Döviz hesabın TL karşılığı (kur) yok" };
     const tip: 0 | 1 = s.yon === "gelen" ? 1 : 0;
     const istatistik = fisIstatistigi(tip, k.cari, veri.istatistikler, varsayilanIstatistik(tip, veri.istatistikler, veri.tanim, user as any));
-    const kdvKapali = Number(istatistik?.fisDizaynTipi) === 1;
+    // e-Banka fişinde işçilik KDV'si istatistikten bağımsız (M19); KDV'siz (gayri resmi) istatistik yalnız MASAK sorgu kuralında
+    const gayriResmi = Number(istatistik?.fisDizaynTipi) === 1;
+    const kdvKapali = false;
     const urunTipi = resolveEffectiveUrunTipi(urun);
     const otoKur = urunKuru(urun, veri.kurlar, tip);
     const kur = otoKur > 0 ? otoKur : satirHasKuru(urun, urunTipi, veri.kurlar, tip);
@@ -236,7 +239,8 @@ export const EBankaTopluFisKes: React.FC<{
     const dovizPara = tlHesap ? undefined
       : veri.tumUrunler.find((u) => (u.urunTipi ?? 0) === 0 && (u.kod || "").trim().toUpperCase() === dovizKodu)
         || veri.kurlar.find((u) => (u.kod || "").trim().toUpperCase() === dovizKodu);
-    const hesapAdi = hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : hesap.bankaAdi || "BANKA HAVALE / EFT";
+    const hesapAdi = ebankaHesapAciklamasi(ebankaHareketHesabi(s), hesap.hesapAdi)
+      || (hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : hesap.bankaAdi || "BANKA HAVALE / EFT");
     const odeme: TfOdeme = dovizPara
       ? { bankaId: hesap.bankaId, hesapNo: hesap.hesapNo || "", hesapAdi, paraId: dovizPara.paraId ?? null, paraKodu: dovizPara.kod || dovizKodu, paraAdi: dovizPara.ad || dovizKodu, miktar: s.tutar, kur: parseFloat((hedef / s.tutar).toFixed(4)), tutar: hedef }
       : { bankaId: hesap.bankaId, hesapNo: hesap.hesapNo || "", hesapAdi, paraId: null, paraKodu: "TL", paraAdi: "TÜRK LİRASI", miktar: hedef, kur: 1, tutar: hedef };
@@ -251,7 +255,7 @@ export const EBankaTopluFisKes: React.FC<{
       const eksik = masakEksikleri({ unvan: m.unvan, vkn: m.vkn, adres: m.adres, kisilikTipi: m.kisilikTipi });
       if (eksik.length) return { tamam: false as const, neden: `MASAK bildirim sınırı aşılıyor; eksik: ${eksik.join(", ")} (tekli kesip Müşteri Tanı Formu'nu doldurun)` };
     }
-    if ((k.masakEslesme || 0) > 0 && ((masakKontroluVar && !kdvKapali) || asildi)) return { tamam: false as const, neden: "Müşteri MASAK listesinde bulundu; fiş kesilemez" };
+    if ((k.masakEslesme || 0) > 0 && ((masakKontroluVar && !gayriResmi) || asildi)) return { tamam: false as const, neden: "Müşteri MASAK listesinde bulundu; fiş kesilemez" };
     return {
       tamam: true as const, tip, hedef, satir, odeme, istatistik, kdvKapali, altinHasKuru, musteri: m, belgeTuru: k.belgeTuru || 0,
       gumusHasKuru: gumusKuru(veri.kurlar, tip),
@@ -326,7 +330,6 @@ export const EBankaTopluFisKes: React.FC<{
           <div className="text-muted mt-1">
             {sayiOku(d.satir.miktar).toLocaleString("tr-TR", { maximumFractionDigits: 3 })} gr
             {sayiOku(d.satir.iscilikToplam) > 0 && <> · işçilik {paraYaz(sayiOku(d.satir.iscilikToplam))} (KDV {paraYaz(sayiOku(d.satir.iscilikKdvTutari))})</>}
-            {d.kdvKapali && <> · istatistik KDV'siz</>}
             {d.belgeTuru === 1 && <> · e-Fatura</>}
           </div>
         </>

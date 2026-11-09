@@ -6,7 +6,7 @@ import ERPToolbar from "../../components/common/ERPToolbar";
 import { EBankaService, MutabakatDurumu, MutabakatFisi, MutabakatListesi, MutabakatSatiri } from "../../services/ebankaService";
 import { bugun, CariSecModal, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
 import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
-import { fisDuzenlemeAdresi, fisKesimAdresi } from "./useEBankaFisKesimi";
+import { ebankaHareketHesabi, fisDuzenlemeAdresi, fisKesimAdresi } from "./useEBankaFisKesimi";
 import { useAuth } from "../../context/AuthContext";
 import { kuyumLisansiMi } from "../../config/kullaniciGorunum";
 import { ebelgeService } from "../../services/ebelgeService";
@@ -239,6 +239,7 @@ export const EBankaMutabakatPage: React.FC = () => {
   const fisDuzenle = (s: MutabakatSatiri, f: MutabakatFisi) =>
     navigate(fisDuzenlemeAdresi(f.fisTuru, f.fisId, {
       vomsisId: s.vomsisId, tip: s.yon === "gelen" ? 1 : 0, tutar: s.tutar, paraKodu: s.doviz || "TL", tutarTl: s.tlKarsilik, baslangic, bitis,
+      bankaId: s.bankaId, bankaAciklama: ebankaHareketHesabi(s),
     }));
 
   const fisSatiri = (s: MutabakatSatiri, f: MutabakatFisi, eslenmis: boolean) => {
@@ -655,6 +656,7 @@ export const EBankaMutabakatPage: React.FC = () => {
                         vomsisId: secili.vomsisId, cariId: secili.cari?.cariKartId ?? null, tarih: (secili.tarih || bugun()).slice(0, 10),
                         tip: secili.yon === "gelen" ? 1 : 0, tutar: secili.tutar, paraKodu: secili.doviz || "TL", baslangic, bitis,
                         bankaId: secili.bankaId, tutarTl: secili.tlKarsilik, karsiAd: secili.karsiTaraf, karsiNo: secili.karsiNo,
+                        bankaAciklama: ebankaHareketHesabi(secili),
                       }))}>
                       <IconReceipt size={14} className="me-1" />
                       {k.ad}
@@ -717,6 +719,7 @@ export const EBankaMutabakatPage: React.FC = () => {
           navigate(fisKesimAdresi("/vezne/sarraf-fisi-kayit", {
             vomsisId: x.vomsisId, cariId: x.cari?.cariKartId ?? null, tarih: (x.tarih || bugun()).slice(0, 10), tip: x.yon === "gelen" ? 1 : 0,
             tutar: x.tutar, paraKodu: x.doviz || "TL", baslangic, bitis, bankaId: x.bankaId, tutarTl: x.tlKarsilik, karsiAd: x.karsiTaraf, karsiNo: x.karsiNo,
+            bankaAciklama: ebankaHareketHesabi(x),
           }))
         }
       />
