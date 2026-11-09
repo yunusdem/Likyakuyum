@@ -284,7 +284,9 @@ export interface SarrafFisGirdisi {
   /** Fişin işçilik KDV oranı ve e-Belge KDV kodu (Kütükçü düzenindeki satırlar için; docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF36) */
   kdvOrani?: unknown; istisnaKodu?: string | null;
   /** odemeAraciTuru: 0 vezne, 1 cari, 2 POS, 3 hesap */
-  odemeSatirlari?: { odemeAraciTuru?: unknown; paraKodu?: string; paraAdi?: string; adet?: unknown; miktar?: unknown; tutar?: unknown }[];
+  odemeSatirlari?: { odemeAraciTuru?: unknown; paraKodu?: string; paraAdi?: string; adet?: unknown; miktar?: unknown; tutar?: unknown;
+    /** Hesap (3) ödemesinde banka hesabının adı: çıktıda "Nakit" / "TL" yerine (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M28) */
+    hesapAdi?: string }[];
   toplamTutar?: unknown; toplamHas?: unknown; odenenTutar?: unknown; kalanTutar?: unknown;
 }
 
@@ -411,7 +413,9 @@ export function sarrafFisVerisi(g: SarrafFisGirdisi, firma: FirmaKimlik) {
     .filter(o => sayiOku(o.miktar) > 0 || sayiOku(o.tutar) > 0 || sayiOku(o.adet) > 0 || yazi(o.paraKodu) !== "")
     .map((o, i) => {
       const miktar = sayiOku(o.miktar) || sayiOku(o.adet);
-      const ad = Number(o.odemeAraciTuru) === 2 ? posOdemeAdi(o.paraKodu) : yazi(o.paraKodu) || yazi(o.paraAdi) || "Nakit TL";
+      const ad = Number(o.odemeAraciTuru) === 2 ? posOdemeAdi(o.paraKodu)
+        : Number(o.odemeAraciTuru) === 3 && yazi(o.hesapAdi) ? yazi(o.hesapAdi)
+        : yazi(o.paraKodu) || yazi(o.paraAdi) || "Nakit TL";
       return { sira: i + 1, ad, miktar, miktarYazi: miktar > 0 ? tr(miktar) : "", tutar: sayiOku(o.tutar) };
     });
   const tutar = sayiOku(g.toplamTutar), has = sayiOku(g.toplamHas), odenen = sayiOku(g.odenenTutar), kalan = sayiOku(g.kalanTutar);

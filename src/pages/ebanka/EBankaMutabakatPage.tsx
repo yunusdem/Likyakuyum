@@ -486,6 +486,18 @@ export const EBankaMutabakatPage: React.FC = () => {
         </Card.Body>
       </Card>
 
+      {/* Listenin altında sağda belirgin toplu fiş kesme düğmesi (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M29) */}
+      {!kuyum && ozellik.sarraf && (
+        <div className="d-flex justify-content-end align-items-center gap-3 mt-3">
+          {secim.size === 0 && <span className="small text-muted">Fiş kesmek için listeden hareketleri seçin.</span>}
+          <Button size="lg" variant="primary" className="px-4 fw-bold shadow-sm" disabled={calisiyor || !uygunSayisi("fisKes", seciliSatirlar)}
+            title="Seçili, fişi olmayan hareketlere Sarraf fişi keser" onClick={() => topluCalistir("fisKes")}>
+            <IconReceipt size={22} className="me-2" />
+            Seçilenlere fiş kes ({uygunSayisi("fisKes", seciliSatirlar)})
+          </Button>
+        </div>
+      )}
+
       <Modal show={!!secili} onHide={() => setSecili(null)} size="xl" centered>
         <Modal.Header closeButton className="py-2">
           <Modal.Title className="fs-6 fw-bold">Banka Hareketi — {kuyum ? "Belge" : "Fiş"} ve Fatura</Modal.Title>

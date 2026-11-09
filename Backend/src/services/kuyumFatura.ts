@@ -16,6 +16,15 @@ import { KuyumKodTuru, kuyumFaturaTipi, kuyumKodAdi, satirKodu } from "./kuyumKo
 
 export const ISCILIK_ADI = "işçilik";
 
+/**
+ * Faturadaki işçilik satırının adı ürünle (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M27): "22 ayar altın" → "22 ayar işçilik";
+ * farklı ürünler "22 ayar, 14 ayar işçilik"; ad yoksa yalnız "işçilik".
+ */
+export const iscilikSatirAdi = (altinAdlari: (string | null | undefined)[]): string => {
+  const parcalar = [...new Set(altinAdlari.map((a) => String(a ?? "").trim().replace(/\s+alt[ıiIİ]n$/i, "").trim()).filter(Boolean))];
+  return parcalar.length ? `${parcalar.join(", ")} ${ISCILIK_ADI}` : ISCILIK_ADI;
+};
+
 const yuvarla = (n: number): number => Math.round(n * 100) / 100;
 const sayi = (v: unknown): number => {
   const n = Number(v);
@@ -203,7 +212,7 @@ export const kuyumUblSatirlari = (c: Pick<KuyumCozum, "altinlar" | "iscilik">): 
       ...(a.iskonto ? { iskontoTutari: a.iskonto } : {}),
     };
   }),
-  ...(c.iscilik ? [{ ad: ISCILIK_ADI, miktar: 1, birimKodu: "C62", birimFiyat: c.iscilik.matrah, kdvOrani: c.iscilik.oran } as UblFaturaSatiri] : []),
+  ...(c.iscilik ? [{ ad: iscilikSatirAdi(c.altinlar.map((a) => a.ad)), miktar: 1, birimKodu: "C62", birimFiyat: c.iscilik.matrah, kdvOrani: c.iscilik.oran } as UblFaturaSatiri] : []),
 ];
 
 /** Kütükçü düzeninde altta görünen yazıyla tutar */
@@ -350,7 +359,7 @@ export const ebankaGiderGirdisi = (
   if (yuvarla(a.miktar * birimFiyat) !== altinTutar) throw ApiError.internal("Altın satırı tutarı kuruşu kuruşuna kurulamadı; gönderilmedi.");
   const satirlar = [
     { ad: giderAltinAdi(a), miktar: a.miktar, birimKodu: a.birimKodu, birimFiyat, vergiOrani: 0 },
-    ...(iscilik > 0 ? [{ ad: trBuyuk(ISCILIK_ADI), miktar: 1, birimKodu: "C62", birimFiyat: iscilik, vergiOrani: 0 }] : []),
+    ...(iscilik > 0 ? [{ ad: trBuyuk(iscilikSatirAdi([a.ad])), miktar: 1, birimKodu: "C62", birimFiyat: iscilik, vergiOrani: 0 }] : []),
   ];
   return {
     belgeNo: ortak.belgeNo,

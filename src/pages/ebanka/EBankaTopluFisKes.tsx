@@ -19,7 +19,7 @@ import { EB_VARSAYILAN_KDV } from "./ebankaIscilik";
 import { ebankaHareketHesabi, ebankaHesapAciklamasi } from "./useEBankaFisKesimi";
 import {
   TfIstatistik, TfKur, TfMusteri, TfOdeme, fisIstatistigi, gumusKuru, hasKuru, kayitVerisi, kurlariBirlestir, masakEksikleri,
-  masakSiniriAsildi, satirHasKuru, topluSatir, urunKuru, varsayilanIstatistik, varsayilanVezne,
+  masakSiniriAsildi, satirHasKuru, topluBelge, topluIscilik, topluSatir, urunKuru, varsayilanIstatistik, varsayilanVezne,
 } from "./ebankaTopluFis";
 import { paraYaz, zamanYaz } from "./ebankaOrtak";
 
@@ -52,9 +52,12 @@ interface OnKontrol {
   musteri?: TfMusteri;
   cari?: any;
   masakEslesme?: number;
-  belgeTuru?: number;
+  /** GİB (ICE) e-Fatura mükellef sorgusu; VKN / TC yoksa null (M23) */
+  mukellef?: { mukellefMi: boolean; etiket: string; mesaj: string } | null;
   hata?: string;
 }
+
+
 
 interface Veri {
   urunler: UrunItem[];
@@ -82,8 +85,11 @@ export const EBankaTopluFisKes: React.FC<{
   const [onKontrol, setOnKontrol] = useState<Record<number, OnKontrol>>({});
   const [urunId, setUrunId] = useState<number | null>(null);
   const [kdvYazi, setKdvYazi] = useState(String(EB_VARSAYILAN_KDV));
-  const [hepsine, setHepsine] = useState("");
+  // Üstteki işçilik yüzdesi (hareket tutarının %'si); satırdaki kutu önceliklidir (M24)
+  const [yuzdeYazi, setYuzdeYazi] = useState("");
   const [iscilik, setIscilik] = useState<Record<number, string>>({});
+  // Satır başına İşlem (0 alış, 1 satış); yazılmamışsa hareketin yönü (M25)
+  const [tipSecim, setTipSecim] = useState<Record<number, 0 | 1>>({});
   const [sonuc, setSonuc] = useState<Record<number, Sonuc>>({});
   const [calisiyor, setCalisiyor] = useState(false);
   const [degisti, setDegisti] = useState(false);
@@ -98,7 +104,8 @@ export const EBankaTopluFisKes: React.FC<{
     setOnKontrol({});
     setIscilik({});
     setSonuc({});
-    setHepsine("");
+    setYuzdeYazi("");
+    setTipSecim({});
     setKdvYazi(String(EB_VARSAYILAN_KDV));
     setDegisti(false);
     (async () => {
@@ -168,16 +175,16 @@ export const EBankaTopluFisKes: React.FC<{
           vkn: rakam(s.karsiNo).slice(0, 11), adres: "", telefon: "", eposta: "", kisilikTipi: null,
         };
       }
-      let belgeTuru = cari && (cari.eFaturaPostaKutusu || cari.eFaturaPosta || cari.eFatura || cari.isMukellef) ? 1 : 0;
+      // Belge türü yalnız sorguya göre (M23): VKN / TC ile GİB (ICE) e-Fatura mükellef listesi; cari kartındaki işaret öne geçmez
+      let mukellef: OnKontrol["mukellef"] = null;
       if (m.vkn.length === 10 || m.vkn.length === 11) {
-        const [mukellef, adresler] = await Promise.all([
-          belgeTuru ? Promise.resolve(null) : ebelgeService.mukellefSorgula(m.vkn).catch(() => null),
+        const [sorgu, adresler] = await Promise.all([
+          ebelgeService.mukellefSorgula(m.vkn).catch(() => null),
           m.adres ? Promise.resolve([]) : ebelgeService.aliciAdresleri(m.vkn).catch(() => []),
         ]);
-        if (mukellef?.mukellefMi) {
-          belgeTuru = 1;
-          if (!m.eposta && mukellef.kullanicilar?.[0]?.Alias) m.eposta = mukellef.kullanicilar[0].Alias;
-        }
+        const etiket = sorgu?.kullanicilar?.[0]?.Alias || "";
+        mukellef = { mukellefMi: !!sorgu?.mukellefMi, etiket, mesaj: sorgu?.mesaj || (sorgu ? "" : "Sorgu yapılamadı") };
+        if (sorgu?.mukellefMi && !m.eposta && etiket) m.eposta = etiket;
         const a: any = (adresler || [])[0];
         if (a) {
           m.adres = m.adres || [a.adres, a.ilce, a.il].filter(Boolean).join(" ");
@@ -191,7 +198,7 @@ export const EBankaTopluFisKes: React.FC<{
         const r = await MasakService.sorgula({ ad: ad || undefined, kimlikNo: m.vkn || undefined, limit: 15 });
         masakEslesme = r?.kayitlar?.length || 0;
       }
-      return { hazir: true, musteri: m, cari, masakEslesme, belgeTuru };
+      return { hazir: true, musteri: m, cari, masakEslesme, mukellef };
     } catch (err: any) {
       return { hazir: true, hata: err?.message || "Müşteri bilgisi alınamadı." };
     }
@@ -199,6 +206,12 @@ export const EBankaTopluFisKes: React.FC<{
 
   const urun = veri?.urunler.find((u) => u.paraId === urunId) || null;
   const kdvOrani = Math.max(0, tutarOku(kdvYazi));
+  const yuzde = Math.max(0, tutarOku(yuzdeYazi.replace("%", "")));
+  const varsayilanTip = (s: MutabakatSatiri): 0 | 1 => (s.yon === "gelen" ? 1 : 0);
+
+  /** İşçilik Toplam (KDV dahil): satırdaki kutu (TL ya da %) önce, boşsa üstteki yüzde (M24; ebankaTopluFis.ts topluIscilik) */
+  const iscilikTutari = (s: MutabakatSatiri, hedef: number): number => topluIscilik(iscilik[s.vomsisId] || "", yuzdeYazi, hedef);
+  const belgeBilgisi = topluBelge;
   const masakKontroluVar = (() => {
     const v = veri?.tanim?.FIS_MASAK_KONTROLU_VAR;
     return !(v === false || v === 0 || v === "0" || v === "false");
@@ -217,7 +230,7 @@ export const EBankaTopluFisKes: React.FC<{
     const tlHesap = ["TL", "TRY", ""].includes((s.doviz || "TL").toUpperCase());
     const hedef = tlHesap ? s.tutar : s.tlKarsilik ?? 0;
     if (!(hedef > 0)) return { tamam: false as const, neden: "Döviz hesabın TL karşılığı (kur) yok" };
-    const tip: 0 | 1 = s.yon === "gelen" ? 1 : 0;
+    const tip: 0 | 1 = tipSecim[s.vomsisId] ?? varsayilanTip(s);
     const istatistik = fisIstatistigi(tip, k.cari, veri.istatistikler, varsayilanIstatistik(tip, veri.istatistikler, veri.tanim, user as any));
     // e-Banka fişinde işçilik KDV'si istatistikten bağımsız (M19); KDV'siz (gayri resmi) istatistik yalnız MASAK sorgu kuralında
     const gayriResmi = Number(istatistik?.fisDizaynTipi) === 1;
@@ -227,7 +240,7 @@ export const EBankaTopluFisKes: React.FC<{
     const kur = otoKur > 0 ? otoKur : satirHasKuru(urun, urunTipi, veri.kurlar, tip);
     if (!(kur > 0)) return { tamam: false as const, neden: `${urun.ad} için kur yok (Anlık Fiyat Listesi)` };
     const altinHasKuru = hasKuru(veri.kurlar, tip);
-    const x = tutarOku(iscilik[s.vomsisId] || "");
+    const x = iscilikTutari(s, hedef);
     if (x > 0 && x >= hedef) return { tamam: false as const, neden: "İşçilik hareket tutarından büyük ya da eşit" };
     // Satır: ürün seçimindeki e-Banka dalı gibi, sonra İşçilik Toplam yazılmış gibi (ebankaTopluFis.ts topluSatir, ekranın recomputeRow'uyla)
     const satir: any = topluSatir(recomputeRow, {
@@ -256,8 +269,9 @@ export const EBankaTopluFisKes: React.FC<{
       if (eksik.length) return { tamam: false as const, neden: `MASAK bildirim sınırı aşılıyor; eksik: ${eksik.join(", ")} (tekli kesip Müşteri Tanı Formu'nu doldurun)` };
     }
     if ((k.masakEslesme || 0) > 0 && ((masakKontroluVar && !gayriResmi) || asildi)) return { tamam: false as const, neden: "Müşteri MASAK listesinde bulundu; fiş kesilemez" };
+    const belge = belgeBilgisi(tip, m.vkn, k.mukellef);
     return {
-      tamam: true as const, tip, hedef, satir, odeme, istatistik, kdvKapali, altinHasKuru, musteri: m, belgeTuru: k.belgeTuru || 0,
+      tamam: true as const, tip, hedef, satir, odeme, istatistik, kdvKapali, altinHasKuru, musteri: m, belgeTuru: belge.tur, belge,
       gumusHasKuru: gumusKuru(veri.kurlar, tip),
     };
   };
@@ -265,14 +279,14 @@ export const EBankaTopluFisKes: React.FC<{
   const degerler = useMemo(
     () => new Map((satirlar || []).map((s) => [s.vomsisId, degerlendir(s)])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [satirlar, veri, onKontrol, urunId, kdvYazi, iscilik]
+    [satirlar, veri, onKontrol, urunId, kdvYazi, iscilik, yuzdeYazi, tipSecim]
   );
   const kesilecekler = (satirlar || []).filter((s) => degerler.get(s.vomsisId)?.tamam && !sonuc[s.vomsisId]);
   const bekleyen = (satirlar || []).filter((s) => (degerler.get(s.vomsisId) as any)?.bekliyor).length;
 
   const baslat = async () => {
     if (!veri?.vezne || !kesilecekler.length) return;
-    if (!window.confirm(`${kesilecekler.length} Sarraf fişi kesilip banka hareketleriyle eşlenecek (${urun?.ad}, İşçilik KDV %${kdvOrani}). Devam edilsin mi?`)) return;
+    if (!window.confirm(`${kesilecekler.length} Sarraf fişi kesilip banka hareketleriyle eşlenecek (${urun?.ad}, İşçilik KDV %${kdvOrani}${yuzde > 0 ? `, işçilik %${yuzdeYazi}` : ""}). Devam edilsin mi?`)) return;
     setCalisiyor(true);
     for (const s of kesilecekler) {
       const d = degerler.get(s.vomsisId);
@@ -308,8 +322,6 @@ export const EBankaTopluFisKes: React.FC<{
     onKapat(degisti);
   };
 
-  const hepsineYaz = () => setIscilik(Object.fromEntries((satirlar || []).map((s) => [s.vomsisId, hepsine])));
-
   const rozet = (s: MutabakatSatiri) => {
     const r = sonuc[s.vomsisId];
     if (r) {
@@ -330,7 +342,10 @@ export const EBankaTopluFisKes: React.FC<{
           <div className="text-muted mt-1">
             {sayiOku(d.satir.miktar).toLocaleString("tr-TR", { maximumFractionDigits: 3 })} gr
             {sayiOku(d.satir.iscilikToplam) > 0 && <> · işçilik {paraYaz(sayiOku(d.satir.iscilikToplam))} (KDV {paraYaz(sayiOku(d.satir.iscilikKdvTutari))})</>}
-            {d.belgeTuru === 1 && <> · e-Fatura</>}
+          </div>
+          <div className="mt-1" title={d.belge.not}>
+            <Badge bg={d.belge.tur === 1 ? "primary" : "secondary"} className="me-1">{d.belge.yazi}</Badge>
+            <span className="text-muted">{d.belge.not}</span>
           </div>
         </>
       );
@@ -365,11 +380,12 @@ export const EBankaTopluFisKes: React.FC<{
                 <Form.Control size="sm" className="text-end" value={kdvYazi} disabled={calisiyor} onChange={(e) => setKdvYazi(e.target.value.replace(/[^\d.,]/g, ""))} />
               </Col>
               <Col md={4}>
-                <Form.Label className="fw-bold text-secondary mb-1">Hepsine aynı işçilik (TL, KDV dahil)</Form.Label>
-                <div className="d-flex gap-2">
-                  <Form.Control size="sm" className="text-end" placeholder="boş = işçiliksiz" value={hepsine} disabled={calisiyor} onChange={(e) => setHepsine(e.target.value.replace(/[^\d.,]/g, ""))} />
-                  <Button size="sm" variant="outline-primary" className="text-nowrap" disabled={calisiyor} onClick={hepsineYaz}>Hepsine yaz</Button>
+                <Form.Label className="fw-bold text-secondary mb-1">Hepsine işçilik % (tutarın yüzdesi, KDV dahil)</Form.Label>
+                <div className="input-group input-group-sm">
+                  <span className="input-group-text">%</span>
+                  <Form.Control size="sm" className="text-end" placeholder="boş = işçiliksiz" value={yuzdeYazi} disabled={calisiyor} onChange={(e) => setYuzdeYazi(e.target.value.replace(/[^\d.,]/g, ""))} />
                 </div>
+                <div className="text-muted" style={{ fontSize: "11px" }}>Satırdaki kutuya yazılan önceliklidir (TL ya da %10 gibi).</div>
               </Col>
               <Col md={2} className="text-muted">
                 Vezne: {veri.vezne ? `${veri.vezne.kod} ${veri.vezne.ad}` : "yok"}
@@ -377,7 +393,7 @@ export const EBankaTopluFisKes: React.FC<{
             </Row>
             <div className="text-muted mb-2">
               Fiş tarihi bugün; kur Anlık Fiyat Listesi'nden; toplam banka tutarına sabit, işçilik (KDV dahil) altından düşülür. Cari yoksa bankanın verdiği ad ve VKN ile.
-              İstatistik ekrandaki varsayılan (cari kartında tanımlıysa o).
+              İstatistik ekrandaki varsayılan (cari kartında tanımlıysa o). Belge türü satışta GİB sorgusuna göre e-Fatura / e-Arşiv, alışta e-Gider pusulası.
             </div>
             <Table size="sm" className="align-middle mb-2">
               <thead className="table-light">
@@ -386,7 +402,7 @@ export const EBankaTopluFisKes: React.FC<{
                   <th>Karşı taraf / Cari</th>
                   <th>İşlem</th>
                   <th className="text-end">Tutar (TL)</th>
-                  <th style={{ width: 120 }}>İşçilik</th>
+                  <th style={{ width: 150 }}>İşçilik (TL ya da %)</th>
                   <th>Durum</th>
                 </tr>
               </thead>
@@ -402,14 +418,28 @@ export const EBankaTopluFisKes: React.FC<{
                         {s.cari?.ad || m?.unvan || s.karsiTaraf || "-"}
                         {!s.cari && <div className="text-muted">bankanın adıyla{m?.vkn ? ` · ${m.vkn}` : ""}</div>}
                       </td>
-                      <td>{s.yon === "gelen" ? "Satış" : "Alış"}</td>
+                      <td>
+                        <Form.Select size="sm" className="py-0" style={{ minWidth: 86 }} value={tipSecim[s.vomsisId] ?? varsayilanTip(s)} disabled={calisiyor || !!sonuc[s.vomsisId]}
+                          onChange={(e) => setTipSecim((o) => ({ ...o, [s.vomsisId]: Number(e.target.value) as 0 | 1 }))}>
+                          <option value={1}>Satış</option>
+                          <option value={0}>Alış</option>
+                        </Form.Select>
+                        {(tipSecim[s.vomsisId] ?? varsayilanTip(s)) !== varsayilanTip(s) && (
+                          <div className="text-warning-emphasis" style={{ fontSize: "11px" }}>
+                            Hareket {s.yon === "gelen" ? "gelen" : "giden"}; banka bakiyesinde fişin yönüyle sayılır
+                          </div>
+                        )}
+                      </td>
                       <td className={`text-end font-monospace fw-bold ${s.yon === "giden" ? "text-danger" : "text-success"}`}>
                         {paraYaz(tlHesap ? s.tutar : s.tlKarsilik)}
                         {!tlHesap && <div className="text-muted fw-normal">{paraYaz(s.tutar)} {s.doviz}</div>}
                       </td>
                       <td>
-                        <Form.Control size="sm" className="text-end py-0" placeholder="—" value={iscilik[s.vomsisId] || ""} disabled={calisiyor || !!sonuc[s.vomsisId]}
-                          onChange={(e) => setIscilik((o) => ({ ...o, [s.vomsisId]: e.target.value.replace(/[^\d.,]/g, "") }))} />
+                        <Form.Control size="sm" className="text-end py-0"
+                          placeholder={yuzde > 0 ? `%${yuzdeYazi} → ${paraYaz(Math.round((tlHesap ? s.tutar : s.tlKarsilik || 0) * yuzde) / 100)}` : "—"}
+                          value={iscilik[s.vomsisId] || ""} disabled={calisiyor || !!sonuc[s.vomsisId]}
+                          title="TL tutar ya da %10 gibi yüzde; boşsa üstteki yüzde uygulanır"
+                          onChange={(e) => setIscilik((o) => ({ ...o, [s.vomsisId]: e.target.value.replace(/[^\d.,%]/g, "") }))} />
                       </td>
                       <td>
                         {rozet(s)}

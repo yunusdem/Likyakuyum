@@ -69,7 +69,7 @@ interface GridRow {
   id: string;
   /** e-Banka'dan doldurulan satır: banka tutarına sabitlendiği andaki gram / adet / kur / tutar (EF20). kdvAyarli: İşçilik KDV %20
    *  varsayılanı uygulandı ya da kullanıcı oranı kendisi verdi (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M12) */
-  ebSabit?: { miktar: number; adet: number; kur: number; tutar: number; kdvAyarli?: boolean } | null;
+  ebSabit?: { miktar: number; adet: number; kur: number; tutar: number; kdvAyarli?: boolean; gramElle?: boolean } | null;
   satirId?: number | null;
   satirNo: number;
   urunId: number;
@@ -118,6 +118,9 @@ interface OdemeRow {
   tutar: number | string;
   urunTipi?: number;
   birimFiyat?: number;
+  /** e-Banka hareketinin banka satırı: kilitli, Kod'da kartın kayıtlı adı (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M28) */
+  ebBanka?: boolean;
+  ebKartAdi?: string;
 }
 
 const GRID_COLS = [
@@ -806,8 +809,10 @@ const EB_ISCILIK_ALANLARI: (keyof GridRow)[] = ["iscilikToplam", "iscilikTutari"
 const ebankaSatiriDengele = (girdi: GridRow, hesap: GridRow, defaultKur: number, changedField: keyof GridRow | undefined, iscilikGirisSekli: number, isKdvDisabled: boolean): GridRow => {
   const sabit = girdi.ebSabit;
   if (!sabit || !(sabit.tutar > 0) || ebParaZiynetMi(girdi)) return hesap;
-  // Gram elle değişirse satır sabitlemeden çıkar; hücreden değiştirmeden çıkmak bozmaz (has ve tutar ekranda elle yazılmaz)
-  if ((changedField === "miktar" && parseDecimal(girdi.miktar) !== sabit.miktar) || changedField === "hasGram" || changedField === "tutar") return { ...hesap, ebSabit: null };
+  // Toplam hiçbir durumda banka tutarından sapmaz (M26): gram elle yazılırsa gram kullanıcının olur, toplam yine sabit; gram silinirse
+  // yeniden kurdan çözülür. Hücreden değiştirmeden çıkmak bir şey değiştirmez.
+  let gramElle = !!sabit.gramElle;
+  if (changedField === "miktar" && parseDecimal(girdi.miktar) !== sabit.miktar) gramElle = parseDecimal(girdi.miktar) > 0;
   const hedef = sabit.tutar;
   // İşçilik KDV %20 varsayılanı satırda bir kez uygulanır; oranı kullanıcı verdiyse / sildiyse dokunulmaz
   let kdvAyarli = !!sabit.kdvAyarli || changedField === "iscilikKdvOrani";
@@ -825,11 +830,13 @@ const ebankaSatiriDengele = (girdi: GridRow, hesap: GridRow, defaultKur: number,
   const birimIscilik = parseDecimal(temel.iscilikiMiktari);
   const birimGirdisi = (changedField === "iscilikiMiktari" || changedField === "iscilikHesaplamaSekli") && (Number(temel.iscilikHesaplamaSekli) || 0) === 0 && birimIscilik > 0;
   let son: GridRow;
+  // Elle yazılmış gram sabit kalır; işçilik değişince altın tutarı (TL Tutar) değişir, gram değişmez
+  const elleGram = gramElle ? parseDecimal(temel.miktar) : 0;
   if (birimGirdisi) {
     // Gram usulü işçilik grama bağlı: gram kapalı formülle çözülür
     const gramBasiHas = iscilikGirisSekli === 0 ? birimIscilik / 1000 : birimIscilik;
-    const gram = ebGramCoz({ hedef, milyem, kur, kdvOrani: oran, gramBasiNetIscilik: gramBasiHas * hasFiyati });
-    if (gram === null) return { ...hesap, ebSabit: { ...sabit, kdvAyarli } };
+    const gram = elleGram > 0 ? elleGram : ebGramCoz({ hedef, milyem, kur, kdvOrani: oran, gramBasiNetIscilik: gramBasiHas * hasFiyati });
+    if (gram === null) return { ...hesap, ebSabit: { ...sabit, kdvAyarli, gramElle } };
     son = recomputeRowHam({ ...temel, miktar: gram, ebSabit: null }, defaultKur, "iscilikiMiktari", iscilikGirisSekli, isKdvDisabled);
   } else {
     // İşçilik Toplam'ı belirleyen: yazılan toplam; net / has / KDV tutarı / birim yazıldıysa yeni toplam; oran, kur, milyem değişince eski toplam
@@ -841,19 +848,20 @@ const ebankaSatiriDengele = (girdi: GridRow, hesap: GridRow, defaultKur: number,
       : parseDecimal(girdi.iscilikToplam);
     // Net işçilik silindiyse eski KDV tutarı toplamda kalmasın
     if (netAlani && !(parseDecimal(temel[changedField as "iscilikTutari" | "iscilikHasGram" | "iscilikiMiktari"]) > 0)) x = 0;
-    const gram = ebGramCoz({ hedef, milyem, kur, kdvOrani: oran, iscilikToplam: x });
-    if (gram === null) return { ...hesap, ebSabit: { ...sabit, kdvAyarli } };
+    const gram = elleGram > 0 ? (x < hedef ? elleGram : null) : ebGramCoz({ hedef, milyem, kur, kdvOrani: oran, iscilikToplam: x });
+    if (gram === null) return { ...hesap, ebSabit: { ...sabit, kdvAyarli, gramElle } };
     son = recomputeRowHam(
       { ...temel, miktar: gram, iscilikToplam: x > 0 ? x : "", iscilikKdvTutari: oran > 0 ? temel.iscilikKdvTutari : "", ebSabit: null },
       defaultKur, "iscilikToplam", iscilikGirisSekli, isKdvDisabled
     );
   }
   const iscilik = parseDecimal(son.iscilikToplam);
+  if (!(iscilik < hedef)) return { ...hesap, ebSabit: { ...sabit, kdvAyarli, gramElle } };
   return {
     ...son,
     tlTutar: altinTutari(hedef, iscilik),
     tutar: hedef,
-    ebSabit: { miktar: parseDecimal(son.miktar), adet: parseDecimal(son.adet), kur: parseDecimal(son.kur), tutar: hedef, kdvAyarli },
+    ebSabit: { miktar: parseDecimal(son.miktar), adet: parseDecimal(son.adet), kur: parseDecimal(son.kur), tutar: hedef, kdvAyarli, gramElle },
   };
 };
 
@@ -2460,8 +2468,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             cariUnvan: cUnv,
             // Hesap satırında Kod'un yanındaki Açıklama banka hesabını gösterir (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M16)
             // e-Banka'dan Düzenle ile açılan fişte hareketin hesabındaki satıra banka ve hesap no (M20)
-            ...(oat === 3 && ebankaFisi && ebBankaRef.current.aciklama && Number(o.bankaId || o.cariKartId) === ebBankaRef.current.bankaId
-              ? { aciklama: ebankaHesapAciklamasi(ebBankaRef.current.aciklama, bankaList.find((x) => x.bankaId === ebBankaRef.current.bankaId)?.hesapAdi) }
+            ...(oat === 3 && ebankaFisi && ebBankaRef.current.bankaId && Number(o.bankaId || o.cariKartId) === ebBankaRef.current.bankaId
+              ? (() => {
+                  const kart = bankaList.find((x) => x.bankaId === ebBankaRef.current.bankaId);
+                  return { ebBanka: true, ebKartAdi: (kart?.hesapAdi || "").trim() || kart?.hesapNo || cKod, aciklama: ebBankaRef.current.aciklama || cUnv };
+                })()
               : oat === 3 && cUnv ? { aciklama: cUnv } : {}),
             bankaId: o.bankaId || (oat === 3 ? o.cariKartId : null),
             posCihaziId: o.posCihaziId || (oat === 2 ? o.cariKartId : null),
@@ -3325,6 +3336,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 odemeAraciTuru: o.odemeAraciTuru,
                 paraKodu: o.paraKodu,
                 paraAdi: o.paraAdi,
+                // Hesap ödemesi çıktıda banka hesabının adıyla (M28)
+                hesapAdi: o.odemeAraciTuru === 3 ? (o.ebKartAdi || o.cariUnvan || "") : undefined,
                 adet: ad || "",
                 miktar: effectiveMik || "",
                 milyem: parseDecimal(o.milyem) || "",
@@ -6779,6 +6792,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             odemeAraciTuru: o.odemeAraciTuru,
             paraKodu: o.paraKodu,
             paraAdi: o.paraAdi,
+            // Hesap ödemesi çıktıda banka hesabının adıyla (M28)
+            hesapAdi: o.odemeAraciTuru === 3 ? (o.ebKartAdi || o.cariUnvan || "") : undefined,
             adet: ad || "",
             miktar: effectiveMik || "",
             milyem: parseDecimal(o.milyem) || "",
@@ -6886,6 +6901,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             odemeAraciTuru: o.odemeAraciTuru,
             paraKodu: o.paraKodu,
             paraAdi: o.paraAdi,
+            // Hesap ödemesi çıktıda banka hesabının adıyla (M28)
+            hesapAdi: o.odemeAraciTuru === 3 ? (o.ebKartAdi || o.cariUnvan || "") : undefined,
             adet: ad || "",
             miktar: effectiveMik || "",
             milyem: parseDecimal(o.milyem) || "",
@@ -7169,8 +7186,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         bankaId: hesap.bankaId,
         cariKod: hesap.hesapNo || "",
         cariUnvan: hesapAdi,
-        // Kod'un yanındaki Açıklama'da banka hesabı: e-Banka hareketinin bankası ve hesap no'su + kartın adı (M16, M20)
-        aciklama: b.bankaAciklama ? ebankaHesapAciklamasi(b.bankaAciklama, hesap.hesapAdi) : hesapAdi,
+        // Kod hücresinde kartın kayıtlı adı, Açıklama'da hareketin bankası ve hesap no'su; satır kilitli (M16, M20, M28)
+        ebBanka: true,
+        ebKartAdi: (hesap.hesapAdi || "").trim() || hesap.hesapNo || "",
+        aciklama: b.bankaAciklama || hesapAdi,
         // Döviz kodu para listesinde yoksa satır TL karşılığıyla yazılır
         paraId: doviz?.paraId ?? null,
         paraKodu: doviz ? (doviz.kod || kod) : "TL",
@@ -8713,6 +8732,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         const isOdemeCari = oRow.odemeAraciTuru === 1;
                         const isOdemeKart = oRow.odemeAraciTuru === 2;
                         const isOdemeHesap = oRow.odemeAraciTuru === 3;
+                        // e-Banka banka satırı kilitli: tür, kod, para, adet değişmez (M28)
+                        const ebBankaSatiri = Boolean(oRow.ebBanka) && isOdemeHesap;
                         const isOdemeIskonto = Boolean(
                           oRow.iskontoId ||
                           (oRow.paraKodu && (
@@ -8778,6 +8799,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                 ref={(el) => { odemeInputRefs.current[`${oRow.id}_odemeAraciTuru`] = el; }}
                                 size="sm"
                                 value={oRow.odemeAraciTuru ?? 0}
+                                disabled={ebBankaSatiri}
+                                title={ebBankaSatiri ? "e-Banka hareketinin banka satırı; türü değiştirilemez" : undefined}
                                 onChange={(e) => {
                                   const val = Number(e.target.value);
                                   setInvalidOdemeRowIds((prev) => {
@@ -9004,6 +9027,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                     <IconBinoculars size={12} />
                                   </Button>
                                 </InputGroup>
+                              ) : ebBankaSatiri ? (
+                                <Form.Control
+                                  ref={(el) => { odemeInputRefs.current[`${oRow.id}_cariKod`] = el; }}
+                                  size="sm"
+                                  value={oRow.ebKartAdi || oRow.cariKod || ""}
+                                  disabled
+                                  title={`Banka Hesap Kartı: ${oRow.cariKod || ""}${oRow.ebKartAdi ? ` - ${oRow.ebKartAdi}` : ""} (e-Banka hareketinin hesabı; değiştirilemez)`}
+                                  style={{ fontSize: "11px", padding: "1px 4px", fontWeight: 600 }}
+                                />
                               ) : isOdemeHesap ? (
                                 <InputGroup size="sm">
                                   <Form.Control
@@ -9119,6 +9151,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                               <InputGroup size="sm">
                                 <Form.Control
                                   ref={(el) => { odemeInputRefs.current[`${oRow.id}_paraKodu`] = el; }}
+                                  disabled={ebBankaSatiri}
                                   value={oRow.paraKodu || (oRow.odemeAraciTuru === 2 ? "TL" : "")}
                                   placeholder={isOdemeCari ? "Para / İskonto Seç" : "Para Kod / Dürbün"}
                                   onChange={(e) => {
@@ -9219,6 +9252,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                     const searchVal = (curVal.toUpperCase() === "TL" || curVal.toUpperCase() === "TRY") ? "" : curVal;
                                     openOdemeParaIskontoModal(oRow.id, searchVal);
                                   }}
+                                  disabled={ebBankaSatiri}
                                   title="Para / Döviz / İskonto Seç (F3/F4)"
                                 >
                                   <IconBinoculars size={12} />
@@ -9230,6 +9264,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth }}>
                               <Form.Control
                                 ref={(el) => { odemeInputRefs.current[`${oRow.id}_adet`] = el; }}
+                                disabled={ebBankaSatiri}
                                 inputMode={isOdemePara ? "decimal" : "numeric"}
                                 data-decimal={isOdemePara ? "true" : undefined}
                                 size="sm"

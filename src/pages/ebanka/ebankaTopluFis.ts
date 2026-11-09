@@ -453,3 +453,39 @@ export function topluSatir(hesapla: SatirHesabi, p: {
   if (p.iscilikToplam > 0) satir = hesapla({ ...satir, iscilikToplam: p.iscilikToplam }, p.altinHasKuru, "iscilikToplam", p.iscilikGirisSekli, p.kdvKapali);
   return satir;
 }
+
+// ─── İşçilik ve belge türü (M23, M24) ────────────────────────────────────────
+
+const tlOku = (v: string): number => {
+  const t = (v || "").replace("%", "").trim();
+  if (!t) return 0;
+  if (!t.includes(",") && /^\d{1,3}(\.\d{3})+$/.test(t)) return Number(t.replace(/\./g, ""));
+  const n = t.includes(",") ? Number(t.replace(/\./g, "").replace(",", ".")) : Number(t);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * İşçilik Toplam (KDV dahil): satırdaki kutu önceliklidir — "%10" / "10%" hareket tutarının yüzdesi, değilse TL; boşsa üstteki yüzde.
+ */
+export function topluIscilik(satirYazisi: string, ustYuzde: string, hedef: number): number {
+  const yazi = (satirYazisi || "").trim();
+  if (yazi) {
+    const n = tlOku(yazi);
+    return /%/.test(yazi) ? Math.round(hedef * n) / 100 : n;
+  }
+  const y = Math.max(0, tlOku(ustYuzde));
+  return y > 0 ? Math.round(hedef * y) / 100 : 0;
+}
+
+/** Satırın belgesi: satışta GİB sorgusuna göre e-Fatura / e-Arşiv, alışta e-Gider pusulası (VKN'li satıcıda düzenlenmez) */
+export function topluBelge(tip: 0 | 1, vkn: string, mukellef: { mukellefMi: boolean; etiket: string; mesaj: string } | null | undefined): { tur: number; yazi: string; not: string } {
+  if (tip === 0) {
+    return (vkn || "").length === 10
+      ? { tur: 0, yazi: "Gider pusulası düzenlenmez", not: "VKN'li satıcıdan alışta faturayı satıcı keser" }
+      : { tur: 0, yazi: "e-Gider pusulası", not: "" };
+  }
+  if (!mukellef) return { tur: 0, yazi: "e-Arşiv", not: "VKN / TC yok" };
+  return mukellef.mukellefMi
+    ? { tur: 1, yazi: "e-Fatura", not: `GİB'de e-Fatura mükellefi${mukellef.etiket ? ` (${mukellef.etiket})` : ""}` }
+    : { tur: 0, yazi: "e-Arşiv", not: `GİB'de e-Fatura mükellefi değil${mukellef.mesaj ? ` — ${mukellef.mesaj}` : ""}` };
+}
