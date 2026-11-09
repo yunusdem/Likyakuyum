@@ -2,10 +2,25 @@ import { apiClient } from "./apiClient";
 import { indirBlob } from "./raporService";
 
 export interface MerkezKurKontrolItem {
+  fisId?: number;
   tarih: string;
   seriNo: string;
+  tutarTl?: number;
+  usdKarsiligi?: number;
   aciklama: string;
   durum: "tamam" | "hata";
+  detayDurumu?: "girildi" | "eksik";
+  detayEksikleri?: string[];
+  detayBilgisi?: {
+    unvan?: string;
+    vergiNo?: string;
+    adres?: string;
+    ilce?: string;
+    il?: string;
+    babaAdi?: string;
+    postaKodu?: string;
+    hukukiYapi?: string;
+  };
 }
 
 export interface FirmaKontrolResult {
@@ -82,6 +97,9 @@ export const XmlDosyaService = {
     sonTarih: string;
     belgeIslemNo?: string;
     belgeIslemNoTuru?: "seri" | "belge";
+    tlVergiSiniri?: number;
+    dovizVergiSiniri?: number;
+    detayDurumu?: "hepsi" | "girildi" | "eksik";
   }): Promise<MerkezKurKontrolItem[]> {
     const res = await apiClient.get<MerkezKurKontrolItem[]>("/xml-dosya/kontrol/merkez-kur", params);
     return res.data || [];

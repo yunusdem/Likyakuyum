@@ -245,7 +245,6 @@ export const FisAktarmaPage: React.FC = () => {
                   style={{ width: "90px", textAlign: "center", fontWeight: "bold" }}
                 >
                   <option value="0">#0</option>
-                  <option value="1">#1</option>
                   <option value="2">#2</option>
                   <option value="3">#3</option>
                   <option value="all">#Tümü</option>
@@ -261,10 +260,10 @@ export const FisAktarmaPage: React.FC = () => {
                     statusType === "error"
                       ? "#fee2e2"
                       : statusType === "success"
-                      ? "#dcfce7"
-                      : statusType === "warning"
-                      ? "#fef3c7"
-                      : "#64748b",
+                        ? "#dcfce7"
+                        : statusType === "warning"
+                          ? "#fef3c7"
+                          : "#64748b",
                   color: statusType === "info" ? "#ffffff" : statusType === "loading" ? "#ffffff" : "#0f172a",
                   transition: "all 0.25s ease",
                   border: "1px solid rgba(0,0,0,0.1)",
@@ -373,8 +372,8 @@ export const FisAktarmaPage: React.FC = () => {
                           color: msg.includes("[YENİ EKLENDİ]")
                             ? "#047857"
                             : msg.includes("[GÜNCELLENDİ]")
-                            ? "#1d4ed8"
-                            : "#334155",
+                              ? "#1d4ed8"
+                              : "#334155",
                         }}
                       >
                         {msg}

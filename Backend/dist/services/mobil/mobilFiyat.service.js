@@ -1,6 +1,6 @@
 import { MobilFirmaSqlRepository } from "../../models/mobilFirmaSql.repository.js";
 import { ApiError } from "../../utils/ApiError.js";
-import { BOS_MAKAS, birimAdi, makasBosMu, makasDuzenle, makasUygula } from "./mobilKural.js";
+import { BOS_MAKAS, birimAdi, fiyatGrubu, makasBosMu, makasDuzenle, makasUygula } from "./mobilKural.js";
 export class MobilFiyatService {
     /** Carinin gördüğü liste: firmanın seçtiği ürünler, son fiyat ± cariye özel makas */
     static async liste(ctx, cariKartId) {
@@ -18,7 +18,15 @@ export class MobilFiyatService {
             const s = makasUygula(f, makaslar.get(u.urunId), ondalik);
             if (s.alis === null && s.satis === null)
                 continue;
-            satirlar.push({ urunId: u.urunId, kod: u.kod, ad: u.ad, birim: birimAdi(u.urunTipi, u.birim, u.kod), alis: s.alis, satis: s.satis });
+            satirlar.push({
+                urunId: u.urunId,
+                kod: u.kod,
+                ad: u.ad,
+                birim: birimAdi(u.urunTipi, u.birim, u.kod),
+                grup: fiyatGrubu(u.urunTipi, u.kod, u.ad),
+                alis: s.alis,
+                satis: s.satis,
+            });
         }
         return { zaman: son.zaman, urunler: satirlar };
     }

@@ -71,6 +71,7 @@ export const authenticate = (req, res, next) => {
                 if (req.user) {
                     req.user.dbServer = b.dbServer;
                     req.user.dbName = b.dbName;
+                    req.user.firmaId = Number(decoded.firmaId);
                 }
                 return OturumService.dogrula(decoded, req.originalUrl);
             })

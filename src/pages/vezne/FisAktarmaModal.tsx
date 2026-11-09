@@ -71,10 +71,19 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
 
   // Fiş listesi helper
   const fislerList: DovizFisAktarmaItem[] = useMemo(() => {
-    if (!previewResult) return [];
-    if (Array.isArray(previewResult.fisler)) return previewResult.fisler;
-    if (Array.isArray((previewResult as any).kaynakFisler)) return (previewResult as any).kaynakFisler;
-    return [];
+    let list: DovizFisAktarmaItem[] = [];
+    if (previewResult) {
+      if (Array.isArray(previewResult.fisler)) {
+        list = previewResult.fisler;
+      } else if (Array.isArray((previewResult as any).kaynakFisler)) {
+        list = (previewResult as any).kaynakFisler;
+      }
+    }
+    // Fiş dizayn tipi 1 olanlar aktarma ekranında gözükmemeli
+    return list.filter((f) => {
+      const dizayn = Number(f.dizaynKodu ?? (f as any).dizaynTipi ?? 0);
+      return dizayn !== 1;
+    });
   }, [previewResult]);
 
   // Güvenli özet bilgisi
@@ -124,7 +133,10 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
       setPreviewResult(res);
 
       // Kullanıcı talebi: Tümü seçili gelecek varsayılan olarak; kullanıcı istediklerinin tikini kaldırabilecek.
-      const allSlips = res.fisler || (res as any).kaynakFisler || [];
+      const allSlips = (res.fisler || (res as any).kaynakFisler || []).filter((f: any) => {
+        const dizayn = Number(f.dizaynKodu ?? f.dizaynTipi ?? 0);
+        return dizayn !== 1;
+      });
       setSelectedIds(new Set(allSlips.map((f: any) => f.fisId)));
 
       if (res?.hedefVeritabani && !hedefVeritabani) {
@@ -157,7 +169,7 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
       loadCompanyDefaults();
       StatisticService.getStatistics()
         .then((res) => setStatsList(res || []))
-        .catch(() => {});
+        .catch(() => { });
 
       if (autoFetch) {
         fetchPreviewWithParams({
@@ -361,13 +373,17 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
                   >
                     <option value="">#Tümü (Tüm Dizaynlar)</option>
                     <option value="0">#0 (Standart)</option>
-                    <option value="1">#1</option>
                     <option value="2">#2</option>
                     <option value="3">#3</option>
                     <option value="4">#4</option>
                     <option value="5">#5</option>
                     {statsList
-                      .filter((s) => s.fisDizaynTipi !== undefined && s.fisDizaynTipi !== null)
+                      .filter(
+                        (s) =>
+                          s.fisDizaynTipi !== undefined &&
+                          s.fisDizaynTipi !== null &&
+                          Number(s.fisDizaynTipi) !== 1
+                      )
                       .map((s) => (
                         <option key={`stat-${s.id}`} value={String(s.fisDizaynTipi)}>
                           {`Dizayn ${s.fisDizaynTipi} (${s.kod}${s.aciklama ? ` - ${s.aciklama}` : ""})`}

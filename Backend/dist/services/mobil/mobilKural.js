@@ -236,6 +236,22 @@ export const birimAdi = (urunTipi, birim, kod) => {
         return birim === 1 ? "gr" : "adet";
     return kod.trim();
 };
+export const fiyatGrubu = (urunTipi, kod, ad) => {
+    if (urunTipi === 1)
+        return "altin";
+    if (urunTipi === 2)
+        return "gumus";
+    if (urunTipi === 3)
+        return "ziynet";
+    const metin = `${kod} ${ad}`.toLocaleUpperCase("tr");
+    if (/G[ÜU]M[ÜU][ŞS]/.test(metin))
+        return "gumus";
+    if (/[ÇC]EYREK|YARIM|Z[İI]YNET|CUMHUR|RE[ŞS]AT|GREMSE|\bATA\b/.test(metin))
+        return "ziynet";
+    if (/ALTIN|AYAR/.test(metin) || kod.trim().toLocaleUpperCase("tr") === "HAS")
+        return "altin";
+    return "doviz";
+};
 export const etkinKurallar = (f, c) => {
     const saatCifti = c.calismaBaslangic && c.calismaBitis ? [c.calismaBaslangic, c.calismaBitis] : [f.calismaBaslangic, f.calismaBitis];
     return {
