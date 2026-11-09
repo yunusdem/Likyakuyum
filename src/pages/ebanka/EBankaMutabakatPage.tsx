@@ -278,14 +278,7 @@ export const EBankaMutabakatPage: React.FC = () => {
                 <IconEdit size={14} className="me-1" />
                 Düzenle
               </Button>
-              {/* Eşli fişte faturası yoksa her zaman (gelen / giden); perakende faturası kendi ekranında (M7, M8) */}
-              {!f.faturali && f.fisTuru !== "perakende" && (
-                <Button size="sm" variant="outline-primary" className="py-0 me-1" disabled={calisiyor}
-                  onClick={() => setFaturaIsleri({ isler: [{ vomsisId: s.vomsisId, fis: f }], atlananlar: [] })}>
-                  <IconFileInvoice size={14} className="me-1" />
-                  Fatura kes
-                </Button>
-              )}
+              {/* Penceredeki tekli "Fatura kes" kaldırıldı; fatura listedeki toplu "Faturalandır" ile kesilir (M31) */}
               <Button size="sm" variant="light" className="border py-0 text-danger" disabled={calisiyor} title="Eşleşmeyi kaldır"
                 onClick={() => {
                   // Eşleşme onaysız kalkmaz (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M18)

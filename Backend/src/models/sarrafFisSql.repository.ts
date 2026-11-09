@@ -4,6 +4,7 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ensureSarrafStoredProcedures } from "./sarrafProcsSql.js";
+import { EBankaMutabakatSqlRepository } from "./ebankaMutabakatSql.repository.js";
 
 export interface SarrafFisSatiriDto {
   satirId?: number | null;
@@ -343,9 +344,15 @@ export class SarrafFisSqlRepository {
       const belgeNo = rawIrsaliyeNo;
 
       const iskontolar = (await pool.request().query(`SELECT ISKONTO_ID, RTRIM(KOD) AS KOD, TANIM FROM dbo.TODVZ_ISKONTO WITH (NOLOCK)`).catch(() => ({ recordset: [] }))).recordset || [];
+      // e-Banka hareketine eşli fiş: düzeltme ekranı toplamı banka tutarına sabitler (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M32)
+      const ebanka = await EBankaMutabakatSqlRepository.fisBagi(pool, "sarraf", Number(h.SARRAF_FISI_ID)).catch((e) => {
+        logger.warn("Sarraf fişinin e-Banka bağı okunamadı:", e?.message || e);
+        return null;
+      });
 
       return {
         sarrafFisiId: h.SARRAF_FISI_ID,
+        ebanka,
         fisNo: rawFisNo,
         seriNo: seriNo,
         belgeNo: belgeNo,

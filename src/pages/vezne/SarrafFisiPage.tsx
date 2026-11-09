@@ -3,7 +3,7 @@ import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { kurDegistirilebilir, kurDenetle, kurDegeriniSinirla, milyemDegistirilebilir, milyemDegeriniSinirla, milyemDenetle } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { kurlariDenetle, milyemleriDenetle } from "../../utils/kurYetkiDenetimi";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
-import { ebankaHesapAciklamasi, useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
+import { ebankaHareketHesabi, ebankaHesapAciklamasi, useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { EB_VARSAYILAN_KDV, altinTutari, ebGramCoz, etkinMilyem, iscilikOzeti } from "../ebanka/ebankaIscilik";
 import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner, Dropdown } from "react-bootstrap";
@@ -865,11 +865,32 @@ const ebankaSatiriDengele = (girdi: GridRow, hesap: GridRow, defaultKur: number,
   };
 };
 
-/** e-Banka'dan "Düzenle" ile açılan fişin satırı: toplamı açılıştaki tutara sabitlenir, hesap değişmez (M14) */
-const ebDuzenlemeSabitle = (r: GridRow): GridRow => {
-  const tutar = parseDecimal(r.tutar);
-  if (!(tutar > 0) || ebParaZiynetMi(r) || !(r.urunKodu || "").trim()) return r;
-  return { ...r, ebSabit: { miktar: parseDecimal(r.miktar), adet: parseDecimal(r.adet), kur: parseDecimal(r.kur), tutar, kdvAyarli: parseDecimal(r.iscilikKdvOrani) > 0 } };
+/**
+ * e-Banka'dan "Düzenle" ile açılan fişin satırı (M14, M30): Toplam Tutar kayıttaki tutara sabitlenir. Açılıştaki yeniden hesap (`hesap`)
+ * TL Tutar'ı has × kur'a döndürür, satır KDV'si veritabanında tutulmaz; bu yüzden kayıttaki net işçiliğe fişin İşçilik KDV oranı uygulanır
+ * ve TL Tutar = Toplam − İşçilik Toplam olur. Kayıttaki net işçilik ve işçilik hası korunur (İşçilik/M'den yeniden hesaplanıp kaymasın).
+ */
+const ebDuzenlemeSabitle = (kayit: GridRow, hesap: GridRow, fisKdvOrani: number, isKdvDisabled: boolean): GridRow => {
+  const tutar = parseDecimal(kayit.tutar);
+  if (!(tutar > 0) || ebParaZiynetMi(kayit) || !(kayit.urunKodu || "").trim()) return hesap;
+  const oran = isKdvDisabled ? 0 : Math.max(0, Number(fisKdvOrani) || 0);
+  const kayitNet = parseDecimal(kayit.iscilikTutari);
+  const net = kayitNet > 0 ? kayitNet : parseDecimal(hesap.iscilikTutari);
+  const kdv = net > 0 && oran > 0 ? parseFloat(((net * oran) / 100).toFixed(2)) : 0;
+  const iscilik = parseFloat((net + kdv).toFixed(2));
+  const sabit = { miktar: parseDecimal(hesap.miktar), adet: parseDecimal(hesap.adet), kur: parseDecimal(hesap.kur), tutar, kdvAyarli: oran > 0 };
+  if (!(iscilik < tutar)) return { ...hesap, ebSabit: { ...sabit, tutar: parseDecimal(hesap.tutar) } };
+  return {
+    ...hesap,
+    iscilikHasGram: kayitNet > 0 && parseDecimal(kayit.iscilikHasGram) > 0 ? kayit.iscilikHasGram : hesap.iscilikHasGram,
+    iscilikTutari: net > 0 ? net : "",
+    iscilikKdvOrani: oran > 0 ? oran : "",
+    iscilikKdvTutari: kdv > 0 ? kdv : "",
+    iscilikToplam: iscilik > 0 ? iscilik : "",
+    tlTutar: altinTutari(tutar, iscilik),
+    tutar,
+    ebSabit: sabit,
+  };
 };
 
 /** e-Banka fişinde İşçilik KDV oranı fiş düzeyindedir: bütün altın / gümüş satırlarına aynı oran (M12) */
@@ -1725,13 +1746,19 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     return null;
   }, [selectedStatistic, statisticList, istatistikId, istatistikKodu]);
 
+  // Listeden açılan e-Banka fişi (M32): sunucu fişle birlikte eşli banka hareketini döndürür; yalnız o fiş açıkken geçerli
+  const [ebBag, setEbBag] = useState<{
+    fisId: number; vomsisId: number; yon: "gelen" | "giden"; tutar: number; doviz: string | null; bankaId: number | null; bankaAdi: string; hesapNo: string | null;
+  } | null>(null);
+  const ebBagli = Boolean(ebBag && fisId && ebBag.fisId === fisId);
+
   const isKdvDisabled = useMemo(() => {
-    // e-Banka'dan açılan fişte işçilik KDV'si istatistikten bağımsız açık: alış ve satışta %20 gelir, değiştirilir (M19)
-    if (ebankaFisi) return false;
+    // e-Banka'dan açılan fişte işçilik KDV'si istatistikten bağımsız açık: alış ve satışta %20 gelir, değiştirilir (M19, M32)
+    if (ebankaFisi || ebBagli) return false;
     const rawVal = activeStat?.fisDizaynTipi ?? (activeStat as any)?.FIS_DIZAYN_TIPI ?? (activeStat as any)?.fis_dizayn_tipi ?? istatistikFisDizaynTipi;
     if (rawVal === undefined || rawVal === null || rawVal === "") return false;
     return Number(rawVal) === 1;
-  }, [istatistikFisDizaynTipi, activeStat, ebankaFisi]);
+  }, [istatistikFisDizaynTipi, activeStat, ebankaFisi, ebBagli]);
   const isKdvDisabledRef = useRef<boolean>(isKdvDisabled);
   isKdvDisabledRef.current = isKdvDisabled;
 
@@ -2276,6 +2303,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const data = await SarrafFisService.getFisById(id);
       if (!data) return;
       setFisId(data.sarrafFisiId);
+      // e-Banka hareketine eşli fiş (M32): listeden açılsa da e-Banka'dan Düzenle ile açılmış gibi toplam banka tutarında
+      const ebBagi = (data as any).ebanka && Number((data as any).ebanka.vomsisId) > 0 ? (data as any).ebanka : null;
+      setEbBag(ebBagi ? { ...ebBagi, fisId: data.sarrafFisiId } : null);
       const rawFisNo = ((data as any).fisNo || "").trim();
       const rawSeriNo = ((data as any).seriNo || "").trim();
       const rawBelgeNo = ((data as any).belgeNo || (data as any).irsaliyeNo || "").trim();
@@ -2404,8 +2434,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             aciklama: s.aciklama || "",
           };
           const hesap = recomputeRow(rowObj, curHasKuru, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
-          // e-Banka'dan "Düzenle" ile açılan fiş: satır toplamı açılıştaki tutara sabit, işçilik yazılınca gram dengelenir (M14)
-          return ebDuzenlemeRef.current && String(data.sarrafFisiId ?? "") === ebDuzenlemeRef.current ? ebDuzenlemeSabitle(hesap) : hesap;
+          // e-Banka'dan "Düzenle" ile ya da listeden açılan e-Banka fişi: satır kayıttaki toplamla açılır, işçilik yazılınca gram
+          // dengelenir (M14, M30, M32). e-Banka fişinde işçilik KDV'si istatistikten bağımsız açık (M19).
+          return (ebDuzenlemeRef.current && String(data.sarrafFisiId ?? "") === ebDuzenlemeRef.current) || ebBagi
+            ? ebDuzenlemeSabitle(rowObj, hesap, Number(data.kdvOrani) || 0, false)
+            : hesap;
         });
         setLines(mapped.length > 0 ? mapped : [createEmptyRow(1)]);
       } else {
@@ -2490,13 +2523,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             cariKod: cKod,
             cariUnvan: cUnv,
             // Hesap satırında Kod'un yanındaki Açıklama banka hesabını gösterir (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M16)
-            // e-Banka'dan Düzenle ile açılan fişte hareketin hesabındaki satıra banka ve hesap no (M20)
-            ...(oat === 3 && ebankaFisi && ebBankaRef.current.bankaId && Number(o.bankaId || o.cariKartId) === ebBankaRef.current.bankaId
-              ? (() => {
-                  const kart = bankaList.find((x) => x.bankaId === ebBankaRef.current.bankaId);
-                  return { ebBanka: true, ebKartAdi: (kart?.hesapAdi || "").trim() || kart?.hesapNo || cKod, aciklama: ebBankaRef.current.aciklama || cUnv };
-                })()
-              : oat === 3 && cUnv ? { aciklama: cUnv } : {}),
+            // e-Banka'dan Düzenle ile ya da listeden açılan e-Banka fişinde hareketin hesabındaki satır: kilitli, banka ve hesap no (M20, M32)
+            ...((): Partial<OdemeRow> => {
+              const eb = ebankaFisi && ebBankaRef.current.bankaId
+                ? ebBankaRef.current
+                : ebBagi && Number(ebBagi.bankaId) > 0 ? { bankaId: Number(ebBagi.bankaId), aciklama: ebankaHareketHesabi(ebBagi) } : null;
+              if (oat === 3 && eb && Number(o.bankaId || o.cariKartId) === eb.bankaId) {
+                const kart = bankaList.find((x) => x.bankaId === eb.bankaId);
+                // Kart listesi henüz gelmediyse kartın adı fişle gelen adtan (M30); kod yalnız ad hiç yoksa
+                return { ebBanka: true, ebKartAdi: (kart?.hesapAdi || "").trim() || cUnv || kart?.hesapNo || cKod, aciklama: eb.aciklama || cUnv };
+              }
+              return oat === 3 && cUnv ? { aciklama: cUnv } : {};
+            })(),
             bankaId: o.bankaId || (oat === 3 ? o.cariKartId : null),
             posCihaziId: o.posCihaziId || (oat === 2 ? o.cariKartId : null),
             iskontoId: o.iskontoId || matchedIskonto?.iskontoId || null,
@@ -4972,6 +5010,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const oranYazi = String(sanitizedValue);
       const kur0 = Number(altinHasKuru) || 0;
       setLines((prev) => prev.map((r) => ebKdvSatiri(r, oranYazi, kur0, userIscilikGirisSekli, isKdvDisabledRef.current)));
+      // Başlık da aynı oran: düzenlemede satır KDV'si başlıktan kurulur (M30); oran silinirse başlıkta da kalmaz
+      setKdvOrani(oranYazi === "" ? "" : parseDecimal(oranYazi));
       return;
     }
 
@@ -7543,22 +7583,27 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     }
   });
 
-  ebModRef.current = ebFis.vomsisId > 0;
+  // Listeden açılan e-Banka fişi de e-Banka kipinde: KDV oranı fiş düzeyinde, alt kutuda işçilik özeti (M32)
+  const ebKipi = ebFis.vomsisId > 0 || ebBagli;
+  ebModRef.current = ebKipi;
   ebDuzenlemeRef.current = ebFis.duzenleme ? String(queryId || "") : "";
   // e-Banka fişinde İşçilik KDV oranı fiş başlığına da yazılır; fatura oranı başlıktan okur (M12)
   useEffect(() => {
-    if (!ebFis.vomsisId || isKdvDisabled) return;
+    if (!ebKipi || isKdvDisabled) return;
     const r = lines.find((l) => l.ebSabit && parseDecimal(l.iscilikKdvOrani) > 0);
     if (r && parseDecimal(r.iscilikKdvOrani) !== parseDecimal(kdvOrani)) setKdvOrani(parseDecimal(r.iscilikKdvOrani));
-  }, [lines, ebFis.vomsisId, isKdvDisabled, kdvOrani]);
+  }, [lines, ebKipi, isKdvDisabled, kdvOrani]);
   // Alt kutudaki işçilik özeti ve KDV % kutusu (M15)
   const ebIscilik = iscilikOzeti(lines, parseDecimal);
   const [ebKdvYazi, setEbKdvYazi] = useState<string | null>(null);
+  // Başka fişe geçince (ileri / geri, yeni kayıt) KDV % kutusu o fişin oranını gösterir
+  useEffect(() => setEbKdvYazi(null), [fisId]);
   const ebKdvDegistir = (deger: string) => {
     const oranYazi = onlyDecimal(deger);
     setEbKdvYazi(oranYazi);
     const kur0 = Number(altinHasKuru) || 0;
     setLines((prev) => prev.map((r) => ebKdvSatiri(r, oranYazi, kur0, userIscilikGirisSekli, isKdvDisabledRef.current)));
+    setKdvOrani(oranYazi === "" ? "" : parseDecimal(oranYazi));
   };
   const tlYaz = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -7568,6 +7613,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   return (
     <div className="sarraf-fisi-page w-100 pb-3" style={{ fontFamily: "'Segoe UI', sans-serif", fontSize: "12.5px", "--active-fis-theme-bg": activeFisThemeBg } as React.CSSProperties}>
       {ebFis.bant}
+      {ebBagli && !ebFis.vomsisId && ebBag && (
+        <div className="alert alert-info py-2 px-3 mb-2 small">
+          Bu fiş e-Banka hareketine bağlı — {ebBag.yon} {ebBag.tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {ebBag.doviz || "TL"}
+          {ebBag.bankaAdi ? ` (${ebankaHareketHesabi(ebBag)})` : ""}. Toplam Tutar kayıttaki tutarda kalır; işçilik değişince gram dengelenir.
+        </div>
+      )}
       {pos.pencere}
       <ERPToolbar
         disableShortcuts
@@ -9900,7 +9951,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         </td>
                       </tr>
                       {/* e-Banka fişi: işçilik (KDV dahil) ve fiş düzeyindeki KDV oranı (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M12, M15) */}
-                      {ebFis.vomsisId > 0 && (
+                      {ebKipi && (
                         <>
                           <tr>
                             <td className="fw-semibold text-secondary">İşçilik <span className="fw-normal">(KDV dahil)</span></td>
