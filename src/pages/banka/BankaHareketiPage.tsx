@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { fisGunu } from "../../utils/fisTarihi";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Container, Row, Col, Card, Form, Button, Badge, Alert, Modal, InputGroup } from "react-bootstrap";
 import {
   IconBuildingBank,
@@ -78,6 +78,10 @@ export const BankaHareketiPage: React.FC = () => {
   const [bankaList, setBankaList] = useState<any[]>(DEFAULT_BANKALAR);
   const [cariList, setCariList] = useState<any[]>([]);
   const [hareketList, setHareketList] = useState<BankaHareketItem[]>([]);
+  // Listede fişlerin Hesap (banka) satırları da var (salt okunur, docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M17);
+  // form, dolaşım ve adresle açılış yalnız banka fişlerinde
+  const bankaFisleri = useMemo(() => hareketList.filter((h) => !h.kaynak), [hareketList]);
+  const navigate = useNavigate();
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
 
@@ -118,7 +122,7 @@ export const BankaHareketiPage: React.FC = () => {
     try {
       const [bankalar, hareketler, cariLk, lookups] = await Promise.all([
         BankaService.getBankalar().catch(() => []),
-        BankaService.getHareketler().catch(() => []),
+        BankaService.getHareketler({ fisSatirlari: true }).catch(() => []),
         CariService.getLookups().catch(() => null),
         BankaService.getLookups().catch(() => null),
       ]);
@@ -193,13 +197,13 @@ export const BankaHareketiPage: React.FC = () => {
 
   // ─── Query ID ile açılma ───────────────────────────────────────────────────
   useEffect(() => {
-    if (queryId && hareketList.length > 0) {
-      const found = hareketList.find((h) => h.bankaHareketId === Number(queryId));
+    if (queryId && bankaFisleri.length > 0) {
+      const found = bankaFisleri.find((h) => h.bankaHareketId === Number(queryId));
       if (found) {
         handleSelectHareket(found);
       }
     }
-  }, [queryId, hareketList]);
+  }, [queryId, bankaFisleri]);
 
   // ─── Seçilen Hareketi Forma Yükle (Görüntüleme / Düzenleme / Silme) ─────────
   const handleSelectHareket = useCallback((h: BankaHareketItem) => {
@@ -233,17 +237,24 @@ export const BankaHareketiPage: React.FC = () => {
   }, []);
 
   // ─── İlk, Önceki, Sonraki, Son Kayıt Dolaşımı ───────────────────────────────
-  const currentIndex = hareketList.findIndex((h) => h.bankaHareketId === hareketId);
-  const handleFirst = () => { if (hareketList.length) handleSelectHareket(hareketList[0]); };
+  const currentIndex = bankaFisleri.findIndex((h) => h.bankaHareketId === hareketId);
+  const handleFirst = () => { if (bankaFisleri.length) handleSelectHareket(bankaFisleri[0]); };
   const handlePrev = () => {
-    if (currentIndex > 0) handleSelectHareket(hareketList[currentIndex - 1]);
-    else if (hareketList.length) handleSelectHareket(hareketList[0]);
+    if (currentIndex > 0) handleSelectHareket(bankaFisleri[currentIndex - 1]);
+    else if (bankaFisleri.length) handleSelectHareket(bankaFisleri[0]);
   };
   const handleNext = () => {
-    if (currentIndex >= 0 && currentIndex < hareketList.length - 1) handleSelectHareket(hareketList[currentIndex + 1]);
-    else if (hareketList.length) handleSelectHareket(hareketList[hareketList.length - 1]);
+    if (currentIndex >= 0 && currentIndex < bankaFisleri.length - 1) handleSelectHareket(bankaFisleri[currentIndex + 1]);
+    else if (bankaFisleri.length) handleSelectHareket(bankaFisleri[bankaFisleri.length - 1]);
   };
-  const handleLast = () => { if (hareketList.length) handleSelectHareket(hareketList[hareketList.length - 1]); };
+  const handleLast = () => { if (bankaFisleri.length) handleSelectHareket(bankaFisleri[bankaFisleri.length - 1]); };
+
+  /** Fiş satırı seçilince fişin kendi düzeltme ekranı açılır (banka fişi gibi düzenlenmez) */
+  const FIS_DUZELTME: Record<NonNullable<BankaHareketItem["kaynak"]>, string> = {
+    sarraf: "/vezne/sarraf-fisi-duzeltme",
+    perakende: "/vezne/perakende-fisi-duzeltme",
+    ticari: "/ticari/satis-fisi-duzeltme",
+  };
 
   // ─── Kaydet / Güncelle ─────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -301,7 +312,7 @@ export const BankaHareketiPage: React.FC = () => {
       const saved = await BankaService.saveHareket(payload);
       handleNew();
 
-      const updatedList = await BankaService.getHareketler();
+      const updatedList = await BankaService.getHareketler({ fisSatirlari: true });
       setHareketList(updatedList);
     } catch (err: any) {
       showNotif("danger", err?.message || "Banka hareketi kaydedilemedi.");
@@ -318,7 +329,7 @@ export const BankaHareketiPage: React.FC = () => {
       showNotif("success", "Banka hareketi silindi.");
       setShowDeleteConfirm(false);
       handleNew();
-      const updatedList = await BankaService.getHareketler();
+      const updatedList = await BankaService.getHareketler({ fisSatirlari: true });
       setHareketList(updatedList);
     } catch (err: any) {
       showNotif("danger", err?.message || "Banka hareketi silinemedi.");
@@ -534,7 +545,7 @@ export const BankaHareketiPage: React.FC = () => {
     {
       header: "#",
       width: "60px",
-      render: (it) => <span className="font-monospace text-muted">{it.bankaHareketId}</span>,
+      render: (it) => <span className="font-monospace text-muted">{it.kaynak ? it.belgeNo || `#${it.kaynakFisId}` : it.bankaHareketId}</span>,
     },
     {
       header: "Tarih",
@@ -549,6 +560,14 @@ export const BankaHareketiPage: React.FC = () => {
       header: "İşlem Tipi",
       width: "150px",
       render: (it) => {
+        if (it.kaynak) {
+          return (
+            <span title="Fişin Hesap (banka) satırı; fiş ekranında açılır">
+              <Badge bg="info" text="dark" className="me-1">Fiş</Badge>
+              <span className="fw-semibold">{it.islemTipi === 0 ? "Giriş" : "Çıkış"}</span>
+            </span>
+          );
+        }
         const matched = ISLEM_TIPLERI.find((t) => t.value === it.islemTipi);
         return <span className="fw-semibold">{matched?.label || it.islemTipi}</span>;
       },
@@ -924,8 +943,12 @@ export const BankaHareketiPage: React.FC = () => {
           );
         }}
         onSelect={(selected: BankaHareketItem) => {
-          handleSelectHareket(selected);
           setShowHareketLookup(false);
+          if (selected.kaynak && selected.kaynakFisId) {
+            navigate(`${FIS_DUZELTME[selected.kaynak]}?id=${selected.kaynakFisId}`);
+            return;
+          }
+          handleSelectHareket(selected);
         }}
         onHide={() => setShowHareketLookup(false)}
       />

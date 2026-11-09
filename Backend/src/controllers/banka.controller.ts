@@ -65,7 +65,7 @@ export class BankaController {
   // ─── Banka Hesap Hareketleri ───────────────────────────────────────────────
   public static listHareketler = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = BankaController.getDbContext(req);
-    const { bankaId, cariKartId, vezneId, islemTipi, baslangicTarihi, bitisTarihi, search, limit } = req.query;
+    const { bankaId, cariKartId, vezneId, islemTipi, baslangicTarihi, bitisTarihi, search, limit, fisSatirlari } = req.query;
     const filter = {
       bankaId: bankaId ? Number(bankaId) : undefined,
       cariKartId: cariKartId ? Number(cariKartId) : undefined,
@@ -76,6 +76,7 @@ export class BankaController {
       bitisTarihi: bitisTarihi ? String(bitisTarihi) : undefined,
       search: search ? String(search) : undefined,
       limit: limit ? Number(limit) : 200,
+      fisSatirlari: fisSatirlari === "1" || fisSatirlari === "true",
     };
     const data = await BankaService.listHareketler(filter, dbContext);
     return ApiResponse.ok(res, "Banka hareketleri listelendi.", data);

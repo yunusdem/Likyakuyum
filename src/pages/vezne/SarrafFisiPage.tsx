@@ -785,7 +785,7 @@ const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyo
 };
 
 /** Satır hesabı; e-Banka'dan sabitlenen satırda ardından işçilik dengesi çalışır (normal fişte ebankaSatiriDengele hiçbir şey yapmaz) */
-const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false): GridRow =>
+export const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false): GridRow =>
   ebankaSatiriDengele(r, recomputeRowHam(r, defaultKur, changedField, iscilikGirisSekli, isKdvDisabled), defaultKur, changedField, iscilikGirisSekli, isKdvDisabled);
 
 /** e-Banka satırında para / ziynet mi (işçilik yok, dengelenmez) */
@@ -2452,6 +2452,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             cariKartId: o.cariKartId || null,
             cariKod: cKod,
             cariUnvan: cUnv,
+            // Hesap satırında Kod'un yanındaki Açıklama banka hesabını gösterir (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M16)
+            ...(oat === 3 && cUnv ? { aciklama: cUnv } : {}),
             bankaId: o.bankaId || (oat === 3 ? o.cariKartId : null),
             posCihaziId: o.posCihaziId || (oat === 2 ? o.cariKartId : null),
             iskontoId: o.iskontoId || matchedIskonto?.iskontoId || null,
@@ -7151,12 +7153,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const doviz = ["TL", "TRY"].includes(kod) || !(b.tutar > 0)
         ? undefined
         : (urunList.find((u) => (u.urunTipi ?? 0) === 0 && (u.kod || "").trim().toUpperCase() === kod) || kurSatirlar.find((k) => (k.kod || "").trim().toUpperCase() === kod));
+      const hesapAdi = hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : (hesap.bankaAdi || "BANKA HAVALE / EFT");
       const satir: OdemeRow = {
         ...createEmptyOdemeRow(1),
         odemeAraciTuru: 3,
         bankaId: hesap.bankaId,
         cariKod: hesap.hesapNo || "",
-        cariUnvan: hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : (hesap.bankaAdi || "BANKA HAVALE / EFT"),
+        cariUnvan: hesapAdi,
+        // Kod'un yanındaki Açıklama'da banka hesabı görünür (dürbünle seçimdeki gibi; docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M16)
+        aciklama: hesapAdi,
         // Döviz kodu para listesinde yoksa satır TL karşılığıyla yazılır
         paraId: doviz?.paraId ?? null,
         paraKodu: doviz ? (doviz.kod || kod) : "TL",

@@ -25,7 +25,7 @@ export interface TopluSatir<F extends TopluFis = TopluFis> {
   belgeler?: unknown[];
 }
 
-export type TopluIslem = "esle" | "faturalandir" | "cari" | "gerekmez";
+export type TopluIslem = "esle" | "fisKes" | "faturalandir" | "cari" | "gerekmez";
 
 /** Satıra uygulanacak iş ya da neden uygulanmadığı */
 export type TopluKarar<T> = { tamam: true; deger: T } | { tamam: false; neden: string };
@@ -66,6 +66,14 @@ export function onaylanacakCari(s: TopluSatir): TopluKarar<number> {
   return { tamam: true, deger: s.oneriCari.cariKartId };
 }
 
+/** Toplu fiş kes (T1): fişi / belgesi olmayan, virman ve "fatura gerektirmez" olmayan hareket. Hesap / kur / MASAK pencerede denetlenir. */
+export function fisKesilebilir(s: TopluSatir): TopluKarar<true> {
+  if (s.durum === "virman") return red("Hesaplar arası virman");
+  if (fisiVar(s)) return red("Fişi / belgesi var");
+  if (s.faturaGerekmez) return red("Fatura gerektirmez işaretli");
+  return { tamam: true, deger: true };
+}
+
 /** Fatura gerektirmez: fişi / belgesi olmayan, henüz işaretlenmemiş hareket. */
 export function gerekmezIsaretlenebilir(s: TopluSatir): TopluKarar<true> {
   if (s.durum === "virman") return red("Hesaplar arası virman");
@@ -77,6 +85,7 @@ export function gerekmezIsaretlenebilir(s: TopluSatir): TopluKarar<true> {
 export function topluKarar(islem: TopluIslem, s: TopluSatir): TopluKarar<unknown> {
   switch (islem) {
     case "esle": return eslenecekAday(s);
+    case "fisKes": return fisKesilebilir(s);
     case "faturalandir": return faturalanacakFisler(s);
     case "cari": return onaylanacakCari(s);
     case "gerekmez": return gerekmezIsaretlenebilir(s);
