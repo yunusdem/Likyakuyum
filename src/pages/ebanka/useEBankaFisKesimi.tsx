@@ -16,14 +16,19 @@ export interface EBankaFisKesimBilgisi {
   bankaId: number | null;
   /** Fişe yazılacak TL tutar (döviz hesapta o günün kuruyla karşılığı) */
   tutarTl: number;
+  /** Hareketin bankası ve hesabı ("Garanti BBVA TL - 6866578"): Hesap satırının açıklamasına (M20) */
+  bankaAciklama: string;
   donusBaslangic: string;
   donusBitis: string;
 }
 
+// Hesap satırının açıklaması (M20); saf olduğu için ebankaToplu.ts'te
+export { ebankaHareketHesabi, ebankaHesapAciklamasi } from "./ebankaToplu";
+
 /** Mutabakat ekranının fiş ekranını açacağı adres. */
 export function fisKesimAdresi(yol: string, p: {
   vomsisId: number; cariId: number | null; tarih: string; tip: 0 | 1; tutar: number; paraKodu: string; baslangic: string; bitis: string;
-  bankaId?: number | null; tutarTl?: number | null; karsiAd?: string | null; karsiNo?: string | null;
+  bankaId?: number | null; tutarTl?: number | null; karsiAd?: string | null; karsiNo?: string | null; bankaAciklama?: string | null;
 }): string {
   const q = new URLSearchParams({
     ebh: String(p.vomsisId), tarih: p.tarih, tip: String(p.tip), tutar: String(p.tutar), pk: p.paraKodu, db: p.baslangic, de: p.bitis,
@@ -31,6 +36,7 @@ export function fisKesimAdresi(yol: string, p: {
   if (p.cariId) q.set("cari", String(p.cariId));
   if (p.bankaId) q.set("bk", String(p.bankaId));
   if (p.tutarTl) q.set("ttl", String(p.tutarTl));
+  if (p.bankaAciklama) q.set("ba", p.bankaAciklama.slice(0, 120));
   // Cari bulunamadıysa fiş, bankanın verdiği ad ve VKN/TC ile kayıtsız müşteri olarak dolar
   if (!p.cariId && p.karsiAd) q.set("kt", p.karsiAd.slice(0, 120));
   if (!p.cariId && p.karsiNo) q.set("kn", p.karsiNo);
@@ -47,11 +53,14 @@ const DUZELTME_YOLU: Record<MutabakatFisTuru, string> = {
 /** "Düzenle": fiş düzeltme ekranı `ebd` ile açılır; kaydedince e-Banka'ya aynı harekete dönülür. */
 export function fisDuzenlemeAdresi(fisTuru: MutabakatFisTuru, fisId: number, p: {
   vomsisId: number; tip: 0 | 1; tutar: number; paraKodu: string; tutarTl?: number | null; baslangic: string; bitis: string;
+  bankaId?: number | null; bankaAciklama?: string | null;
 }): string {
   const q = new URLSearchParams({
     id: String(fisId), ebd: String(p.vomsisId), tip: String(p.tip), tutar: String(p.tutar), pk: p.paraKodu, db: p.baslangic, de: p.bitis,
   });
   if (p.tutarTl) q.set("ttl", String(p.tutarTl));
+  if (p.bankaId) q.set("bk", String(p.bankaId));
+  if (p.bankaAciklama) q.set("ba", p.bankaAciklama.slice(0, 120));
   return `${DUZELTME_YOLU[fisTuru]}?${q.toString()}`;
 }
 
@@ -82,6 +91,7 @@ export function useEBankaFisKesimi(fisTuru: MutabakatFisTuru, hazir: boolean, do
     tutarTl: Number(searchParams.get("ttl")) || (["TL", "TRY"].includes((searchParams.get("pk") || "TL").toUpperCase()) ? Number(searchParams.get("tutar")) || 0 : 0),
     donusBaslangic: searchParams.get("db") || "",
     donusBitis: searchParams.get("de") || "",
+    bankaAciklama: searchParams.get("ba") || "",
   });
 
   // Düzenlemede ekran doldurulmaz; bant ve dönüş için bilgi hemen hazır

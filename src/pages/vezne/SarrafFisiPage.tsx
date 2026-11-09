@@ -3,7 +3,7 @@ import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { kurDegistirilebilir, kurDenetle, kurDegeriniSinirla, milyemDegistirilebilir, milyemDegeriniSinirla, milyemDenetle } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { kurlariDenetle, milyemleriDenetle } from "../../utils/kurYetkiDenetimi";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
-import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
+import { ebankaHesapAciklamasi, useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { EB_VARSAYILAN_KDV, altinTutari, ebGramCoz, etkinMilyem, iscilikOzeti } from "../ebanka/ebankaIscilik";
 import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner, Dropdown } from "react-bootstrap";
@@ -785,7 +785,7 @@ const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyo
 };
 
 /** Satır hesabı; e-Banka'dan sabitlenen satırda ardından işçilik dengesi çalışır (normal fişte ebankaSatiriDengele hiçbir şey yapmaz) */
-const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false): GridRow =>
+export const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false): GridRow =>
   ebankaSatiriDengele(r, recomputeRowHam(r, defaultKur, changedField, iscilikGirisSekli, isKdvDisabled), defaultKur, changedField, iscilikGirisSekli, isKdvDisabled);
 
 /** e-Banka satırında para / ziynet mi (işçilik yok, dengelenmez) */
@@ -934,6 +934,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryId = searchParams.get("id") || searchParams.get("sarrafFisiId");
+  // e-Banka'dan açılan fiş (kesim ebh / Düzenle ebd) ve hareketin hesabı (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M19, M20)
+  const ebankaFisi = Boolean(searchParams.get("ebh") || searchParams.get("ebd"));
+  const ebBankaRef = useRef<{ bankaId: number; aciklama: string }>({ bankaId: 0, aciklama: "" });
+  ebBankaRef.current = { bankaId: Number(searchParams.get("bk")) || 0, aciklama: searchParams.get("ba") || "" };
   const isDuzeltmeMode = Boolean(isDuzeltme || location.pathname.includes("duzeltme"));
 
   const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning" | "info"; message: string } | null>(null);
@@ -1714,10 +1718,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, [selectedStatistic, statisticList, istatistikId, istatistikKodu]);
 
   const isKdvDisabled = useMemo(() => {
+    // e-Banka'dan açılan fişte işçilik KDV'si istatistikten bağımsız açık: alış ve satışta %20 gelir, değiştirilir (M19)
+    if (ebankaFisi) return false;
     const rawVal = activeStat?.fisDizaynTipi ?? (activeStat as any)?.FIS_DIZAYN_TIPI ?? (activeStat as any)?.fis_dizayn_tipi ?? istatistikFisDizaynTipi;
     if (rawVal === undefined || rawVal === null || rawVal === "") return false;
     return Number(rawVal) === 1;
-  }, [istatistikFisDizaynTipi, activeStat]);
+  }, [istatistikFisDizaynTipi, activeStat, ebankaFisi]);
   const isKdvDisabledRef = useRef<boolean>(isKdvDisabled);
   isKdvDisabledRef.current = isKdvDisabled;
 
@@ -2475,6 +2481,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             cariKartId: o.cariKartId || null,
             cariKod: cKod,
             cariUnvan: cUnv,
+            // Hesap satırında Kod'un yanındaki Açıklama banka hesabını gösterir (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M16)
+            // e-Banka'dan Düzenle ile açılan fişte hareketin hesabındaki satıra banka ve hesap no (M20)
+            ...(oat === 3 && ebankaFisi && ebBankaRef.current.aciklama && Number(o.bankaId || o.cariKartId) === ebBankaRef.current.bankaId
+              ? { aciklama: ebankaHesapAciklamasi(ebBankaRef.current.aciklama, bankaList.find((x) => x.bankaId === ebBankaRef.current.bankaId)?.hesapAdi) }
+              : oat === 3 && cUnv ? { aciklama: cUnv } : {}),
             bankaId: o.bankaId || (oat === 3 ? o.cariKartId : null),
             posCihaziId: o.posCihaziId || (oat === 2 ? o.cariKartId : null),
             iskontoId: o.iskontoId || matchedIskonto?.iskontoId || null,
@@ -7487,18 +7498,24 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const doviz = ["TL", "TRY"].includes(kod) || !(b.tutar > 0)
         ? undefined
         : (urunList.find((u) => (u.urunTipi ?? 0) === 0 && (u.kod || "").trim().toUpperCase() === kod) || kurSatirlar.find((k) => (k.kod || "").trim().toUpperCase() === kod));
+      const hesapAdi = hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : (hesap.bankaAdi || "BANKA HAVALE / EFT");
       const satir: OdemeRow = {
         ...createEmptyOdemeRow(1),
         odemeAraciTuru: 3,
         bankaId: hesap.bankaId,
         cariKod: hesap.hesapNo || "",
-        cariUnvan: hesap.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : (hesap.bankaAdi || "BANKA HAVALE / EFT"),
+        cariUnvan: hesapAdi,
+        // Kod'un yanındaki Açıklama'da banka hesabı: e-Banka hareketinin bankası ve hesap no'su + kartın adı (M16, M20)
+        aciklama: b.bankaAciklama ? ebankaHesapAciklamasi(b.bankaAciklama, hesap.hesapAdi) : hesapAdi,
         // Döviz kodu para listesinde yoksa satır TL karşılığıyla yazılır
         paraId: doviz?.paraId ?? null,
         paraKodu: doviz ? (doviz.kod || kod) : "TL",
         paraAdi: doviz ? (doviz.ad || kod) : "TÜRK LİRASI",
         urunTipi: 0,
-        miktar: doviz ? b.tutar : b.tutarTl,
+        // TL / döviz (para) satırında tutar Adet'tedir, Miktar boş kalır (ekranın para satırı kuralı; Miktar'a yazılınca Adet "eksik"
+        // görünüyor, Adet'e dokununca tutar siliniyordu — docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M21)
+        adet: formatMiktar(doviz ? b.tutar : b.tutarTl),
+        miktar: "",
         kur: doviz ? parseFloat((b.tutarTl / b.tutar).toFixed(4)) : "",
       };
       setOdemeRows([recomputeOdemeRow(satir, Number(altinHasKuru) || 0)]);

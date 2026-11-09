@@ -73,6 +73,9 @@ export interface BankaHareketItem {
   guncelleyenId?: number | null;
   guncellemeZamani?: string | null;
   satirlar: BankaHareketSatiriItem[];
+  /** Banka fişi değil, fişin Hesap (banka) ödeme satırı: salt okunur, kendi fiş ekranında açılır (M17) */
+  kaynak?: "sarraf" | "perakende" | "ticari";
+  kaynakFisId?: number;
 }
 
 export interface SaveBankaHareketPayload {
@@ -173,8 +176,11 @@ export const BankaService = {
     bitisTarihi?: string;
     search?: string;
     limit?: number;
+    /** Fişlerin Hesap (banka) satırları da gelsin (salt okunur; docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M17) */
+    fisSatirlari?: boolean;
   }): Promise<BankaHareketItem[]> {
-    const res = await apiClient.get<BankaHareketItem[]>("/banka/hareketler", filter);
+    const { fisSatirlari, ...digeri } = filter || {};
+    const res = await apiClient.get<BankaHareketItem[]>("/banka/hareketler", fisSatirlari ? { ...digeri, fisSatirlari: "1" } : digeri);
     const data = (res.data as any)?.data ?? res.data;
     return Array.isArray(data) ? data : [];
   },

@@ -25,7 +25,7 @@ export interface TopluSatir<F extends TopluFis = TopluFis> {
   belgeler?: unknown[];
 }
 
-export type TopluIslem = "esle" | "faturalandir" | "cari" | "gerekmez";
+export type TopluIslem = "esle" | "fisKes" | "faturalandir" | "cari" | "gerekmez";
 
 /** Satıra uygulanacak iş ya da neden uygulanmadığı */
 export type TopluKarar<T> = { tamam: true; deger: T } | { tamam: false; neden: string };
@@ -66,6 +66,14 @@ export function onaylanacakCari(s: TopluSatir): TopluKarar<number> {
   return { tamam: true, deger: s.oneriCari.cariKartId };
 }
 
+/** Toplu fiş kes (T1): fişi / belgesi olmayan, virman ve "fatura gerektirmez" olmayan hareket. Hesap / kur / MASAK pencerede denetlenir. */
+export function fisKesilebilir(s: TopluSatir): TopluKarar<true> {
+  if (s.durum === "virman") return red("Hesaplar arası virman");
+  if (fisiVar(s)) return red("Fişi / belgesi var");
+  if (s.faturaGerekmez) return red("Fatura gerektirmez işaretli");
+  return { tamam: true, deger: true };
+}
+
 /** Fatura gerektirmez: fişi / belgesi olmayan, henüz işaretlenmemiş hareket. */
 export function gerekmezIsaretlenebilir(s: TopluSatir): TopluKarar<true> {
   if (s.durum === "virman") return red("Hesaplar arası virman");
@@ -77,6 +85,7 @@ export function gerekmezIsaretlenebilir(s: TopluSatir): TopluKarar<true> {
 export function topluKarar(islem: TopluIslem, s: TopluSatir): TopluKarar<unknown> {
   switch (islem) {
     case "esle": return eslenecekAday(s);
+    case "fisKes": return fisKesilebilir(s);
     case "faturalandir": return faturalanacakFisler(s);
     case "cari": return onaylanacakCari(s);
     case "gerekmez": return gerekmezIsaretlenebilir(s);
@@ -85,6 +94,23 @@ export function topluKarar(islem: TopluIslem, s: TopluSatir): TopluKarar<unknown
 
 /** Seçili satırlardan işe uygun olanların sayısı (düğmedeki sayaç) */
 export const uygunSayisi = (islem: TopluIslem, satirlar: TopluSatir[]): number => satirlar.filter((s) => topluKarar(islem, s).tamam).length;
+
+// ─── Hesap satırının açıklaması ──────────────────────────────────────────────
+
+/** e-Banka hareketinin hesabı, hareket penceresindeki gibi: "Garanti BBVA TL - 6866578" */
+export const ebankaHareketHesabi = (s: { bankaAdi?: string | null; doviz?: string | null; hesapNo?: string | null }): string =>
+  [[s.bankaAdi, s.doviz].filter(Boolean).join(" "), s.hesapNo].filter(Boolean).join(" - ");
+
+/**
+ * Fişin Hesap satırının açıklaması (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M20): e-Banka hesabının bankası ve numarası, yanında
+ * Banka Hesap Kartı'nın adı ("Garanti BBVA TL - 6866578 · den"). Kart adı zaten içindeyse tekrar yazılmaz.
+ */
+export const ebankaHesapAciklamasi = (ebanka: string, kartHesapAdi?: string | null): string => {
+  const kart = (kartHesapAdi || "").trim();
+  const e = (ebanka || "").trim();
+  if (!e) return kart;
+  return kart && !e.toLocaleUpperCase("tr-TR").includes(kart.toLocaleUpperCase("tr-TR")) ? `${e} · ${kart}` : e;
+};
 
 // ─── e-Belge kaynak satırı ───────────────────────────────────────────────────
 
