@@ -7176,7 +7176,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         paraKodu: doviz ? (doviz.kod || kod) : "TL",
         paraAdi: doviz ? (doviz.ad || kod) : "TÜRK LİRASI",
         urunTipi: 0,
-        miktar: doviz ? b.tutar : b.tutarTl,
+        // TL / döviz (para) satırında tutar Adet'tedir, Miktar boş kalır (ekranın para satırı kuralı; Miktar'a yazılınca Adet "eksik"
+        // görünüyor, Adet'e dokununca tutar siliniyordu — docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M21)
+        adet: formatMiktar(doviz ? b.tutar : b.tutarTl),
+        miktar: "",
         kur: doviz ? parseFloat((b.tutarTl / b.tutar).toFixed(4)) : "",
       };
       setOdemeRows([recomputeOdemeRow(satir, Number(altinHasKuru) || 0)]);
