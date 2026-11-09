@@ -153,6 +153,9 @@ const KokSayfa: React.FC = () => {
   return <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />;
 };
 
+/** Gizlenen sayfa: kodu durur, açılmaz (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M1). children yalnız geri açılınca kullanılır. */
+const GizliSayfa: React.FC<{ children: React.ReactNode; yonlendir?: string }> = ({ yonlendir = "/ebanka/mutabakat" }) => <Navigate to={yonlendir} replace />;
+
 const DashboardLayout: React.FC = () => {
   const { collapsed, handleCollapsed } = useMenu();
   const { user } = useAuth();
@@ -595,9 +598,11 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="ebanka/ozet" element={<EBankaOzetPage />} />
               <Route path="ebanka/hesaplar" element={<EBankaHesaplarPage />} />
               <Route path="ebanka/hareketler" element={<EBankaHareketlerPage />} />
-              <Route path="ebanka/bekleyenler" element={<EBankaBekleyenlerPage />} />
-              <Route path="ebanka/pos" element={<EBankaPosPage />} />
-               <Route path="ebanka/sanal-pos-tahsilat" element={<EBankaVposTahsilatPage />} />
+              {/* Menüden kaldırılan e-Banka sayfaları gizli durur; adresle açılırsa Muhasebeleştirme'ye gider (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M1).
+                  Geri açmak için GizliSayfa sarmalını kaldırıp menüye satırı ekleyin. */}
+              <Route path="ebanka/bekleyenler" element={<GizliSayfa><EBankaBekleyenlerPage /></GizliSayfa>} />
+              <Route path="ebanka/pos" element={<GizliSayfa><EBankaPosPage /></GizliSayfa>} />
+              <Route path="ebanka/sanal-pos-tahsilat" element={<GizliSayfa><EBankaVposTahsilatPage /></GizliSayfa>} />
               <Route path="ebanka/ayarlar" element={<EBankaAyarlarPage />} />
               <Route path="ebanka/mutabakat" element={<EBankaMutabakatPage />} />
               <Route path="kasa/hesap-kayit" element={<KasaHesapKayitPage />} />

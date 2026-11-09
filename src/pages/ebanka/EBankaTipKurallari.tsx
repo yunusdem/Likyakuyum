@@ -64,7 +64,7 @@ export const EBankaTipKurallari: React.FC<{ bildir: (type: BildirimTuru, message
                       onChange={(e) => kaydet(s, Number(e.target.value) as EBankaTipKurali, s.cariKartId)}
                     >
                       <option value={0}>Otomatik aktar</option>
-                      <option value={1}>Bekleyenler'de kalsın (elle)</option>
+                      <option value={1}>Aktarılmasın (Muhasebeleştirme'de elle)</option>
                       <option value={2}>Aktarma</option>
                     </Form.Select>
                   </td>

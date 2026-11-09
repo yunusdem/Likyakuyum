@@ -95,7 +95,7 @@ export const EBankaHareketlerPage: React.FC = () => {
     try {
       await EBankaService.aktarimDurumu([h.vomsisId], aktarilmayacak);
       setSecili(null);
-      bildir("success", aktarilmayacak ? "Hareket aktarılmayacak olarak işaretlendi." : "Hareket bekleyenlere geri alındı.");
+      bildir("success", aktarilmayacak ? "Hareket aktarılmayacak olarak işaretlendi." : "Hareket yeniden aktarılacaklara alındı.");
       listele(sayfa);
     } catch (err: any) {
       bildir("danger", err?.message || "Durum değiştirilemedi.");
@@ -328,7 +328,7 @@ export const EBankaHareketlerPage: React.FC = () => {
         {secili && (secili.aktarimDurumu === 0 || secili.aktarimDurumu === 2) && !secili.bankaHareketId && (
           <Modal.Footer className="py-2">
             <Button size="sm" variant="outline-secondary" onClick={() => durumDegistir(secili, secili.aktarimDurumu === 0)}>
-              {secili.aktarimDurumu === 0 ? "Aktarılmayacak İşaretle" : "Bekleyenlere Geri Al"}
+              {secili.aktarimDurumu === 0 ? "Aktarılmayacak İşaretle" : "Aktarıma Geri Al"}
             </Button>
           </Modal.Footer>
         )}

@@ -5,6 +5,9 @@ import { EBankaAktarimSonucu, EBankaCari, EBankaEsitlemeSonucu, EBankaMod, EBank
 
 // F- e-Banka ekranlarının ortak parçaları (docs/EBANKA_VOMSIS_YOL_HARITASI.md)
 
+/** Sanal POS ekranda hiçbir yerde görünmez; kodu ve kayıtlı ayarı durur (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M3) */
+export const SANAL_POS_GORUNUR = false;
+
 export const paraYaz = (n: number | null | undefined): string =>
   n === null || n === undefined ? "-" : n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

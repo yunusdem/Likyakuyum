@@ -164,12 +164,10 @@ export const DashboardMenu: MenuItemType[] = [
           { id: uuid(), name: "A- Özet", link: "ebanka/ozet" },
           { id: uuid(), name: "B- Hesaplar", link: "ebanka/hesaplar" },
           { id: uuid(), name: "C- Hesap Hareketleri", link: "ebanka/hareketler" },
-          { id: uuid(), name: "D- Bekleyenler", link: "ebanka/bekleyenler" },
-          { id: uuid(), name: "E- POS Terminalleri ve Hareketleri", link: "ebanka/pos" },
-          { id: uuid(), name: "F- Sanal POS Tahsilat", link: "ebanka/sanal-pos-tahsilat" },
-          { id: uuid(), name: "G- Ayarlar", link: "ebanka/ayarlar" },
-          // Kod linkten türer (banka:ebanka/mutabakat); ad değişebilir (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF2)
-          { id: uuid(), name: "H- e-Banka Faturalandırma", link: "ebanka/mutabakat" },
+          // Kod linkten türer (banka:ebanka/mutabakat); ad değişebilir (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M4)
+          { id: uuid(), name: "D- e-Banka Muhasebeleştirme", link: "ebanka/mutabakat" },
+          { id: uuid(), name: "E- Ayarlar", link: "ebanka/ayarlar" },
+          // Bekleyenler, POS Terminalleri ve Hareketleri, Sanal POS Tahsilat menüden kaldırıldı; sayfalar gizli durur (M1, App.tsx GizliSayfa)
         ],
       },
       // POS cihazı entegrasyonu (docs/POS_ENTEGRASYON_YOL_HARITASI.md): fiziksel cihaz tanımları ve cihazdan alınan tahsilatlar

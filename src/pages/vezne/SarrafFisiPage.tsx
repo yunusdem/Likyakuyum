@@ -4,6 +4,7 @@ import { kurDegistirilebilir, kurDenetle, kurDegeriniSinirla, milyemDegistirileb
 import { kurlariDenetle, milyemleriDenetle } from "../../utils/kurYetkiDenetimi";
 import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
+import { EB_VARSAYILAN_KDV, altinTutari, ebGramCoz, etkinMilyem, iscilikOzeti } from "../ebanka/ebankaIscilik";
 import { PosKarti, usePosTahsilat } from "../../components/pos/PosTahsilat";
 import { Card, Row, Col, Form, Button, Table, Badge, Alert, InputGroup, Modal, Spinner, Dropdown } from "react-bootstrap";
 import {
@@ -66,8 +67,9 @@ interface VezneItem { id: number; kod: string; ad: string; }
 
 interface GridRow {
   id: string;
-  /** e-Banka'dan doldurulan satır: banka tutarına sabitlendiği andaki gram / adet / kur / tutar (EF20) */
-  ebSabit?: { miktar: number; adet: number; kur: number; tutar: number } | null;
+  /** e-Banka'dan doldurulan satır: banka tutarına sabitlendiği andaki gram / adet / kur / tutar (EF20). kdvAyarli: İşçilik KDV %20
+   *  varsayılanı uygulandı ya da kullanıcı oranı kendisi verdi (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M12) */
+  ebSabit?: { miktar: number; adet: number; kur: number; tutar: number; kdvAyarli?: boolean } | null;
   satirId?: number | null;
   satirNo: number;
   urunId: number;
@@ -510,7 +512,7 @@ const sabitTutariKoru = (r: GridRow, kur: number | string, hesaplanan: number | 
     ? r.ebSabit.tutar
     : hesaplanan;
 
-const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false): GridRow => {
+const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false): GridRow => {
   const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
   const isPara = effTipi === 0 && Boolean(r.urunKodu && r.urunKodu.trim());
   const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
@@ -780,6 +782,92 @@ const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof G
     kur,
     tutar,
   };
+};
+
+/** Satır hesabı; e-Banka'dan sabitlenen satırda ardından işçilik dengesi çalışır (normal fişte ebankaSatiriDengele hiçbir şey yapmaz) */
+const recomputeRow = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false): GridRow =>
+  ebankaSatiriDengele(r, recomputeRowHam(r, defaultKur, changedField, iscilikGirisSekli, isKdvDisabled), defaultKur, changedField, iscilikGirisSekli, isKdvDisabled);
+
+/** e-Banka satırında para / ziynet mi (işçilik yok, dengelenmez) */
+const ebParaZiynetMi = (r: GridRow): boolean => {
+  const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
+  return (effTipi === 0 && Boolean(r.urunKodu && r.urunKodu.trim())) || effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
+};
+
+/** İşçilik KDV %20 varsayılanı bu alanlardan biri değişince uygulanır (M12) */
+const EB_ISCILIK_ALANLARI: (keyof GridRow)[] = ["iscilikToplam", "iscilikTutari", "iscilikHasGram", "iscilikiMiktari", "iscilikKdvTutari", "iscilikHesaplamaSekli"];
+
+/**
+ * e-Banka satırı dengesi (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M10–M14). `ebSabit` taşıyan altın / gümüş satırında Toplam Tutar
+ * sabit kalır; İşçilik Toplam (KDV dahil) altından düşülür, kur sabit, gram yeniden çözülür (ebankaIscilik.ts), TL Tutar = Toplam −
+ * İşçilik Toplam. Altın tipinde altın kısmı gram × kur (EF20: milyeme bölünmez), gümüş / hurdada has × kur. Gram / has / adet elle
+ * değişirse satır sabitlemeden çıkar (M13). ebSabit yoksa (normal fiş) satıra dokunmaz.
+ */
+const ebankaSatiriDengele = (girdi: GridRow, hesap: GridRow, defaultKur: number, changedField: keyof GridRow | undefined, iscilikGirisSekli: number, isKdvDisabled: boolean): GridRow => {
+  const sabit = girdi.ebSabit;
+  if (!sabit || !(sabit.tutar > 0) || ebParaZiynetMi(girdi)) return hesap;
+  // Gram elle değişirse satır sabitlemeden çıkar; hücreden değiştirmeden çıkmak bozmaz (has ve tutar ekranda elle yazılmaz)
+  if ((changedField === "miktar" && parseDecimal(girdi.miktar) !== sabit.miktar) || changedField === "hasGram" || changedField === "tutar") return { ...hesap, ebSabit: null };
+  const hedef = sabit.tutar;
+  // İşçilik KDV %20 varsayılanı satırda bir kez uygulanır; oranı kullanıcı verdiyse / sildiyse dokunulmaz
+  let kdvAyarli = !!sabit.kdvAyarli || changedField === "iscilikKdvOrani";
+  let temel = hesap;
+  if (!isKdvDisabled && !kdvAyarli && changedField && EB_ISCILIK_ALANLARI.includes(changedField) && !(parseDecimal(hesap.iscilikKdvOrani) > 0)) {
+    // Oranla yeniden hesap: net yazıldıysa KDV üstüne eklenir, toplam yazıldıysa içinden ayrışır
+    temel = recomputeRowHam({ ...girdi, iscilikKdvOrani: EB_VARSAYILAN_KDV }, defaultKur, changedField, iscilikGirisSekli, isKdvDisabled);
+    kdvAyarli = true;
+  }
+  const oran = isKdvDisabled ? 0 : parseDecimal(temel.iscilikKdvOrani);
+  const kur = parseDecimal(temel.kur);
+  const tipAltin = resolveEffectiveUrunTipi({ urunTipi: girdi.urunTipi, kod: girdi.urunKodu, ad: girdi.urunAdi }) === 1 || getUrunTipiInfo(girdi).label === "Altın";
+  const milyem = tipAltin ? 1 : etkinMilyem(parseDecimal(temel.milyem));
+  const hasFiyati = defaultKur > 0 ? defaultKur : kur;
+  const birimIscilik = parseDecimal(temel.iscilikiMiktari);
+  const birimGirdisi = (changedField === "iscilikiMiktari" || changedField === "iscilikHesaplamaSekli") && (Number(temel.iscilikHesaplamaSekli) || 0) === 0 && birimIscilik > 0;
+  let son: GridRow;
+  if (birimGirdisi) {
+    // Gram usulü işçilik grama bağlı: gram kapalı formülle çözülür
+    const gramBasiHas = iscilikGirisSekli === 0 ? birimIscilik / 1000 : birimIscilik;
+    const gram = ebGramCoz({ hedef, milyem, kur, kdvOrani: oran, gramBasiNetIscilik: gramBasiHas * hasFiyati });
+    if (gram === null) return { ...hesap, ebSabit: { ...sabit, kdvAyarli } };
+    son = recomputeRowHam({ ...temel, miktar: gram, ebSabit: null }, defaultKur, "iscilikiMiktari", iscilikGirisSekli, isKdvDisabled);
+  } else {
+    // İşçilik Toplam'ı belirleyen: yazılan toplam; net / has / KDV tutarı / birim yazıldıysa yeni toplam; oran, kur, milyem değişince eski toplam
+    const netAlani = changedField === "iscilikTutari" || changedField === "iscilikHasGram" || changedField === "iscilikiMiktari";
+    // Adet usulü işçilikte adet değişince işçilik de değişir
+    const adetIscilik = changedField === "adet" && (Number(temel.iscilikHesaplamaSekli) || 0) === 1;
+    let x = changedField === "iscilikToplam" || changedField === "iscilikKdvTutari" || changedField === "iscilikHesaplamaSekli" || netAlani || adetIscilik
+      ? parseDecimal(temel.iscilikToplam)
+      : parseDecimal(girdi.iscilikToplam);
+    // Net işçilik silindiyse eski KDV tutarı toplamda kalmasın
+    if (netAlani && !(parseDecimal(temel[changedField as "iscilikTutari" | "iscilikHasGram" | "iscilikiMiktari"]) > 0)) x = 0;
+    const gram = ebGramCoz({ hedef, milyem, kur, kdvOrani: oran, iscilikToplam: x });
+    if (gram === null) return { ...hesap, ebSabit: { ...sabit, kdvAyarli } };
+    son = recomputeRowHam(
+      { ...temel, miktar: gram, iscilikToplam: x > 0 ? x : "", iscilikKdvTutari: oran > 0 ? temel.iscilikKdvTutari : "", ebSabit: null },
+      defaultKur, "iscilikToplam", iscilikGirisSekli, isKdvDisabled
+    );
+  }
+  const iscilik = parseDecimal(son.iscilikToplam);
+  return {
+    ...son,
+    tlTutar: altinTutari(hedef, iscilik),
+    tutar: hedef,
+    ebSabit: { miktar: parseDecimal(son.miktar), adet: parseDecimal(son.adet), kur: parseDecimal(son.kur), tutar: hedef, kdvAyarli },
+  };
+};
+
+/** e-Banka'dan "Düzenle" ile açılan fişin satırı: toplamı açılıştaki tutara sabitlenir, hesap değişmez (M14) */
+const ebDuzenlemeSabitle = (r: GridRow): GridRow => {
+  const tutar = parseDecimal(r.tutar);
+  if (!(tutar > 0) || ebParaZiynetMi(r) || !(r.urunKodu || "").trim()) return r;
+  return { ...r, ebSabit: { miktar: parseDecimal(r.miktar), adet: parseDecimal(r.adet), kur: parseDecimal(r.kur), tutar, kdvAyarli: parseDecimal(r.iscilikKdvOrani) > 0 } };
+};
+
+/** e-Banka fişinde İşçilik KDV oranı fiş düzeyindedir: bütün altın / gümüş satırlarına aynı oran (M12) */
+const ebKdvSatiri = (r: GridRow, oran: string, defaultKur: number, iscilikGirisSekli: number, isKdvDisabled: boolean): GridRow => {
+  if (!(r.urunKodu || "").trim() || ebParaZiynetMi(r)) return r;
+  return recomputeRow({ ...r, iscilikKdvOrani: oran, ebSabit: r.ebSabit ? { ...r.ebSabit, kdvAyarli: true } : r.ebSabit }, defaultKur, "iscilikKdvOrani", iscilikGirisSekli, isKdvDisabled);
 };
 
 const DEFAULT_CUSTOMER_NAME = "İsim beyan edilmemiştir";
@@ -2278,7 +2366,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             karat: s.karat || "",
             aciklama: s.aciklama || "",
           };
-          return recomputeRow(rowObj, curHasKuru, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
+          const hesap = recomputeRow(rowObj, curHasKuru, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
+          // e-Banka'dan "Düzenle" ile açılan fiş: satır toplamı açılıştaki tutara sabit, işçilik yazılınca gram dengelenir (M14)
+          return ebDuzenlemeRef.current && String(data.sarrafFisiId ?? "") === ebDuzenlemeRef.current ? ebDuzenlemeSabitle(hesap) : hesap;
         });
         setLines(mapped.length > 0 ? mapped : [createEmptyRow(1)]);
       } else {
@@ -3193,6 +3283,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             iscilikiMiktari: formatIscilikGirisDegeri(l.iscilikiMiktari, userIscilikGirisSekli),
             iscilikHasGram: l.iscilikHasGram,
             iscilikTutari: l.iscilikTutari,
+            // Çıktının altındaki işçilik / KDV % satırları için (M15)
+            iscilikToplam: l.iscilikToplam,
+            iscilikKdvOrani: l.iscilikKdvOrani,
+            iscilikKdvTutari: l.iscilikKdvTutari,
             iscilikHesaplamaSekli: l.iscilikHesaplamaSekli,
             kur: l.kur,
             tutar: l.tutar,
@@ -4141,6 +4235,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
   // e-Banka'dan fiş kesiliyorsa banka tutarı (TL); miktarı boş ürün satırında miktar bu tutarın kalanından hesaplanır
   const ebHedefRef = useRef(0);
+  // e-Banka'dan açılan fiş (kesim ya da Düzenle) ve Düzenle'de açılan fişin no'su; ebFis kancasından her çizimde yazılır
+  const ebModRef = useRef(false);
+  const ebDuzenlemeRef = useRef("");
 
   // Ürün seçildiğinde veya kodu girildiğinde satırı otomatik doldurma & hesaplama yardımcısı
   const applyProductToRow = useCallback((
@@ -4198,6 +4295,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       // 1500 TL'lik ödeme 1637,62 TL'lik fiş oluyordu). Gümüş / hurda: tutar = has × kur → kur × milyem.
       // Gram / adet yuvarlandığı için kalan kuruş farkı kalmasın diye satır tutarı banka tutarına sabitlenir (ziynette adet tam sayı, sabitlenmez).
       let ebSabitTutar: number | null = null;
+      let ebDengeAlani: keyof GridRow | undefined = undefined;
       if (ebHedefRef.current > 0 && !(parseDecimal(updated.miktar) > 0)) {
         const kalan = ebHedefRef.current - prev.filter((x) => x.id !== rowId).reduce((t, x) => t + parseDecimal(x.tutar), 0);
         const kurN = parseDecimal(updated.kur);
@@ -4208,15 +4306,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             updated.miktar = "";
             if (!isZiynet) ebSabitTutar = parseFloat(kalan.toFixed(2));
           } else {
-            const tipAltin = resolvedUrunTipi === 1 || getUrunTipiInfo(updated).label === "Altın";
-            const ham = parseDecimal(updated.milyem);
-            const mil = tipAltin ? 1 : ham > 1 ? (ham <= 100 ? ham / 100 : ham / 1000) : (ham > 0 ? ham : 1);
-            updated.miktar = parseFloat((kalan / (kurN * mil)).toFixed(3));
-            ebSabitTutar = parseFloat(kalan.toFixed(2));
+            // Altın / gümüş: toplam banka tutarına sabit, İşçilik KDV %20 varsayılan; gram (işçilik varsa ondan sonra kalanla)
+            // ebankaSatiriDengele'de çözülür (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M10–M12)
+            const kdvKapali = isKdvDisabledRef.current;
+            if (!kdvKapali && !(parseDecimal(updated.iscilikKdvOrani) > 0)) updated.iscilikKdvOrani = EB_VARSAYILAN_KDV;
+            updated.ebSabit = { miktar: 0, adet: parseDecimal(updated.adet), kur: kurN, tutar: parseFloat(kalan.toFixed(2)), kdvAyarli: !kdvKapali };
+            ebDengeAlani = parseDecimal(updated.iscilikiMiktari) > 0 ? "iscilikiMiktari" : undefined;
           }
         }
       }
-      const hesaplanan = recomputeRow(updated, finalKur, undefined, userIscilikGirisSekli, isKdvDisabledRef.current);
+      const hesaplanan = recomputeRow(updated, finalKur, ebDengeAlani, userIscilikGirisSekli, isKdvDisabledRef.current);
       return ebSabitTutar !== null && parseDecimal(hesaplanan.tutar) > 0
         ? { ...hesaplanan, tutar: ebSabitTutar, ebSabit: { miktar: parseDecimal(hesaplanan.miktar), adet: parseDecimal(hesaplanan.adet), kur: parseDecimal(hesaplanan.kur), tutar: ebSabitTutar } }
         : hesaplanan;
@@ -4697,6 +4796,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       field === "karat"
     ) {
       sanitizedValue = onlyDecimal(String(value));
+    }
+
+    // e-Banka fişinde İşçilik KDV oranı fiş düzeyindedir: bir satırda değişince bütün altın / gümüş satırlarına (M12)
+    if (field === "iscilikKdvOrani" && ebModRef.current) {
+      const oranYazi = String(sanitizedValue);
+      const kur0 = Number(altinHasKuru) || 0;
+      setLines((prev) => prev.map((r) => ebKdvSatiri(r, oranYazi, kur0, userIscilikGirisSekli, isKdvDisabledRef.current)));
+      return;
     }
 
     if (field === "milyem" && !milyemDegistirilebilir(kYetkiRef.current)) {
@@ -6630,6 +6737,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         iscilikiMiktari: l.iscilikiMiktari,
         iscilikHasGram: l.iscilikHasGram,
         iscilikTutari: l.iscilikTutari,
+        // Çıktının altındaki işçilik / KDV % satırları için (M15)
+        iscilikToplam: l.iscilikToplam,
+        iscilikKdvOrani: l.iscilikKdvOrani,
+        iscilikKdvTutari: l.iscilikKdvTutari,
         iscilikHesaplamaSekli: l.iscilikHesaplamaSekli,
         kur: l.kur,
         tutar: l.tutar,
@@ -6733,6 +6844,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         iscilikiMiktari: l.iscilikiMiktari,
         iscilikHasGram: l.iscilikHasGram,
         iscilikTutari: l.iscilikTutari,
+        // Çıktının altındaki işçilik / KDV % satırları için (M15)
+        iscilikToplam: l.iscilikToplam,
+        iscilikKdvOrani: l.iscilikKdvOrani,
+        iscilikKdvTutari: l.iscilikKdvTutari,
         iscilikHesaplamaSekli: l.iscilikHesaplamaSekli,
         kur: l.kur,
         tutar: l.tutar,
@@ -7055,6 +7170,25 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       showNotif("warning", "Bu e-Banka hesabı bir Banka Hesap Kartı ile eşlenmemiş; ödeme tablosunda Hesap satırına bankayı elle seçin (e-Banka > Hesaplar'dan eşleyebilirsiniz).");
     }
   });
+
+  ebModRef.current = ebFis.vomsisId > 0;
+  ebDuzenlemeRef.current = ebFis.duzenleme ? String(queryId || "") : "";
+  // e-Banka fişinde İşçilik KDV oranı fiş başlığına da yazılır; fatura oranı başlıktan okur (M12)
+  useEffect(() => {
+    if (!ebFis.vomsisId || isKdvDisabled) return;
+    const r = lines.find((l) => l.ebSabit && parseDecimal(l.iscilikKdvOrani) > 0);
+    if (r && parseDecimal(r.iscilikKdvOrani) !== parseDecimal(kdvOrani)) setKdvOrani(parseDecimal(r.iscilikKdvOrani));
+  }, [lines, ebFis.vomsisId, isKdvDisabled, kdvOrani]);
+  // Alt kutudaki işçilik özeti ve KDV % kutusu (M15)
+  const ebIscilik = iscilikOzeti(lines, parseDecimal);
+  const [ebKdvYazi, setEbKdvYazi] = useState<string | null>(null);
+  const ebKdvDegistir = (deger: string) => {
+    const oranYazi = onlyDecimal(deger);
+    setEbKdvYazi(oranYazi);
+    const kur0 = Number(altinHasKuru) || 0;
+    setLines((prev) => prev.map((r) => ebKdvSatiri(r, oranYazi, kur0, userIscilikGirisSekli, isKdvDisabledRef.current)));
+  };
+  const tlYaz = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // POS cihazı tahsilatı: handleSave içinde kullanılır (docs/POS_ENTEGRASYON_YOL_HARITASI.md)
   const pos = usePosTahsilat();
@@ -9305,6 +9439,34 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           {odemeHas.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
                         </td>
                       </tr>
+                      {/* e-Banka fişi: işçilik (KDV dahil) ve fiş düzeyindeki KDV oranı (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M12, M15) */}
+                      {ebFis.vomsisId > 0 && (
+                        <>
+                          <tr>
+                            <td className="fw-semibold text-secondary">İşçilik <span className="fw-normal">(KDV dahil)</span></td>
+                            <td className="text-end font-monospace">{tlYaz(ebIscilik.toplam)}</td>
+                            <td className="text-end font-monospace text-muted" title="Net işçilik (KDV hariç)">{ebIscilik.var ? `net ${tlYaz(ebIscilik.net)}` : ""}</td>
+                          </tr>
+                          <tr>
+                            <td className="fw-semibold text-secondary">
+                              <div className="d-flex align-items-center gap-1 text-nowrap">
+                                İşçilik KDV %
+                                <input
+                                  className="form-control form-control-sm text-end py-0 px-1"
+                                  style={{ width: 52, height: 22, fontSize: "11.5px" }}
+                                  value={ebKdvYazi ?? String(ebIscilik.oran ?? (parseDecimal(kdvOrani) > 0 ? parseDecimal(kdvOrani) : isKdvDisabled ? "" : EB_VARSAYILAN_KDV))}
+                                  disabled={isKdvDisabled}
+                                  title={isKdvDisabled ? "Seçili istatistik KDV'siz; işçiliğe KDV uygulanmaz" : "İşçilik KDV oranı: bütün altın / gümüş satırlarına uygulanır, toplam değişmez"}
+                                  onChange={(e) => ebKdvDegistir(e.target.value)}
+                                  onBlur={() => setEbKdvYazi(null)}
+                                />
+                              </div>
+                            </td>
+                            <td className="text-end font-monospace">{tlYaz(ebIscilik.kdv)}</td>
+                            <td className="text-end text-muted" style={{ fontSize: "10.5px" }}>{isKdvDisabled ? "İstatistik KDV'siz" : ""}</td>
+                          </tr>
+                        </>
+                      )}
                       {/* Fark Satırı */}
                       <tr
                         style={{

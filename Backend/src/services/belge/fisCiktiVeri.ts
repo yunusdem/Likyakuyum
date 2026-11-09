@@ -278,7 +278,9 @@ export interface SarrafFisGirdisi {
   unvan?: string; vergiKimlikNo?: string; detayIl?: string; detayIlce?: string; detayPasaportNo?: string;
   detayAdres?: string; detayTelefonNo?: string; vezneKod?: string; kullaniciAdi?: string;
   satirlar: { urunKodu?: string; urunAdi?: string; adet?: unknown; miktar?: unknown; milyem?: unknown; hasGram?: unknown; kur?: unknown; tutar?: unknown; aciklama?: string;
-    iscilikTutari?: unknown; urunTipi?: unknown }[];
+    iscilikTutari?: unknown; urunTipi?: unknown;
+    /** İşçilik Toplam (KDV dahil), oranı ve KDV tutarı: çıktının altındaki işçilik / KDV % satırları (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M15) */
+    iscilikToplam?: unknown; iscilikKdvOrani?: unknown; iscilikKdvTutari?: unknown }[];
   /** Fişin işçilik KDV oranı ve e-Belge KDV kodu (Kütükçü düzenindeki satırlar için; docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF36) */
   kdvOrani?: unknown; istisnaKodu?: string | null;
   /** odemeAraciTuru: 0 vezne, 1 cari, 2 POS, 3 hesap */
@@ -364,6 +366,30 @@ export function sarrafFaturaGorunumu(g: Pick<SarrafFisGirdisi, "tip" | "satirlar
   };
 }
 
+/**
+ * Fişin işçilik özeti (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M15): İşçilik Toplam (KDV dahil) ve KDV'si. Satırların hepsi aynı
+ * oranlıysa etikette oran yazar ("İşçilik KDV %20:"). Çıktıda yalnız işçilik KDV'si varken görünür (e-Banka fişi); yoksa düzen değişmez.
+ */
+export function sarrafIscilikOzeti(satirlar: SarrafFisGirdisi["satirlar"]) {
+  let toplam = 0;
+  let kdv = 0;
+  const oranlar = new Set<number>();
+  for (const l of Array.isArray(satirlar) ? satirlar : []) {
+    const t = sayiOku(l.iscilikToplam);
+    if (!(t > 0)) continue;
+    toplam += t;
+    kdv += sayiOku(l.iscilikKdvTutari);
+    const o = sayiOku(l.iscilikKdvOrani);
+    if (o > 0) oranlar.add(o);
+  }
+  const yuz = (n: number) => Math.round(n * 100) / 100;
+  const oran = oranlar.size === 1 ? [...oranlar][0] : null;
+  return {
+    iscilik: yuz(toplam), iscilikKdv: yuz(kdv), iscilikNet: yuz(toplam - kdv), iscilikVar: kdv > 0,
+    iscilikKdvEtiket: `İşçilik KDV${oran !== null ? ` %${oranTr(oran)}` : ""}:`,
+  };
+}
+
 export function sarrafFisVerisi(g: SarrafFisGirdisi, firma: FirmaKimlik) {
   const satim = Number(g.tip) === 1;
   const isTeklif = !g.fisId || (g.belgeNo && String(g.belgeNo).toUpperCase().includes("TEKLİF")) || ((g as any).fisNo && String((g as any).fisNo).toUpperCase().includes("TEKLİF"));
@@ -389,6 +415,8 @@ export function sarrafFisVerisi(g: SarrafFisGirdisi, firma: FirmaKimlik) {
       return { sira: i + 1, ad, miktar, miktarYazi: miktar > 0 ? tr(miktar) : "", tutar: sayiOku(o.tutar) };
     });
   const tutar = sayiOku(g.toplamTutar), has = sayiOku(g.toplamHas), odenen = sayiOku(g.odenenTutar), kalan = sayiOku(g.kalanTutar);
+  const isc = sarrafIscilikOzeti(g.satirlar);
+  const fatura = sarrafFaturaGorunumu(g);
   const tarih = tarihNokta(g.tarih);
   const saat = yazi(g.saat).slice(0, 5);
   return {
@@ -403,9 +431,17 @@ export function sarrafFisVerisi(g: SarrafFisGirdisi, firma: FirmaKimlik) {
       ilce: yazi(g.detayIlce), il: yazi(g.detayIl), ilceIl: [yazi(g.detayIlce), yazi(g.detayIl)].filter(Boolean).join(" / "), pasaportNo: yazi(g.detayPasaportNo),
     },
     satirlar, odemeler, odemeVar: odemeler.length > 0,
-    toplam: { tutar, has, hasVar: has > 0, odenen, odenenVar: odenen > 0, kalan: Math.abs(kalan), kalanVar: kalan !== 0, yaziyla: fisYaziyla(tutar) },
+    toplam: { tutar, has, hasVar: has > 0, odenen, odenenVar: odenen > 0, kalan: Math.abs(kalan), kalanVar: kalan !== 0, yaziyla: fisYaziyla(tutar), ...isc },
     // Kütükçü düzeni (EF36): satış / alış satırları faturadaki gibi, alıcı / satıcı etiketi, ödeme notu
-    ...sarrafFaturaGorunumu(g),
+    ...fatura,
+    // A4 alışta işçilik fatura satırına ayrılmaz: toplamların başına işçilik ve KDV % satırları (M15; satışta işçilik zaten satır + KDV toplamı)
+    toplamSatirlari: !satim && isc.iscilikVar
+      ? [
+          { etiket: "İşçilik (KDV dahil)", deger: `${tr(isc.iscilik)} TL` },
+          { etiket: isc.iscilikKdvEtiket.replace(/:$/, ""), deger: `${tr(isc.iscilikKdv)} TL` },
+          ...fatura.toplamSatirlari,
+        ]
+      : fatura.toplamSatirlari,
     musteriEtiketi: satim ? "Alıcı Bilgileri" : "Satıcı Bilgileri",
     musteriKimlikEtiketi: yazi(g.vergiKimlikNo).replace(/\D/g, "").length === 10 ? "VKN" : "TCKN",
     firmaKimlikEtiketi: yazi(firma.vkn).replace(/\D/g, "").length === 11 ? "TCKN" : "VKN",

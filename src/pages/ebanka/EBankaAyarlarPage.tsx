@@ -6,6 +6,7 @@ import { BankaService, BankaHesapItem } from "../../services/bankaService";
 import { EBankaService, EBankaAyar, EBankaLog, EBankaMod } from "../../services/ebankaService";
 import EBankaSistemDenetimi from "./EBankaSistemDenetimi";
 import EBankaTipKurallari from "./EBankaTipKurallari";
+import { SANAL_POS_GORUNUR } from "./ebankaOrtak";
 
 // F- e-Banka > Ayarlar (docs/EBANKA_VOMSIS_YOL_HARITASI.md, Faz 0)
 
@@ -252,6 +253,8 @@ export const EBankaAyarlarPage: React.FC = () => {
               </Form.Group>
             </Col>
 
+            {/* Sanal POS hiçbir yerde görünmez; kayıtlı ayar durur (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M3) */}
+            {SANAL_POS_GORUNUR && (
             <Col lg={6} md={12}>
               <Form.Group as={Row} className="mb-2 align-items-center g-2">
                 <Form.Label column style={ETIKET_STILI} className={ETIKET_SINIFI}>
@@ -307,6 +310,7 @@ export const EBankaAyarlarPage: React.FC = () => {
                 </Col>
               </Form.Group>
             </Col>
+            )}
           </Row>
 
           <hr className="my-3" />
@@ -316,10 +320,12 @@ export const EBankaAyarlarPage: React.FC = () => {
               {mesgul === "banka" ? <Spinner size="sm" className="me-1" /> : <IconPlugConnected size={16} className="me-1" />}
               Bağlantıyı Sına
             </Button>
+{SANAL_POS_GORUNUR && (
             <Button size="sm" variant="outline-primary" disabled={!!mesgul || degisti} onClick={() => handleTest("vpos")}>
               {mesgul === "vpos" ? <Spinner size="sm" className="me-1" /> : <IconPlugConnected size={16} className="me-1" />}
               Sanal POS Bağlantısını Sına
             </Button>
+            )}
             {degisti && <span className="small text-muted">Bağlantı kayıtlı ayarla sınanır; önce kaydedin.</span>}
           </div>
 

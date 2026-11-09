@@ -37,21 +37,61 @@ export function fisKesimAdresi(yol: string, p: {
   return `${yol}?${q.toString()}`;
 }
 
+/** Eşlenen fişin düzeltme ekranı (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M6); üç ekran da fişi ?id= ile açar. */
+const DUZELTME_YOLU: Record<MutabakatFisTuru, string> = {
+  doviz: "/vezne/doviz-fisi-duzeltme",
+  sarraf: "/vezne/sarraf-fisi-duzeltme",
+  perakende: "/vezne/perakende-fisi-duzeltme",
+};
+
+/** "Düzenle": fiş düzeltme ekranı `ebd` ile açılır; kaydedince e-Banka'ya aynı harekete dönülür. */
+export function fisDuzenlemeAdresi(fisTuru: MutabakatFisTuru, fisId: number, p: {
+  vomsisId: number; tip: 0 | 1; tutar: number; paraKodu: string; tutarTl?: number | null; baslangic: string; bitis: string;
+}): string {
+  const q = new URLSearchParams({
+    id: String(fisId), ebd: String(p.vomsisId), tip: String(p.tip), tutar: String(p.tutar), pk: p.paraKodu, db: p.baslangic, de: p.bitis,
+  });
+  if (p.tutarTl) q.set("ttl", String(p.tutarTl));
+  return `${DUZELTME_YOLU[fisTuru]}?${q.toString()}`;
+}
+
 /**
- * Banka hareketinden fiş kesme: ekran hazır olunca cari / tarih / yön doldurulur,
- * fiş kaydedilince hareketle eşlenip mutabakat ekranına dönülür. Parametre yoksa hiçbir şey yapmaz.
+ * Banka hareketinden fiş kesme (`ebh`): ekran hazır olunca cari / tarih / yön doldurulur, fiş kaydedilince hareketle eşlenip
+ * mutabakat ekranına dönülür. Eşli fişi düzenleme (`ebd`, M6): ekran doldurulmaz, kaydedince eşleme yapılmadan dönülür.
+ * Parametre yoksa hiçbir şey yapmaz.
  */
 export function useEBankaFisKesimi(fisTuru: MutabakatFisTuru, hazir: boolean, doldur: (b: EBankaFisKesimBilgisi) => void) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const vomsisId = Number(searchParams.get("ebh")) || 0;
+  const kesimId = Number(searchParams.get("ebh")) || 0;
+  const duzenlemeId = kesimId ? 0 : Number(searchParams.get("ebd")) || 0;
+  const vomsisId = kesimId || duzenlemeId;
+  const duzenleme = duzenlemeId > 0;
   const [bilgi, setBilgi] = useState<EBankaFisKesimBilgisi | null>(null);
   const uygulandi = useRef(false);
   const doldurRef = useRef(doldur);
   doldurRef.current = doldur;
 
+  const parametreBilgisi = (musteri: SelectedCustomerResult | null): EBankaFisKesimBilgisi => ({
+    vomsisId, musteri,
+    tarih: searchParams.get("tarih") || new Date().toISOString().slice(0, 10),
+    tip: searchParams.get("tip") === "0" ? 0 : 1,
+    tutar: Number(searchParams.get("tutar")) || 0,
+    paraKodu: searchParams.get("pk") || "TL",
+    bankaId: Number(searchParams.get("bk")) || null,
+    tutarTl: Number(searchParams.get("ttl")) || (["TL", "TRY"].includes((searchParams.get("pk") || "TL").toUpperCase()) ? Number(searchParams.get("tutar")) || 0 : 0),
+    donusBaslangic: searchParams.get("db") || "",
+    donusBitis: searchParams.get("de") || "",
+  });
+
+  // Düzenlemede ekran doldurulmaz; bant ve dönüş için bilgi hemen hazır
   useEffect(() => {
-    if (!vomsisId || !hazir || uygulandi.current) return;
+    if (duzenleme) setBilgi(parametreBilgisi(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duzenleme, searchParams]);
+
+  useEffect(() => {
+    if (!kesimId || !hazir || uygulandi.current) return;
     uygulandi.current = true;
     const cariId = Number(searchParams.get("cari")) || 0;
     let iptal = false;
@@ -75,17 +115,7 @@ export function useEBankaFisKesimi(fisTuru: MutabakatFisTuru, hazir: boolean, do
           vergiKimlikNo: (searchParams.get("kn") || "").replace(/\D/g, "").slice(0, 11),
         };
       }
-      const b: EBankaFisKesimBilgisi = {
-        vomsisId, musteri,
-        tarih: searchParams.get("tarih") || new Date().toISOString().slice(0, 10),
-        tip: searchParams.get("tip") === "0" ? 0 : 1,
-        tutar: Number(searchParams.get("tutar")) || 0,
-        paraKodu: searchParams.get("pk") || "TL",
-        bankaId: Number(searchParams.get("bk")) || null,
-        tutarTl: Number(searchParams.get("ttl")) || (["TL", "TRY"].includes((searchParams.get("pk") || "TL").toUpperCase()) ? Number(searchParams.get("tutar")) || 0 : 0),
-        donusBaslangic: searchParams.get("db") || "",
-        donusBitis: searchParams.get("de") || "",
-      };
+      const b = parametreBilgisi(musteri);
       // Ekranın kendi ilk temizliği bitsin diye bir tur bekle
       await new Promise((r) => setTimeout(r, 400));
       if (iptal) return;
@@ -93,35 +123,54 @@ export function useEBankaFisKesimi(fisTuru: MutabakatFisTuru, hazir: boolean, do
       doldurRef.current(b);
     })();
     return () => { iptal = true; };
-  }, [vomsisId, hazir, searchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kesimId, hazir, searchParams]);
+
+  const donusAdresi = () => {
+    const q = new URLSearchParams({ ac: String(vomsisId) });
+    const db = bilgi?.donusBaslangic || searchParams.get("db");
+    const de = bilgi?.donusBitis || searchParams.get("de");
+    if (db) q.set("baslangic", db);
+    if (de) q.set("bitis", de);
+    return `/ebanka/mutabakat?${q.toString()}`;
+  };
 
   /** Fiş kaydedildikten sonra çağrılır; e-Banka'dan gelinmediyse false döner, ekran kendi akışına devam eder. */
   const kaydedildi = async (fisId: number | null | undefined, donme = true): Promise<boolean> => {
     if (!vomsisId || !fisId) return false;
-    try {
-      await EBankaService.mutabakatEsle(vomsisId, fisTuru, Number(fisId));
-    } catch (e: any) {
-      alert(`Fiş kaydedildi ama banka hareketiyle eşlenemedi: ${e?.response?.data?.message || e?.message || e}. Mutabakat ekranından elle eşleyebilirsiniz.`);
+    // Düzenlemede fiş zaten bu harekete eşli; yalnız geri dönülür
+    if (!duzenleme) {
+      try {
+        await EBankaService.mutabakatEsle(vomsisId, fisTuru, Number(fisId));
+      } catch (e: any) {
+        alert(`Fiş kaydedildi ama banka hareketiyle eşlenemedi: ${e?.response?.data?.message || e?.message || e}. Mutabakat ekranından elle eşleyebilirsiniz.`);
+      }
     }
     if (!donme) return false;
-    const q = new URLSearchParams({ ac: String(vomsisId) });
-    if (bilgi?.donusBaslangic) q.set("baslangic", bilgi.donusBaslangic);
-    if (bilgi?.donusBitis) q.set("bitis", bilgi.donusBitis);
-    navigate(`/ebanka/mutabakat?${q.toString()}`);
+    navigate(donusAdresi());
     return true;
   };
 
+  const tutarYazi = bilgi ? `${bilgi.tip === 1 ? "gelen" : "giden"} ${bilgi.tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${bilgi.paraKodu}` : "";
   const bant = vomsisId ? (
     <div className="alert alert-info py-2 px-3 mb-2 small d-flex align-items-center gap-2">
-      <span>
-        Banka hareketinden fiş kesiliyor
-        {bilgi ? <> — {bilgi.tip === 1 ? "gelen" : "giden"} {bilgi.tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {bilgi.paraKodu}, {bilgi.tarih.split("-").reverse().join(".")}{bilgi.musteri ? ` — ${bilgi.musteri.unvan}` : ""}</> : null}
-        . Kaydedince bu hareketle eşlenir.
-        {bilgi && !bilgi.musteri && <strong> Bankadan karşı taraf adı / VKN gelmedi; müşteriyi fiş ekranında seçin.</strong>}
-      </span>
-      <button type="button" className="btn btn-sm btn-link ms-auto p-0" onClick={() => navigate("/ebanka/mutabakat")}>Vazgeç</button>
+      {duzenleme ? (
+        <span>
+          e-Banka hareketinin fişi düzenleniyor{bilgi ? <> — {tutarYazi}</> : null}. Kaydedince e-Banka Muhasebeleştirme'ye dönülür.
+        </span>
+      ) : (
+        <span>
+          Banka hareketinden fiş kesiliyor
+          {bilgi ? <> — {tutarYazi}, {bilgi.tarih.split("-").reverse().join(".")}{bilgi.musteri ? ` — ${bilgi.musteri.unvan}` : ""}</> : null}
+          . Kaydedince bu hareketle eşlenir.
+          {bilgi && !bilgi.musteri && <strong> Bankadan karşı taraf adı / VKN gelmedi; müşteriyi fiş ekranında seçin.</strong>}
+        </span>
+      )}
+      <button type="button" className="btn btn-sm btn-link ms-auto p-0" onClick={() => navigate(duzenleme ? donusAdresi() : "/ebanka/mutabakat")}>
+        {duzenleme ? "e-Banka'ya dön" : "Vazgeç"}
+      </button>
     </div>
   ) : null;
 
-  return { vomsisId, kaydedildi, bant };
+  return { vomsisId, duzenleme, bilgi, kaydedildi, bant };
 }

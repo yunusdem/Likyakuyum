@@ -54,22 +54,24 @@
       "cerceve": "yok", "hizaDeger": "right", "daralt": true,
       "satirlar": [
         { "etiket": "Toplam Has Gram:", "deger": "{{toplam.has|sayi4}} gr", "kosul": "{{toplam.hasVar}}" },
+        { "etiket": "İşçilik (KDV dahil):", "deger": "{{toplam.iscilik|sayi}} TL", "kosul": "{{toplam.iscilikVar}}" },
+        { "etiket": "{{toplam.iscilikKdvEtiket}}", "deger": "{{toplam.iscilikKdv|sayi}} TL", "kosul": "{{toplam.iscilikVar}}" },
         { "etiket": "GENEL TOPLAM:", "deger": "{{toplam.tutar|sayi}} TL", "kalin": true },
         { "etiket": "Ödenen / Alınan:", "deger": "{{toplam.odenen|sayi}} TL", "kosul": "{{toplam.odenenVar}}" },
         { "etiket": "Kalan Bakiye:", "deger": "{{toplam.kalan|sayi}} TL", "kosul": "{{toplam.kalanVar}}" }
       ] },
-    { "id": "ayrac-6", "tip": "cizgi", "x1": 0, "y1": 261, "x2": 209.77, "y2": 261, "kalinlik": 0.75, "kesikli": true },
+    { "id": "ayrac-6", "tip": "cizgi", "x1": 0, "y1": 282, "x2": 209.77, "y2": 282, "kalinlik": 0.75, "kesikli": true },
 
-    { "id": "yaziyla-satis", "ad": "Yazıyla (satış)", "tip": "metin", "kosul": "{{satim}}", "x": 0, "y": 264, "g": 209.77, "metin": "Yalnız: **#{{toplam.yaziyla}}#**", "boyut": 7.1, "hiza": "center" },
-    { "id": "yaziyla-alis", "ad": "Yazıyla (alış)", "tip": "metin", "kosul": "!{{satim}}", "x": 0, "y": 264, "g": 209.77, "metin": "Yalnız: **{{toplam.yaziyla}}**", "boyut": 7.1, "hiza": "center" },
-    { "id": "ayrac-7", "tip": "cizgi", "x1": 0, "y1": 275, "x2": 209.77, "y2": 275, "kalinlik": 0.75, "kesikli": true },
+    { "id": "yaziyla-satis", "ad": "Yazıyla (satış)", "tip": "metin", "kosul": "{{satim}}", "x": 0, "y": 285, "g": 209.77, "metin": "Yalnız: **#{{toplam.yaziyla}}#**", "boyut": 7.1, "hiza": "center" },
+    { "id": "yaziyla-alis", "ad": "Yazıyla (alış)", "tip": "metin", "kosul": "!{{satim}}", "x": 0, "y": 285, "g": 209.77, "metin": "Yalnız: **{{toplam.yaziyla}}**", "boyut": 7.1, "hiza": "center" },
+    { "id": "ayrac-7", "tip": "cizgi", "x1": 0, "y1": 296, "x2": 209.77, "y2": 296, "kalinlik": 0.75, "kesikli": true },
 
-    { "id": "karekod", "ad": "Karekod", "tip": "qr", "x": 84.4, "y": 279, "boyut": 41, "icerik": "{{qr}}" },
+    { "id": "karekod", "ad": "Karekod", "tip": "qr", "x": 84.4, "y": 300, "boyut": 41, "icerik": "{{qr}}" },
 
-    { "id": "imza-cizgi", "tip": "cizgi", "kosul": "!{{teklif}}", "daralt": true, "x1": 0, "y1": 326, "x2": 209.77, "y2": 326, "kalinlik": 0.5, "kesikli": true },
-    { "id": "teslim-eden", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 0, "y": 330, "g": 104, "metin": "Teslim Eden", "boyut": 7.1, "hiza": "center" },
-    { "id": "teslim-alan", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 105.77, "y": 330, "g": 104, "metin": "Teslim Alan", "boyut": 7.1, "hiza": "center" },
-    { "id": "imza-sol", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 0, "y": 351, "g": 104, "metin": "İmza", "boyut": 7.1, "hiza": "center" },
-    { "id": "imza-sag", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 105.77, "y": 351, "g": 104, "metin": "İmza", "boyut": 7.1, "hiza": "center" }
+    { "id": "imza-cizgi", "tip": "cizgi", "kosul": "!{{teklif}}", "daralt": true, "x1": 0, "y1": 347, "x2": 209.77, "y2": 347, "kalinlik": 0.5, "kesikli": true },
+    { "id": "teslim-eden", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 0, "y": 351, "g": 104, "metin": "Teslim Eden", "boyut": 7.1, "hiza": "center" },
+    { "id": "teslim-alan", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 105.77, "y": 351, "g": 104, "metin": "Teslim Alan", "boyut": 7.1, "hiza": "center" },
+    { "id": "imza-sol", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 0, "y": 372, "g": 104, "metin": "İmza", "boyut": 7.1, "hiza": "center" },
+    { "id": "imza-sag", "tip": "metin", "kosul": "!{{teklif}}", "daralt": true, "x": 105.77, "y": 372, "g": 104, "metin": "İmza", "boyut": 7.1, "hiza": "center" }
   ]
 }

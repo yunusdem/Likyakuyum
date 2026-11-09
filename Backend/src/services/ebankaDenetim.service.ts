@@ -112,7 +112,7 @@ export class EBankaDenetimService {
       const kodlar = new Set((await sorgu(`SELECT RTRIM(UPPER(KOD)) AS K FROM TODVZ_PARA`)).map((r) => String(r.K)));
       const tl = kodlar.has("TL") || kodlar.has("TRY");
       const eksik = ["USD", "EUR"].filter((k) => !kodlar.has(k));
-      ekle("Tanımlar", "Para tanımları", !tl ? "hata" : eksik.length ? "uyari" : "tamam", !tl ? "TL (ya da TRY) kodlu para tanımı yok; hiçbir hareket fişe dönemez" : eksik.length ? `TL var; ${eksik.join(", ")} kodlu para yok — o döviz cinsindeki hesapların hareketleri Bekleyenler'de kalır` : "TL, USD, EUR tanımlı");
+      ekle("Tanımlar", "Para tanımları", !tl ? "hata" : eksik.length ? "uyari" : "tamam", !tl ? "TL (ya da TRY) kodlu para tanımı yok; hiçbir hareket fişe dönemez" : eksik.length ? `TL var; ${eksik.join(", ")} kodlu para yok — o döviz cinsindeki hesapların hareketleri banka fişine aktarılmaz` : "TL, USD, EUR tanımlı");
     });
 
     await dene("Tanımlar", "Kur tablosu", async () => {
@@ -121,7 +121,7 @@ export class EBankaDenetimService {
                (SELECT TOP 1 COALESCE(NULLIF(K.DOVIZ_ALIS, 0), K.EFEKTIF_ALIS) FROM dbo.TODVZ_KUR K JOIN dbo.TODVZ_PARA P ON P.PARA_ID = K.PARA_ID
                  WHERE K.KUR_TABLOSU_ID = T.KUR_TABLOSU_ID AND RTRIM(UPPER(P.KOD)) = 'USD') AS USD
         FROM dbo.TODVZ_KUR_TABLOSU T ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC`))[0];
-      if (!r) return void ekle("Tanımlar", "Kur tablosu", "uyari", "Kur tablosu boş; döviz hesaplarının hareketleri kur bulunamadığı için Bekleyenler'de kalır");
+      if (!r) return void ekle("Tanımlar", "Kur tablosu", "uyari", "Kur tablosu boş; döviz hesaplarının hareketleri kur bulunamadığı için banka fişine aktarılmaz");
       const guncel = r.GUN_ONCE <= 7 && Number(r.USD) > 0;
       ekle("Tanımlar", "Kur tablosu", guncel ? "tamam" : "uyari", `Son kur ${r.GUN} (${r.GUN_ONCE} gün önce), USD alış ${Number(r.USD) || "yok"}${guncel ? "" : " — döviz fişlerinde hareket gününe en yakın ESKİ kur kullanılır; kurlar güncel değilse TL karşılıklar sapar"}`);
     });
@@ -132,7 +132,7 @@ export class EBankaDenetimService {
       const cift = (await sorgu(`
         SELECT COUNT(*) AS N FROM (SELECT LTRIM(RTRIM(VERGI_KIMLIK_NO)) AS V FROM TODVZ_CARI_KART
           WHERE LEN(LTRIM(RTRIM(ISNULL(VERGI_KIMLIK_NO, '')))) >= 10 GROUP BY LTRIM(RTRIM(VERGI_KIMLIK_NO)) HAVING COUNT(*) > 1) x`))[0].N;
-      ekle("Tanımlar", "Cari eşleşme verisi", r.VKNLI > 0 ? "tamam" : "uyari", `${r.TOPLAM} cari, ${r.VKNLI || 0} tanesinde vergi/TC kimlik no var${cift ? `; ${cift} numara birden çok caride (o numaradan gelen hareket otomatik aktarılmaz, Bekleyenler'e düşer)` : ""}`);
+      ekle("Tanımlar", "Cari eşleşme verisi", r.VKNLI > 0 ? "tamam" : "uyari", `${r.TOPLAM} cari, ${r.VKNLI || 0} tanesinde vergi/TC kimlik no var${cift ? `; ${cift} numara birden çok caride (o numaradan gelen hareket otomatik aktarılmaz, Muhasebeleştirme'de cari seçilir)` : ""}`);
       const kolon = (await sorgu(`SELECT COL_LENGTH('TODVZ_CARI_KART', 'EPOSTA') AS E, COL_LENGTH('TODVZ_CARI_KART', 'TELEFON') AS T`))[0];
       ekle("Tanımlar", "Cari iletişim kolonları", kolon.T !== null ? (kolon.E !== null ? "tamam" : "uyari") : "uyari", `TELEFON ${kolon.T !== null ? "var" : "yok"}, EPOSTA ${kolon.E !== null ? "var" : "yok"} — ödeme linki formu bunlarla dolar; yoksa elle yazılır`);
     });

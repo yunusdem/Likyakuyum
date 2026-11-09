@@ -1,18 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from "react-bootstrap";
-import { IconCheck, IconFileInvoice, IconLink, IconReceipt, IconSearch, IconUnlink, IconX } from "@tabler/icons-react";
+import { IconCheck, IconEdit, IconFileInvoice, IconLink, IconListCheck, IconReceipt, IconSearch, IconUnlink, IconX } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { EBankaService, MutabakatDurumu, MutabakatFisi, MutabakatListesi, MutabakatSatiri } from "../../services/ebankaService";
 import { bugun, CariSecModal, paraYaz, useBildirim, zamanYaz } from "./ebankaOrtak";
 import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
-import { fisKesimAdresi } from "./useEBankaFisKesimi";
+import { fisDuzenlemeAdresi, fisKesimAdresi } from "./useEBankaFisKesimi";
 import { useAuth } from "../../context/AuthContext";
 import { kuyumLisansiMi } from "../../config/kullaniciGorunum";
 import { ebelgeService } from "../../services/ebelgeService";
 import EBankaBelgeKes from "./EBankaBelgeKes";
+import EBankaFaturaKes, { FaturaKesIsi } from "./EBankaFaturaKes";
+import { TopluIslem, eslenecekAday, nedenAl, faturalanacakFisler, gerekmezIsaretlenebilir, onaylanacakCari, topluKarar, uygunSayisi } from "./ebankaToplu";
 
-// F- e-Banka > H- e-Banka Faturalandırma (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md, docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md)
+// F- e-Banka > D- e-Banka Muhasebeleştirme (docs/TAHSILAT_MUTABAKATI_YOL_HARITASI.md, docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md,
+// docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md: Düzenle, e-Banka içinde Fatura kes, satır seçimi + toplu işlemler)
 // Bankaya giren / çıkan her para: karşılığında fiş var mı, fişin faturası kesilmiş / gelmiş mi.
 // Kuyum lisansında fiş açılmaz: hareketten doğrudan belge kesilir (gelen → satış faturası, giden → e-Gider pusulası) ve
 // ekranda "fiş" yerine "belge" yazar (EF3, EF4, EF26).
@@ -38,16 +41,7 @@ const FIS_TURU: Record<string, string> = { doviz: "Döviz fişi", sarraf: "Sarra
 
 const gunYaz = (g: string | null) => (g ? g.slice(0, 10).split("-").reverse().join(".") : "-");
 
-/** Fişin faturası e-Belge kaynak listesinden kesilir; perakende faturası kendi ekranında kesildiği için oraya yönlendirilmez. */
-const faturaAdresi = (f: MutabakatFisi): string | null => {
-  if (f.fisTuru === "perakende") return null;
-  // sec: listede bulunup seçili gelecek kaynak belge (evrak türü: döviz 99, sarraf 0) — M17
-  const q = new URLSearchParams({
-    ...(f.fisTuru === "doviz" ? { kaynak: "DOVIZ" } : {}), ...(f.tarih ? { tarih: f.tarih.slice(0, 10) } : {}), ...(f.fisNo ? { ara: f.fisNo } : {}),
-    sec: `${f.fisTuru === "doviz" ? 99 : 0}:${f.fisId}`,
-  });
-  return `/e-belge/kaynak?${q.toString()}`;
-};
+const TOPLU_ADI: Record<TopluIslem, string> = { esle: "Eşle", faturalandir: "Faturalandır", cari: "Cari onayla", gerekmez: "Fatura gerektirmez" };
 
 /** Fişi olmayan paradan kesilebilecek fişler; perakende faturası yalnız satış (gelen para) için. */
 const KESILECEK_FISLER: { ad: string; yol: string; yalnizGelen?: boolean; ozellik: "doviz" | "sarraf" | "perakende" }[] = [
@@ -90,6 +84,11 @@ export const EBankaMutabakatPage: React.FC = () => {
   const [gerekmezNotu, setGerekmezNotu] = useState("");
   const [cariSec, setCariSec] = useState(false);
   const { bildir, bildirimKutusu } = useBildirim();
+  // e-Banka içinde fatura kesme penceresi: tek fiş ya da seçili hareketlerin fişleri (M8, M9)
+  const [faturaIsleri, setFaturaIsleri] = useState<{ isler: FaturaKesIsi[]; atlananlar: { ad: string; neden: string }[] } | null>(null);
+  // Seçili hareketler (vomsisId) ve toplu işlem sonucu (M9)
+  const [secim, setSecim] = useState<Set<number>>(new Set());
+  const [topluSonuc, setTopluSonuc] = useState<{ baslik: string; satirlar: { ad: string; sonuc: "Tamam" | "Atlandı" | "Hata"; mesaj: string }[] } | null>(null);
 
   const listele = useCallback(async () => {
     if (baslangic > bitis) return bildir("warning", "Başlangıç tarihi bitiş tarihinden sonra olamaz.");
@@ -97,6 +96,8 @@ export const EBankaMutabakatPage: React.FC = () => {
     try {
       const v = await EBankaService.getMutabakat({ baslangic, bitis, yon });
       setVeri(v);
+      // Seçim yalnız listede kalan hareketler için korunur
+      setSecim((o) => new Set(v.satirlar.filter((x) => o.has(x.vomsisId)).map((x) => x.vomsisId)));
       // Açık detay penceresi güncel veriyle yenilensin
       setSecili((s) => (s ? v.satirlar.find((x) => x.vomsisId === s.vomsisId) || null : null));
       return v;
@@ -134,13 +135,98 @@ export const EBankaMutabakatPage: React.FC = () => {
     }
   };
 
+  // ─── Toplu işlemler (M9) ───────────────────────────────────────────────────
+  const seciliSatirlar = useMemo(() => (veri?.satirlar || []).filter((x) => secim.has(x.vomsisId)), [veri, secim]);
+  const gorunenSecili = satirlar.length > 0 && satirlar.every((x) => secim.has(x.vomsisId));
+  const satirAdi = (x: MutabakatSatiri) => `${zamanYaz(x.tarih)} · ${x.karsiTaraf || x.cari?.ad || "-"} · ${x.yon === "giden" ? "-" : "+"}${paraYaz(x.tutar)}`;
+  const secimDegistir = (vomsisId: number, secili: boolean) =>
+    setSecim((o) => {
+      const y = new Set(o);
+      if (secili) y.add(vomsisId);
+      else y.delete(vomsisId);
+      return y;
+    });
+  const tumunuSec = (secili: boolean) =>
+    setSecim((o) => {
+      const y = new Set(o);
+      for (const x of satirlar) {
+        if (secili) y.add(x.vomsisId);
+        else y.delete(x.vomsisId);
+      }
+      return y;
+    });
+
+  const topluCalistir = async (tur: TopluIslem) => {
+    const secili = seciliSatirlar;
+    if (!secili.length) return;
+    if (tur === "faturalandir") {
+      const isler: FaturaKesIsi[] = [];
+      const atlananlar: { ad: string; neden: string }[] = [];
+      for (const x of secili) {
+        const k = faturalanacakFisler(x);
+        if (k.tamam) k.deger.forEach((f) => isler.push({ vomsisId: x.vomsisId, fis: f }));
+        // Kuyum'da fişsiz hareketin belgesi pencereden kesilir (altın ve gram seçilir)
+        else atlananlar.push({ ad: satirAdi(x), neden: kuyum && nedenAl(k) === "Eşli fiş yok" ? "Belge, hareket penceresinden kesilir (altın / gram seçimi gerekir)" : nedenAl(k) });
+      }
+      if (!isler.length) return bildir("warning", `Seçili hareketlerde faturası kesilecek eşli ${fisKelimesi} yok.`);
+      setFaturaIsleri({ isler, atlananlar });
+      return;
+    }
+    const uygun = uygunSayisi(tur, secili);
+    if (!uygun) return bildir("warning", `Seçili hareketlerin hiçbiri "${TOPLU_ADI[tur]}" için uygun değil.`);
+    const atlanacak = secili.length - uygun;
+    const onayMetni = `${uygun} harekete "${TOPLU_ADI[tur]}" uygulanacak${atlanacak ? ` (${atlanacak} hareket uygun değil, atlanır)` : ""}.`;
+    let not = "";
+    if (tur === "gerekmez") {
+      const cevap = window.prompt(`${onayMetni}\n\nNot (isteğe bağlı; kapora, avans, borç tahsilatı gibi):`, "");
+      if (cevap === null) return;
+      not = cevap.trim().slice(0, 250);
+    } else if (!window.confirm(`${onayMetni} Devam edilsin mi?`)) return;
+    setCalisiyor(true);
+    const sonuc: { ad: string; sonuc: "Tamam" | "Atlandı" | "Hata"; mesaj: string }[] = [];
+    for (const x of secili) {
+      const ad = satirAdi(x);
+      const karar = topluKarar(tur, x);
+      if (!karar.tamam) {
+        sonuc.push({ ad, sonuc: "Atlandı", mesaj: nedenAl(karar) });
+        continue;
+      }
+      try {
+        if (tur === "esle") {
+          const k = eslenecekAday(x);
+          if (!k.tamam) continue;
+          await EBankaService.mutabakatEsle(x.vomsisId, k.deger.fisTuru, k.deger.fisId);
+          sonuc.push({ ad, sonuc: "Tamam", mesaj: `${fisTuruAdi[k.deger.fisTuru]} ${k.deger.fisNo || `#${k.deger.fisId}`} eşlendi` });
+        } else if (tur === "cari") {
+          const k = onaylanacakCari(x);
+          if (!k.tamam) continue;
+          await EBankaService.mutabakatCariOnayla(x.vomsisId, k.deger);
+          sonuc.push({ ad, sonuc: "Tamam", mesaj: `Cari onaylandı: ${x.oneriCari?.ad || ""}` });
+        } else if (tur === "gerekmez" && gerekmezIsaretlenebilir(x).tamam) {
+          await EBankaService.mutabakatFaturaGerekmez(x.vomsisId, true, not || undefined);
+          sonuc.push({ ad, sonuc: "Tamam", mesaj: "Fatura gerektirmez olarak işaretlendi" });
+        }
+      } catch (err: any) {
+        sonuc.push({ ad, sonuc: "Hata", mesaj: err?.message || "İşlem yapılamadı." });
+      }
+    }
+    setCalisiyor(false);
+    setTopluSonuc({ baslik: `Toplu işlem — ${TOPLU_ADI[tur]}`, satirlar: sonuc });
+    await listele();
+  };
+
   const detayAc = (s: MutabakatSatiri) => {
     setSecili(s);
     setGerekmezNotu(s.not || "");
   };
 
+  /** Eşli fişin düzeltme ekranı: kaydedince bu harekete dönülür (M6) */
+  const fisDuzenle = (s: MutabakatSatiri, f: MutabakatFisi) =>
+    navigate(fisDuzenlemeAdresi(f.fisTuru, f.fisId, {
+      vomsisId: s.vomsisId, tip: s.yon === "gelen" ? 1 : 0, tutar: s.tutar, paraKodu: s.doviz || "TL", tutarTl: s.tlKarsilik, baslangic, bitis,
+    }));
+
   const fisSatiri = (s: MutabakatSatiri, f: MutabakatFisi, eslenmis: boolean) => {
-    const adres = faturaAdresi(f);
     return (
       <tr key={`${f.fisTuru}-${f.fisId}`}>
         <td className="text-nowrap">{fisTuruAdi[f.fisTuru]}</td>
@@ -171,8 +257,15 @@ export const EBankaMutabakatPage: React.FC = () => {
         <td className="text-end text-nowrap">
           {eslenmis ? (
             <>
-              {!f.faturali && f.yon === "gelen" && adres && (
-                <Button size="sm" variant="outline-primary" className="py-0 me-1" onClick={() => navigate(adres)}>
+              <Button size="sm" variant="outline-secondary" className="py-0 me-1" disabled={calisiyor} title={`${kuyum ? "Belgeyi" : "Fişi"} düzeltme ekranında aç; kaydedince buraya dönülür`}
+                onClick={() => fisDuzenle(s, f)}>
+                <IconEdit size={14} className="me-1" />
+                Düzenle
+              </Button>
+              {/* Eşli fişte faturası yoksa her zaman (gelen / giden); perakende faturası kendi ekranında (M7, M8) */}
+              {!f.faturali && f.fisTuru !== "perakende" && (
+                <Button size="sm" variant="outline-primary" className="py-0 me-1" disabled={calisiyor}
+                  onClick={() => setFaturaIsleri({ isler: [{ vomsisId: s.vomsisId, fis: f }], atlananlar: [] })}>
                   <IconFileInvoice size={14} className="me-1" />
                   Fatura kes
                 </Button>
@@ -198,7 +291,7 @@ export const EBankaMutabakatPage: React.FC = () => {
   return (
     <div className="ebanka-mutabakat-page w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        pageTitle="H- e-Banka Faturalandırma"
+        pageTitle="D- e-Banka Muhasebeleştirme"
         onRefresh={listele}
         hideNew
         hideSave
@@ -274,11 +367,34 @@ export const EBankaMutabakatPage: React.FC = () => {
         </div>
       )}
 
+      {secim.size > 0 && (
+        <div className="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 border rounded bg-light small">
+          <IconListCheck size={16} className="text-secondary" />
+          <span className="fw-bold">{secim.size} hareket seçili</span>
+          {(["esle", "faturalandir", "cari", "gerekmez"] as TopluIslem[]).map((t) => {
+            const n = uygunSayisi(t, seciliSatirlar);
+            return (
+              <Button key={t} size="sm" variant={t === "faturalandir" ? "primary" : "outline-primary"} className="py-0" disabled={calisiyor || !n}
+                title={n ? `${n} hareket uygun` : "Seçili hareketlerin hiçbiri uygun değil"} onClick={() => topluCalistir(t)}>
+                {TOPLU_ADI[t]} ({n})
+              </Button>
+            );
+          })}
+          <Button size="sm" variant="link" className="py-0 ms-auto" disabled={calisiyor} onClick={() => setSecim(new Set())}>
+            Seçimi kaldır
+          </Button>
+        </div>
+      )}
+
       <Card className="border shadow-sm w-100 bg-white">
         <Card.Body className="p-0">
           <Table size="sm" hover responsive className="mb-0 small align-middle">
             <thead className="table-light">
               <tr>
+                <th style={{ width: 28 }}>
+                  <Form.Check aria-label="Görünen hareketlerin tümünü seç" checked={gorunenSecili} disabled={!satirlar.length || calisiyor}
+                    title="Görünen hareketlerin tümünü seç / bırak" onChange={(e) => tumunuSec(e.target.checked)} />
+                </th>
                 <th>Tarih</th>
                 <th>Hesap</th>
                 <th>Karşı Taraf / Cari</th>
@@ -290,7 +406,10 @@ export const EBankaMutabakatPage: React.FC = () => {
             </thead>
             <tbody>
               {satirlar.map((s) => (
-                <tr key={s.vomsisId} style={{ cursor: "pointer" }} onClick={() => detayAc(s)}>
+                <tr key={s.vomsisId} style={{ cursor: "pointer" }} className={secim.has(s.vomsisId) ? "table-active" : undefined} onClick={() => detayAc(s)}>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <Form.Check aria-label="Hareketi seç" checked={secim.has(s.vomsisId)} disabled={calisiyor} onChange={(e) => secimDegistir(s.vomsisId, e.target.checked)} />
+                  </td>
                   <td className="font-monospace text-nowrap">{zamanYaz(s.tarih)}</td>
                   <td className="text-nowrap">
                     {s.bankaAdi} {s.doviz}
@@ -335,7 +454,7 @@ export const EBankaMutabakatPage: React.FC = () => {
               ))}
               {satirlar.length === 0 && !yukleniyor && (
                 <tr>
-                  <td colSpan={7} className="text-center text-muted py-3">
+                  <td colSpan={8} className="text-center text-muted py-3">
                     {veri ? "Bu ölçütlere uyan banka hareketi yok." : "Tarih seçip Listele'ye basın."}
                   </td>
                 </tr>
@@ -563,6 +682,44 @@ export const EBankaMutabakatPage: React.FC = () => {
           ) : goruntu?.url ? (
             <iframe title="Belge" src={goruntu.url} className="w-100 border-0" style={{ height: "80vh" }} />
           ) : null}
+        </Modal.Body>
+      </Modal>
+
+      <EBankaFaturaKes
+        isler={faturaIsleri?.isler ?? null}
+        atlananlar={faturaIsleri?.atlananlar}
+        onKapat={(degisti) => {
+          setFaturaIsleri(null);
+          if (degisti) listele();
+        }}
+      />
+
+      <Modal show={!!topluSonuc} onHide={() => setTopluSonuc(null)} size="lg" centered>
+        <Modal.Header closeButton className="py-2">
+          <Modal.Title className="fs-6 fw-bold">{topluSonuc?.baslik}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="small">
+          {topluSonuc && (
+            <>
+              <div className="mb-2">
+                {topluSonuc.satirlar.filter((x) => x.sonuc === "Tamam").length} tamam · {topluSonuc.satirlar.filter((x) => x.sonuc === "Atlandı").length} atlandı ·{" "}
+                {topluSonuc.satirlar.filter((x) => x.sonuc === "Hata").length} hata
+              </div>
+              <Table size="sm" className="mb-0 align-middle">
+                <tbody>
+                  {topluSonuc.satirlar.map((x, i) => (
+                    <tr key={i}>
+                      <td>{x.ad}</td>
+                      <td>
+                        <Badge bg={x.sonuc === "Tamam" ? "success" : x.sonuc === "Hata" ? "danger" : "secondary"}>{x.sonuc}</Badge>
+                      </td>
+                      <td>{x.mesaj}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </>
+          )}
         </Modal.Body>
       </Modal>
 

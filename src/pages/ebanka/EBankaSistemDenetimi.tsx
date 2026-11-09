@@ -3,7 +3,10 @@ import { Alert, Badge, Button, Card, Form, Modal, Spinner, Table } from "react-b
 import { IconReceipt, IconStethoscope } from "@tabler/icons-react";
 import { BankaHesapItem } from "../../services/bankaService";
 import { EBankaDenetimSonucu, EBankaService } from "../../services/ebankaService";
-import { BildirimTuru } from "./ebankaOrtak";
+import { BildirimTuru, SANAL_POS_GORUNUR } from "./ebankaOrtak";
+
+/** Sanal POS gizliyken (M3) onun denetim satırları gösterilmez */
+const sanalPosSatiri = (s: EBankaDenetimSonucu) => /sanal pos|3d secure/i.test(`${s.grup} ${s.ad}`);
 
 // F- e-Banka > Ayarlar > Sistem Denetimi: Vomsis hesabı olmadan sunucunun çalışmaya hazır olduğunu doğrular
 // (docs/EBANKA_VOMSIS_YOL_HARITASI.md). Denetim salt okunurdur; deneme fişi ayrı bir butondur ve onay ister.
@@ -29,8 +32,14 @@ export const EBankaSistemDenetimi: React.FC<{ bankalar: BankaHesapItem[]; bildir
     setCalisiyor(true);
     try {
       // Sunucu denetimleri ile tarayıcıdan yapılan dönüş adresi denetimi birlikte gösterilir
-      const [sunucu, donus] = await Promise.all([EBankaService.denetle(), EBankaService.donusAdresiDenetle()]);
-      setSonuclar([...sunucu.sonuclar, donus]);
+      // Sanal POS gizliyken (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M3) onun satırları ve 3D Secure dönüş adresi denetimi gösterilmez
+      if (!SANAL_POS_GORUNUR) {
+        const sunucu = await EBankaService.denetle();
+        setSonuclar(sunucu.sonuclar.filter((s) => !sanalPosSatiri(s)));
+      } else {
+        const [sunucu, donus] = await Promise.all([EBankaService.denetle(), EBankaService.donusAdresiDenetle()]);
+        setSonuclar([...sunucu.sonuclar, donus]);
+      }
       setZaman(new Date().toLocaleString("tr-TR"));
     } catch (err: any) {
       bildir("danger", err?.message || "Sistem denetimi çalıştırılamadı.");
@@ -86,7 +95,7 @@ export const EBankaSistemDenetimi: React.FC<{ bankalar: BankaHesapItem[]; bildir
       <Card.Body className="p-0">
         <div className="small text-muted px-3 py-2 border-bottom">
           Banka servisi hesabı gerekmeden bu sunucunun hazır olduğunu denetler: veritabanı ve tablolar, banka fişi altyapısı, para / kur / cari tanımları, ayarlar, sunucudan banka servisine erişim
-          ve 3D Secure dönüş adresi. Hiçbir kayıt değiştirmez.
+          {SANAL_POS_GORUNUR ? " ve 3D Secure dönüş adresi" : ""}. Hiçbir kayıt değiştirmez.
         </div>
         {sonuclar && (
           <Table size="sm" className="mb-0 small align-middle">
