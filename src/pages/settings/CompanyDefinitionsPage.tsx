@@ -27,6 +27,7 @@ import {
   IconBinoculars,
   IconDownload,
   IconEdit,
+  IconX,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "components/common/ERPToolbar";
@@ -953,7 +954,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
       let list = dbAlanlari;
       if (!list || list.length === 0) {
         list = await CompanyService.getAlanlar();
-        if (list && list.length > 0) setDbAlanlari(list);
+        if (list) setDbAlanlari(list);
       }
       setLookupModalConfig({
         show: true,
@@ -1171,7 +1172,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
         }
         CompanyService.getKlasor().then(setFirmaKlasoru).catch(() => setFirmaKlasoru(null));
         CompanyService.getAlanlar().then((al) => {
-          if (al && al.length > 0) setDbAlanlari(al);
+          if (al) setDbAlanlari(al);
         }).catch(() => {});
       } else {
         setFormData(emptyCompanyData);
@@ -2387,31 +2388,29 @@ export const CompanyDefinitionsPage: React.FC = () => {
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Fiş Aktarma Alanı:</Form.Label>
                               <Col>
                                 <InputGroup size="sm" className="flex-nowrap" style={{ maxWidth: "260px" }}>
-                                  <Form.Select
-                                    size="sm"
+                                  <Form.Control
+                                    type="text"
+                                    readOnly
                                     value={formData.DIGER_VERITABANI_ADI || ""}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      const matched = dbAlanlari.find((a) => a.dbName === val);
-                                      handleChange("DIGER_VERITABANI_ADI", val);
-                                      handleChange("FIS_AKTARMA_HESABI", matched?.unvan || val);
-                                    }}
-                                    className="bg-white border text-dark font-monospace"
-                                    style={{ fontSize: "0.82rem" }}
-                                    title="Fiş aktarımı yapılacak veritabanı alanı"
-                                  >
-                                    <option value="">Alan / Veritabanı Seçiniz...</option>
-                                    {dbAlanlari.map((alan) => (
-                                      <option key={alan.dbName || alan.id} value={alan.dbName}>
-                                        {alan.unvan ? `${alan.unvan} (${alan.dbName})` : alan.dbName}
-                                      </option>
-                                    ))}
-                                    {formData.DIGER_VERITABANI_ADI && !dbAlanlari.some((a) => a.dbName === formData.DIGER_VERITABANI_ADI) && (
-                                      <option value={formData.DIGER_VERITABANI_ADI}>
-                                        {formData.FIS_AKTARMA_HESABI || formData.DIGER_VERITABANI_ADI} ({formData.DIGER_VERITABANI_ADI})
-                                      </option>
-                                    )}
-                                  </Form.Select>
+                                    placeholder="Veritabanı Alanı Seçiniz..."
+                                    onClick={openFisAktarmaAlaniLookup}
+                                    className="bg-white border font-monospace text-dark"
+                                    style={{ fontSize: "0.82rem", cursor: "pointer" }}
+                                    title={formData.DIGER_VERITABANI_ADI ? `Veritabanı Alanı: ${formData.DIGER_VERITABANI_ADI}` : "Veritabanı Alanı Seçiniz"}
+                                  />
+                                  {formData.DIGER_VERITABANI_ADI ? (
+                                    <Button
+                                      variant="outline-secondary"
+                                      onClick={() => {
+                                        handleChange("DIGER_VERITABANI_ADI", "");
+                                        handleChange("FIS_AKTARMA_HESABI", "");
+                                      }}
+                                      title="Seçimi Temizle"
+                                      className="d-flex align-items-center px-1.5 flex-shrink-0"
+                                    >
+                                      <IconX size={15} />
+                                    </Button>
+                                  ) : null}
                                   <Button
                                     variant="outline-primary"
                                     onClick={openFisAktarmaAlaniLookup}

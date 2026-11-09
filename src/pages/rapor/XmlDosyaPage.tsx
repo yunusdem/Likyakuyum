@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   IconFileCode,
   IconCheck,
@@ -18,7 +18,12 @@ import {
   IconZoomOut,
   IconMinus,
   IconPlus,
+  IconChevronUp,
+  IconAdjustments,
+  IconRefresh,
+  IconReportAnalytics,
 } from "@tabler/icons-react";
+import { Button, Card, Col, Form, Row, Spinner, Table, Badge } from "react-bootstrap";
 import {
   XmlDosyaService,
   MerkezKurKontrolItem,
@@ -28,6 +33,7 @@ import {
   XmlOlusturResult,
   XmlBirlestirResult,
 } from "../../services/xmlDosyaService";
+import { CompanyService } from "../../services/companyService";
 import { trTarihBicimi, trSayiBicimi } from "../../utils/intlOnbellek";
 import { useToast } from "../../context/ToastContext";
 
@@ -45,6 +51,28 @@ export default function XmlDosyaPage() {
     return `${y}-${m}-${day}`;
   };
 
+  const gun = (kaydir = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + kaydir);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  };
+
+  const buAyBasi = () => {
+    const d = new Date();
+    d.setDate(1);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  };
+
   // Form State
   const [bildirimTuru] = useState<string>("Döviz");
   const [islemModu, setIslemModu] = useState<IslemModu>("kontrol");
@@ -56,6 +84,13 @@ export default function XmlDosyaPage() {
   const [hazirlamaTarihi, setHazirlamaTarihi] = useState<string>(formatIsoDate(bugun));
   const [belgeIslemNo, setBelgeIslemNo] = useState<string>("");
   const [belgeIslemNoTuru, setBelgeIslemNoTuru] = useState<"seri" | "belge">("seri");
+
+  // Kullanıcı Talebi: TL ve Dolar vergi sınırını geçenleri getirme
+  const [tlVergiSiniri, setTlVergiSiniri] = useState<number>(185000);
+  const [dovizVergiSiniri, setDovizVergiSiniri] = useState<number>(5000);
+
+  // [I- Vergiler ve Komisyon] Sayfa Dizaynı: Parametreler paneli aç/kapat & Uygula akışı
+  const [parametreAcik, setParametreAcik] = useState<boolean>(true);
 
   // Dosya Oluşturma parametreleri
   const [dosyaNo, setDosyaNo] = useState<string>("0");
@@ -102,18 +137,34 @@ export default function XmlDosyaPage() {
     setDosyaAdi(`dov${yilKisa}${ayKisa}_${dNo}.xml`);
   }, [ilkTarih, dosyaNo]);
 
-  // Sayfa ilk açıldığında Merkez Bankası Kur Kontrol Tablosunu ve Firma Bilgilerini otomatik yükle
+  // Sayfa ilk açıldığında firma vergi sınırlarını ve Merkez Bankası Kur Kontrol Tablosunu yükle
   useEffect(() => {
     let aktif = true;
     const ilkYukleme = async () => {
       setYukleniyor(true);
       try {
+        let tlLimit = 185000;
+        let dovizLimit = 5000;
+        try {
+          const def = await CompanyService.getDefinitions();
+          if (def?.TL_VERGI_SINIRI !== undefined && def?.TL_VERGI_SINIRI !== null) {
+            tlLimit = Number(def.TL_VERGI_SINIRI);
+            if (aktif) setTlVergiSiniri(tlLimit);
+          }
+          if (def?.DOVIZ_VERGI_SINIRI !== undefined && def?.DOVIZ_VERGI_SINIRI !== null) {
+            dovizLimit = Number(def.DOVIZ_VERGI_SINIRI);
+            if (aktif) setDovizVergiSiniri(dovizLimit);
+          }
+        } catch {}
+
         const [kurData, firmaData] = await Promise.all([
           XmlDosyaService.kontrolMerkezKur({
             ilkTarih,
             sonTarih,
             belgeIslemNo: belgeIslemNo || undefined,
             belgeIslemNoTuru,
+            tlVergiSiniri: tlLimit,
+            dovizVergiSiniri: dovizLimit,
           }),
           XmlDosyaService.kontrolFirma(),
         ]);
@@ -140,16 +191,20 @@ export default function XmlDosyaPage() {
   }, []);
 
   // 1. Merkez Kur Kontrolü
-  const handleMerkezKurKontrol = async () => {
+  const handleMerkezKurKontrol = async (overrideIlk?: string, overrideSon?: string) => {
+    const ilk = overrideIlk ?? ilkTarih;
+    const son = overrideSon ?? sonTarih;
     setKontrolTuru("merkezKur");
     setDurumHataFiltresi("hatali");
     setYukleniyor(true);
     try {
       const data = await XmlDosyaService.kontrolMerkezKur({
-        ilkTarih,
-        sonTarih,
+        ilkTarih: ilk,
+        sonTarih: son,
         belgeIslemNo: belgeIslemNo || undefined,
         belgeIslemNoTuru,
+        tlVergiSiniri,
+        dovizVergiSiniri,
       });
       setMerkezKurSonuclari(data);
       const hataVar = data.some((d) => d.durum === "hata");
@@ -182,14 +237,16 @@ export default function XmlDosyaPage() {
   };
 
   // 3. Fiş Kontrolü
-  const handleFisKontrol = async () => {
+  const handleFisKontrol = async (overrideIlk?: string, overrideSon?: string) => {
+    const ilk = overrideIlk ?? ilkTarih;
+    const son = overrideSon ?? sonTarih;
     setKontrolTuru("fis");
     setDurumHataFiltresi("hatali");
     setYukleniyor(true);
     try {
       const data = await XmlDosyaService.kontrolFis({
-        ilkTarih,
-        sonTarih,
+        ilkTarih: ilk,
+        sonTarih: son,
         belgeIslemNo: belgeIslemNo || undefined,
         belgeIslemNoTuru,
       });
@@ -206,14 +263,16 @@ export default function XmlDosyaPage() {
   };
 
   // 4. Fiş Satırı Kontrolü
-  const handleFisSatiriKontrol = async () => {
+  const handleFisSatiriKontrol = async (overrideIlk?: string, overrideSon?: string) => {
+    const ilk = overrideIlk ?? ilkTarih;
+    const son = overrideSon ?? sonTarih;
     setKontrolTuru("fisSatiri");
     setDurumHataFiltresi("hatali");
     setYukleniyor(true);
     try {
       const data = await XmlDosyaService.kontrolFisSatiri({
-        ilkTarih,
-        sonTarih,
+        ilkTarih: ilk,
+        sonTarih: son,
         belgeIslemNo: belgeIslemNo || undefined,
         belgeIslemNoTuru,
       });
@@ -226,6 +285,21 @@ export default function XmlDosyaPage() {
       showError(err.message || "Fiş satırı kontrolü yapılırken hata oluştu.");
     } finally {
       setYukleniyor(false);
+    }
+  };
+
+  // Hızlı Tarih Seçimi (Bugün, Dün, Bu Ay, Son 7 Gün): Tarihleri günceller ve kontrolü doğrudan çalıştırır
+  const handleHizliTarih = (ilk: string, son: string) => {
+    setIlkTarih(ilk);
+    setSonTarih(son);
+    if (islemModu === "kontrol") {
+      if (kontrolTuru === "merkezKur") {
+        void handleMerkezKurKontrol(ilk, son);
+      } else if (kontrolTuru === "fis") {
+        void handleFisKontrol(ilk, son);
+      } else if (kontrolTuru === "fisSatiri") {
+        void handleFisSatiriKontrol(ilk, son);
+      }
     }
   };
 
@@ -376,6 +450,67 @@ export default function XmlDosyaPage() {
   const fisHataliSayisi = fisSonuclari.filter((f) => !f.gecerli).length;
   const satirHataliSayisi = fisSatirSonuclari.filter((s) => !s.gecerli).length;
   const kurHataliSayisi = merkezKurSonuclari.filter((k) => k.durum === "hata").length;
+  const detayGirildiSayisi = merkezKurSonuclari.filter((k) => k.detayDurumu === "girildi").length;
+  const detayEksikSayisi = merkezKurSonuclari.filter((k) => k.detayDurumu === "eksik").length;
+  const merkezKurHataliSayisi = merkezKurSonuclari.filter((k) => k.durum === "hata" || k.detayDurumu === "eksik").length;
+
+  // [I- Vergiler ve Komisyon] Sayfa Dizaynı Uygula Eylemi
+  const calistirUygula = async (overrideIlk?: string, overrideSon?: string) => {
+    const ilk = overrideIlk ?? ilkTarih;
+    const son = overrideSon ?? sonTarih;
+    if (islemModu === "kontrol") {
+      if (kontrolTuru === "merkezKur") {
+        await handleMerkezKurKontrol(ilk, son);
+      } else if (kontrolTuru === "firma") {
+        await handleFirmaKontrol();
+      } else if (kontrolTuru === "fis") {
+        await handleFisKontrol(ilk, son);
+      } else if (kontrolTuru === "fisSatiri") {
+        await handleFisSatiriKontrol(ilk, son);
+      }
+    } else if (islemModu === "olusturma") {
+      await handleXmlOlustur(false);
+    } else if (islemModu === "birlestirme") {
+      await handleXmlBirlestir(false);
+    }
+  };
+
+  const handleUygula = () => {
+    void calistirUygula();
+  };
+
+  const handleSifirla = () => {
+    setIlkTarih(formatIsoDate(ayinIlkGunu));
+    setSonTarih(formatIsoDate(bugun));
+    setHazirlamaTarihi(formatIsoDate(bugun));
+    setBelgeIslemNo("");
+    setBelgeIslemNoTuru("seri");
+    setTlVergiSiniri(185000);
+    setDovizVergiSiniri(5000);
+    setAramaMetni("");
+    setDurumHataFiltresi("hatali");
+  };
+
+  const filtreOzeti = useMemo(() => {
+    const p: string[] = [];
+    p.push(`${ilkTarih} – ${sonTarih}`);
+    if (islemModu === "kontrol") {
+      if (kontrolTuru === "merkezKur") {
+        p.push(`TL Sınırı: ${tlVergiSiniri.toLocaleString("tr-TR")} ₺`);
+        p.push(`USD Sınırı: ${dovizVergiSiniri.toLocaleString("tr-TR")} $`);
+      }
+      if (belgeIslemNo) {
+        p.push(`${belgeIslemNoTuru === "seri" ? "Seri" : "Belge"} No: ${belgeIslemNo}`);
+      }
+    } else if (islemModu === "olusturma") {
+      p.push(`Dosya: ${dosyaAdi}`);
+      if (dosyaNo) p.push(`No: ${dosyaNo}`);
+    } else if (islemModu === "birlestirme") {
+      p.push(`Kaynak: ${kaynakDosyaAdi || "Seçilmedi"}`);
+      p.push(`Hedef: ${hedefDosyaAdi || "Seçilmedi"}`);
+    }
+    return p.join(" · ");
+  }, [ilkTarih, sonTarih, islemModu, kontrolTuru, tlVergiSiniri, dovizVergiSiniri, belgeIslemNo, belgeIslemNoTuru, dosyaNo, dosyaAdi, kaynakDosyaAdi, hedefDosyaAdi]);
 
   return (
     <div className="xml-dosya-container p-2 d-flex flex-column gap-2" style={{ minHeight: "calc(100vh - 56px)" }}>
@@ -474,700 +609,956 @@ export default function XmlDosyaPage() {
         }
       `}</style>
 
-      {/* 1. ÜST PANEL: Kompakt Başlık, Modlar ve Seçimler */}
-      <div className="card shadow-2xs border bg-white p-2">
-        {/* Satır 1: Başlık & Mod Seçimi */}
-        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 border-bottom pb-2 mb-2">
-          <div className="d-flex align-items-center gap-2">
-            <span className="p-1.5 bg-primary bg-opacity-10 text-primary rounded d-inline-flex">
-              <IconFileCode size={20} />
-            </span>
-            <span className="fw-bold text-dark fs-6">J- XML Dosya İşlemleri</span>
-            <span className="badge bg-light text-secondary border small">VİM Döviz Transferi</span>
-          </div>
-
-          <div className="d-flex align-items-center gap-1">
-            <div className="btn-group btn-group-sm" role="group">
-              <button
-                type="button"
-                className={`btn fw-semibold px-3 ${islemModu === "kontrol" ? "btn-primary" : "btn-outline-secondary"}`}
-                onClick={() => setIslemModu("kontrol")}
-              >
-                <IconCheck size={15} className="me-1" /> Dosya Kontrolü
-              </button>
-              <button
-                type="button"
-                className={`btn fw-semibold px-3 ${islemModu === "olusturma" ? "btn-primary" : "btn-outline-secondary"}`}
-                onClick={() => setIslemModu("olusturma")}
-              >
-                <IconDownload size={15} className="me-1" /> Dosya Oluşturma
-              </button>
-              <button
-                type="button"
-                className={`btn fw-semibold px-3 ${islemModu === "birlestirme" ? "btn-primary" : "btn-outline-secondary"}`}
-                onClick={() => setIslemModu("birlestirme")}
-              >
-                <IconArrowsJoin size={15} className="me-1" /> Dosya Birleştirme
-              </button>
+      {/* 1. ÜST PANEL: [I- Vergiler ve Komisyon] Sayfa Dizaynı & Parametre Şeridi */}
+      <Card className="border shadow-sm mb-1 bg-white">
+        <Card.Body className="p-2">
+          <div className="d-flex flex-wrap align-items-center gap-2 px-1">
+            <div className="d-flex align-items-center gap-2">
+              <IconFileCode size={20} className="text-primary flex-shrink-0" />
+              <strong className="text-nowrap" style={{ fontSize: "0.95rem" }}>J- XML Dosya İşlemleri</strong>
+              <span className="text-muted small text-nowrap d-none d-xl-inline">
+                {islemModu === "kontrol" ? (
+                  kontrolTuru === "merkezKur" ? `· ${merkezKurSonuclari.length} fiş` :
+                  kontrolTuru === "firma" ? `· ${firmaSonucu?.gecerli ? "Firma Tamam" : "Eksik"}` :
+                  kontrolTuru === "fis" ? `· ${fisSonuclari.length} fiş` :
+                  `· ${fisSatirSonuclari.length} satır`
+                ) : islemModu === "olusturma" ? "· XML Oluşturma" : "· XML Birleştirme"}
+              </span>
             </div>
 
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary px-2 ms-2"
-              onClick={() => window.print()}
-              title="Yazdır"
-            >
-              <IconPrinter size={15} />
-            </button>
-          </div>
-        </div>
-
-        {/* Satır 2: Ekonomik Yatay Seçimler ve Filtreler */}
-        {islemModu === "kontrol" && (
-          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            {/* Sol: Tarih ve No Filtreleri */}
-            <div className="d-flex flex-wrap align-items-center gap-2">
-              <div className="d-flex align-items-center gap-1">
-                <span className="small text-secondary fw-semibold">Tarih:</span>
-                <input
-                  type="date"
-                  className="form-control form-control-sm px-1.5"
-                  style={{ width: "130px" }}
-                  value={ilkTarih}
-                  onChange={(e) => setIlkTarih(e.target.value)}
-                />
-                <span className="small text-muted">-</span>
-                <input
-                  type="date"
-                  className="form-control form-control-sm px-1.5"
-                  style={{ width: "130px" }}
-                  value={sonTarih}
-                  onChange={(e) => setSonTarih(e.target.value)}
-                />
-              </div>
-
-              <div className="d-flex align-items-center gap-1">
-                <select
-                  className="form-select form-select-sm"
-                  style={{ width: "95px" }}
-                  value={belgeIslemNoTuru}
-                  onChange={(e) => setBelgeIslemNoTuru(e.target.value as any)}
-                >
-                  <option value="seri">Seri No</option>
-                  <option value="belge">Belge No</option>
-                </select>
-                <input
-                  type="text"
-                  className="form-control form-control-sm"
-                  style={{ width: "120px" }}
-                  placeholder="No Filtre..."
-                  value={belgeIslemNo}
-                  onChange={(e) => setBelgeIslemNo(e.target.value)}
-                />
-              </div>
-
-              {/* Dikey ayraç */}
-              <div className="vr d-none d-md-block" style={{ height: "24px" }} />
-
-              {/* 4 Kontrol Eylem Butonları */}
+            {/* İşlem Modu: J- XML Dosya İşlemleri sağında ortalı */}
+            <div className="d-flex justify-content-center flex-grow-1 mx-2">
               <div className="btn-group btn-group-sm" role="group">
                 <button
                   type="button"
-                  className={`btn px-2.5 d-inline-flex align-items-center gap-1 fw-semibold ${
-                    kontrolTuru === "merkezKur" ? "btn-primary" : "btn-outline-dark"
-                  }`}
-                  onClick={handleMerkezKurKontrol}
-                  disabled={yukleniyor}
-                  title="Merkez Bankası kurlarını kontrol eder"
+                  className={`btn fw-semibold px-2.5 ${islemModu === "kontrol" ? "btn-primary" : "btn-outline-secondary bg-white"}`}
+                  onClick={() => setIslemModu("kontrol")}
                 >
-                  <IconCoins size={15} />
-                  <span>Merkez Kur</span>
-                  {merkezKurSonuclari.length > 0 && (
-                    <span className={`badge ms-1 ${kurHataliSayisi > 0 ? "bg-danger" : "bg-success"}`}>
-                      {kurHataliSayisi > 0 ? `! ${kurHataliSayisi}` : merkezKurSonuclari.length}
-                    </span>
-                  )}
+                  <IconCheck size={14} className="me-1" /> Dosya Kontrolü
                 </button>
-
                 <button
                   type="button"
-                  className={`btn px-2.5 d-inline-flex align-items-center gap-1 fw-semibold ${
-                    kontrolTuru === "firma" ? "btn-primary" : "btn-outline-dark"
-                  }`}
-                  onClick={handleFirmaKontrol}
-                  disabled={yukleniyor}
-                  title="Firma vergi, adres ve şube bilgilerini kontrol eder"
+                  className={`btn fw-semibold px-2.5 ${islemModu === "olusturma" ? "btn-primary" : "btn-outline-secondary bg-white"}`}
+                  onClick={() => setIslemModu("olusturma")}
                 >
-                  <IconBuilding size={15} />
-                  <span>Firma</span>
-                  {firmaSonucu && (
-                    <span className={`badge ms-1 ${firmaSonucu.gecerli ? "bg-success" : "bg-danger"}`}>
-                      {firmaSonucu.gecerli ? "Tamam" : "Eksik"}
-                    </span>
-                  )}
+                  <IconDownload size={14} className="me-1" /> Dosya Oluşturma
                 </button>
-
                 <button
                   type="button"
-                  className={`btn px-2.5 d-inline-flex align-items-center gap-1 fw-semibold ${
-                    kontrolTuru === "fis" ? "btn-primary" : "btn-outline-dark"
-                  }`}
-                  onClick={handleFisKontrol}
-                  disabled={yukleniyor}
-                  title="Döviz fişlerinin kimlik, vergi ve adres bilgilerini kontrol eder"
+                  className={`btn fw-semibold px-2.5 ${islemModu === "birlestirme" ? "btn-primary" : "btn-outline-secondary bg-white"}`}
+                  onClick={() => setIslemModu("birlestirme")}
                 >
-                  <IconReceipt size={15} />
-                  <span>Fiş</span>
-                  {fisSonuclari.length > 0 && (
-                    <span className={`badge ms-1 ${fisHataliSayisi > 0 ? "bg-danger" : "bg-success"}`}>
-                      {fisHataliSayisi > 0 ? `! ${fisHataliSayisi}` : fisSonuclari.length}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  className={`btn px-2.5 d-inline-flex align-items-center gap-1 fw-semibold ${
-                    kontrolTuru === "fisSatiri" ? "btn-primary" : "btn-outline-dark"
-                  }`}
-                  onClick={handleFisSatiriKontrol}
-                  disabled={yukleniyor}
-                  title="Döviz fişlerinin satır, tutar ve para kodlarını kontrol eder"
-                >
-                  <IconListDetails size={15} />
-                  <span>Fiş Satırı</span>
-                  {fisSatirSonuclari.length > 0 && (
-                    <span className={`badge ms-1 ${satirHataliSayisi > 0 ? "bg-danger" : "bg-success"}`}>
-                      {satirHataliSayisi > 0 ? `! ${satirHataliSayisi}` : fisSatirSonuclari.length}
-                    </span>
-                  )}
+                  <IconArrowsJoin size={14} className="me-1" /> Dosya Birleştirme
                 </button>
               </div>
             </div>
 
-            {/* Sağ: Tablo İçi Hızlı Arama & Tablo Boyutlandırma (En Üstte) */}
-            <div className="d-flex align-items-center gap-2">
-              {kontrolTuru === "fis" && (
-                <div className="d-flex align-items-center gap-1 bg-light border rounded px-1.5 py-0.5 shadow-2xs">
-                  <span className="small text-secondary fw-bold" style={{ fontSize: "11px" }}>Boyut:</span>
+            <div className="d-flex flex-wrap gap-2 ms-auto align-items-center">
+              {!parametreAcik && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={handleUygula}
+                  disabled={yukleniyor}
+                  title="Seçilen filtre ve parametrelerle işlemi uygula"
+                  className="d-flex align-items-center gap-1"
+                >
+                  {yukleniyor ? (
+                    <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+                  ) : (
+                    <IconSearch size={15} />
+                  )}
+                  <span>Uygula</span>
+                </Button>
+              )}
+
+              <Button
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => window.print()}
+                title="Yazdır"
+                className="d-flex align-items-center gap-1"
+              >
+                <IconPrinter size={15} />
+                <span>Yazdır</span>
+              </Button>
+
+              {parametreAcik ? (
+                <Button
+                  size="sm"
+                  variant="light"
+                  onClick={() => setParametreAcik(false)}
+                  title="Parametreleri gizle"
+                  className="d-flex align-items-center"
+                >
+                  <IconChevronUp size={15} />
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  onClick={() => setParametreAcik(true)}
+                  title="Parametreleri göster"
+                  className="d-flex align-items-center gap-1"
+                >
+                  <IconAdjustments size={15} />
+                  <span>Parametreler</span>
+                </Button>
+              )}
+
+              <Button
+                size="sm"
+                variant="light"
+                onClick={handleSifirla}
+                title="Parametreleri sıfırla"
+                className="d-flex align-items-center"
+              >
+                <IconRefresh size={15} />
+              </Button>
+            </div>
+          </div>
+
+          {parametreAcik && (
+            <div className="mt-2">
+              <div
+                className="d-flex flex-column align-items-start border rounded px-3 py-2.5 bg-white shadow-2xs w-100"
+                style={{ gap: 10, background: "#f8fafc" }}
+              >
+                {/* 1. KONTROL MODU */}
+                {islemModu === "kontrol" && (
+                  <>
+                    {/* 1. Satır: Kontrol Türü (Solda en üstte) */}
+                    <div className="d-flex align-items-center gap-2 flex-wrap w-100">
+                      <div style={{ width: 95, minWidth: 95, fontSize: "12px", fontWeight: 600, color: "#475569" }} className="text-nowrap pe-1">
+                        Kontrol Türü
+                      </div>
+                      <div className="btn-group btn-group-sm" role="group">
+                        <button
+                          type="button"
+                          className={`btn px-2.5 d-inline-flex align-items-center gap-1 fw-semibold ${
+                            kontrolTuru === "merkezKur" ? "btn-primary" : "btn-outline-secondary bg-white"
+                          }`}
+                          onClick={() => {
+                            setKontrolTuru("merkezKur");
+                            if (merkezKurSonuclari.length === 0) handleMerkezKurKontrol();
+                          }}
+                          title="Merkez Bankası kurlarını kontrol eder"
+                        >
+                          <IconCoins size={14} />
+                          <span>Merkez Kur</span>
+                          {merkezKurSonuclari.length > 0 && (
+                            <span className={`badge ms-1 ${merkezKurHataliSayisi > 0 ? "bg-danger" : "bg-success"}`}>
+                              {merkezKurHataliSayisi > 0 ? `! ${merkezKurHataliSayisi}` : "Tamam"}
+                            </span>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`btn px-2.5 d-inline-flex align-items-center gap-1 fw-semibold ${
+                            kontrolTuru === "firma" ? "btn-primary" : "btn-outline-secondary bg-white"
+                          }`}
+                          onClick={() => {
+                            setKontrolTuru("firma");
+                            if (!firmaSonucu) handleFirmaKontrol();
+                          }}
+                          title="Firma vergi, adres ve şube bilgilerini kontrol eder"
+                        >
+                          <IconBuilding size={14} />
+                          <span>Firma</span>
+                          {firmaSonucu && (
+                            <span className={`badge ms-1 ${firmaSonucu.gecerli ? "bg-success" : "bg-danger"}`}>
+                              {firmaSonucu.gecerli ? "Tamam" : "Eksik"}
+                            </span>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`btn px-2.5 d-inline-flex align-items-center gap-1 fw-semibold ${
+                            kontrolTuru === "fis" ? "btn-primary" : "btn-outline-secondary bg-white"
+                          }`}
+                          onClick={() => {
+                            setKontrolTuru("fis");
+                            if (fisSonuclari.length === 0) handleFisKontrol();
+                          }}
+                          title="Döviz fişlerinin kimlik, vergi ve adres bilgilerini kontrol eder"
+                        >
+                          <IconReceipt size={14} />
+                          <span>Fiş</span>
+                          {fisSonuclari.length > 0 && (
+                            <span className={`badge ms-1 ${fisHataliSayisi > 0 ? "bg-danger" : "bg-success"}`}>
+                              {fisHataliSayisi > 0 ? `! ${fisHataliSayisi}` : fisSonuclari.length}
+                            </span>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`btn px-2.5 d-inline-flex align-items-center gap-1 fw-semibold ${
+                            kontrolTuru === "fisSatiri" ? "btn-primary" : "btn-outline-secondary bg-white"
+                          }`}
+                          onClick={() => {
+                            setKontrolTuru("fisSatiri");
+                            if (fisSatirSonuclari.length === 0) handleFisSatiriKontrol();
+                          }}
+                          title="Döviz fişlerinin satır, tutar ve para kodlarını kontrol eder"
+                        >
+                          <IconListDetails size={14} />
+                          <span>Fiş Satırı</span>
+                          {fisSatirSonuclari.length > 0 && (
+                            <span className={`badge ms-1 ${satirHataliSayisi > 0 ? "bg-danger" : "bg-success"}`}>
+                              {satirHataliSayisi > 0 ? `! ${satirHataliSayisi}` : fisSatirSonuclari.length}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Satır: Tarih Aralığı (Altında tümü) */}
+                    <div className="d-flex align-items-center gap-2 flex-wrap w-100">
+                      <div style={{ width: 95, minWidth: 95, fontSize: "12px", fontWeight: 600, color: "#475569" }} className="text-nowrap pe-1">
+                        Tarih Aralığı
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>İlk:</span>
+                        <Form.Control
+                          size="sm"
+                          type="date"
+                          style={{ width: "130px" }}
+                          value={ilkTarih}
+                          onChange={(e) => setIlkTarih(e.target.value)}
+                        />
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>Son:</span>
+                        <Form.Control
+                          size="sm"
+                          type="date"
+                          style={{ width: "130px" }}
+                          value={sonTarih}
+                          onChange={(e) => setSonTarih(e.target.value)}
+                        />
+                      </div>
+                      <div className="btn-group btn-group-sm ms-2" role="group">
+                        <button
+                          type="button"
+                          className={`btn py-0 px-2 fw-semibold ${ilkTarih === gun(0) && sonTarih === gun(0) ? "btn-secondary text-white" : "btn-outline-secondary bg-white text-dark"}`}
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => handleHizliTarih(gun(0), gun(0))}
+                        >
+                          Bugün
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn py-0 px-2 fw-semibold ${ilkTarih === gun(-1) && sonTarih === gun(-1) ? "btn-secondary text-white" : "btn-outline-secondary bg-white text-dark"}`}
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => handleHizliTarih(gun(-1), gun(-1))}
+                        >
+                          Dün
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn py-0 px-2 fw-semibold ${ilkTarih === buAyBasi() && sonTarih === gun(0) ? "btn-secondary text-white" : "btn-outline-secondary bg-white text-dark"}`}
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => handleHizliTarih(buAyBasi(), gun(0))}
+                        >
+                          Bu Ay
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn py-0 px-2 fw-semibold ${ilkTarih === gun(-7) && sonTarih === gun(0) ? "btn-secondary text-white" : "btn-outline-secondary bg-white text-dark"}`}
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => handleHizliTarih(gun(-7), gun(0))}
+                        >
+                          Son 7 Gün
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3. Satır: Vergi Sınırı + No Filtresi + Uygula Butonu */}
+                    <div className="d-flex align-items-center gap-3 flex-wrap w-100 pt-1 border-top">
+                      {/* Vergi Sınırı */}
+                      <div className="d-flex align-items-center gap-2">
+                        <div style={{ width: 95, minWidth: 95, fontSize: "12px", fontWeight: 600, color: "#475569" }} className="text-nowrap pe-1">
+                          Vergi Sınırı
+                        </div>
+                        <div className="d-flex align-items-center gap-1">
+                          <span className="small text-muted" style={{ fontSize: "11.5px" }}>TL Sınırı:</span>
+                          <Form.Control
+                            size="sm"
+                            type="number"
+                            min={0}
+                            step={5000}
+                            style={{ width: "110px" }}
+                            value={tlVergiSiniri}
+                            onChange={(e) => setTlVergiSiniri(Number(e.target.value) || 0)}
+                          />
+                          <span className="small text-muted fw-bold">₺</span>
+                        </div>
+                        <div className="d-flex align-items-center gap-1 ms-1">
+                          <span className="small text-muted" style={{ fontSize: "11.5px" }}>Dolar Sınırı:</span>
+                          <Form.Control
+                            size="sm"
+                            type="number"
+                            min={0}
+                            step={500}
+                            style={{ width: "95px" }}
+                            value={dovizVergiSiniri}
+                            onChange={(e) => setDovizVergiSiniri(Number(e.target.value) || 0)}
+                          />
+                          <span className="small text-muted fw-bold">$</span>
+                        </div>
+                      </div>
+
+                      {/* No Filtresi */}
+                      <div className="d-flex align-items-center gap-2 ms-lg-2">
+                        <div style={{ fontSize: "12px", fontWeight: 600, color: "#475569" }} className="text-nowrap">
+                          No Filtresi:
+                        </div>
+                        <Form.Select
+                          size="sm"
+                          style={{ width: "100px" }}
+                          value={belgeIslemNoTuru}
+                          onChange={(e) => setBelgeIslemNoTuru(e.target.value as any)}
+                        >
+                          <option value="seri">Seri No</option>
+                          <option value="belge">Belge No</option>
+                        </Form.Select>
+                        <Form.Control
+                          size="sm"
+                          style={{ width: "150px" }}
+                          placeholder="Tüm fişler (isteğe bağlı)"
+                          value={belgeIslemNo}
+                          onChange={(e) => setBelgeIslemNo(e.target.value)}
+                        />
+                        {belgeIslemNo && (
+                          <Button variant="link" size="sm" className="p-0 small" onClick={() => setBelgeIslemNo("")}>
+                            Temizle
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Uygula Butonu */}
+                      <div className="ms-auto">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={handleUygula}
+                          disabled={yukleniyor}
+                          title="Seçilen filtre ve parametrelerle işlemi uygula"
+                          className="d-flex align-items-center gap-1.5 px-3 fw-bold"
+                        >
+                          {yukleniyor ? (
+                            <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+                          ) : (
+                            <IconSearch size={16} />
+                          )}
+                          <span>Uygula</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* 2. OLUŞTURMA MODU */}
+                {islemModu === "olusturma" && (
+                  <>
+                    {/* 1. Satır: Tarih Aralığı */}
+                    <div className="d-flex align-items-center gap-2 flex-wrap w-100">
+                      <div style={{ width: 95, minWidth: 95, fontSize: "12px", fontWeight: 600, color: "#475569" }} className="text-nowrap pe-1">
+                        Tarih Aralığı
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>İlk:</span>
+                        <Form.Control
+                          size="sm"
+                          type="date"
+                          style={{ width: "130px" }}
+                          value={ilkTarih}
+                          onChange={(e) => setIlkTarih(e.target.value)}
+                        />
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>Son:</span>
+                        <Form.Control
+                          size="sm"
+                          type="date"
+                          style={{ width: "130px" }}
+                          value={sonTarih}
+                          onChange={(e) => setSonTarih(e.target.value)}
+                        />
+                      </div>
+                      <div className="btn-group btn-group-sm ms-2" role="group">
+                        <button
+                          type="button"
+                          className={`btn py-0 px-2 fw-semibold ${ilkTarih === gun(0) && sonTarih === gun(0) ? "btn-secondary text-white" : "btn-outline-secondary bg-white text-dark"}`}
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => handleHizliTarih(gun(0), gun(0))}
+                        >
+                          Bugün
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn py-0 px-2 fw-semibold ${ilkTarih === gun(-1) && sonTarih === gun(-1) ? "btn-secondary text-white" : "btn-outline-secondary bg-white text-dark"}`}
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => handleHizliTarih(gun(-1), gun(-1))}
+                        >
+                          Dün
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn py-0 px-2 fw-semibold ${ilkTarih === buAyBasi() && sonTarih === gun(0) ? "btn-secondary text-white" : "btn-outline-secondary bg-white text-dark"}`}
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => handleHizliTarih(buAyBasi(), gun(0))}
+                        >
+                          Bu Ay
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn py-0 px-2 fw-semibold ${ilkTarih === gun(-7) && sonTarih === gun(0) ? "btn-secondary text-white" : "btn-outline-secondary bg-white text-dark"}`}
+                          style={{ fontSize: "11px", cursor: "pointer" }}
+                          onClick={() => handleHizliTarih(gun(-7), gun(0))}
+                        >
+                          Son 7 Gün
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Satır: Dosya Bilgisi */}
+                    <div className="d-flex align-items-center gap-2 flex-wrap w-100">
+                      <div style={{ width: 95, minWidth: 95, fontSize: "12px", fontWeight: 600, color: "#475569" }} className="text-nowrap pe-1">
+                        Dosya Bilgisi
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>Hazırlama:</span>
+                        <Form.Control
+                          size="sm"
+                          type="date"
+                          style={{ width: "135px" }}
+                          value={hazirlamaTarihi}
+                          onChange={(e) => setHazirlamaTarihi(e.target.value)}
+                        />
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>No:</span>
+                        <Form.Control
+                          size="sm"
+                          type="text"
+                          style={{ width: "60px" }}
+                          className="text-center font-monospace"
+                          value={dosyaNo}
+                          onChange={(e) => setDosyaNo(e.target.value)}
+                        />
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>Adı:</span>
+                        <Form.Control
+                          size="sm"
+                          type="text"
+                          style={{ width: "160px" }}
+                          className="font-monospace"
+                          value={dosyaAdi}
+                          onChange={(e) => setDosyaAdi(e.target.value)}
+                        />
+                      </div>
+                      <Form.Check
+                        type="checkbox"
+                        id="chkIslemYok"
+                        label="İşlem Yok"
+                        className="small ms-2 fw-semibold text-secondary"
+                        checked={islemYok}
+                        onChange={(e) => setIslemYok(e.target.checked)}
+                      />
+                    </div>
+
+                    {/* 3. Satır: Açıklama + Eylemler */}
+                    <div className="d-flex align-items-center gap-2 flex-wrap w-100 pt-1 border-top">
+                      <div style={{ width: 95, minWidth: 95, fontSize: "12px", fontWeight: 600, color: "#475569" }} className="text-nowrap pe-1">
+                        Açıklama
+                      </div>
+                      <Form.Control
+                        size="sm"
+                        type="text"
+                        style={{ maxWidth: "350px" }}
+                        className="flex-grow-1"
+                        placeholder="Dönem Açıklaması..."
+                        value={aciklama}
+                        onChange={(e) => setAciklama(e.target.value)}
+                      />
+                      <div className="ms-auto d-flex align-items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={handleUygula}
+                          disabled={yukleniyor}
+                          title="Seçilen parametrelerle önizlemeyi tazeler"
+                          className="d-flex align-items-center gap-1 px-3 fw-bold"
+                        >
+                          {yukleniyor ? (
+                            <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+                          ) : (
+                            <IconSearch size={16} />
+                          )}
+                          <span>Uygula</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline-primary"
+                          onClick={() => handleXmlOlustur(false)}
+                          disabled={yukleniyor}
+                          title="XML önizlemesini tazeler"
+                        >
+                          Önizleme
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="success"
+                          onClick={() => handleXmlOlustur(true)}
+                          disabled={yukleniyor}
+                          title="XML dosyasını oluştur ve indir"
+                          className="d-flex align-items-center gap-1"
+                        >
+                          <IconDownload size={15} />
+                          <span>XML Kaydet</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* 3. BİRLEŞTİRME MODU */}
+                {islemModu === "birlestirme" && (
+                  <>
+                    {/* 1. Satır: Dosya Seçimi */}
+                    <div className="d-flex align-items-center gap-2 flex-wrap w-100">
+                      <div style={{ width: 95, minWidth: 95, fontSize: "12px", fontWeight: 600, color: "#475569" }} className="text-nowrap pe-1">
+                        Dosya Seçimi
+                      </div>
+                      <input
+                        type="file"
+                        id="kaynakXmlInputTop"
+                        accept=".xml"
+                        className="d-none"
+                        onChange={handleKaynakDosyaSec}
+                      />
+                      <label
+                        htmlFor="kaynakXmlInputTop"
+                        className={`btn btn-sm mb-0 d-inline-flex align-items-center gap-1.5 fw-semibold ${
+                          kaynakXmlText ? "btn-outline-success bg-success-subtle text-success" : "btn-outline-primary"
+                        }`}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <IconFolder size={14} />
+                        <span>1. Kaynak XML (Merkez)</span>
+                      </label>
+                      {kaynakDosyaAdi && (
+                        <span className="badge bg-success-subtle text-success border border-success small" title={kaynakDosyaAdi}>
+                          {kaynakDosyaAdi}
+                        </span>
+                      )}
+
+                      <input
+                        type="file"
+                        id="hedefXmlInputTop"
+                        accept=".xml"
+                        className="d-none"
+                        onChange={handleHedefDosyaSec}
+                      />
+                      <label
+                        htmlFor="hedefXmlInputTop"
+                        className={`btn btn-sm mb-0 d-inline-flex align-items-center gap-1.5 fw-semibold ${
+                          hedefXmlText ? "btn-outline-success bg-success-subtle text-success" : "btn-outline-secondary"
+                        }`}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <IconFolder size={14} />
+                        <span>2. Hedef XML (Şube)</span>
+                      </label>
+                      {hedefDosyaAdi && (
+                        <span className="badge bg-success-subtle text-success border border-success small" title={hedefDosyaAdi}>
+                          {hedefDosyaAdi}
+                        </span>
+                      )}
+
+                      <div className="d-flex align-items-center gap-1 ms-2">
+                        <span className="small text-muted" style={{ fontSize: "11px" }}>No:</span>
+                        <Form.Control
+                          size="sm"
+                          type="text"
+                          style={{ width: "60px" }}
+                          className="text-center font-monospace"
+                          value={dosyaNo}
+                          onChange={(e) => setDosyaNo(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2. Satır: Eylemler */}
+                    <div className="d-flex align-items-center gap-2 flex-wrap w-100 pt-1 border-top justify-content-end">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={handleUygula}
+                        disabled={yukleniyor}
+                        title="Seçilen parametrelerle önizlemeyi tazeler"
+                        className="d-flex align-items-center gap-1 px-3 fw-bold"
+                      >
+                        {yukleniyor ? (
+                          <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} />
+                        ) : (
+                          <IconSearch size={16} />
+                        )}
+                        <span>Uygula</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline-primary"
+                        onClick={() => handleXmlBirlestir(false)}
+                        disabled={yukleniyor || !kaynakXmlText || !hedefXmlText}
+                        title="Birleştirilmiş XML önizlemesi"
+                      >
+                        Önizleme
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={() => handleXmlBirlestir(true)}
+                        disabled={yukleniyor || !kaynakXmlText || !hedefXmlText}
+                        title="Birleştirilmiş XML dosyasını kaydet"
+                        className="d-flex align-items-center gap-1"
+                      >
+                        <IconDownload size={15} />
+                        <span>Birleştir ve Kaydet</span>
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </Card.Body>
+      </Card>
+
+      {/* 2. ALT PANEL: Geniş Tam Ekran Tablolar & Sonuçlar */}
+      <Row className="g-3 flex-grow-1">
+        <Col xs={12} className="d-flex flex-column">
+          <Card className="border shadow-sm w-100 bg-white flex-grow-1 d-flex flex-column" id="xml-dosya-tablo-karti">
+            {/* Tablo Üst Başlık & Sağ Toolbar Çubuğu */}
+            <Card.Header className="bg-light py-2 px-3 d-flex flex-wrap justify-content-between align-items-center border-bottom gap-2">
+              {/* SOL KISIM: Başlık, Mod Rozeti, Durum Rozeti */}
+              <div className="d-flex align-items-center gap-2 flex-wrap">
+                <span className="fw-bold d-flex align-items-center gap-1.5 text-dark" style={{ fontSize: "0.92rem" }}>
+                  <IconReportAnalytics size={18} className="text-primary flex-shrink-0" />
+                  <span>
+                    {islemModu === "kontrol" && kontrolTuru === "merkezKur" && "Merkez Bankası Kur Kontrolü"}
+                    {islemModu === "kontrol" && kontrolTuru === "firma" && "Firma VİM Bilgileri Kontrol Tablosu"}
+                    {islemModu === "kontrol" && kontrolTuru === "fis" && "Döviz Fişleri Kontrol Tablosu"}
+                    {islemModu === "kontrol" && kontrolTuru === "fisSatiri" && "Döviz Fiş Satırları Kontrol Tablosu"}
+                    {islemModu === "olusturma" && "Oluşturulan XML Dosyası ve Önizleme"}
+                    {islemModu === "birlestirme" && "Birleştirilmiş XML Çıktısı"}
+                  </span>
+                </span>
+
+                {islemModu === "kontrol" && (
+                  <Badge bg="secondary-subtle" className="text-secondary border small">
+                    {kontrolTuru === "merkezKur" && `${merkezKurHataliSayisi} hatalı fiş (${kurHataliSayisi} eksik kur, ${detayEksikSayisi} eksik detay)`}
+                    {kontrolTuru === "firma" && (firmaSonucu ? (firmaSonucu.gecerli ? "Eksiksiz" : `${firmaSonucu.eksikler.length} eksik`) : "Bekleniyor")}
+                    {kontrolTuru === "fis" && `${fisSonuclari.length} fiş (${fisHataliSayisi} hatalı)`}
+                    {kontrolTuru === "fisSatiri" && `${fisSatirSonuclari.length} satır (${satirHataliSayisi} hatalı)`}
+                  </Badge>
+                )}
+
+                {yukleniyor && (
+                  <Badge bg="primary-subtle" className="text-primary border small d-inline-flex align-items-center gap-1">
+                    <Spinner animation="border" size="sm" style={{ width: "10px", height: "10px" }} />
+                    İşlem yürütülüyor...
+                  </Badge>
+                )}
+              </div>
+
+              {/* SAĞ KISIM: Filtre Butonları, Canlı Arama Kutusu, Boyutlandırma ve Zaman Damgası */}
+              <div className="d-flex align-items-center gap-2 flex-wrap ms-auto">
+                {/* Firma Filtre Butonları */}
+                {islemModu === "kontrol" && kontrolTuru === "firma" && firmaSonucu && (
                   <div className="btn-group btn-group-sm" role="group">
                     <button
                       type="button"
-                      className="btn btn-outline-secondary btn-xs px-2 fw-bold d-inline-flex align-items-center justify-content-center"
-                      onClick={handleTabloKucult}
-                      title="Küçült (-)"
-                      style={{ height: "24px", minWidth: "28px" }}
+                      className={`btn btn-xs fw-semibold ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
+                      style={{ fontSize: "11px", padding: "2px 8px" }}
+                      onClick={() => setDurumHataFiltresi("hatali")}
                     >
-                      <IconMinus size={14} stroke={2.5} />
+                      Sadece Eksikler ({firmaSonucu.eksikler.length})
                     </button>
                     <button
                       type="button"
-                      className="btn btn-outline-secondary btn-xs px-2 font-monospace fw-semibold"
-                      onClick={handleTabloBoyutSifirla}
-                      title="Varsayılan Boyuta Sıfırla (%100)"
-                      style={{ fontSize: "11px", height: "24px" }}
+                      className={`btn btn-xs fw-semibold ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
+                      style={{ fontSize: "11px", padding: "2px 8px" }}
+                      onClick={() => setDurumHataFiltresi("hepsi")}
                     >
-                      %{Math.round((tabloYaziBoyutu / 11) * 100)}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-xs px-2 fw-bold d-inline-flex align-items-center justify-content-center"
-                      onClick={handleTabloBuyut}
-                      title="Büyüt (+)"
-                      style={{ height: "24px", minWidth: "28px" }}
-                    >
-                      <IconPlus size={14} stroke={2.5} />
+                      Tüm Firma Bilgileri
                     </button>
                   </div>
+                )}
+
+                {/* Fiş Filtre Butonları */}
+                {islemModu === "kontrol" && kontrolTuru === "fis" && (
+                  <div className="d-flex align-items-center gap-1">
+                    <div className="btn-group btn-group-sm" role="group">
+                      <button
+                        type="button"
+                        className={`btn btn-xs fw-semibold ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
+                        style={{ fontSize: "11px", padding: "2px 8px" }}
+                        onClick={() => setDurumHataFiltresi("hatali")}
+                      >
+                        Hatalılar ({fisHataliSayisi})
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-xs fw-semibold ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
+                        style={{ fontSize: "11px", padding: "2px 8px" }}
+                        onClick={() => setDurumHataFiltresi("hepsi")}
+                      >
+                        Tümü ({fisSonuclari.length})
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-xs fw-semibold ${durumHataFiltresi === "gecerli" ? "btn-success text-white" : "btn-outline-success"}`}
+                        style={{ fontSize: "11px", padding: "2px 8px" }}
+                        onClick={() => setDurumHataFiltresi("gecerli")}
+                      >
+                        Geçerliler ({fisSonuclari.length - fisHataliSayisi})
+                      </button>
+                    </div>
+                    <select
+                      className="form-select form-select-sm py-0 px-1.5 fw-semibold"
+                      style={{ fontSize: "11px", height: "26px", width: "135px" }}
+                      value={durumHataFiltresi}
+                      onChange={(e) => setDurumHataFiltresi(e.target.value)}
+                    >
+                      <option value="hatali">Filtre: Hatalılar</option>
+                      <option value="hepsi">Filtre: Tümü</option>
+                      <option value="gecerli">Filtre: Geçerliler</option>
+                      <option value="adres">Hata: Adres Eksik</option>
+                      <option value="tckn">Hata: TCKN / VKN</option>
+                      <option value="baba">Hata: Baba Adı</option>
+                      <option value="il">Hata: İl / İlçe</option>
+                      <option value="seri">Hata: Seri / Belge</option>
+                      <option value="unvan">Hata: Müşteri Ünvanı</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Fiş Satırı Filtre Butonları */}
+                {islemModu === "kontrol" && kontrolTuru === "fisSatiri" && (
+                  <div className="btn-group btn-group-sm" role="group">
+                    <button
+                      type="button"
+                      className={`btn btn-xs fw-semibold ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
+                      style={{ fontSize: "11px", padding: "2px 8px" }}
+                      onClick={() => setDurumHataFiltresi("hatali")}
+                    >
+                      Hatalı Satırlar ({satirHataliSayisi})
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-xs fw-semibold ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
+                      style={{ fontSize: "11px", padding: "2px 8px" }}
+                      onClick={() => setDurumHataFiltresi("hepsi")}
+                    >
+                      Tümü ({fisSatirSonuclari.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-xs fw-semibold ${durumHataFiltresi === "gecerli" ? "btn-success text-white" : "btn-outline-success"}`}
+                      style={{ fontSize: "11px", padding: "2px 8px" }}
+                      onClick={() => setDurumHataFiltresi("gecerli")}
+                    >
+                      Geçerli Satırlar ({fisSatirSonuclari.length - satirHataliSayisi})
+                    </button>
+                  </div>
+                )}
+
+                {/* CANLI ARAMA KUTUSU (Tabloda Ara) */}
+                {islemModu === "kontrol" && (
+                  <div className="d-flex align-items-center position-relative" style={{ width: "190px" }}>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm pe-4 bg-white"
+                      style={{ fontSize: "11.5px", height: "26px" }}
+                      placeholder="Tabloda ara..."
+                      value={aramaMetni}
+                      onChange={(e) => setAramaMetni(e.target.value)}
+                    />
+                    {aramaMetni ? (
+                      <button
+                        type="button"
+                        className="btn btn-link p-0 position-absolute end-0 me-2 text-muted"
+                        onClick={() => setAramaMetni("")}
+                        style={{ fontSize: "12px", lineHeight: 1 }}
+                      >
+                        <IconX size={13} />
+                      </button>
+                    ) : (
+                      <IconSearch size={13} className="position-absolute end-0 me-2 text-muted pointer-events-none" />
+                    )}
+                  </div>
+                )}
+
+                {/* Tarih / Saat */}
+                <span className="text-muted font-monospace border-start ps-2 d-none d-xl-inline" style={{ fontSize: "11px" }}>
+                  {trTarihBicimi().format(new Date())} {new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+            </Card.Header>
+
+            <Card.Body className="p-0 d-flex flex-column flex-grow-1">
+              {filtreOzeti && (
+                <div className="px-3 py-1.5 small text-muted border-bottom text-center bg-light bg-opacity-50 font-monospace">
+                  {filtreOzeti}
                 </div>
               )}
 
-              <div className="input-group input-group-sm" style={{ width: "170px" }}>
-                <span className="input-group-text bg-white px-2">
-                  <IconSearch size={14} className="text-secondary" />
-                </span>
-                <input
-                  type="text"
-                  className="form-control px-1.5"
-                  placeholder="Tabloda ara..."
-                  value={aramaMetni}
-                  onChange={(e) => setAramaMetni(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Dosya Oluşturma Yatay Kontrolleri */}
-        {islemModu === "olusturma" && (
-          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div className="d-flex flex-wrap align-items-center gap-2">
-              <div className="d-flex align-items-center gap-1">
-                <span className="small text-secondary fw-semibold">Hazırlama:</span>
-                <input
-                  type="date"
-                  className="form-control form-control-sm px-1.5"
-                  style={{ width: "130px" }}
-                  value={hazirlamaTarihi}
-                  onChange={(e) => setHazirlamaTarihi(e.target.value)}
-                />
-              </div>
-
-              <div className="d-flex align-items-center gap-1">
-                <span className="small text-secondary fw-semibold">Dönem:</span>
-                <input
-                  type="date"
-                  className="form-control form-control-sm px-1.5"
-                  style={{ width: "130px" }}
-                  value={ilkTarih}
-                  onChange={(e) => setIlkTarih(e.target.value)}
-                />
-                <span className="small text-muted">-</span>
-                <input
-                  type="date"
-                  className="form-control form-control-sm px-1.5"
-                  style={{ width: "130px" }}
-                  value={sonTarih}
-                  onChange={(e) => setSonTarih(e.target.value)}
-                />
-              </div>
-
-              <div className="d-flex align-items-center gap-1">
-                <span className="small text-secondary fw-semibold">Dosya No:</span>
-                <input
-                  type="text"
-                  className="form-control form-control-sm text-center"
-                  style={{ width: "55px" }}
-                  value={dosyaNo}
-                  onChange={(e) => setDosyaNo(e.target.value)}
-                />
-              </div>
-
-              <div className="form-check mb-0 ms-1">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="islemYokTopCheck"
-                  checked={islemYok}
-                  onChange={(e) => setIslemYok(e.target.checked)}
-                />
-                <label className="form-check-label small fw-semibold text-secondary" htmlFor="islemYokTopCheck">
-                  İşlem Yok
-                </label>
-              </div>
-
-              <div className="d-flex align-items-center gap-1">
-                <span className="small text-secondary fw-semibold">Dosya Adı:</span>
-                <input
-                  type="text"
-                  className="form-control form-control-sm font-monospace"
-                  style={{ width: "140px" }}
-                  value={dosyaAdi}
-                  onChange={(e) => setDosyaAdi(e.target.value)}
-                />
-              </div>
-
-              <div className="d-flex align-items-center gap-1">
-                <input
-                  type="text"
-                  className="form-control form-control-sm"
-                  style={{ width: "160px" }}
-                  placeholder="Dönem Açıklaması..."
-                  value={aciklama}
-                  onChange={(e) => setAciklama(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="d-flex align-items-center gap-2">
-              <button
-                type="button"
-                className="btn btn-outline-primary btn-sm px-3 fw-semibold d-inline-flex align-items-center gap-1 shadow-xs"
-                onClick={() => handleXmlOlustur(false)}
-                disabled={yukleniyor}
-                title="XML dosyasını yeniden derler ve aşağıdaki önizlemeyi yeniler"
-              >
-                <IconSearch size={15} />
-                <span>Önizlemeyi Yenile</span>
-              </button>
-              <button
-                type="button"
-                className="btn btn-success btn-sm px-3 fw-bold d-inline-flex align-items-center gap-1 shadow-xs"
-                onClick={() => handleXmlOlustur(true)}
-                disabled={yukleniyor}
-              >
-                <IconDownload size={16} />
-                <span>XML Oluştur ve Kaydet</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Dosya Birleştirme Yatay Kontrolleri (Canlıya Uygun Doğrudan Dosya Seçimi) */}
-        {islemModu === "birlestirme" && (
-          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 p-1 bg-light rounded border">
-            <div className="d-flex flex-wrap align-items-center gap-2">
-              {/* 1. Kaynak XML (Ana Merkez) Doğrudan Dosya Seçimi */}
-              <div className="d-flex align-items-center gap-1.5">
-                <input
-                  type="file"
-                  id="kaynakXmlInputTop"
-                  accept=".xml"
-                  className="d-none"
-                  onChange={handleKaynakDosyaSec}
-                />
-                <label
-                  htmlFor="kaynakXmlInputTop"
-                  className={`btn btn-sm mb-0 d-inline-flex align-items-center gap-1.5 fw-semibold ${
-                    kaynakXmlText ? "btn-outline-success bg-success-subtle text-success" : "btn-outline-primary"
-                  }`}
-                  style={{ cursor: "pointer" }}
-                >
-                  <IconFolder size={15} />
-                  <span>1. Kaynak XML (Ana Merkez) Seç</span>
-                </label>
-                {kaynakDosyaAdi ? (
-                  <span className="badge bg-success-subtle text-success border border-success small" title={kaynakDosyaAdi}>
-                    {kaynakDosyaAdi}
-                  </span>
-                ) : (
-                  <span className="text-muted small">Seçilmedi</span>
-                )}
-              </div>
-
-              <div className="border-start ps-2 d-flex align-items-center gap-1.5">
-                {/* 2. Hedef XML (Şube Dosyası) Doğrudan Dosya Seçimi */}
-                <input
-                  type="file"
-                  id="hedefXmlInputTop"
-                  accept=".xml"
-                  className="d-none"
-                  onChange={handleHedefDosyaSec}
-                />
-                <label
-                  htmlFor="hedefXmlInputTop"
-                  className={`btn btn-sm mb-0 d-inline-flex align-items-center gap-1.5 fw-semibold ${
-                    hedefXmlText ? "btn-outline-success bg-success-subtle text-success" : "btn-outline-secondary"
-                  }`}
-                  style={{ cursor: "pointer" }}
-                >
-                  <IconFolder size={15} />
-                  <span>2. Hedef XML (Şube Dosyası) Seç</span>
-                </label>
-                {hedefDosyaAdi ? (
-                  <span className="badge bg-success-subtle text-success border border-success small" title={hedefDosyaAdi}>
-                    {hedefDosyaAdi}
-                  </span>
-                ) : (
-                  <span className="text-muted small">Seçilmedi</span>
-                )}
-              </div>
-
-              <div className="border-start ps-2 d-flex align-items-center gap-1">
-                <span className="small text-secondary fw-semibold">Dosya No:</span>
-                <input
-                  type="text"
-                  className="form-control form-control-sm text-center"
-                  style={{ width: "55px" }}
-                  value={dosyaNo}
-                  onChange={(e) => setDosyaNo(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="d-flex align-items-center gap-2">
-              <button
-                type="button"
-                className="btn btn-primary btn-sm px-3 fw-bold d-inline-flex align-items-center gap-1.5 shadow-xs"
-                onClick={() => handleXmlBirlestir(false)}
-                disabled={yukleniyor || !kaynakXmlText || !hedefXmlText}
-              >
-                <IconArrowsJoin size={16} />
-                <span>Birleştir ve Önizle</span>
-              </button>
-              <button
-                type="button"
-                className="btn btn-success btn-sm px-3 fw-bold d-inline-flex align-items-center gap-1.5 shadow-xs"
-                onClick={() => handleXmlBirlestir(true)}
-                disabled={yukleniyor || !kaynakXmlText || !hedefXmlText}
-              >
-                <IconDownload size={16} />
-                <span>Birleştir ve Kaydet</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 2. ALT PANEL: Geniş Tam Ekran Tablolar & Sonuçlar */}
-      <div className="card shadow-2xs border bg-white flex-grow-1 d-flex flex-column" style={{ minHeight: "520px" }}>
-        {/* Tablo Üst Başlık Çubuğu */}
-        <div className="px-3 py-1.5 border-bottom bg-light d-flex flex-wrap align-items-center justify-content-between gap-2">
-          <div className="d-flex align-items-center gap-2">
-            <span className="fw-bold small text-dark text-uppercase">
-              {islemModu === "kontrol" && kontrolTuru === "merkezKur" && "Merkez Bankası Kur Kontrol Tablosu"}
-              {islemModu === "kontrol" && kontrolTuru === "firma" && "Firma VİM Bilgileri Kontrol Tablosu"}
-              {islemModu === "kontrol" && kontrolTuru === "fis" && "Döviz Fişleri Kontrol Tablosu"}
-              {islemModu === "kontrol" && kontrolTuru === "fisSatiri" && "Döviz Fiş Satırları Kontrol Tablosu"}
-              {islemModu === "olusturma" && "Oluşturulan XML Dosyası ve Önizleme"}
-              {islemModu === "birlestirme" && "Birleştirilmiş XML Çıktısı"}
-            </span>
-
-            {islemModu === "kontrol" && (
-              <span className="badge bg-secondary-subtle text-secondary border small">
-                {kontrolTuru === "merkezKur" && `${merkezKurSonuclari.length} gün (${kurHataliSayisi} eksik)`}
-                {kontrolTuru === "firma" && (firmaSonucu ? (firmaSonucu.gecerli ? "Eksiksiz" : `${firmaSonucu.eksikler.length} eksik`) : "Bekleniyor")}
-                {kontrolTuru === "fis" && `${fisSonuclari.length} fiş (${fisHataliSayisi} hatalı)`}
-                {kontrolTuru === "fisSatiri" && `${fisSatirSonuclari.length} satır (${satirHataliSayisi} hatalı)`}
-              </span>
-            )}
-
-            {/* Merkez Kur Kontrolünde Filtre Butonları */}
-            {islemModu === "kontrol" && kontrolTuru === "merkezKur" && (
-              <div className="d-flex align-items-center gap-1 ms-2">
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hatali")}
-                >
-                  Hatalılar / Eksikler ({kurHataliSayisi})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hepsi")}
-                >
-                  Tümü ({merkezKurSonuclari.length})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "gecerli" ? "btn-success text-white" : "btn-outline-success"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("gecerli")}
-                >
-                  Mevcut ({merkezKurSonuclari.length - kurHataliSayisi})
-                </button>
-              </div>
-            )}
-
-            {/* Firma Kontrolünde Filtre Butonları */}
-            {islemModu === "kontrol" && kontrolTuru === "firma" && firmaSonucu && (
-              <div className="d-flex align-items-center gap-1 ms-2">
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hatali")}
-                >
-                  Sadece Hatalar / Eksikler ({firmaSonucu.eksikler.length})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hepsi")}
-                >
-                  Tüm Firma Bilgileri
-                </button>
-              </div>
-            )}
-
-            {/* Fiş Satırı Kontrolünde Filtre Butonları */}
-            {islemModu === "kontrol" && kontrolTuru === "fisSatiri" && (
-              <div className="d-flex align-items-center gap-1 ms-2">
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hatali")}
-                >
-                  Hatalı Satırlar ({satirHataliSayisi})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hepsi")}
-                >
-                  Tümü ({fisSatirSonuclari.length})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "gecerli" ? "btn-success text-white" : "btn-outline-success"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("gecerli")}
-                >
-                  Geçerli Satırlar ({fisSatirSonuclari.length - satirHataliSayisi})
-                </button>
-              </div>
-            )}
-
-            {/* Fiş Kontrolünde Durum/Hata Hızlı Filtre Butonları */}
-            {islemModu === "kontrol" && kontrolTuru === "fis" && (
-              <div className="d-flex align-items-center gap-1 ms-2">
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hatali" ? "btn-danger text-white" : "btn-outline-danger"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hatali")}
-                >
-                  Hatalılar ({fisHataliSayisi})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "hepsi" ? "btn-dark text-white" : "btn-outline-secondary"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("hepsi")}
-                >
-                  Tümü ({fisSonuclari.length})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${durumHataFiltresi === "gecerli" ? "btn-success text-white" : "btn-outline-success"}`}
-                  style={{ fontSize: "11px", padding: "1px 6px" }}
-                  onClick={() => setDurumHataFiltresi("gecerli")}
-                >
-                  Geçerliler ({fisSonuclari.length - fisHataliSayisi})
-                </button>
-                <select
-                  className="form-select form-select-sm py-0 px-1.5 fw-semibold"
-                  style={{ fontSize: "11px", height: "24px", width: "145px" }}
-                  value={durumHataFiltresi}
-                  onChange={(e) => setDurumHataFiltresi(e.target.value)}
-                >
-                  <option value="hatali">Filtre: Hatalılar</option>
-                  <option value="hepsi">Filtre: Tümü</option>
-                  <option value="gecerli">Filtre: Geçerliler</option>
-                  <option value="adres">Hata: Adres Eksik</option>
-                  <option value="tckn">Hata: TCKN / VKN</option>
-                  <option value="baba">Hata: Baba Adı</option>
-                  <option value="il">Hata: İl / İlçe</option>
-                  <option value="seri">Hata: Seri / Belge</option>
-                  <option value="unvan">Hata: Müşteri Ünvanı</option>
-                </select>
-
-                {/* En Üstte Büyüt / Küçült Tablo Boyutlandırma Kontrolleri */}
-                <div className="d-flex align-items-center gap-1 border-start ps-2 ms-1">
-                  <span className="small text-secondary fw-semibold" style={{ fontSize: "11px" }}>Boyut:</span>
-                  <div className="btn-group btn-group-sm" role="group">
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-xs px-2 fw-bold d-inline-flex align-items-center justify-content-center"
-                      onClick={handleTabloKucult}
-                      title="Küçült (-)"
-                      style={{ height: "24px", minWidth: "28px" }}
-                    >
-                      <IconMinus size={14} stroke={2.5} />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-xs px-2 font-monospace fw-semibold"
-                      onClick={handleTabloBoyutSifirla}
-                      title="Sıfırla (%100)"
-                      style={{ fontSize: "11px", height: "24px" }}
-                    >
-                      %{Math.round((tabloYaziBoyutu / 11) * 100)}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-xs px-2 fw-bold d-inline-flex align-items-center justify-content-center"
-                      onClick={handleTabloBuyut}
-                      title="Büyüt (+)"
-                      style={{ height: "24px", minWidth: "28px" }}
-                    >
-                      <IconPlus size={14} stroke={2.5} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {yukleniyor && (
-              <span className="badge bg-primary-subtle text-primary border small d-inline-flex align-items-center gap-1">
-                <span className="spinner-border spinner-border-sm" style={{ width: "10px", height: "10px" }}></span>
-                İşlem yürütülüyor...
-              </span>
-            )}
-          </div>
-
-          <span className="text-muted font-monospace" style={{ fontSize: "11px" }}>
-            {trTarihBicimi().format(new Date())} {new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        </div>
-
-        {/* Tablo Gövdesi */}
-        <div className="flex-grow-1 overflow-auto p-0" style={{ maxHeight: "calc(100vh - 240px)", width: "100%", overflowX: "auto" }}>
-          {/* TABLO 1: MERKEZ KUR */}
-          {islemModu === "kontrol" && kontrolTuru === "merkezKur" && (
-            <table className="xml-dosya-table">
-              <thead>
-                <tr>
-                  <th style={{ width: "120px" }} className="text-center">Tarih</th>
-                  <th style={{ width: "130px" }} className="text-center">Seri / Belge No</th>
-                  <th>Açıklama</th>
-                  <th style={{ width: "100px" }} className="text-center">Durum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const filtered = merkezKurSonuclari.filter((item) => {
-                    if (durumHataFiltresi === "hatali" && item.durum !== "hata") return false;
-                    if (durumHataFiltresi === "gecerli" && item.durum === "hata") return false;
-                    if (!aramaMetni) return true;
-                    return (
-                      item.tarih.includes(aramaMetni) ||
-                      item.seriNo.toLowerCase().includes(aramaMetni.toLowerCase()) ||
-                      item.aciklama.toLowerCase().includes(aramaMetni.toLowerCase())
-                    );
-                  });
-
-                  if (merkezKurSonuclari.length === 0) {
-                    return (
+              {/* Tablo Gövdesi */}
+              <div className="flex-grow-1 overflow-auto p-0" style={{ maxHeight: "calc(100vh - 240px)", width: "100%", overflowX: "auto" }}>
+                {/* TABLO 1: MERKEZ KUR */}
+                {islemModu === "kontrol" && kontrolTuru === "merkezKur" && (
+                  <table className="xml-dosya-table">
+                    <thead>
                       <tr>
-                        <td colSpan={4} className="text-center py-4 text-muted">
-                          Henüz kontrol yapılmadı veya bu tarih aralığında fiş bulunamadı.
-                        </td>
+                        <th style={{ width: "110px" }} className="text-center">Tarih</th>
+                        <th style={{ width: "130px" }} className="text-center">Seri / Belge No</th>
+                        <th style={{ width: "140px" }} className="text-end">Fiş Tutarı (TL)</th>
+                        <th style={{ width: "130px" }} className="text-end">USD Karşılığı ($)</th>
+                        <th>Açıklama / Vergi Durumu</th>
+                        <th style={{ width: "125px" }} className="text-center">Durum</th>
                       </tr>
-                    );
-                  }
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const filtered = merkezKurSonuclari.filter((item) => {
+                          const hataliMi = item.durum === "hata" || item.detayDurumu === "eksik";
+                          if (!hataliMi) return false;
+                          if (!aramaMetni) return true;
+                          return (
+                            item.tarih.includes(aramaMetni) ||
+                            item.seriNo.toLowerCase().includes(aramaMetni.toLowerCase()) ||
+                            item.aciklama.toLowerCase().includes(aramaMetni.toLowerCase())
+                          );
+                        });
 
-                  if (filtered.length === 0) {
-                    return (
-                      <tr>
-                        <td colSpan={4} className="text-center py-4">
-                          {kurHataliSayisi === 0 ? (
-                            <div className="text-success d-flex align-items-center justify-content-center gap-2">
-                              <IconCheck size={20} />
-                              <span className="fw-semibold">Tüm Merkez Bankası kurları tanımlıdır, eksik veya hatalı kur kaydı bulunamadı.</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted">Bu filtre kriterine uygun kayıt bulunamadı.</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  }
+                        if (merkezKurSonuclari.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={6} className="text-center py-4 text-muted">
+                                Seçilen tarih aralığında vergi sınırını aşan ({tlVergiSiniri.toLocaleString("tr-TR")} ₺ veya {dovizVergiSiniri.toLocaleString("tr-TR")} $) fiş bulunamadı veya henüz kontrol yapılmadı.
+                              </td>
+                            </tr>
+                          );
+                        }
 
-                  return filtered.map((row, idx) => (
-                    <tr key={idx} className={row.durum === "hata" ? "row-error" : ""}>
-                      <td className="text-center fw-semibold">{row.tarih}</td>
-                      <td className="text-center font-monospace">{row.seriNo}</td>
-                      <td>{row.aciklama}</td>
-                      <td className="text-center">
-                        {row.durum === "tamam" ? (
-                          <span className="badge bg-success-subtle text-success border border-success">Mevcut</span>
-                        ) : (
-                          <span className="badge bg-danger text-white">Eksik</span>
-                        )}
-                      </td>
-                    </tr>
-                  ));
-                })()}
-              </tbody>
-            </table>
-          )}
+                        if (filtered.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={6} className="text-center py-4">
+                                <div className="text-success d-flex align-items-center justify-content-center gap-2">
+                                  <IconCheck size={20} />
+                                  <span className="fw-semibold">Vergi sınırını aşan tüm işlemler için Merkez Bankası kurları ve MASAK detayları eksiksizdir, herhangi bir hata veya eksik bulunamadı.</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return filtered.map((row, idx) => {
+                          const tlAsildi = (row.tutarTl ?? 0) >= tlVergiSiniri;
+                          const dovizAsildi = (row.usdKarsiligi ?? 0) >= dovizVergiSiniri;
+                          return (
+                            <tr key={idx} className={row.durum === "hata" ? "row-error" : ""}>
+                              <td className="text-center fw-semibold">{row.tarih}</td>
+                              <td className="text-center font-monospace">{row.seriNo}</td>
+                              <td className="text-end font-monospace fw-semibold">
+                                {row.tutarTl != null
+                                  ? `${row.tutarTl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
+                                  : "-"}
+                              </td>
+                              <td className="text-end font-monospace fw-semibold">
+                                {row.usdKarsiligi != null
+                                  ? `${row.usdKarsiligi.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`
+                                  : "-"}
+                              </td>
+                              <td>
+                                <div className="d-flex align-items-center gap-1.5 flex-wrap">
+                                  {tlAsildi && (
+                                    <Badge bg="warning-subtle" className="text-warning-emphasis border border-warning" style={{ fontSize: "10px" }}>
+                                      TL Sınır Üstü (≥ {tlVergiSiniri.toLocaleString("tr-TR")} ₺)
+                                    </Badge>
+                                  )}
+                                  {dovizAsildi && (
+                                    <Badge bg="info-subtle" className="text-info-emphasis border border-info" style={{ fontSize: "10px" }}>
+                                      USD Sınır Üstü (≥ {dovizVergiSiniri.toLocaleString("tr-TR")} $)
+                                    </Badge>
+                                  )}
+                                  {row.detayDurumu === "eksik" && row.detayEksikleri && row.detayEksikleri.length > 0 && (
+                                    <Badge
+                                      bg="danger-subtle"
+                                      className="text-danger border border-danger"
+                                      style={{ fontSize: "10px" }}
+                                      title={row.detayEksikleri.join(", ")}
+                                    >
+                                      Eksik Detay: {row.detayEksikleri.slice(0, 2).join(", ")}{row.detayEksikleri.length > 2 ? ` (+${row.detayEksikleri.length - 2})` : ""}
+                                    </Badge>
+                                  )}
+                                  <span className="text-secondary">{row.aciklama}</span>
+                                </div>
+                              </td>
+                              <td className="text-center align-middle">
+                                <div className="d-inline-flex flex-column align-items-center gap-1">
+                                  {row.durum === "tamam" ? (
+                                    <span className="badge bg-success-subtle text-success border border-success" style={{ fontSize: "11px" }}>
+                                      Mevcut
+                                    </span>
+                                  ) : (
+                                    <span className="badge bg-danger text-white" style={{ fontSize: "11px" }}>
+                                      Eksik Kur
+                                    </span>
+                                  )}
+                                  {row.detayDurumu === "girildi" ? (
+                                    <span
+                                      className="badge bg-success-subtle text-success border border-success"
+                                      style={{ fontSize: "9.5px", fontWeight: 600, padding: "1px 5px", letterSpacing: "-0.2px" }}
+                                      title="MASAK ve VİM mevzuatı gereği zorunlu tüm müşteri detayları girilmiştir."
+                                    >
+                                      detay girildi
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="badge bg-danger-subtle text-danger border border-danger"
+                                      style={{
+                                        fontSize: "9.5px",
+                                        fontWeight: 600,
+                                        padding: "1px 5px",
+                                        letterSpacing: "-0.2px",
+                                        cursor: row.detayEksikleri && row.detayEksikleri.length > 0 ? "help" : "default",
+                                      }}
+                                      title={
+                                        row.detayEksikleri && row.detayEksikleri.length > 0
+                                          ? `MASAK Eksik Alanlar: ${row.detayEksikleri.join(", ")}`
+                                          : "MASAK detay bilgileri eksiktir"
+                                      }
+                                    >
+                                      detay eksik
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                )}
 
           {/* TABLO 2: FİRMA KONTROLÜ */}
           {islemModu === "kontrol" && kontrolTuru === "firma" && (
@@ -1806,7 +2197,10 @@ export default function XmlDosyaPage() {
             </div>
           )}
         </div>
-      </div>
+      </Card.Body>
+    </Card>
+  </Col>
+</Row>
     </div>
   );
 }

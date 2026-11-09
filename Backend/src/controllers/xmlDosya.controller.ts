@@ -19,7 +19,7 @@ const getDbContext = (req: Request): DbContext => ({
 export class XmlDosyaController {
   public static async kontrolMerkezKur(req: Request, res: Response, next: NextFunction) {
     try {
-      const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru } = req.query;
+      const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru, tlVergiSiniri, dovizVergiSiniri, detayDurumu } = req.query;
       if (!ilkTarih || !sonTarih) {
         throw ApiError.badRequest("İlk tarih ve son tarih gereklidir.");
       }
@@ -30,6 +30,9 @@ export class XmlDosyaController {
           sonTarih: String(sonTarih),
           belgeIslemNo: belgeIslemNo ? String(belgeIslemNo) : undefined,
           belgeIslemNoTuru: belgeIslemNoTuru as any,
+          tlVergiSiniri: tlVergiSiniri !== undefined && tlVergiSiniri !== "" ? Number(tlVergiSiniri) : undefined,
+          dovizVergiSiniri: dovizVergiSiniri !== undefined && dovizVergiSiniri !== "" ? Number(dovizVergiSiniri) : undefined,
+          detayDurumu: detayDurumu as any,
         },
         getDbContext(req)
       );

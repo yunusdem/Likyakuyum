@@ -3370,6 +3370,7 @@ export class DovizFisSqlRepository {
       WHERE ISNULL(F.IPTAL, 0) = 0
         AND CAST(F.TARIH AS DATE) >= CAST(@ILK_TARIH AS DATE)
         AND CAST(F.TARIH AS DATE) <= CAST(@SON_TARIH AS DATE)
+        AND ISNULL(IST.FIS_DIZAYN_TIPI, 0) <> 1
     `;
 
     if (params.kaynakHesapId || (params.kaynakHesapUnvan && params.kaynakHesapUnvan.trim() !== "")) {
@@ -3619,6 +3620,7 @@ export class DovizFisSqlRepository {
       FROM [dbo].[TODVZ_FIS] F
       LEFT JOIN [dbo].[TODVZ_ISTATISTIK] IST ON IST.ISTATISTIK_ID = F.ISTATISTIK_ID
       WHERE ISNULL(F.IPTAL, 0) = 0
+        AND ISNULL(IST.FIS_DIZAYN_TIPI, 0) <> 1
     `;
 
     if (payload.secilenFisIdler && payload.secilenFisIdler.length > 0) {

@@ -371,7 +371,13 @@ export class CompanyService {
   public static async getAlanlar(): Promise<CompanyAlanDto[]> {
     try {
       const musteriNo = localStorage.getItem("kuyumcu_erp_musteri_no") || "";
-      const res = await apiClient.get<CompanyAlanDto[]>("/company/alanlar", musteriNo ? { musteriNo } : undefined);
+      const firmaId = localStorage.getItem("kuyumcu_erp_firma_id") || "";
+      const activeDb = localStorage.getItem("kuyumcu_erp_active_db") || "";
+      const params: Record<string, any> = {};
+      if (musteriNo) params.musteriNo = musteriNo;
+      if (firmaId) params.firmaId = firmaId;
+      if (activeDb) params.dbName = activeDb;
+      const res = await apiClient.get<CompanyAlanDto[]>("/company/alanlar", Object.keys(params).length > 0 ? params : undefined);
       if (res.data && res.data.length > 0) {
         return res.data;
       }
@@ -392,6 +398,20 @@ export class CompanyService {
         }
       }
     } catch {}
+
+    const currentDb = localStorage.getItem("kuyumcu_erp_active_db");
+    if (currentDb) {
+      const storedFirmaAdi = localStorage.getItem("kuyumcu_erp_firma_adi") || currentDb;
+      return [
+        {
+          id: currentDb,
+          kod: currentDb,
+          unvan: storedFirmaAdi,
+          dbName: currentDb,
+          aciklama: "Mevcut Veritabanı",
+        },
+      ];
+    }
 
     return [];
   }

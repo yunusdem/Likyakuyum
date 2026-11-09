@@ -14,7 +14,7 @@ const getDbContext = (req) => ({
 export class XmlDosyaController {
     static async kontrolMerkezKur(req, res, next) {
         try {
-            const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru } = req.query;
+            const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru, tlVergiSiniri, dovizVergiSiniri, detayDurumu } = req.query;
             if (!ilkTarih || !sonTarih) {
                 throw ApiError.badRequest("İlk tarih ve son tarih gereklidir.");
             }
@@ -23,6 +23,9 @@ export class XmlDosyaController {
                 sonTarih: String(sonTarih),
                 belgeIslemNo: belgeIslemNo ? String(belgeIslemNo) : undefined,
                 belgeIslemNoTuru: belgeIslemNoTuru,
+                tlVergiSiniri: tlVergiSiniri !== undefined && tlVergiSiniri !== "" ? Number(tlVergiSiniri) : undefined,
+                dovizVergiSiniri: dovizVergiSiniri !== undefined && dovizVergiSiniri !== "" ? Number(dovizVergiSiniri) : undefined,
+                detayDurumu: detayDurumu,
             }, getDbContext(req));
             return ApiResponse.ok(res, "Merkez kur kontrolü tamamlandı.", result);
         }

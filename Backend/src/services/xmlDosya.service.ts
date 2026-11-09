@@ -14,13 +14,31 @@ export interface KontrolFilter {
   sonTarih: string;
   belgeIslemNo?: string;
   belgeIslemNoTuru?: "seri" | "belge";
+  tlVergiSiniri?: number;
+  dovizVergiSiniri?: number;
+  detayDurumu?: "hepsi" | "girildi" | "eksik";
 }
 
 export interface MerkezKurKontrolItem {
+  fisId?: number;
   tarih: string;
   seriNo: string;
+  tutarTl?: number;
+  usdKarsiligi?: number;
   aciklama: string;
   durum: "tamam" | "hata";
+  detayDurumu?: "girildi" | "eksik";
+  detayEksikleri?: string[];
+  detayBilgisi?: {
+    unvan?: string;
+    vergiNo?: string;
+    adres?: string;
+    ilce?: string;
+    il?: string;
+    babaAdi?: string;
+    postaKodu?: string;
+    hukukiYapi?: string;
+  };
 }
 
 export interface FirmaKontrolResult {
@@ -307,9 +325,30 @@ export class XmlDosyaService {
     const bitis = new Date(filter.sonTarih);
     bitis.setHours(23, 59, 59, 999);
 
+    // 1) Firma tanımından vergi sınırlarını al (parametre gelmemişse veritabanındaki tanım değerleri kullanılır)
+    let tlSinir = filter.tlVergiSiniri;
+    let dovizSinir = filter.dovizVergiSiniri;
+
+    if (tlSinir === undefined || dovizSinir === undefined) {
+      try {
+        const tanimRes = await pool.request().query(
+          "SELECT TOP 1 ISNULL(TL_VERGI_SINIRI, 185000) AS TlSinir, ISNULL(DOVIZ_VERGI_SINIRI, 5000) AS DovizSinir FROM dbo.TODVZ_TANIM"
+        );
+        if (tanimRes.recordset && tanimRes.recordset.length > 0) {
+          if (tlSinir === undefined) tlSinir = Number(tanimRes.recordset[0].TlSinir) || 185000;
+          if (dovizSinir === undefined) dovizSinir = Number(tanimRes.recordset[0].DovizSinir) || 5000;
+        }
+      } catch {
+        if (tlSinir === undefined) tlSinir = 185000;
+        if (dovizSinir === undefined) dovizSinir = 5000;
+      }
+    }
+
     const req = pool.request();
     req.input("baslangic", sql.DateTime, baslangic);
     req.input("bitis", sql.DateTime, bitis);
+    req.input("tlSinir", sql.Decimal(18, 4), tlSinir || 0);
+    req.input("dovizSinir", sql.Decimal(18, 4), dovizSinir || 0);
 
     let ekFiltre = "";
     if (filter.belgeIslemNo?.trim()) {
@@ -317,6 +356,7 @@ export class XmlDosyaService {
       ekFiltre = " AND (F.SERI_NO = @belgeNo OR F.BELGE_NO = @belgeNo)";
     }
 
+    // Kullanıcı Talebi: Yalnızca TL ve Dolar vergi sınırını geçen fişler getirilir
     const query = `
       SELECT 
         F.FIS_ID,
@@ -324,17 +364,138 @@ export class XmlDosyaService {
         F.TARIH AS IslemTarihi,
         ISNULL(F.SERI_NO, '') AS SeriNo,
         ISNULL(F.BELGE_NO, '') AS BelgeNo,
-        ISNULL(F.MERKEZ_USD_KURU, 0) AS FisOnKur,
+        ISNULL(F.TOPLAM_TUTAR, 0) AS ToplamTutar,
+        ISNULL(NULLIF(NULLIF(F.MERKEZ_USD_KURU, 0), 1), 0) AS FisMerkezKur,
+        COALESCE(NULLIF(LTRIM(RTRIM(F.UNVAN)), ''), NULLIF(LTRIM(RTRIM(C.AD)), ''), '') AS Unvan,
+        COALESCE(NULLIF(LTRIM(RTRIM(F.BABA_ADI)), ''), NULLIF(LTRIM(RTRIM(C.BABA_ADI)), ''), '') AS BabaAdi,
+        COALESCE(NULLIF(LTRIM(RTRIM(F.VERGI_KIMLIK_NO)), ''), NULLIF(LTRIM(RTRIM(C.VERGI_KIMLIK_NO)), ''), '') AS VergiKimlikNo,
+        COALESCE(NULLIF(LTRIM(RTRIM(F.ADRES)), ''), NULLIF(LTRIM(RTRIM(C.ADRES)), ''), '') AS Adres,
+        COALESCE(ILC.AD, '') AS IlceAdi,
+        COALESCE(NULLIF(LTRIM(RTRIM(PK.KOD)), ''), LTRIM(RTRIM(PK.AD)), '') AS PostaKodu,
+        COALESCE(IL.KOD, CIL.KOD, '') AS IlKodu,
+        COALESCE(IL.AD, CIL.AD, '') AS IlAdi,
+        COALESCE(ULK.KOD, 'TR') AS UyrukKodu,
+        COALESCE(ULK.AD, 'TÜRKİYE') AS UlkeAdi,
+        COALESCE(HY.KOD, CASE WHEN LEN(COALESCE(NULLIF(F.VERGI_KIMLIK_NO, ''), C.VERGI_KIMLIK_NO, '')) = 10 AND F.KISILIK_TIPI = 1 THEN '18' ELSE '01' END) AS HukukiYapiKodu,
+        ISNULL(VD.AD, '') AS VergiDairesi,
+        F.KISILIK_TIPI,
+        -- Efektif USD Kuru:
+        COALESCE(
+          NULLIF(NULLIF(F.MERKEZ_USD_KURU, 0), 1),
+          NULLIF(NULLIF(F.GISE_USD_KURU, 0), 1),
+          (
+            SELECT TOP 1 S.KUR 
+            FROM dbo.TODVZ_FIS_SATIRI S 
+            JOIN dbo.TODVZ_PARA P ON P.PARA_ID = S.PARA_ID 
+            WHERE S.FIS_ID = F.FIS_ID AND UPPER(RTRIM(P.KOD)) = 'USD' AND S.KUR > 1
+            ORDER BY S.SATIR_NO
+          ),
+          (
+            SELECT TOP 1 ISNULL(K2.DOVIZ_SATIS, ISNULL(K2.EFEKTIF_SATIS, K2.DOVIZ_ALIS))
+            FROM dbo.TODVZ_KUR_TABLOSU KT2 
+            JOIN dbo.TODVZ_KUR K2 ON K2.KUR_TABLOSU_ID = KT2.KUR_TABLOSU_ID
+            JOIN dbo.TODVZ_PARA P2 ON P2.PARA_ID = K2.PARA_ID 
+            WHERE UPPER(RTRIM(P2.KOD)) = 'USD' 
+              AND CAST(KT2.TARIH AS DATE) <= CAST(F.TARIH AS DATE) 
+              AND KT2.TUR IN (1, 3)
+              AND ISNULL(K2.DOVIZ_SATIS, ISNULL(K2.EFEKTIF_SATIS, K2.DOVIZ_ALIS)) > 1
+            ORDER BY KT2.TARIH DESC, KT2.KUR_TABLOSU_ID DESC
+          ),
+          (
+            SELECT TOP 1 ISNULL(K2.DOVIZ_SATIS, ISNULL(K2.EFEKTIF_SATIS, K2.DOVIZ_ALIS))
+            FROM dbo.TODVZ_KUR_TABLOSU KT2 
+            JOIN dbo.TODVZ_KUR K2 ON K2.KUR_TABLOSU_ID = KT2.KUR_TABLOSU_ID
+            JOIN dbo.TODVZ_PARA P2 ON P2.PARA_ID = K2.PARA_ID 
+            WHERE UPPER(RTRIM(P2.KOD)) = 'USD' 
+              AND CAST(KT2.TARIH AS DATE) <= CAST(F.TARIH AS DATE)
+              AND ISNULL(K2.DOVIZ_SATIS, ISNULL(K2.EFEKTIF_SATIS, K2.DOVIZ_ALIS)) > 1
+            ORDER BY KT2.TARIH DESC, KT2.KUR_TABLOSU_ID DESC
+          ),
+          (
+            SELECT TOP 1 ISNULL(K2.DOVIZ_SATIS, ISNULL(K2.EFEKTIF_SATIS, K2.DOVIZ_ALIS))
+            FROM dbo.TODVZ_KUR K2 
+            JOIN dbo.TODVZ_PARA P2 ON P2.PARA_ID = K2.PARA_ID 
+            WHERE UPPER(RTRIM(P2.KOD)) = 'USD' 
+              AND ISNULL(K2.DOVIZ_SATIS, ISNULL(K2.EFEKTIF_SATIS, K2.DOVIZ_ALIS)) > 1
+            ORDER BY K2.KUR_TABLOSU_ID DESC
+          )
+        ) AS GecerliUsdKur,
+        -- USD Miktarı (fişte USD satırı varsa doğrudan toplamı):
+        (
+          SELECT SUM(S.MIKTAR) 
+          FROM dbo.TODVZ_FIS_SATIRI S 
+          JOIN dbo.TODVZ_PARA P ON P.PARA_ID = S.PARA_ID 
+          WHERE S.FIS_ID = F.FIS_ID AND UPPER(RTRIM(P.KOD)) = 'USD'
+        ) AS UsdMiktar,
+        -- O gün TCMB kuru var mı? (TUR IN (1, 3))
         (
           SELECT COUNT(*) 
           FROM dbo.TODVZ_KUR_TABLOSU KT
+          JOIN dbo.TODVZ_KUR K ON K.KUR_TABLOSU_ID = KT.KUR_TABLOSU_ID
+          JOIN dbo.TODVZ_PARA P ON P.PARA_ID = K.PARA_ID
           WHERE KT.TUR IN (1, 3) 
+            AND UPPER(RTRIM(P.KOD)) = 'USD'
             AND CAST(KT.TARIH AS DATE) = CAST(F.TARIH AS DATE)
         ) AS TcmbKurSayisi
       FROM dbo.TODVZ_FIS F
+      LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID = F.CARI_KART_ID
+      LEFT JOIN dbo.TODVZ_TABLO_MADDESI ILC ON ILC.TABLO_MADDESI_ID = COALESCE(F.ILCE_ID, C.ILCE_ID) AND ILC.TUR = 2
+      LEFT JOIN dbo.TODVZ_TABLO_MADDESI PK ON PK.TABLO_MADDESI_ID = COALESCE(F.POSTA_KODU_ID, C.POSTA_KODU_ID) AND PK.TUR IN (1, 4)
+      LEFT JOIN dbo.TODVZ_TABLO_MADDESI IL ON IL.TABLO_MADDESI_ID = F.IL_ID AND IL.TUR = 3
+      LEFT JOIN dbo.TODVZ_TABLO_MADDESI CIL ON CIL.TABLO_MADDESI_ID = C.IL_ID AND CIL.TUR = 3
+      LEFT JOIN dbo.TODVZ_TABLO_MADDESI HY ON HY.TABLO_MADDESI_ID = F.HUKUKI_YAPI_ID AND HY.TUR = 5
+      LEFT JOIN dbo.TODVZ_TABLO_MADDESI VD ON VD.TABLO_MADDESI_ID = F.VERGI_DAIRESI_ID AND VD.TUR = 0
+      LEFT JOIN dbo.TODVZ_ULKE ULK ON ULK.ULKE_ID = COALESCE(F.UYRUK_ID, F.ULKE_ID)
       WHERE ISNULL(F.IPTAL, 0) = 0
         AND F.TARIH >= @baslangic 
         AND F.TARIH <= @bitis
+        AND (
+          (@tlSinir = 0 AND @dovizSinir = 0)
+          OR (@tlSinir > 0 AND F.TOPLAM_TUTAR >= @tlSinir)
+          OR (@dovizSinir > 0 AND (
+            EXISTS (
+              SELECT 1 
+              FROM dbo.TODVZ_FIS_SATIRI S2 
+              JOIN dbo.TODVZ_PARA P2 ON P2.PARA_ID = S2.PARA_ID 
+              WHERE S2.FIS_ID = F.FIS_ID 
+                AND UPPER(RTRIM(P2.KOD)) = 'USD' 
+                AND S2.MIKTAR >= @dovizSinir
+            )
+            OR (
+              F.TOPLAM_TUTAR / NULLIF(
+                COALESCE(
+                  NULLIF(NULLIF(F.MERKEZ_USD_KURU, 0), 1),
+                  NULLIF(NULLIF(F.GISE_USD_KURU, 0), 1),
+                  (
+                    SELECT TOP 1 S3.KUR 
+                    FROM dbo.TODVZ_FIS_SATIRI S3 
+                    JOIN dbo.TODVZ_PARA P3 ON P3.PARA_ID = S3.PARA_ID 
+                    WHERE S3.FIS_ID = F.FIS_ID AND UPPER(RTRIM(P3.KOD)) = 'USD' AND S3.KUR > 1
+                    ORDER BY S3.SATIR_NO
+                  ),
+                  (
+                    SELECT TOP 1 ISNULL(K3.DOVIZ_SATIS, ISNULL(K3.EFEKTIF_SATIS, K3.DOVIZ_ALIS))
+                    FROM dbo.TODVZ_KUR_TABLOSU KT3 
+                    JOIN dbo.TODVZ_KUR K3 ON K3.KUR_TABLOSU_ID = KT3.KUR_TABLOSU_ID
+                    JOIN dbo.TODVZ_PARA P3 ON P3.PARA_ID = K3.PARA_ID 
+                    WHERE UPPER(RTRIM(P3.KOD)) = 'USD' 
+                      AND CAST(KT3.TARIH AS DATE) <= CAST(F.TARIH AS DATE)
+                      AND ISNULL(K3.DOVIZ_SATIS, ISNULL(K3.EFEKTIF_SATIS, K3.DOVIZ_ALIS)) > 1
+                    ORDER BY KT3.TARIH DESC, KT3.KUR_TABLOSU_ID DESC
+                  ),
+                  (
+                    SELECT TOP 1 ISNULL(K3.DOVIZ_SATIS, ISNULL(K3.EFEKTIF_SATIS, K3.DOVIZ_ALIS))
+                    FROM dbo.TODVZ_KUR K3 
+                    JOIN dbo.TODVZ_PARA P3 ON P3.PARA_ID = K3.PARA_ID 
+                    WHERE UPPER(RTRIM(P3.KOD)) = 'USD' 
+                      AND ISNULL(K3.DOVIZ_SATIS, ISNULL(K3.EFEKTIF_SATIS, K3.DOVIZ_ALIS)) > 1
+                    ORDER BY K3.KUR_TABLOSU_ID DESC
+                  )
+                ), 0
+              ) >= @dovizSinir
+            )
+          ))
+        )
         ${ekFiltre}
       ORDER BY F.TARIH ASC, F.FIS_ID ASC
     `;
@@ -343,24 +504,129 @@ export class XmlDosyaService {
     const sonuclar: MerkezKurKontrolItem[] = [];
 
     for (const row of res.recordset) {
-      const seri = row.SeriNo || row.BelgeNo || `#${row.FIS_ID}`;
-      const hasKur = Number(row.TcmbKurSayisi) > 0 || Number(row.FisOnKur) > 0;
+      const seri = (row.SeriNo || row.BelgeNo || `#${row.FIS_ID}`).trim();
+      const hasKur = Number(row.TcmbKurSayisi) > 0 || Number(row.FisMerkezKur) > 1;
+      const tutarTl = Number(row.ToplamTutar || 0);
+      const gecerliUsdKur = Number(row.GecerliUsdKur) || 0;
+      const usdMiktar = Number(row.UsdMiktar) || 0;
 
-      if (!hasKur) {
-        sonuclar.push({
-          tarih: row.TarihStr,
-          seriNo: seri,
-          aciklama: "Merkez Bankası kuru bulunamadı",
-          durum: "hata",
-        });
-      } else {
-        sonuclar.push({
-          tarih: row.TarihStr,
-          seriNo: seri,
-          aciklama: "Merkez Bankası kuru mevcut",
-          durum: "tamam",
-        });
+      // USD Karşılığı hesabı:
+      let usdKarsiligi = 0;
+      if (gecerliUsdKur > 0 && tutarTl > 0) {
+        usdKarsiligi = tutarTl / gecerliUsdKur;
+      } else if (usdMiktar > 0) {
+        usdKarsiligi = usdMiktar;
       }
+
+      // Güvenlik filtresi (Kesinlikle TL vergi sınırını veya Dolar vergi sınırını geçen fişler)
+      const tlGecti = tlSinir !== undefined && tlSinir > 0 ? tutarTl >= tlSinir : false;
+      const dovizGecti =
+        dovizSinir !== undefined && dovizSinir > 0
+          ? usdKarsiligi >= dovizSinir || usdMiktar >= dovizSinir
+          : false;
+
+      // Eğer sınırlar belirtilmişse ve ikisini de geçmiyorsa bu fişi getirme
+      if (((tlSinir || 0) > 0 || (dovizSinir || 0) > 0) && !tlGecti && !dovizGecti) {
+        continue;
+      }
+
+      // MASAK & VİM Detay Bilgisi Denetimi
+      const unvanTrim = String(row.Unvan || "").trim();
+      const vknVeyaTckn = String(row.VergiKimlikNo || "").trim();
+      const isTckn = vknVeyaTckn.length === 11 && /^\d+$/.test(vknVeyaTckn);
+      const isVkn = vknVeyaTckn.length === 10 && /^\d+$/.test(vknVeyaTckn);
+      const uyrukKodu = String(row.UyrukKodu || "TR").trim().toUpperCase();
+      const hukukiYapi = String(row.HukukiYapiKodu || "01").trim();
+
+      const detayEksikleri: string[] = [];
+
+      // 1. Müşteri Adı / Ünvanı (boş veya genel anonim adlar olamaz)
+      const isAnon =
+        !unvanTrim ||
+        ["BEYAN", "MUSTERI", "MÜŞTERİ", "PERAKENDE", "ISIMSIZ", "İSİMSİZ"].includes(
+          unvanTrim.toUpperCase()
+        );
+      if (isAnon) {
+        detayEksikleri.push("İsim / Ünvan eksik");
+      }
+
+      // 2. Kimlik / Vergi No
+      if (hukukiYapi === "18") {
+        if (!vknVeyaTckn) {
+          detayEksikleri.push("VKN eksik");
+        } else if (!isVkn) {
+          detayEksikleri.push(`VKN 10 hane olmalı (${vknVeyaTckn.length} hane)`);
+        }
+      } else {
+        if (uyrukKodu === "TR") {
+          if (!vknVeyaTckn) {
+            detayEksikleri.push("TCKN eksik");
+          } else if (!isTckn) {
+            detayEksikleri.push(`TCKN 11 hane olmalı (${vknVeyaTckn.length} hane)`);
+          }
+        } else {
+          if (!vknVeyaTckn) {
+            detayEksikleri.push("Pasaport / Kimlik No eksik");
+          }
+        }
+      }
+
+      // 3. Adres
+      if (!String(row.Adres || "").trim()) {
+        detayEksikleri.push("Adres eksik");
+      }
+
+      // 4. İlçe
+      if (!String(row.IlceAdi || "").trim()) {
+        detayEksikleri.push("İlçe eksik");
+      }
+
+      // 5. İl
+      if (!String(row.IlAdi || "").trim() && !String(row.IlKodu || "").trim()) {
+        detayEksikleri.push("İl eksik");
+      }
+
+      // 6. Posta Kodu
+      if (!String(row.PostaKodu || "").trim()) {
+        detayEksikleri.push("Posta kodu eksik");
+      }
+
+      // 7. Baba Adı (TR Vatandaşı Gerçek Kişi)
+      if (hukukiYapi !== "18" && uyrukKodu === "TR" && !String(row.BabaAdi || "").trim()) {
+        detayEksikleri.push("Baba adı eksik");
+      }
+
+      const detayDurumu: "girildi" | "eksik" = detayEksikleri.length === 0 ? "girildi" : "eksik";
+
+      // Detay filtresi varsa uygula
+      if (filter.detayDurumu === "girildi" && detayDurumu !== "girildi") {
+        continue;
+      }
+      if (filter.detayDurumu === "eksik" && detayDurumu !== "eksik") {
+        continue;
+      }
+
+      sonuclar.push({
+        fisId: row.FIS_ID,
+        tarih: row.TarihStr,
+        seriNo: seri,
+        tutarTl,
+        usdKarsiligi: Math.round(usdKarsiligi * 100) / 100,
+        aciklama: hasKur ? "Merkez Bankası kuru mevcut" : "Merkez Bankası kuru bulunamadı",
+        durum: hasKur ? "tamam" : "hata",
+        detayDurumu,
+        detayEksikleri,
+        detayBilgisi: {
+          unvan: unvanTrim,
+          vergiNo: vknVeyaTckn,
+          adres: String(row.Adres || "").trim(),
+          ilce: String(row.IlceAdi || "").trim(),
+          il: String(row.IlAdi || "").trim(),
+          babaAdi: String(row.BabaAdi || "").trim(),
+          postaKodu: String(row.PostaKodu || "").trim(),
+          hukukiYapi,
+        },
+      });
     }
 
     return sonuclar;

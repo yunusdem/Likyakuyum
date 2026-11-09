@@ -204,6 +204,7 @@ BEGIN
         FROM dbo.TODVZ_FIS f
         LEFT JOIN dbo.TODVZ_ISTATISTIK ist ON ist.ISTATISTIK_ID = f.ISTATISTIK_ID
         WHERE f.TARIH >= @Baslangic AND f.TARIH <= @Bitis
+          AND ISNULL(ist.FIS_DIZAYN_TIPI, 0) <> 1
           AND (
             @DizaynKodu IS NULL 
             OR @DizaynKodu = '' 
