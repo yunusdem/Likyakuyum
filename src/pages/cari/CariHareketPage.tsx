@@ -263,7 +263,8 @@ export const CariHareketPage: React.FC = () => {
       });
     });
 
-    if (!isEditMode) {
+    const hasBaseRows = (bakiyeSummary?.satirlar?.length || 0) > 0;
+    if (!isEditMode || !hasBaseRows) {
       lines.forEach((l) => {
         const kod = (l.paraKodu || "").trim().toUpperCase();
         const m = parseDecimal(l.meblag);
@@ -330,7 +331,8 @@ export const CariHareketPage: React.FC = () => {
     else if (bakiyeSummary?.netHasYon === "B") baseHas = -baseHas;
 
     let deltaHas = 0;
-    if (!isEditMode) {
+    const hasBaseRows = (bakiyeSummary?.satirlar?.length || 0) > 0 || (bakiyeSummary?.netHasBakiye || 0) > 0;
+    if (!isEditMode || !hasBaseRows) {
       lines.forEach((l) => {
         const kod = (l.paraKodu || "").trim().toUpperCase();
         const m = parseDecimal(l.meblag);
@@ -2176,7 +2178,7 @@ export const CariHareketPage: React.FC = () => {
                     Bakiye durumunu anlık görüntülemek için soldan cari kart seçiniz.
                   </p>
                 </div>
-              ) : !bakiyeSummary || (liveBakiyeRows.length === 0 && (bakiyeSummary?.satirlar?.length || 0) === 0) ? (
+              ) : liveBakiyeRows.length === 0 && (bakiyeSummary?.satirlar?.length || 0) === 0 ? (
                 <div className="p-4 text-center text-muted">
                   <p className="mb-0 small">Bu cariye ait henüz kayıtlı hareket veya bakiye bulunmuyor.</p>
                 </div>
@@ -2250,7 +2252,7 @@ export const CariHareketPage: React.FC = () => {
             {cariKartId && (
               <Card.Footer className="bg-light py-2 px-3 d-flex align-items-center justify-content-between">
                 <span className="small text-muted">
-                  Toplam <strong>{bakiyeSummary?.satirlar.length || 0}</strong> aktif para birimi
+                  Toplam <strong>{liveBakiyeRows.length || bakiyeSummary?.satirlar?.length || 0}</strong> aktif para birimi
                 </span>
                 <Button
                   size="sm"

@@ -442,14 +442,6 @@ export const DovizFisiPage: React.FC = () => {
     );
   }, [companyDefinitions]);
 
-  const isMasakKontroluVar = useMemo(() => {
-    if (!companyDefinitions) return true;
-    const val = companyDefinitions.FIS_MASAK_KONTROLU_VAR;
-    if (val === false || (val as any) === 0 || (val as any) === "0" || (val as any) === "false") {
-      return false;
-    }
-    return true;
-  }, [companyDefinitions]);
   const [showCariModal, setShowCariModal] = useState<boolean>(false);
   const [cariSearchTerm, setCariSearchTerm] = useState<string>("");
   const [cariSearchField, setCariSearchField] = useState<CustomerSearchField>("all");
@@ -612,6 +604,24 @@ export const DovizFisiPage: React.FC = () => {
   const [kurTuru, setKurTuru] = useState<number>(0); // 0: Efektif, 1: Döviz
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("9249");
+
+  // Fiş Dizayn Tipi 1 ise MASAK kontrolleri çalışmaz; 0, 2 veya 3 ise MASAK çalışır (firma tanımıyla birlikte)
+  const isMasakKontroluVar = useMemo(() => {
+    const statKod = (istatistikKodu || "").trim();
+    const activeStat = statKod ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === statKod))) : null;
+    const dizaynTipi = activeStat?.fisDizaynTipi ?? (activeStat as any)?.FIS_DIZAYN_TIPI ?? (activeStat as any)?.fis_dizayn_tipi ?? istatistikFisDizaynTipi;
+    if (dizaynTipi !== undefined && dizaynTipi !== null && String(dizaynTipi).trim() !== "") {
+      if (Number(dizaynTipi) === 1) {
+        return false;
+      }
+    }
+    if (!companyDefinitions) return true;
+    const val = companyDefinitions.FIS_MASAK_KONTROLU_VAR;
+    if (val === false || (val as any) === 0 || (val as any) === "0" || (val as any) === "false") {
+      return false;
+    }
+    return true;
+  }, [companyDefinitions, istatistikKodu, selectedStatistic, statisticList, istatistikId, istatistikFisDizaynTipi]);
 
   // İstatistik Kodu ve Fiş Tipi (0: Alış, 1: Satış) Uyumluluk Doğrulaması
   // Alış fişinde (0): Sadece 0 (Alış) ve 2 (Alış-Satış)
@@ -3292,6 +3302,10 @@ export const DovizFisiPage: React.FC = () => {
       limitLabel: `TL: ${tlLimit.toLocaleString("tr-TR")} ₺ | Döviz: ${dovizLimit.toLocaleString("tr-TR")} ${limitParaKodu} | Altın: ${altinLimit.toLocaleString("tr-TR")} ${altinParaKodu}`,
       limitTitle: "MASAK Yasal Bildirim Sınırı Uyarısı",
     };
+
+    if (!isMasakKontroluVar) {
+      return fallback;
+    }
 
     const validLines = lines.filter((l) => {
       const m = parseMiktar(l.miktar);
@@ -6523,7 +6537,6 @@ export const DovizFisiPage: React.FC = () => {
                                 handleSearchAndLoadFis(e.currentTarget.value);
                               }
                             }}
-                            readOnly={!kYetki.fisNoDegistirme}
                             className="font-monospace fw-bold px-2 py-1"
                             style={{ minWidth: 0, height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
                           />
@@ -6548,7 +6561,6 @@ export const DovizFisiPage: React.FC = () => {
                           value={seriNo}
                           maxLength={20}
                           onChange={(e) => setSeriNo(e.target.value.slice(0, 20))}
-                          readOnly={!kYetki.fisNoDegistirme}
                           className="font-monospace fw-bold px-2 py-1"
                           style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
                           placeholder="Otomatik"
@@ -6906,7 +6918,6 @@ export const DovizFisiPage: React.FC = () => {
                                 handleSearchAndLoadFis(e.currentTarget.value);
                               }
                             }}
-                            readOnly={!kYetki.fisNoDegistirme}
                             className="font-monospace fw-bold px-2.5 py-1"
                             style={{ minWidth: 0, height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           />
@@ -6931,7 +6942,6 @@ export const DovizFisiPage: React.FC = () => {
                           value={belgeNo}
                           maxLength={30}
                           onChange={(e) => setBelgeNo(e.target.value.slice(0, 30))}
-                            readOnly={!kYetki.fisNoDegistirme}
                           className="font-monospace fw-bold px-2.5 py-1"
                           style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           placeholder="Otomatik (Boş ise atanır)"
