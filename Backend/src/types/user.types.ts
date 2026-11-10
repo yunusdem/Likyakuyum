@@ -84,6 +84,7 @@ export interface UserModel {
   milyemPermType?: string;
   milyemPermValue?: number | string;
   iscilikGirisSekli?: number;
+  dovizZiynetGirisSekli?: number;
 
   menuPerms: UserMenuPermissions;
 
@@ -187,5 +188,6 @@ export interface TodvzKullaniciEntity {
   CAPRAZ_KUR_KONTROLU_YOK?: number | boolean | null;
   SIDEBAR_GORUNUM?: string | null;
   ISCILIK_GIRIS_SEKLI?: number | null;
+  DOVIZ_ZIYNET_GIRIS_SEKLI?: number | null;
 }
 

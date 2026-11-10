@@ -159,6 +159,11 @@ export class UserSqlRepository {
         BEGIN
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [MILYEM_TOLERANS_ORANI] FLOAT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_MILYEM_TOLERANS_ORANI DEFAULT 0;
         END;
+
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'DOVIZ_ZIYNET_GIRIS_SEKLI') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [DOVIZ_ZIYNET_GIRIS_SEKLI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_DOVIZ_ZIYNET_GIRIS_SEKLI DEFAULT 0;
+        END;
       `);
         }
         catch (e) {
@@ -213,6 +218,7 @@ export class UserSqlRepository {
             milyemPermType: milyemYetkisiFromDb(entity.MILYEM_YETKISI),
             milyemPermValue: entity.MILYEM_TOLERANS_ORANI ?? 0,
             iscilikGirisSekli: Number(entity.ISCILIK_GIRIS_SEKLI ?? 0),
+            dovizZiynetGirisSekli: Number(entity.DOVIZ_ZIYNET_GIRIS_SEKLI ?? 0),
             // Right menu permissions
             menuPerms: {
                 // Eski programın harf listeleri olduğu gibi; boş = tam yetki (services/yetki/kullaniciYetkiKural.ts harfListesi)
@@ -521,6 +527,7 @@ export class UserSqlRepository {
             request.input("GISE_KURU_DISINDA_OLABILIR", sql.Bit, toBit(user.canBeOutsideCounterRate));
             request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
             request.input("ISCILIK_GIRIS_SEKLI", sql.TinyInt, toInt(user.iscilikGirisSekli, 0));
+            request.input("DOVIZ_ZIYNET_GIRIS_SEKLI", sql.TinyInt, toInt(user.dovizZiynetGirisSekli, 0));
             await UserSqlRepository.ensureSidebarColumn(pool);
             request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (app?.sidebarStyle || "classic").slice(0, 30));
             const insertQuery = `
@@ -541,7 +548,7 @@ export class UserSqlRepository {
           [ENTEGRATOR_KULLANICI_ADI], [ENTEGRATOR_KULLANICI_SIFRESI], [E_BELGE_KULLANILIYOR],
           [MASAK_KULLANICI_ADI], [MASAK_KULLANICI_SIFRESI], [MASAK_UYARISI_VERSIN], [SUPHELI_ISLEMLER_YETKILISI],
           [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK], [SIDEBAR_GORUNUM],
-          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI]
+          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI], [DOVIZ_ZIYNET_GIRIS_SEKLI]
         )
         VALUES (
           @AD, @SIFRE, @SISTEM_YONETICISI, @YAZICI_ID, @VEZNE_ID, @KUR_YETKISI,
@@ -560,7 +567,7 @@ export class UserSqlRepository {
           @ENTEGRATOR_KULLANICI_ADI, @ENTEGRATOR_KULLANICI_SIFRESI, @E_BELGE_KULLANILIYOR,
           @MASAK_KULLANICI_ADI, @MASAK_KULLANICI_SIFRESI, @MASAK_UYARISI_VERSIN, @SUPHELI_ISLEMLER_YETKILISI,
           @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK, @SIDEBAR_GORUNUM,
-          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI
+          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI, @DOVIZ_ZIYNET_GIRIS_SEKLI
         );
 
         DECLARE @NEW_ID INT = SCOPE_IDENTITY();
@@ -660,6 +667,7 @@ export class UserSqlRepository {
             request.input("GISE_KURU_DISINDA_OLABILIR", sql.Bit, toBit(user.canBeOutsideCounterRate));
             request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
             request.input("ISCILIK_GIRIS_SEKLI", sql.TinyInt, toInt(user.iscilikGirisSekli, 0));
+            request.input("DOVIZ_ZIYNET_GIRIS_SEKLI", sql.TinyInt, toInt(user.dovizZiynetGirisSekli, 0));
             await UserSqlRepository.ensureSidebarColumn(pool);
             request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (app?.sidebarStyle || "classic").slice(0, 30));
             const updateQuery = `
@@ -730,7 +738,8 @@ export class UserSqlRepository {
           [SIDEBAR_GORUNUM] = @SIDEBAR_GORUNUM,
           [ISCILIK_GIRIS_SEKLI] = @ISCILIK_GIRIS_SEKLI,
           [MILYEM_YETKISI] = @MILYEM_YETKISI,
-          [MILYEM_TOLERANS_ORANI] = @MILYEM_TOLERANS_ORANI
+          [MILYEM_TOLERANS_ORANI] = @MILYEM_TOLERANS_ORANI,
+          [DOVIZ_ZIYNET_GIRIS_SEKLI] = @DOVIZ_ZIYNET_GIRIS_SEKLI
         WHERE [KULLANICI_ID] = @userId;
 
         ${UserSqlRepository.BASE_SELECT}

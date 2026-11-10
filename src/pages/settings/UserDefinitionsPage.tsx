@@ -48,6 +48,7 @@ import {
   IconBinoculars,
   IconLayoutSidebar,
   IconTools,
+  IconCoins,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "components/common/ERPToolbar";
@@ -320,6 +321,7 @@ const defaultNewUserTemplate: UserProfile = {
   milyemPermType: "Var",
   milyemPermValue: "0.00",
   iscilikGirisSekli: 0,
+  dovizZiynetGirisSekli: 0,
 
   menuPerms: {
     mainMenu: "Tam Yetki",
@@ -402,6 +404,7 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
     ratePermValue: normalizedRateValue,
     milyemPermType: normalizedMilyemType,
     milyemPermValue: normalizedMilyemValue,
+    dovizZiynetGirisSekli: u.dovizZiynetGirisSekli !== undefined ? Number(u.dovizZiynetGirisSekli) : 0,
     appearance: {
       ...defaultNewUserTemplate.appearance,
       ...currentApp,
@@ -963,6 +966,7 @@ const UserDefinitionsPage: React.FC = () => {
                 milyemPermType: toSaveUser.milyemPermType,
                 milyemPermValue: toSaveUser.milyemPermValue,
                 iscilikGirisSekli: currentUser.iscilikGirisSekli,
+                dovizZiynetGirisSekli: currentUser.dovizZiynetGirisSekli,
               };
               localStorage.setItem("kuyumcu_erp_user", JSON.stringify(merged));
             } catch { }
@@ -1776,6 +1780,50 @@ const UserDefinitionsPage: React.FC = () => {
                                 onClick={() => updateField("iscilikGirisSekli", 1)}
                               >
                                 Milyem
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Döviz / Ziynet Seçimi (0: Adet, 1: Miktar) */}
+                        <div className="p-2 bg-white rounded border">
+                          <div className="d-flex align-items-center justify-content-between gap-2">
+                            <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
+                              <IconCoins size={16} /> Döviz / ziynet seçimi:
+                            </span>
+                            <div
+                              className="btn-group p-0.5 bg-light rounded border flex-shrink-0"
+                              role="group"
+                              aria-label="Döviz / Ziynet Seçimi"
+                              style={{ padding: "2px" }}
+                            >
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                variant={Number(currentUser.dovizZiynetGirisSekli || 0) === 0 ? "primary" : "light"}
+                                className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.dovizZiynetGirisSekli || 0) === 0
+                                    ? "shadow-sm text-white"
+                                    : "text-secondary bg-transparent hover-bg-white"
+                                  }`}
+                                style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
+                                onClick={() => updateField("dovizZiynetGirisSekli", 0)}
+                              >
+                                Adet
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                variant={Number(currentUser.dovizZiynetGirisSekli || 0) === 1 ? "primary" : "light"}
+                                className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.dovizZiynetGirisSekli || 0) === 1
+                                    ? "shadow-sm text-white"
+                                    : "text-secondary bg-transparent hover-bg-white"
+                                  }`}
+                                style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
+                                onClick={() => updateField("dovizZiynetGirisSekli", 1)}
+                              >
+                                Miktar
                               </Button>
                             </div>
                           </div>

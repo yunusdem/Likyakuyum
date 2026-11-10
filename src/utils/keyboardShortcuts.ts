@@ -24,6 +24,27 @@ export const isCtrlNEvent = (e: KeyboardEvent): boolean => {
 };
 
 /**
+ * Checks if the given keyboard event represents Ctrl+K (or Cmd+K on macOS).
+ * Supports:
+ * - Windows / Linux: Ctrl+K, Ctrl+k
+ * - Mac: Control+K, Cmd+K (metaKey)
+ * - Turkish and international keyboard layouts
+ * - Case-insensitive and code-based matching
+ * - Rejects Alt / AltGr combinations
+ */
+export const isCtrlKEvent = (e: KeyboardEvent): boolean => {
+  if (!e.ctrlKey && !e.metaKey) return false;
+  if (e.altKey) return false;
+
+  const key = (e.key || "").toLowerCase();
+  if (key === "k") return true;
+  if (e.code === "KeyK") return true;
+  if (e.keyCode === 75 || e.which === 75) return true;
+
+  return false;
+};
+
+/**
  * Universally triggers the "Yeni Kayıt" / "Yeni Fiş" / "Yeni" action across any page.
  * Returns true if an action button was found and clicked, or an event was dispatched.
  */

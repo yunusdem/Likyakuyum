@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { AuthService } from "../../services/authService";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { dovizGiseKuru, kurDegistirilebilir, kurDenetle, kurDegeriniSinirla } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { kurOnayi } from "../../utils/kurYetkiDenetimi";
@@ -113,6 +114,7 @@ interface GridLineItem {
   urunTipi?: number;
   hasOrani?: number;
   gramaj?: number;
+  adet?: number | string;
   miktar: number | string;
   kur: number | string;
   komisyonOrani: number | string;
@@ -311,9 +313,10 @@ const findTurkiyeItem = (list?: { id: number; kod?: string; ad: string }[]) => {
   return null;
 };
 
-// 9 Grid Nav Columns in sequential order
+// 10 Grid Nav Columns in sequential order
 const GRID_COLUMNS = [
   "kod",
+  "adet",
   "miktar",
   "kur",
   "komisyonOrani",
@@ -327,8 +330,34 @@ type GridColumnKey = (typeof GRID_COLUMNS)[number];
 
 export const DEFAULT_CUSTOMER_NAME = "İsim beyan edilmemiştir";
 
+export const isZiynetItem = (kod?: string, ad?: string, urunTipi?: number): boolean => {
+  if (urunTipi === 3) return true;
+  const upperKod = (kod || "").trim().toUpperCase();
+  const upperAd = (ad || "").trim().toUpperCase();
+  const ziynetWords = ["CEYREK", "ÇEYREK", "YARIM", "TAM", "GREMSE", "ZIYNET", "ATA", "RESAT", "REŞAT", "HAMIT", "HAMİT"];
+  return ziynetWords.some((w) => upperKod.includes(w) || upperAd.includes(w));
+};
+
+export const isMadenItem = (kod?: string, ad?: string, urunTipi?: number): boolean => {
+  if (urunTipi === 1 || urunTipi === 2) return true;
+  const upperKod = (kod || "").trim().toUpperCase();
+  const upperAd = (ad || "").trim().toUpperCase();
+  if (isZiynetItem(kod, ad, urunTipi)) return false;
+  return (
+    ["HAS", "GA", "GUMUS", "GÜMÜŞ", "22", "14", "18", "24", "22AYAR", "14AYAR", "18AYAR", "24AYAR"].includes(upperKod) ||
+    upperKod.includes("ALTIN") || upperKod.includes("GUMUS") || upperKod.includes("GÜMÜŞ") || upperKod.endsWith("AYAR") ||
+    upperAd.includes("ALTIN") || upperAd.includes("AYAR") || upperAd.includes("BİLEZİK") || upperAd.includes("BILEZIK") || upperAd.includes("HAS") || upperAd.includes("GÜMÜŞ") || upperAd.includes("GUMUS")
+  );
+};
+
+export const isDovizOrZiynetItem = (kod?: string, ad?: string, urunTipi?: number): boolean => {
+  if (isMadenItem(kod, ad, urunTipi)) return false;
+  return true;
+};
+
 export const DovizFisiPage: React.FC = () => {
   const { user } = useAuth();
+  const userDovizZiynetGirisSekli = Number(user?.dovizZiynetGirisSekli ?? AuthService.getUser()?.dovizZiynetGirisSekli ?? 0);
   // Kullanıcı kartı yetkileri: tarih, seri/belge no, kur, komisyon, banka hesabı, MASAK uyarısı
   // (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler). Geri çağrılarda güncel değer için ref.
   const kYetki = useKullaniciYetkisi();
@@ -371,6 +400,7 @@ export const DovizFisiPage: React.FC = () => {
 
   const defaultColVisibility = {
     ad: true,
+    adet: true,
     miktar: true,
     kur: true,
     komisyonOrani: true,
@@ -762,6 +792,7 @@ export const DovizFisiPage: React.FC = () => {
       paraId: 0,
       paraKodu: "",
       paraAdi: "",
+      adet: "",
       miktar: "",
       kur: "",
       komisyonOrani: komRate > 0 ? komRate.toString() : "",
@@ -2021,7 +2052,7 @@ export const DovizFisiPage: React.FC = () => {
   const isRowFilled = useCallback((row?: GridLineItem): boolean => {
     if (!row) return false;
     const hasPara = Boolean(row.paraId || (row.paraKodu && row.paraKodu.trim() !== ""));
-    const miktarNum = parseMiktar(row.miktar);
+    const miktarNum = parseMiktar(row.miktar) || parseMiktar(row.adet);
     const isTL = row.paraKodu?.trim().toUpperCase() === "TL" || row.paraKodu?.trim().toUpperCase() === "TRY" || row.paraKodu?.trim().toUpperCase() === "TRL";
     const kurNum = parseKur(row.kur);
     return hasPara && miktarNum > 0 && (isTL || kurNum > 0);
@@ -2032,9 +2063,10 @@ export const DovizFisiPage: React.FC = () => {
     if (!row) return true;
     const hasCode = Boolean((row.paraKodu && row.paraKodu.trim() !== "") || row.paraId || (row.paraAdi && row.paraAdi.trim() !== ""));
     const hasMiktar = Boolean(row.miktar !== "" && row.miktar !== null && row.miktar !== undefined && parseMiktar(row.miktar) > 0);
+    const hasAdet = Boolean(row.adet !== "" && row.adet !== null && row.adet !== undefined && parseMiktar(row.adet) > 0);
     const hasKur = Boolean(row.kur !== "" && row.kur !== null && row.kur !== undefined && parseKur(row.kur) > 0);
     const hasTutar = Boolean(row.tutar !== "" && row.tutar !== null && row.tutar !== undefined && Number(row.tutar) > 0);
-    return !hasCode && !hasMiktar && !hasKur && !hasTutar;
+    return !hasCode && !hasMiktar && !hasAdet && !hasKur && !hasTutar;
   }, []);
 
   // Boş ve odakta olmayan satırları otomatik temizler (İlk satır daima korunur)
@@ -2169,8 +2201,10 @@ export const DovizFisiPage: React.FC = () => {
         setInvalidRowIds((prev) => ({ ...prev, [lastRow.id]: true }));
         if (!lastRow.paraId && !lastRow.paraKodu) {
           focusCell(lines.length - 1, "kod", "select");
-        } else if (!lastRow.miktar || parseMiktar(lastRow.miktar) <= 0) {
-          focusCell(lines.length - 1, "miktar", "select");
+        } else if ((!lastRow.miktar || parseMiktar(lastRow.miktar) <= 0) && (!lastRow.adet || parseMiktar(lastRow.adet) <= 0)) {
+          const isPZ = isDovizOrZiynetItem(lastRow.paraKodu, lastRow.paraAdi, lastRow.urunTipi);
+          const targetCol = isPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
+          focusCell(lines.length - 1, targetCol, "select");
         } else {
           focusCell(lines.length - 1, "kur", "select");
         }
@@ -2313,7 +2347,7 @@ export const DovizFisiPage: React.FC = () => {
   ) => {
     if (isLocked) return;
     if (field === "bmv" || field === "bmvOrani" || field === "kmv" || field === "kmvOrani") return;
-    if (field === "miktar") {
+    if (field === "miktar" || field === "adet") {
       value = formatMiktar(value);
     } else if (
       field === "kur" ||
@@ -2327,6 +2361,11 @@ export const DovizFisiPage: React.FC = () => {
       prev.map((row) => {
         if (row.id !== id) return row;
         const updated = { ...row, [field]: value };
+        if (field === "adet") {
+          updated.miktar = value;
+        } else if (field === "miktar") {
+          updated.adet = value;
+        }
 
         if (field === "paraKodu") {
           const upper = (value || "").toUpperCase().trim();
@@ -2364,7 +2403,7 @@ export const DovizFisiPage: React.FC = () => {
           }
         }
 
-        const m = field === "miktar" ? value : updated.miktar;
+        const m = (field === "miktar" || field === "adet") ? value : updated.miktar;
         const k = field === "kur" ? value : updated.kur;
         const compDef = companyDefinitionsRef.current || companyDefinitions;
         const kmvMode = getEffectiveKmvMode(compDef);
@@ -3804,8 +3843,10 @@ export const DovizFisiPage: React.FC = () => {
         if (field === "kod") {
           const prevCode = (prevRow.paraKodu || "").trim();
           handleLineFieldChange(currentRow.id, "paraKodu", prevCode);
+        } else if (field === "adet") {
+          handleLineFieldChange(currentRow.id, "adet", prevRow.adet ? String(prevRow.adet) : (prevRow.miktar ? String(prevRow.miktar) : ""));
         } else if (field === "miktar") {
-          handleLineFieldChange(currentRow.id, "miktar", prevRow.miktar ? String(prevRow.miktar) : "");
+          handleLineFieldChange(currentRow.id, "miktar", prevRow.miktar ? String(prevRow.miktar) : (prevRow.adet ? String(prevRow.adet) : ""));
         } else if (field === "kur") {
           handleLineFieldChange(currentRow.id, "kur", prevRow.kur ? String(prevRow.kur) : "");
         } else if (field === "komisyonOrani") {
@@ -3830,9 +3871,15 @@ export const DovizFisiPage: React.FC = () => {
     const maxRow = lines.length - 1;
 
     // Görünür olan navigasyon sütunlarının dinamik sırası (% BMV, BMV, % KMV ve KMV salt okunur olduğundan atlanır)
-    const isRowTL = lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TL" || lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TRY" || lines[rowIndex]?.paraKodu?.trim().toUpperCase() === "TRL";
+    const currentRow = lines[rowIndex];
+    const isRowTL = currentRow?.paraKodu?.trim().toUpperCase() === "TL" || currentRow?.paraKodu?.trim().toUpperCase() === "TRY" || currentRow?.paraKodu?.trim().toUpperCase() === "TRL";
+    const isPZ = isDovizOrZiynetItem(currentRow?.paraKodu, currentRow?.paraAdi, currentRow?.urunTipi);
+    const isAdetActive = isPZ && userDovizZiynetGirisSekli === 0;
+    const isMiktarActive = !isPZ || userDovizZiynetGirisSekli === 1;
+
     const visibleCols: GridColumnKey[] = ["kod"];
-    if (colVisibility.miktar) visibleCols.push("miktar");
+    if (isAdetActive && colVisibility.adet) visibleCols.push("adet");
+    if (isMiktarActive && colVisibility.miktar) visibleCols.push("miktar");
     if (!isRowTL && kurAcik && colVisibility.kur) visibleCols.push("kur");
     if (colVisibility.komisyonOrani) visibleCols.push("komisyonOrani");
     if (colVisibility.komisyon) visibleCols.push("komisyon");
@@ -3859,11 +3906,11 @@ export const DovizFisiPage: React.FC = () => {
       e.preventDefault();
       if (field === "kod") {
         const currentCode = (lines[rowIndex]?.paraKodu || "").trim();
-        const currentRow = lines[rowIndex];
 
         if (!currentCode) {
           // Boş ise dürbün açılmaz, bir sonraki alana geçilir
-          focusCell(rowIndex, "miktar", "select");
+          const targetCol = isPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
+          focusCell(rowIndex, targetCol, "select");
           return;
         }
 
@@ -3889,12 +3936,14 @@ export const DovizFisiPage: React.FC = () => {
           return (p.kod || "").toLowerCase().includes(t);
         });
 
-        // Yazılana göre tek veri var ise doğrudan seç ve miktar alanına geç
+        // Yazılana göre tek veri var ise doğrudan seç ve miktar/adet alanına geç
         if (matched.length === 1) {
           lastModalCallerRef.current = null;
           lastParaModalRowIndexRef.current = null;
           handleSelectCurrency(currentRow.id, matched[0]);
-          focusCell(rowIndex, "miktar", "select");
+          const targetIsPZ = isDovizOrZiynetItem(matched[0].kod, matched[0].ad, matched[0].urunTipi);
+          const targetCol = targetIsPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
+          focusCell(rowIndex, targetCol, "select");
           return;
         }
 
@@ -4156,7 +4205,13 @@ export const DovizFisiPage: React.FC = () => {
         const targetIdx = rowIndex + 1;
         cleanupEmptyRows(targetIdx);
         setActiveRowIndex(targetIdx);
-        focusCell(targetIdx, field, "select");
+        let targetField = field;
+        if (field === "adet" || field === "miktar") {
+          const targetRow = lines[targetIdx];
+          const targetIsPZ = isDovizOrZiynetItem(targetRow?.paraKodu, targetRow?.paraAdi, targetRow?.urunTipi);
+          targetField = targetIsPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
+        }
+        focusCell(targetIdx, targetField, "select");
       } else {
         handleAddRow();
       }
@@ -4169,7 +4224,13 @@ export const DovizFisiPage: React.FC = () => {
       const targetIdx = rowIndex - 1;
       cleanupEmptyRows(targetIdx);
       setActiveRowIndex(targetIdx);
-      focusCell(targetIdx, field, "select");
+      let targetField = field;
+      if (field === "adet" || field === "miktar") {
+        const targetRow = lines[targetIdx];
+        const targetIsPZ = isDovizOrZiynetItem(targetRow?.paraKodu, targetRow?.paraAdi, targetRow?.urunTipi);
+        targetField = targetIsPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
+      }
+      focusCell(targetIdx, targetField, "select");
       return;
     }
   };
@@ -4286,11 +4347,14 @@ export const DovizFisiPage: React.FC = () => {
           return;
         }
         if (m <= 0) {
+          const isPZ = isDovizOrZiynetItem(row.paraKodu, row.paraAdi, row.urunTipi);
+          const fieldLabel = isPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
           setNotification({
             type: "warning",
-            message: `${i + 1}. satırdaki (${row.paraKodu || row.paraAdi || "Döviz"}) için miktar 0 veya boş olamaz. Lütfen geçerli bir miktar giriniz.`,
+            message: `${i + 1}. satırdaki (${row.paraKodu || row.paraAdi || "Döviz"}) için ${fieldLabel} 0 veya boş olamaz. Lütfen geçerli bir ${fieldLabel} giriniz.`,
           });
           window.scrollTo({ top: 0, behavior: "smooth" });
+          setTimeout(() => focusCell(i, fieldLabel, "select"), 60);
           return;
         }
         if (!isTL && k <= 0) {
@@ -7270,6 +7334,7 @@ export const DovizFisiPage: React.FC = () => {
                 <div className="px-2 pb-1 text-muted" style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.5px" }}>GÖRÜNÜR KOLONLAR</div>
                 {([
                   { key: "ad", label: "Ad" },
+                  { key: "adet", label: "Adet" },
                   { key: "miktar", label: "Miktar" },
                   { key: "kur", label: tip === 1 ? "Satış Kuru" : "Alış Kuru" },
                   { key: "komisyonOrani", label: "Komisyon %" },
@@ -7325,6 +7390,7 @@ export const DovizFisiPage: React.FC = () => {
                   <th style={{ width: "45px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>#</th>
                   <th style={{ width: "100px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Kod</th>
                   {colVisibility.ad && <th style={{ width: "170px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Ad</th>}
+                  {colVisibility.adet && <th style={{ width: "95px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Adet</th>}
                   {colVisibility.miktar && <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Miktar</th>}
                   {colVisibility.kur && (
                     <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
@@ -7349,7 +7415,12 @@ export const DovizFisiPage: React.FC = () => {
 
                   const hasPara = Boolean(row.paraId || (row.paraKodu && row.paraKodu.trim() !== "") || (row.paraAdi && row.paraAdi.trim() !== "") || (row.kur && parseKur(row.kur) > 0));
                   const isTL = row.paraKodu?.trim().toUpperCase() === "TL" || row.paraKodu?.trim().toUpperCase() === "TRY" || row.paraKodu?.trim().toUpperCase() === "TRL";
-                  const isMiktarMissing = hasPara && (!row.miktar || String(row.miktar).trim() === "" || parseMiktar(row.miktar) <= 0);
+                  const isPZ = isDovizOrZiynetItem(row.paraKodu, row.paraAdi, row.urunTipi);
+                  const isAdetPassive = !isPZ || userDovizZiynetGirisSekli === 1;
+                  const isMiktarPassive = isPZ && userDovizZiynetGirisSekli === 0;
+
+                  const isAdetMissing = hasPara && isPZ && userDovizZiynetGirisSekli === 0 && (!row.adet || String(row.adet).trim() === "" || parseMiktar(row.adet) <= 0);
+                  const isMiktarMissing = hasPara && !isMiktarPassive && (!row.miktar || String(row.miktar).trim() === "" || parseMiktar(row.miktar) <= 0);
                   const isKurMissing = hasPara && !isTL && (!row.kur || String(row.kur).trim() === "" || parseKur(row.kur) <= 0);
 
                   return (
@@ -7430,7 +7501,9 @@ export const DovizFisiPage: React.FC = () => {
                                   lastModalCallerRef.current = null;
                                   lastParaModalRowIndexRef.current = null;
                                   handleSelectCurrency(row.id, matched[0]);
-                                  focusCell(idx, "miktar", "select");
+                                  const targetIsPZ = isDovizOrZiynetItem(matched[0].kod, matched[0].ad, matched[0].urunTipi);
+                                  const targetCol = targetIsPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
+                                  focusCell(idx, targetCol, "select");
                                   return;
                                 }
                               }
@@ -7461,30 +7534,109 @@ export const DovizFisiPage: React.FC = () => {
                         </td>
                       )}
 
+                      {/* Adet */}
+                      {colVisibility.adet && (
+                        <td
+                          className="p-0"
+                          style={{
+                            width: "95px",
+                            minWidth: "95px",
+                            borderRight: "1px solid #e2e8f0",
+                            backgroundColor: isAdetPassive ? "#e9ecef" : (isAdetMissing ? "#fee2e2" : undefined),
+                          }}
+                        >
+                          <input
+                            id={`grid-input-${idx}-adet`}
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            disabled={isLocked || isAdetPassive}
+                            readOnly={isAdetPassive}
+                            tabIndex={isAdetPassive ? -1 : undefined}
+                            className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${
+                              isAdetPassive ? "text-muted" : (isAdetMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : "")
+                            }`}
+                            style={{
+                              height: "26px",
+                              fontSize: "13px",
+                              backgroundColor: isAdetPassive ? "#e9ecef" : (isAdetMissing ? "#fee2e2" : "transparent"),
+                              border: isAdetMissing ? "2px solid #dc2626" : "none",
+                              borderRadius: isAdetMissing ? "3px" : undefined,
+                              boxShadow: isAdetMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
+                              cursor: isAdetPassive ? "not-allowed" : undefined,
+                            }}
+                            value={isAdetPassive ? "" : (row.adet ?? (row.miktar || ""))}
+                            onFocus={() => {
+                              setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
+                            }}
+                            onChange={(e) => {
+                              if (isAdetPassive) return;
+                              const input = e.target;
+                              let rawVal = input.value;
+                              if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
+                                rawVal = rawVal.replace(/^0+/, "") || "0";
+                              }
+                              const isAtEnd = (input.selectionStart ?? rawVal.length) >= rawVal.length - 1;
+                              const formatted = formatMiktar(rawVal);
+                              handleLineFieldChange(row.id, "adet", formatted);
+                              if (isAtEnd) {
+                                requestAnimationFrame(() => {
+                                  input.setSelectionRange(formatted.length, formatted.length);
+                                });
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (isAdetPassive) return;
+                              const val = e.target.value.trim();
+                              if (val !== "") {
+                                handleLineFieldChange(row.id, "adet", formatMiktar(val));
+                              }
+                            }}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "adet")}
+                            title={isAdetMissing ? "Lütfen geçerli bir adet giriniz" : undefined}
+                          />
+                        </td>
+                      )}
+
                       {/* Miktar */}
                       {colVisibility.miktar && (
-                      <td className="p-0" style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, borderRight: "1px solid #e2e8f0", backgroundColor: isMiktarMissing ? "#fee2e2" : undefined }}>
+                      <td
+                        className="p-0"
+                        style={{
+                          width: linesMiktarColWidth,
+                          minWidth: linesMiktarColWidth,
+                          borderRight: "1px solid #e2e8f0",
+                          backgroundColor: isMiktarPassive ? "#e9ecef" : (isMiktarMissing ? "#fee2e2" : undefined),
+                        }}
+                      >
                         <input
                           id={`grid-input-${idx}-miktar`}
                           type="text"
                           inputMode="decimal"
                           autoComplete="off"
-                          disabled={isLocked}
-                          className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""}`}
+                          disabled={isLocked || isMiktarPassive}
+                          readOnly={isMiktarPassive}
+                          tabIndex={isMiktarPassive ? -1 : undefined}
+                          className={`form-control form-control-sm border-0 p-0 px-2 shadow-none font-monospace text-end ${
+                            isMiktarPassive ? "text-muted" : (isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : "")
+                          }`}
                           style={{
                             height: "26px",
                             fontSize: "13px",
-                            backgroundColor: isMiktarMissing ? "#fee2e2" : "transparent",
+                            backgroundColor: isMiktarPassive ? "#e9ecef" : (isMiktarMissing ? "#fee2e2" : "transparent"),
                             border: isMiktarMissing ? "2px solid #dc2626" : "none",
                             borderRadius: isMiktarMissing ? "3px" : undefined,
                             boxShadow: isMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
+                            cursor: isMiktarPassive ? "not-allowed" : undefined,
                           }}
-                          value={row.miktar}
+                          value={isMiktarPassive ? "" : row.miktar}
                           onFocus={() => {
                             setActiveRowIndex(idx);
                             cleanupEmptyRows(idx);
                           }}
                           onChange={(e) => {
+                            if (isMiktarPassive) return;
                             const input = e.target;
                             let rawVal = input.value;
                             if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
@@ -7500,6 +7652,7 @@ export const DovizFisiPage: React.FC = () => {
                             }
                           }}
                           onBlur={(e) => {
+                            if (isMiktarPassive) return;
                             const val = e.target.value.trim();
                             if (val !== "") {
                               handleLineFieldChange(row.id, "miktar", formatMiktar(val));
@@ -8679,6 +8832,14 @@ export const DovizFisiPage: React.FC = () => {
           lastParaModalRowIndexRef.current = null;
           if (paraModalRowId) {
             handleSelectCurrency(paraModalRowId, item);
+            const rIdx = lines.findIndex((r) => r.id === paraModalRowId);
+            if (rIdx !== -1) {
+              const isPZ = isDovizOrZiynetItem(item.kod, item.ad, item.urunTipi);
+              const targetCol = isPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
+              setTimeout(() => {
+                focusCell(rIdx, targetCol, "select");
+              }, 60);
+            }
           }
           setShowParaModal(false);
           setParaModalRowId(null);

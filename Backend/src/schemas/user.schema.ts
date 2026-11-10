@@ -96,6 +96,7 @@ export const createUserSchema = z.object({
     milyemPermType: z.string().optional().default("Var"),
     milyemPermValue: flexNumber(0),
     iscilikGirisSekli: flexNumber(0),
+    dovizZiynetGirisSekli: flexNumber(0),
 
     menuPerms: menuPermissionsSchema.passthrough().optional(),
 
@@ -156,6 +157,7 @@ export const updateUserSchema = z.object({
     milyemPermType: z.string().optional(),
     milyemPermValue: flexNumber(0),
     iscilikGirisSekli: flexNumber(0),
+    dovizZiynetGirisSekli: flexNumber(0),
 
     menuPerms: menuPermissionsSchema.partial().passthrough().optional(),
 

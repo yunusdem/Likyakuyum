@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   Row,
@@ -27,6 +27,7 @@ import {
   IconCalculator,
   IconBinoculars,
   IconX,
+  IconRefresh,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
@@ -40,6 +41,184 @@ import {
 } from "../../services/productDefinitionService";
 import { onProductChanged } from "../../services/productSyncService";
 import { CariService, LookupItem } from "../../services/cariService";
+import { KurService, KurRowItem } from "../../services/kurService";
+
+export const getAnlikKurHasValues = (
+  item: { id?: number; kod?: string; ad?: string; urunTipi?: number; hasOrani?: number; hasAlisKatsayisi?: number; hasSatisKatsayisi?: number },
+  currentKurSatirlar: KurRowItem[] = []
+): { alisHas: number | ""; satisHas: number | "" } => {
+  const code = (item.kod || "").trim().toUpperCase();
+  const name = (item.ad || "").trim().toUpperCase();
+
+  // Döviz / TL ise has katsayısı geçerli değildir
+  const isCurrency = item.urunTipi === 0 || ["TL", "TRY", "USD", "EUR", "GBP", "CHF", "SAR", "AUD", "CAD"].includes(code);
+  if (isCurrency) {
+    return { alisHas: "", satisHas: "" };
+  }
+
+  // 1. Eğer ürün kartında daha önce manuel girilmiş veya kaydedilmiş pozitif katsayı varsa onu koru
+  const hasSavedAlis = item.hasAlisKatsayisi !== undefined && item.hasAlisKatsayisi !== null && Number(item.hasAlisKatsayisi) > 0;
+  const hasSavedSatis = item.hasSatisKatsayisi !== undefined && item.hasSatisKatsayisi !== null && Number(item.hasSatisKatsayisi) > 0;
+
+  let alisVal: number | "" = hasSavedAlis ? Number(item.hasAlisKatsayisi) : "";
+  let satisVal: number | "" = hasSavedSatis ? Number(item.hasSatisKatsayisi) : "";
+
+  if (hasSavedAlis && hasSavedSatis) {
+    return { alisHas: alisVal, satisHas: satisVal };
+  }
+
+  // 2. Anlık Fiyat Listesinden (TUR 0) eşleşen satırı bul
+  const kurRow = currentKurSatirlar.find(
+    (k) =>
+      (item.id && k.paraId === item.id) ||
+      (k.kod && code && k.kod.trim().toUpperCase() === code) ||
+      (k.ad && name && k.ad.trim().toUpperCase() === name)
+  );
+
+  const isGumus = item.urunTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS");
+
+  // HAS altın satırını bul
+  const hasRow =
+    currentKurSatirlar.find((k) => k.kod?.trim().toUpperCase() === "HAS") ||
+    currentKurSatirlar.find(
+      (k) =>
+        k.ad?.trim().toUpperCase() === "HAS ALTIN" ||
+        k.ad?.trim().toUpperCase() === "HAS" ||
+        k.kod?.trim().toUpperCase().startsWith("HAS")
+    ) ||
+    currentKurSatirlar.find(
+      (k) =>
+        k.kod?.trim().toUpperCase().includes("HAS") ||
+        k.ad?.trim().toUpperCase().includes("HAS")
+    );
+
+  const hasAltinAlis = hasRow
+    ? (hasRow.efektifAlis && Number(hasRow.efektifAlis) > 0
+        ? Number(hasRow.efektifAlis)
+        : (hasRow.dovizAlis && Number(hasRow.dovizAlis) > 0 ? Number(hasRow.dovizAlis) : 0))
+    : 0;
+
+  const hasAltinSatis = hasRow
+    ? (hasRow.efektifSatis && Number(hasRow.efektifSatis) > 0
+        ? Number(hasRow.efektifSatis)
+        : (hasRow.dovizSatis && Number(hasRow.dovizSatis) > 0 ? Number(hasRow.dovizSatis) : 0))
+    : 0;
+
+  // HAS gümüş satırını bul
+  const hasGumusRow =
+    currentKurSatirlar.find((k) =>
+      ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS"].includes((k.kod || "").toUpperCase().trim()) ||
+      (k.ad && ["HAS GÜMÜŞ", "GÜMÜŞ", "GUMUS"].includes(k.ad.toUpperCase().trim()))
+    );
+
+  const hasGumusAlis = hasGumusRow
+    ? (hasGumusRow.efektifAlis && Number(hasGumusRow.efektifAlis) > 0
+        ? Number(hasGumusRow.efektifAlis)
+        : (hasGumusRow.dovizAlis && Number(hasGumusRow.dovizAlis) > 0 ? Number(hasGumusRow.dovizAlis) : 0))
+    : 0;
+
+  const hasGumusSatis = hasGumusRow
+    ? (hasGumusRow.efektifSatis && Number(hasGumusRow.efektifSatis) > 0
+        ? Number(hasGumusRow.efektifSatis)
+        : (hasGumusRow.dovizSatis && Number(hasGumusRow.dovizSatis) > 0 ? Number(hasGumusRow.dovizSatis) : 0))
+    : 0;
+
+  const rowEfektifAlis = kurRow && kurRow.efektifAlis && Number(kurRow.efektifAlis) > 0
+    ? Number(kurRow.efektifAlis)
+    : (kurRow && kurRow.dovizAlis && Number(kurRow.dovizAlis) > 0 ? Number(kurRow.dovizAlis) : 0);
+
+  const rowEfektifSatis = kurRow && kurRow.efektifSatis && Number(kurRow.efektifSatis) > 0
+    ? Number(kurRow.efektifSatis)
+    : (kurRow && kurRow.dovizSatis && Number(kurRow.dovizSatis) > 0 ? Number(kurRow.dovizSatis) : 0);
+
+  // Anlık kur tablosunda doğrudan HAS_ALIS_KATSAYISI / HAS_SATIS_KATSAYISI tanımlıysa
+  if (!hasSavedAlis && kurRow?.hasAlisKatsayisi && Number(kurRow.hasAlisKatsayisi) > 0) {
+    alisVal = Number(kurRow.hasAlisKatsayisi);
+  }
+  if (!hasSavedSatis && kurRow?.hasSatisKatsayisi && Number(kurRow.hasSatisKatsayisi) > 0) {
+    satisVal = Number(kurRow.hasSatisKatsayisi);
+  }
+
+  // Efektif Alış / Satış ve HAS (Altın veya Gümüş) fiyatından türetme:
+  // Örn Altın: 22 Ayar Alış (5496) / Has Alış (6000) = 0.9160
+  // Örn Gümüş: 925 Gümüş Alış (28) / Has Gümüş Alış (30) = 0.9333
+  const baseHasAlis = isGumus ? hasGumusAlis : hasAltinAlis;
+  const baseHasSatis = isGumus ? hasGumusSatis : hasAltinSatis;
+
+  if (alisVal === "" && rowEfektifAlis > 0 && baseHasAlis > 0) {
+    alisVal = parseFloat((rowEfektifAlis / baseHasAlis).toFixed(4));
+  }
+  if (satisVal === "" && rowEfektifSatis > 0 && baseHasSatis > 0) {
+    satisVal = parseFloat((rowEfektifSatis / baseHasSatis).toFixed(4));
+  }
+
+  // 3. Bulunamadıysa: HAS oranı veya Anlık Fiyat Listesi standart altın çarpan tablosundan doldur
+  if (alisVal === "" || satisVal === "") {
+    const rawHasOrani = item.hasOrani !== undefined && item.hasOrani !== null && Number(item.hasOrani) > 0
+      ? Number(item.hasOrani)
+      : (kurRow?.hasOrani && Number(kurRow.hasOrani) > 0 ? Number(kurRow.hasOrani) : null);
+
+    let baseRatio: number | null = null;
+    if (rawHasOrani !== null && rawHasOrani > 0) {
+      baseRatio = rawHasOrani > 10 ? rawHasOrani / 1000 : rawHasOrani;
+    }
+
+    if (baseRatio === null) {
+      const norm = (code + " " + name)
+        .replace(/İ/g, "I")
+        .replace(/ı/g, "i")
+        .replace(/Ç/g, "C")
+        .replace(/ç/g, "c")
+        .replace(/Ş/g, "S")
+        .replace(/ş/g, "s")
+        .replace(/Ğ/g, "G")
+        .replace(/ğ/g, "g")
+        .replace(/Ü/g, "U")
+        .replace(/ü/g, "u")
+        .replace(/Ö/g, "O")
+        .replace(/ö/g, "o");
+
+      if (norm.includes("24") || norm.includes("995") || norm.includes("999") || norm.includes("KULCE") || norm.includes("HAS")) {
+        baseRatio = 1.0;
+      } else if (norm.includes("22") || norm.includes("916") || norm.includes("BILEZIK") || norm.includes("BURMA") || norm.includes("KORDON")) {
+        baseRatio = 0.916;
+      } else if (norm.includes("18") || norm.includes("750")) {
+        baseRatio = 0.75;
+      } else if (norm.includes("14") || norm.includes("585")) {
+        baseRatio = 0.585;
+      } else if (norm.includes("8") || norm.includes("333")) {
+        baseRatio = 0.333;
+      } else if (norm.includes("ATA 5") || norm.includes("BESLI") || norm.includes("5LI")) {
+        baseRatio = 33.08;
+      } else if (norm.includes("ATA 2.5") || norm.includes("IKIBUCUK") || norm.includes("2.5")) {
+        baseRatio = norm.includes("GREMSE") ? 16.05 : 16.54;
+      } else if (norm.includes("GREMSE")) {
+        baseRatio = 16.05;
+      } else if (norm.includes("ATA") || norm.includes("CUMHURIYET") || norm.includes("ATA LIRA")) {
+        baseRatio = 6.615;
+      } else if (norm.includes("CEYREK")) {
+        baseRatio = 1.605;
+      } else if (norm.includes("YARIM")) {
+        baseRatio = 3.21;
+      } else if (norm.includes("TAM") || norm.includes("TEKLIK") || norm.includes("LIRA") || norm.includes("ZIYNET")) {
+        baseRatio = 6.42;
+      } else if (norm.includes("RESAT") || norm.includes("HAMIT") || norm.includes("AZIZ")) {
+        baseRatio = 6.615;
+      } else if (norm.includes("HURDA")) {
+        baseRatio = norm.includes("14") ? 0.585 : norm.includes("18") ? 0.75 : norm.includes("8") ? 0.333 : 0.916;
+      } else if (norm.includes("GUMUS") || norm.includes("SILVER") || norm.includes("925")) {
+        baseRatio = 0.015;
+      }
+    }
+
+    if (baseRatio !== null) {
+      if (alisVal === "") alisVal = baseRatio;
+      if (satisVal === "") satisVal = baseRatio;
+    }
+  }
+
+  return { alisHas: alisVal, satisHas: satisVal };
+};
 
 
 const initialFormState: ProductFormData = {
@@ -112,6 +291,23 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
   const [showParaLookupModal, setShowParaLookupModal] = useState<boolean>(false);
   const [paraList, setParaList] = useState<LookupItem[]>([]);
+  const [kurSatirlar, setKurSatirlar] = useState<KurRowItem[]>([]);
+  const kurSatirlarRef = useRef<KurRowItem[]>([]);
+
+  // Load anlık kur listesi (TUR: 0)
+  const loadKurSatirlar = async (): Promise<KurRowItem[]> => {
+    try {
+      const tablo = await KurService.getKurTablosu({ tur: 0 });
+      if (tablo?.satirlar) {
+        setKurSatirlar(tablo.satirlar);
+        kurSatirlarRef.current = tablo.satirlar;
+        return tablo.satirlar;
+      }
+    } catch (e) {
+      console.warn("Anlık kur tablosu çekilemedi:", e);
+    }
+    return [];
+  };
 
   // Load para list
   const loadParaList = async () => {
@@ -131,7 +327,10 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
       setIsLoading(true);
       setAlertError(null);
 
-      const list = await ProductDefinitionService.getProducts();
+      const [list, fetchedKurSatirlar] = await Promise.all([
+        ProductDefinitionService.getProducts(),
+        loadKurSatirlar(),
+      ]);
       setProducts(list || []);
 
       if (list && list.length > 0 && targetIndex !== undefined) {
@@ -139,7 +338,7 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
           ? targetIndex
           : 0;
         setSelectedIndex(idx);
-        handleSelectProduct(list[idx], idx);
+        handleSelectProduct(list[idx], idx, fetchedKurSatirlar);
       } else {
         handleClear(false, list || []);
       }
@@ -169,7 +368,7 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
     return unsub;
   }, []);
 
-  const handleSelectProduct = (item: ProductItem, idx?: number) => {
+  const handleSelectProduct = (item: ProductItem, idx?: number, customKurList?: KurRowItem[]) => {
     setSelectedProduct(item);
     if (idx !== undefined) {
       setSelectedIndex(idx);
@@ -178,6 +377,16 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
       if (foundIdx !== -1) setSelectedIndex(foundIdx);
     }
     setIsNewRecord(false);
+
+    const effectiveKurList = customKurList || kurSatirlarRef.current || kurSatirlar;
+    const anlikHas = getAnlikKurHasValues(item, effectiveKurList);
+    const resolvedAlisHas = (item.hasAlisKatsayisi !== undefined && item.hasAlisKatsayisi !== null && Number(item.hasAlisKatsayisi) > 0)
+      ? item.hasAlisKatsayisi
+      : (anlikHas.alisHas !== "" ? anlikHas.alisHas : "");
+    const resolvedSatisHas = (item.hasSatisKatsayisi !== undefined && item.hasSatisKatsayisi !== null && Number(item.hasSatisKatsayisi) > 0)
+      ? item.hasSatisKatsayisi
+      : (anlikHas.satisHas !== "" ? anlikHas.satisHas : "");
+
     setFormData({
       kod: item.kod,
       ad: item.ad,
@@ -202,8 +411,8 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
       alimSatimKurFarki: item.alimSatimKurFarki,
       xmlParaKodu: item.xmlParaKodu || "",
       muhasebeSiraNo: item.muhasebeSiraNo,
-      hasAlisKatsayisi: item.hasAlisKatsayisi,
-      hasSatisKatsayisi: item.hasSatisKatsayisi,
+      hasAlisKatsayisi: resolvedAlisHas as any,
+      hasSatisKatsayisi: resolvedSatisHas as any,
       birim: item.birim,
       urunTipi: item.urunTipi,
     });
@@ -252,10 +461,50 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
   };
 
   const handleInputChange = (field: keyof ProductFormData, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setFormData((prev) => {
+      const updated = {
+        ...prev,
+        [field]: value,
+      };
+
+      // Eğer yeni kayıt ise veya Alış/Satış Has henüz manuel girilmediyse, kod veya ad yazıldığında Anlık Fiyat Listesinden otomatik doldur
+      if ((field === "kod" || field === "ad" || field === "urunTipi") && (!prev.hasAlisKatsayisi || !prev.hasSatisKatsayisi)) {
+        const itemToCheck = {
+          kod: field === "kod" ? value : prev.kod,
+          ad: field === "ad" ? value : prev.ad,
+          urunTipi: field === "urunTipi" ? Number(value) : prev.urunTipi,
+          hasOrani: prev.hasOrani,
+        };
+        const anlikHas = getAnlikKurHasValues(itemToCheck, kurSatirlarRef.current || kurSatirlar);
+        if ((!prev.hasAlisKatsayisi || Number(prev.hasAlisKatsayisi) === 0) && anlikHas.alisHas !== "") {
+          updated.hasAlisKatsayisi = anlikHas.alisHas as any;
+        }
+        if ((!prev.hasSatisKatsayisi || Number(prev.hasSatisKatsayisi) === 0) && anlikHas.satisHas !== "") {
+          updated.hasSatisKatsayisi = anlikHas.satisHas as any;
+        }
+      }
+
+      return updated;
+    });
+  };
+
+  const handlePullFromAnlikKur = () => {
+    const anlikHas = getAnlikKurHasValues(
+      { kod: formData.kod, ad: formData.ad, urunTipi: formData.urunTipi, hasOrani: formData.hasOrani },
+      kurSatirlarRef.current || kurSatirlar
+    );
+    if (anlikHas.alisHas !== "" || anlikHas.satisHas !== "") {
+      setFormData((prev) => ({
+        ...prev,
+        hasAlisKatsayisi: anlikHas.alisHas !== "" ? anlikHas.alisHas as any : prev.hasAlisKatsayisi,
+        hasSatisKatsayisi: anlikHas.satisHas !== "" ? anlikHas.satisHas as any : prev.hasSatisKatsayisi,
+      }));
+      setAlertSuccess("Anlık Fiyat Listesindeki değerler Alış Has ve Satış Has alanlarına aktarıldı.");
+      setTimeout(() => setAlertSuccess(null), 3000);
+    } else {
+      setAlertError("Anlık Fiyat Listesinde bu ürüne ait has katsayısı bulunamadı.");
+      setTimeout(() => setAlertError(null), 3000);
+    }
   };
 
   // Unified save handler for creating new and updating existing records
@@ -398,13 +647,19 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
         },
         {
           header: "Alış Has",
-          render: (item) => (item.hasAlisKatsayisi ? item.hasAlisKatsayisi.toFixed(4) : (item.hasOrani ? item.hasOrani.toFixed(4) : "-")),
+          render: (item) => {
+            const h = item.hasAlisKatsayisi > 0 ? item.hasAlisKatsayisi : getAnlikKurHasValues(item, kurSatirlarRef.current || kurSatirlar).alisHas;
+            return h !== "" && Number(h) > 0 ? Number(h).toFixed(4) : (item.hasOrani ? item.hasOrani.toFixed(4) : "-");
+          },
           align: "right",
           width: "12%",
         },
         {
           header: "Satış Has",
-          render: (item) => (item.hasSatisKatsayisi ? item.hasSatisKatsayisi.toFixed(4) : (item.hasOrani ? item.hasOrani.toFixed(4) : "-")),
+          render: (item) => {
+            const h = item.hasSatisKatsayisi > 0 ? item.hasSatisKatsayisi : getAnlikKurHasValues(item, kurSatirlarRef.current || kurSatirlar).satisHas;
+            return h !== "" && Number(h) > 0 ? Number(h).toFixed(4) : (item.hasOrani ? item.hasOrani.toFixed(4) : "-");
+          },
           align: "right",
           width: "12%",
         },
@@ -757,6 +1012,20 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
                         </Col>
                       </Form.Group>
 
+                      <div className="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                        <span className="small fw-bold text-primary">Has Katsayıları & Milyem</span>
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          style={{ fontSize: "11px", padding: "2px 8px" }}
+                          onClick={handlePullFromAnlikKur}
+                          title="Anlık Fiyat Listesindeki güncel kur veya çarpanlardan Alış/Satış Has değerlerini doldur"
+                        >
+                          <IconRefresh size={13} className="me-1" />
+                          Anlık Fiyat Listesinden Has Değerlerini Getir
+                        </Button>
+                      </div>
+
                       <Form.Group as={Row} className="mb-2 align-items-center g-2">
                         <Form.Label column style={labelColStyleTab2} className="small fw-semibold text-secondary text-start text-nowrap mb-0">
                           Alış Has
@@ -770,6 +1039,8 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
                             onChange={(e) => handleInputChange("hasAlisKatsayisi", e.target.value)}
                             className="font-monospace text-end text-dark"
                             style={{ maxWidth: "90px", color: "#000" }}
+                            placeholder="0.0000"
+                            title="Anlık Fiyat Listesindeki Alış Has katsayısı / milyemi"
                           />
                         </Col>
                       </Form.Group>
@@ -787,6 +1058,8 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
                             onChange={(e) => handleInputChange("hasSatisKatsayisi", e.target.value)}
                             className="font-monospace text-end text-dark"
                             style={{ maxWidth: "90px", color: "#000" }}
+                            placeholder="0.0000"
+                            title="Anlık Fiyat Listesindeki Satış Has katsayısı / milyemi"
                           />
                         </Col>
                       </Form.Group>
@@ -1099,12 +1372,18 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
           },
           {
             header: "Alış Has",
-            render: (item) => (item.hasAlisKatsayisi > 0 ? item.hasAlisKatsayisi.toFixed(4) : (item.hasOrani > 0 ? item.hasOrani.toFixed(4) : "-")),
+            render: (item) => {
+              const h = item.hasAlisKatsayisi > 0 ? item.hasAlisKatsayisi : getAnlikKurHasValues(item, kurSatirlarRef.current || kurSatirlar).alisHas;
+              return h !== "" && Number(h) > 0 ? Number(h).toFixed(4) : (item.hasOrani > 0 ? Number(item.hasOrani).toFixed(4) : "-");
+            },
             align: "right",
           },
           {
             header: "Satış Has",
-            render: (item) => (item.hasSatisKatsayisi > 0 ? item.hasSatisKatsayisi.toFixed(4) : (item.hasOrani > 0 ? item.hasOrani.toFixed(4) : "-")),
+            render: (item) => {
+              const h = item.hasSatisKatsayisi > 0 ? item.hasSatisKatsayisi : getAnlikKurHasValues(item, kurSatirlarRef.current || kurSatirlar).satisHas;
+              return h !== "" && Number(h) > 0 ? Number(h).toFixed(4) : (item.hasOrani > 0 ? Number(item.hasOrani).toFixed(4) : "-");
+            },
             align: "right",
           },
           {

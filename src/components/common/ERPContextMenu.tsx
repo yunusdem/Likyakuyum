@@ -193,7 +193,7 @@ export const ERPContextMenu: React.FC = () => {
             onClick={() => handleAction("row-kapat")}
           >
             <IconCheck size={16} className="text-primary" />
-            <span>Kalanı Kapat</span>
+            <span>Kalanı Kapat (Ctrl+K)</span>
           </button>
           <button
             type="button"
