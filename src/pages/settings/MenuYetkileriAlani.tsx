@@ -6,6 +6,7 @@ import {
   ANA_MENULER,
   BAGLI_MADDELER,
   MENU_HARFLERI,
+  bagliMaddeYazisi,
   MenuYetkiAlani,
   harfListesi,
   harfListesiYaz,
@@ -31,7 +32,7 @@ interface Bolum {
   maddeler: Madde[];
 }
 
-const harfsiz = (ad?: string) => String(ad || "").replace(/^\s*[A-Z]\s*-\s*/, "");
+const harfsiz = (ad?: string) => String(ad || "").replace(/^\s*[A-ZÇĞİÖŞÜ]\s*-\s*/, "");
 
 const bolumler = (): Bolum[] => {
   const anaMaddeler: Madde[] = [];
@@ -95,7 +96,7 @@ export const MenuYetkileriAlani: React.FC<{
                 {b.maddeler.map((m) =>
                   m.bagli !== undefined ? (
                     <div key={m.harf} className="small text-muted ps-4 py-0.5">
-                      {m.harf}- {m.ad} {m.bagli ? <em>({m.bagli} maddesine bağlı)</em> : null}
+                      {m.harf}- {m.ad} {m.bagli ? <em>({bagliMaddeYazisi(m.bagli)} maddesine bağlı)</em> : null}
                     </div>
                   ) : (
                     <Form.Check key={m.harf} type="checkbox" id={`menu-${b.alan}-${m.harf}`} className="small" disabled={kilitli}

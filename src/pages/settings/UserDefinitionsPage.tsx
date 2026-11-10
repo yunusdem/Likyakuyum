@@ -448,7 +448,8 @@ const UserDefinitionsPage: React.FC = () => {
       // 1. Anında localStorage ve AuthContext senkronizasyonu
       try {
         const storedUser = AuthService.getUser();
-        if (storedUser) {
+        // Yalnız kendi kartı düzenleniyorsa: başka kullanıcının kur / milyem yetkisi oturumdaki profile yazılmasın (Y12)
+        if (storedUser && updatedUser.id && String((storedUser as any).id) === String(updatedUser.id)) {
           if (patch.ratePermType !== undefined) (storedUser as any).ratePermType = patch.ratePermType;
           if (patch.ratePermValue !== undefined) (storedUser as any).ratePermValue = patch.ratePermValue;
           if (patch.milyemPermType !== undefined) (storedUser as any).milyemPermType = patch.milyemPermType;

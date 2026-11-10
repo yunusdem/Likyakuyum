@@ -6,6 +6,9 @@ import { VezneIzlemeService, type VezneIzlemeDataResponse } from "../services/ve
 import { EBankaService, type EBankaOzet } from "../services/ebankaService";
 import { paraYaz, zamanYaz } from "./ebanka/ebankaOrtak";
 import { useSayfaErisimi } from "../hooks/useSayfaErisimi";
+import { useKullaniciGorunum } from "../hooks/useKullaniciGorunum";
+import { useAuth } from "../context/AuthContext";
+import { ANA_EKRAN_KODU } from "../config/kullaniciGorunum";
 
 // Dashboard: solda vezne, sağda banka bakiyeleri. Yalnızca bakiyesi olan birimler görünür;
 // ayrıntı için asıl ekrana gidilir. Yenileme elle. Renkler kullanıcı temasından (menü başlığı) gelir.
@@ -37,8 +40,11 @@ const HomePage: React.FC = () => {
   const navigate = useNavigate();
   // Lisansa göre: modülü kapalı panel çizilmez, API'si de çağrılmaz (ör. e-Banka yalnız Connector'da)
   const sayfaAcik = useSayfaErisimi();
-  const vezneAcik = sayfaAcik("/vezne/izleme");
-  const bankaAcik = sayfaAcik("/ebanka/hesaplar");
+  // Ana ekran yetkisi (Y9–Y11): kapalıysa veri çekilmez, karşılama görünür; paneller ayrıca kendi sayfa yetkisine bakar (Y10)
+  const { user } = useAuth();
+  const anaEkranAcik = useKullaniciGorunum().kontrolAcik(ANA_EKRAN_KODU);
+  const vezneAcik = anaEkranAcik && sayfaAcik("/vezne/izleme");
+  const bankaAcik = anaEkranAcik && sayfaAcik("/ebanka/hesaplar");
   const [vezne, setVezne] = useState<VezneIzlemeDataResponse | null>(null);
   const [vezneHata, setVezneHata] = useState("");
   const [banka, setBanka] = useState<EBankaOzet | null>(null);
@@ -82,6 +88,19 @@ const HomePage: React.FC = () => {
       </button>
     </div>
   );
+
+  if (!anaEkranAcik) {
+    return (
+      <div className="lk-dash w-100 pb-3">
+        <style>{STIL}</style>
+        <div className="lk-hero px-4 py-5 text-center">
+          <div style={{ fontSize: 13, letterSpacing: ".12em", color: ALTIN, fontWeight: 700 }}>HOŞ GELDİNİZ</div>
+          <div className="fw-bold mt-2" style={{ fontSize: 22 }}>{user?.merkez?.firmaUnvan || "Likya"}</div>
+          {(user?.fullName || user?.username) && <div className="mt-1" style={{ fontSize: 13, opacity: 0.85 }}>{user?.fullName || user?.username}</div>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="lk-dash w-100 pb-3">

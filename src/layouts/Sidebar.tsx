@@ -288,13 +288,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   // Kullanıcının kart menü yetkileri (harf listesi): yetkisiz ana menü / madde çizilmez
   const kullaniciYetkisi = useKullaniciYetkisi();
   const gorunenMenu = useMemo(() => {
-    const filtered = solMenuyuBirlestir(menuyuKullaniciyaSuz(menuyuSuz(DashboardMenu, user?.merkez?.moduller), kullaniciYetkisi));
-    const hasItems = filtered && filtered.some((item) => (item.children && item.children.length > 0) || item.link);
-    // Emniyet: Menü hiçbir kullanıcıda kaybolmasın, süzme boş dönerse ana menüyü koru
-    if (!hasItems) {
-      return solMenuyuBirlestir(DashboardMenu);
-    }
-    return filtered;
+    // Süzme boş dönerse menü boş kalır: eskiden tam menü (lisans + yetki süzmesiz) gösteriliyordu
+    // (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y4)
+    return solMenuyuBirlestir(menuyuKullaniciyaSuz(menuyuSuz(DashboardMenu, user?.merkez?.moduller), kullaniciYetkisi));
   }, [user?.merkez?.moduller, kullaniciYetkisi]);
   const gorunenMenuRef = useRef(gorunenMenu);
   gorunenMenuRef.current = gorunenMenu;

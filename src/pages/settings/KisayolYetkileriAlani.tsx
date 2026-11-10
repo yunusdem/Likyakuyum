@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Badge, Button, Form } from "react-bootstrap";
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { useAuth } from "../../context/AuthContext";
-import { KONTROL_GRUBU, gorunumKatalogu } from "../../config/kullaniciGorunum";
+import { ANA_EKRAN_KODU, KONTROL_GRUBU, gorunumKatalogu } from "../../config/kullaniciGorunum";
 import { UST_KISAYOL_GRUBU } from "../../config/modulKatalogu";
 
 /**
@@ -50,6 +50,15 @@ export const KisayolYetkileriAlani: React.FC<{
 
   return (
     <div className="d-flex flex-column gap-1 mt-1">
+      {/* Ana ekran (genel durum) yetkisi: Y9 — varsayılan açık, kapalıysa girişte karşılama görünür */}
+      <div className="border rounded bg-white d-flex align-items-center gap-2 px-2 py-1">
+        <span className="small fw-semibold flex-grow-1 text-truncate" title="Ana ekran (genel durum: vezne ve banka bakiyeleri)">Ana ekran (genel durum)</span>
+        <Badge bg={kapaliKume.has(ANA_EKRAN_KODU) ? "secondary" : "success"} className="fw-semibold">
+          {kapaliKume.has(ANA_EKRAN_KODU) ? "Yok" : "Var"}
+        </Badge>
+        <Form.Check type="checkbox" id="kisayol-ana-ekran" title="Ana ekran" checked={!kapaliKume.has(ANA_EKRAN_KODU)} disabled={kilitli}
+          onChange={(e) => degistir(e.target.checked ? kapali.filter((k) => k !== ANA_EKRAN_KODU) : [...kapali.filter((k) => k !== ANA_EKRAN_KODU), ANA_EKRAN_KODU])} />
+      </div>
       {bolumler.map((b) => {
         const secili = (kod: string) => !kapaliKume.has(kod) && !kapaliKume.has(b.kod);
         const seciliSayi = b.maddeler.filter((m) => secili(m.kod)).length;

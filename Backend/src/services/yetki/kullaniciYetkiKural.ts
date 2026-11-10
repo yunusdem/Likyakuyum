@@ -1,6 +1,7 @@
 /**
  * Kullanıcı kartı yetkileri (TODVZ_KULLANICI, eski programla ortak) — saf kurallar; ön yüz de içe aktarır.
- * docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4. Sistem yöneticisi her yetkiye sahiptir.
+ * docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4. Yönetici (kartta Sistem Yöneticisi ya da merkezde Firma Yöneticisi) her yetkiye
+ * sahiptir, kur / milyem sınırı dahil; MASAK uyarısı yetki değil, herkeste kalır (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y3).
  */
 
 export type KurYetkisiTuru = "Var" | "Yok" | "Esnek" | "Yüzde" | "Limitli";
@@ -115,12 +116,12 @@ export const milyemYetkisiKoda = (v: unknown): number => {
 /** Oturum profilindeki kullanıcı (UserProfileDto) → yetki */
 export const yetkiProfilden = (u: any): KullaniciYetkisi => {
   if (!u) return { ...TAM_YETKI, yonetici: false };
-  const isAdmin = Boolean(u.isSysAdmin || u.role === "admin");
+  const isAdmin = Boolean(u.isSysAdmin || u.role === "admin" || u.merkez?.firmaYoneticisi);
   const base = isAdmin ? TAM_YETKI : null;
-  const kurYetkisi = kurYetkisiKoddan(u.ratePermType);
-  const kurTolerans = Math.max(0, sayi(u.ratePermValue));
-  const milyemYetkisi = milyemYetkisiKoddan(u.milyemPermType);
-  const milyemTolerans = Math.max(0, sayi(u.milyemPermValue));
+  const kurYetkisi = isAdmin ? "Var" : kurYetkisiKoddan(u.ratePermType);
+  const kurTolerans = isAdmin ? 0 : Math.max(0, sayi(u.ratePermValue));
+  const milyemYetkisi = isAdmin ? "Var" : milyemYetkisiKoddan(u.milyemPermType);
+  const milyemTolerans = isAdmin ? 0 : Math.max(0, sayi(u.milyemPermValue));
 
   return {
     yonetici: isAdmin,
@@ -147,14 +148,14 @@ export const yetkiProfilden = (u: any): KullaniciYetkisi => {
   };
 };
 
-/** TODVZ_KULLANICI satırı → yetki (sunucu) */
-export const yetkiSatirdan = (r: any): KullaniciYetkisi => {
+/** TODVZ_KULLANICI satırı → yetki (sunucu). firmaYoneticisi: merkezdeki Firma Yöneticisi işareti (Y3) */
+export const yetkiSatirdan = (r: any, firmaYoneticisi = false): KullaniciYetkisi => {
   if (!r) return { ...TAM_YETKI, yonetici: false };
-  const yonetici = evet(r.SISTEM_YONETICISI);
-  const kurYetkisi = kurYetkisiKoddan(r.KUR_YETKISI);
-  const kurTolerans = Math.max(0, sayi(r.KUR_TOLERANS_ORANI));
-  const milyemYetkisi = milyemYetkisiKoddan(r.MILYEM_YETKISI);
-  const milyemTolerans = Math.max(0, sayi(r.MILYEM_TOLERANS_ORANI));
+  const yonetici = evet(r.SISTEM_YONETICISI) || firmaYoneticisi;
+  const kurYetkisi = yonetici ? "Var" : kurYetkisiKoddan(r.KUR_YETKISI);
+  const kurTolerans = yonetici ? 0 : Math.max(0, sayi(r.KUR_TOLERANS_ORANI));
+  const milyemYetkisi = yonetici ? "Var" : milyemYetkisiKoddan(r.MILYEM_YETKISI);
+  const milyemTolerans = yonetici ? 0 : Math.max(0, sayi(r.MILYEM_TOLERANS_ORANI));
   return {
     yonetici,
     menu: {
@@ -255,14 +256,34 @@ export const ANA_MENULER: Record<string, { harf: string; alan: MenuYetkiAlani | 
   ayarlar: { harf: "L", alan: "techOps" },
 };
 
-/** Kolonun sığmadığı maddeler (16 harf sonrası) bağlı oldukları maddenin yetkisini alır */
+/**
+ * Kolonun sığmadığı maddeler (16 harf sonrası, Türkçe harfler) bağlı oldukları maddenin yetkisini alır. "P" aynı ana
+ * menünün maddesi, "kur:A" başka ana menünün maddesi (aynı sayfa orada da var; ana menüsü de açık olmalı).
+ * docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y5
+ */
 export const BAGLI_MADDELER: Record<string, Record<string, string>> = {
-  vezne: { Q: "A", R: "E" },
+  vezne: {
+    "Ö": "M", // Vezne İzleme → Vezne Bakiye Raporu
+    Q: "P", // Kur Sapma Raporu → Kur Kontrolü
+    R: "A", // Hızlı Satış (Sarraf) → Sarraf Fişi Kayıt
+    S: "E", // Hızlı Satış (Döviz) → Döviz Fişi Kayıt
+    T: "kur:A", U: "kur:B", "Ü": "kur:C", V: "kur:D", Y: "kur:E", Z: "kur:F", W: "kur:G",
+  },
+};
+
+/** Yalnız yöneticiye açık ana menüler (eski programda harfi yok): Y7 */
+export const YALNIZ_YONETICI_MENULERI = ["mobil"];
+
+/** Bağlı maddenin ekranda yazımı: "M" → "M", "kur:A" → "Kur › A" */
+export const bagliMaddeYazisi = (bag: string): string => {
+  const [k, h] = bag.includes(":") ? bag.split(":") : ["", bag];
+  return k ? `${k.charAt(0).toLocaleUpperCase("tr-TR")}${k.slice(1)} › ${h}` : h;
 };
 
 /** Ana menü açık mı (ANA_MENU_YETKISI) */
 export const anaMenuAcik = (y: KullaniciYetkisi, anaKey: string): boolean => {
   if (y.yonetici) return true;
+  if (YALNIZ_YONETICI_MENULERI.includes(anaKey)) return false;
   const a = ANA_MENULER[anaKey];
   return !a || harfAcik(y.menu.mainMenu, a.harf);
 };
@@ -273,14 +294,19 @@ export const menuMaddesiAcik = (y: KullaniciYetkisi, anaKey: string, harf: strin
   if (!anaMenuAcik(y, anaKey)) return false;
   const a = ANA_MENULER[anaKey];
   if (!a?.alan || !harf) return true;
-  const h = BAGLI_MADDELER[anaKey]?.[harf] ?? harf;
+  const bag = BAGLI_MADDELER[anaKey]?.[harf];
+  if (bag?.includes(":")) {
+    const [digerAna, digerHarf] = bag.split(":");
+    return menuMaddesiAcik(y, digerAna, digerHarf);
+  }
+  const h = bag ?? harf;
   if (MENU_HARFLERI.indexOf(h) < 0) return true;
   return harfAcik(y.menu[a.alan], h);
 };
 
-/** Menü adındaki harf: "A- Sarraf Fişi Kayıt" → "A" */
+/** Menü adındaki harf: "A- Sarraf Fişi Kayıt" → "A", "Ö- Vezne İzleme" → "Ö" */
 export const maddeHarfi = (ad: string | null | undefined): string | null => {
-  const m = /^\s*([A-Z])\s*-/.exec(String(ad ?? ""));
+  const m = /^\s*([A-ZÇĞİÖŞÜ])\s*-/.exec(String(ad ?? ""));
   return m ? m[1] : null;
 };
 

@@ -160,7 +160,8 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
     return sayfaAcik(a.to);
   });
   const masakAcik = modulAcikMi(acikModuller, "ust:masak") && sayfaAcik("/ayarlar/masak-dondurulanlar");
-  const piyasaAcik = modulAcikMi(acikModuller, "ust:piyasa");
+  // Piyasa: lisans + Kur ana menüsü (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y6)
+  const piyasaAcik = modulAcikMi(acikModuller, "ust:piyasa") && sayfaAcik("/piyasa");
   // Katalog & TV menü barkodlu altın / özel ürünleri gösterir: Etiket (Kuyum) lisansı ve kullanıcının Etiket menü yetkisi
   // Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G3): Kullanıcı Tanımları'nda kapatılan kontrol düğmeleri çizilmez
   const { kontrolAcik } = useKullaniciGorunum();

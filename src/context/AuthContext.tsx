@@ -4,6 +4,14 @@ import { UserProfileDto } from "../services/userService";
 import { SessionExpiredModal } from "../components/auth/SessionExpiredModal";
 import { profiliGorunumeGoreHazirla } from "../config/kullaniciGorunum";
 
+/** Profildeki kart yetkisi alanları (yetkiProfilden): değişince profil yenilenir */
+const YETKI_ALANLARI = [
+  "ratePermType", "ratePermValue", "milyemPermType", "milyemPermValue", "displayDays", "hasDateChangePerm", "hasSlipNoChangePerm",
+  "hasSlipAmountChangePerm", "hasSlipBankAccountPerm", "hasCommissionPerm", "commissionRate", "canViewAccountBalance",
+  "canViewOpenTermTrans", "isSuspiciousTransAuth", "noCrossRateCheck", "canBeOutsideCounterRate", "noDeviationWarning",
+  "hasMasakWarning", "hasWorkspacePerm",
+];
+
 interface AuthContextType {
   user: UserProfileDto | null;
   isAuthenticated: boolean;
@@ -118,14 +126,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const profil = await AuthService.getMe();
         setUser((eski) => {
+          // Kart yetkileri de anahtarda: yönetici Kullanıcı Tanımları'nda değiştirince açık oturuma yansısın
+          // (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y12)
           const anahtar = (u: any) => JSON.stringify([
             u?.merkez?.moduller ?? null,
             u?.merkez?.urunler ?? null,
+            u?.merkez?.firmaYoneticisi ?? null,
             u?.gorunumKapali ?? [],
-            u?.ratePermType ?? null,
-            u?.ratePermValue ?? null,
-            u?.milyemPermType ?? null,
-            u?.milyemPermValue ?? null,
+            u?.isSysAdmin ?? null,
+            u?.role ?? null,
+            u?.menuPerms ?? null,
+            ...YETKI_ALANLARI.map((k) => u?.[k] ?? null),
           ]);
           return eski && anahtar(eski) === anahtar(profiliGorunumeGoreHazirla(profil)) ? eski : profil;
         });
@@ -135,7 +146,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const dinle = () => void yenile();
     window.addEventListener("likya_moduller_degisti", dinle);
-    return () => window.removeEventListener("likya_moduller_degisti", dinle);
+    // Yetki değişikliği için: pencereye dönünce ve dakikada bir (Y12)
+    window.addEventListener("focus", dinle);
+    const zamanlayici = window.setInterval(dinle, 60_000);
+    return () => {
+      window.removeEventListener("likya_moduller_degisti", dinle);
+      window.removeEventListener("focus", dinle);
+      window.clearInterval(zamanlayici);
+    };
   }, [setUser]);
 
   const login = async (credentials: LoginCredentials) => {

@@ -1,6 +1,7 @@
 import { BelgeSqlRepository, type DbContext } from "../../models/belgeSql.repository.js";
 import { belgeKlasoruGorseli } from "./belgeMotor.js";
 import { etkinSablon } from "./sablonDeposu.js";
+import { sarrafSablonunaIscilikEkle } from "./sarrafIscilikSablon.js";
 import { BelgeGorselService } from "./belgeGorsel.service.js";
 import type { BelgeSablon } from "./sablonCekirdek.js";
 import { turBul, type FisBicimi, type FisTuru } from "./belgeTurleri.js";
@@ -54,7 +55,9 @@ export class FisCiktiService {
   /** Sarraf fişi: ekran görüntüsü + firma kimliği; kâğıt 80 mm veya A4. */
   static async sarraf(girdi: SarrafFisGirdisi, bicim: FisBicimi, ctx?: DbContext): Promise<FisCiktisi> {
     const firma = firmaKimlikOku(await BelgeSqlRepository.firmaKimlikSatiri(ctx));
-    return this.paketle(turBul("SARRAF", bicim), sarrafFisVerisi(girdi, firma), ctx);
+    const paket = await this.paketle(turBul("SARRAF", bicim), sarrafFisVerisi(girdi, firma), ctx);
+    // İşçilik satırları firma şablonunda da (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y1)
+    return { ...paket, ...sarrafSablonunaIscilikEkle(paket.sablon, paket.veri) };
   }
 
   /** Perakende fişi / fatura: kayıtlı fatura veya kayıt yükü + firma kimliği; kâğıt 80 mm veya A4. */

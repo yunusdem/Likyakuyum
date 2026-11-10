@@ -9,6 +9,12 @@ import { ModulKaydi, modulKatalogu } from "./modulKatalogu";
 
 export const KONTROL_GRUBU = "kontrol";
 
+/**
+ * Ana ekran (dashboard) yetkisi (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y9–Y11): kullanıcı görünümü tablosunda kapalı kod
+ * olarak saklanır; kayıt yoksa açık. Kontrol düğmesi listesinde değildir (Kullanıcı Tanımları'nda ayrı kutu).
+ */
+export const ANA_EKRAN_KODU = "kontrol:ana-ekran";
+
 export const KONTROL_DUGMELERI: { key: string; baslik: string; etiketGerekli?: boolean }[] = [
   { key: "kontrol:katalog", baslik: "Katalog Aç (TV / katalog menüsü)", etiketGerekli: true },
   { key: "kontrol:tema", baslik: "Tema seçici" },
@@ -17,11 +23,13 @@ export const KONTROL_DUGMELERI: { key: string; baslik: string; etiketGerekli?: b
   { key: "kontrol:destek", baslik: "Destek zili" },
 ];
 
-/** Görünümden muaf / görünümü yöneten kullanıcı (G5): merkez açıkken firma yöneticisi, değilse sistem yöneticisi */
+/**
+ * Görünümden muaf / görünümü yöneten kullanıcı: Firma Yöneticisi ya da Sistem Yöneticisi (G5, yetki kuralıyla aynı:
+ * docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y3)
+ */
 export const gorunumYoneticisiMi = (user: UserProfileDto | null | undefined): boolean => {
   if (!user) return false;
-  if (user.merkez) return !!user.merkez.firmaYoneticisi;
-  return !!user.isSysAdmin || user.role === "admin";
+  return !!user.merkez?.firmaYoneticisi || !!user.isSysAdmin || user.role === "admin";
 };
 
 /**

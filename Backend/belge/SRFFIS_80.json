@@ -54,7 +54,7 @@
       "cerceve": "yok", "hizaDeger": "right", "daralt": true,
       "satirlar": [
         { "etiket": "Toplam Has Gram:", "deger": "{{toplam.has|sayi4}} gr", "kosul": "{{toplam.hasVar}}" },
-        { "etiket": "İşçilik (KDV dahil):", "deger": "{{toplam.iscilik|sayi}} TL", "kosul": "{{toplam.iscilikVar}}" },
+        { "etiket": "İşçilik (KDV dahil):", "deger": "{{toplam.iscilik|sayi}} TL", "kosul": "{{toplam.iscilikGoster}}" },
         { "etiket": "{{toplam.iscilikKdvEtiket}}", "deger": "{{toplam.iscilikKdv|sayi}} TL", "kosul": "{{toplam.iscilikVar}}" },
         { "etiket": "GENEL TOPLAM:", "deger": "{{toplam.tutar|sayi}} TL", "kalin": true },
         { "etiket": "Ödenen / Alınan:", "deger": "{{toplam.odenen|sayi}} TL", "kosul": "{{toplam.odenenVar}}" },

@@ -2,6 +2,7 @@ import { DashboardMenu } from "routes/DashboardRoute";
 import { MenuItemType } from "types/menuTypes";
 import { KullaniciYetkisi, anaMenuAcik, maddeHarfi, menuMaddesiAcik, sayfaKutusuAcik } from "../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { ACIKCA_ACILAN_MODULLER, acikcaAcilanMi } from "../../Backend/src/services/admin/modulAgaci";
+import { HIZLI_SATIS_MODULLERI } from "../../Backend/src/services/hizliSatis/hizliSatisKural";
 
 /**
  * Modül kataloğu: yönetim panelinden firma bazında açılıp kapatılan her şey (docs/ADMIN_PANEL_YOL_HARITASI.md, Faz 4).
@@ -343,14 +344,25 @@ const zincirKullaniciyaAcik = (y: KullaniciYetkisi, zincir: string[]): boolean =
 };
 
 /**
+ * Menüde maddesi olmayan, yalnız üst kısayoldan açılan sayfaların kullanıcı kuralı (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md
+ * Y6): Piyasa → Kur ana menüsü; Hızlı Satış yönlendirmesi → en az bir modülün hızlı satışı.
+ */
+const KISAYOL_SAYFA_KURALLARI: Record<string, (acik: string[] | null | undefined, y: KullaniciYetkisi) => boolean> = {
+  piyasa: (_acik, y) => anaMenuAcik(y, "kur"),
+  "hizli-satis": (acik, y) => HIZLI_SATIS_MODULLERI.some((m) => sayfaErisimi(acik, y, `/hizli-satis/${m}`)),
+};
+
+/**
  * Sayfaya gidilebilir mi: firmanın lisansında açık (sayfaKapaliMi) VE kullanıcının menü yetkisinde açık. Kullanıcı için
- * sayfanın menüdeki maddelerinden biri yetkide olmalı; yalnız üst kısayolda bulunan sayfalar (Piyasa, Hızlı Satış
- * yönlendirmesi) menü yetkisine bağlı değildir. Menüde hiç geçmeyen adresler kısıtlanmaz.
+ * sayfanın menüdeki maddelerinden biri yetkide olmalı; yalnız üst kısayolda bulunan sayfalar KISAYOL_SAYFA_KURALLARI'na
+ * bakar. Menüde hiç geçmeyen adresler kısıtlanmaz.
  */
 export const sayfaErisimi = (acik: string[] | null | undefined, y: KullaniciYetkisi | null | undefined, pathname: string): boolean => {
   if (sayfaKapaliMi(acik, pathname)) return false;
   if (!y || y.yonetici) return true;
   const ham = yolAnahtari(pathname);
+  const kisayolKurali = KISAYOL_SAYFA_KURALLARI[ham];
+  if (kisayolKurali) return kisayolKurali(acik, y);
   if (!sayfaKutusuAcik(y, ham) || !sayfaKutusuAcik(y, SAYFA_TAKMA_ADLARI[ham] ?? ham)) return false;
   const menuZincirleri = adresZincirleri(pathname).filter((z) => !z[0].startsWith(`${UST_KISAYOL_GRUBU}:`));
   return menuZincirleri.length === 0 || menuZincirleri.some((z) => zincirKullaniciyaAcik(y, z));
