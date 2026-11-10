@@ -84,12 +84,15 @@ export async function sarrafKurDenetle(req, y, dto) {
     if (y.kurYetkisi === "Var")
         return;
     const satirlar = Array.isArray(dto?.satirlar) ? dto.satirlar : [];
-    if (!satirlar.length)
+    const odemeSatirlari = Array.isArray(dto?.odemeSatirlari) ? dto.odemeSatirlari : [];
+    if (!satirlar.length && !odemeSatirlari.length)
         return;
     const kurlar = await guncelKurlar(req);
+    const fiHasKuru = sayi(dto?.altinHasKuru);
+    const fiGumusKuru = sayi(dto?.gumusHasKuru);
     satirlar.forEach((s, i) => {
         const urun = kurlar.find((x) => x.paraId === Number(s?.urunId));
-        const gise = sarrafGiseKuru(kurlar, urun, Number(dto?.tip));
+        const gise = sarrafGiseKuru(kurlar, urun, Number(dto?.tip), fiHasKuru, fiGumusKuru);
         // Hızlı Satış iskontosu satır kurundan düşülür (H24): iskontosuz kur gönderildiyse ve kur ondan büyük değilse o denetlenir
         const iskontosuz = sayi(s?.iskontosuzKur);
         const kur = iskontosuz > 0 && sayi(s?.kur) <= iskontosuz + 1e-9 ? iskontosuz : sayi(s?.kur);
@@ -99,6 +102,24 @@ export async function sarrafKurDenetle(req, y, dto) {
         }
         if (d.hata)
             throw ApiError.forbidden(d.hata);
+    });
+    const tip = Number(dto?.tip) || 0;
+    const odemeTip = tip === 0 ? 1 : 0;
+    odemeSatirlari.forEach((o, i) => {
+        const pk = (o?.paraKodu || "").trim().toUpperCase();
+        if (pk === "TL" || pk === "TRY" || pk === "TRL" || o?.iskontoId || o?.odemeAraciTuru === 2)
+            return;
+        const urun = kurlar.find((x) => (o?.paraId && x.paraId === Number(o.paraId)) || (pk && String(x.kod || "").toUpperCase().trim() === pk));
+        const gise = sarrafGiseKuru(kurlar, urun, odemeTip, fiHasKuru, fiGumusKuru);
+        const kur = sayi(o?.kur);
+        if (kur > 0) {
+            const d = kurDenetle(y, gise, kur, `Ödeme ${i + 1}. satırın kuru`, SUNUCU_KUR_PAYI);
+            if (d.sinirKur) {
+                o.kur = d.sinirKur;
+            }
+            if (d.hata)
+                throw ApiError.forbidden(d.hata);
+        }
     });
 }
 /** Sarraf fişi satır milyemleri milyem yetkisine göre geçerli mi */

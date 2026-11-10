@@ -12,6 +12,14 @@ import { kuyumFaturaTipi, kuyumKodAdi, satirKodu } from "./kuyumKodlari.js";
  * satırının birim fiyatı en yakın kuruşa kaydırılır (U4).
  */
 export const ISCILIK_ADI = "işçilik";
+/**
+ * Faturadaki işçilik satırının adı ürünle (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M27): "22 ayar altın" → "22 ayar işçilik";
+ * farklı ürünler "22 ayar, 14 ayar işçilik"; ad yoksa yalnız "işçilik".
+ */
+export const iscilikSatirAdi = (altinAdlari) => {
+    const parcalar = [...new Set(altinAdlari.map((a) => String(a ?? "").trim().replace(/\s+alt[ıiIİ]n$/i, "").trim()).filter(Boolean))];
+    return parcalar.length ? `${parcalar.join(", ")} ${ISCILIK_ADI}` : ISCILIK_ADI;
+};
 const yuvarla = (n) => Math.round(n * 100) / 100;
 const sayi = (v) => {
     const n = Number(v);
@@ -177,7 +185,7 @@ export const kuyumUblSatirlari = (c) => [
             ...(a.iskonto ? { iskontoTutari: a.iskonto } : {}),
         };
     }),
-    ...(c.iscilik ? [{ ad: ISCILIK_ADI, miktar: 1, birimKodu: "C62", birimFiyat: c.iscilik.matrah, kdvOrani: c.iscilik.oran }] : []),
+    ...(c.iscilik ? [{ ad: iscilikSatirAdi(c.altinlar.map((a) => a.ad)), miktar: 1, birimKodu: "C62", birimFiyat: c.iscilik.matrah, kdvOrani: c.iscilik.oran }] : []),
 ];
 /** Kütükçü düzeninde altta görünen yazıyla tutar */
 export const yalnizYazisi = (tutar) => `YALNIZ ${tutarYaziyla(yuvarla(tutar), "TÜRK LİRASI", "KURUŞ")}`;
@@ -286,7 +294,7 @@ export const ebankaGiderGirdisi = (istek, hedef, ortak) => {
         throw ApiError.internal("Altın satırı tutarı kuruşu kuruşuna kurulamadı; gönderilmedi.");
     const satirlar = [
         { ad: giderAltinAdi(a), miktar: a.miktar, birimKodu: a.birimKodu, birimFiyat, vergiOrani: 0 },
-        ...(iscilik > 0 ? [{ ad: trBuyuk(ISCILIK_ADI), miktar: 1, birimKodu: "C62", birimFiyat: iscilik, vergiOrani: 0 }] : []),
+        ...(iscilik > 0 ? [{ ad: trBuyuk(iscilikSatirAdi([a.ad])), miktar: 1, birimKodu: "C62", birimFiyat: iscilik, vergiOrani: 0 }] : []),
     ];
     return {
         belgeNo: ortak.belgeNo,

@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { ApiError } from "../utils/ApiError.js";
+import { logger } from "../utils/logger.js";
 
 export interface DbContext {
   dbServer?: string;
@@ -103,6 +104,8 @@ export interface XmlOlusturParams {
   dosyaAdi?: string;
   ilkTarih: string;
   sonTarih: string;
+  tlVergiSiniri?: number;
+  dovizVergiSiniri?: number;
 }
 
 export interface XmlBirlestirParams {
@@ -309,6 +312,62 @@ export class XmlDosyaService {
     return getDbPool(ctx?.dbServer, ctx?.dbName);
   }
 
+  public static async getVergiSinirlari(
+    pool: sql.ConnectionPool,
+    tlParam?: number,
+    dovizParam?: number
+  ): Promise<{ tlSinir: number; dovizSinir: number }> {
+    let tlSinir = (tlParam && Number(tlParam) > 0) ? Number(tlParam) : undefined;
+    let dovizSinir = (dovizParam && Number(dovizParam) > 0) ? Number(dovizParam) : undefined;
+
+    if (tlSinir === undefined || dovizSinir === undefined) {
+      try {
+        const tanimRes = await pool.request().query(
+          "SELECT TOP 1 TL_VERGI_SINIRI AS TlSinir, DOVIZ_VERGI_SINIRI AS DovizSinir FROM dbo.TODVZ_TANIM"
+        );
+        if (tanimRes.recordset && tanimRes.recordset.length > 0) {
+          const row = tanimRes.recordset[0];
+          if (tlSinir === undefined && row.TlSinir && Number(row.TlSinir) > 0) {
+            tlSinir = Number(row.TlSinir);
+          }
+          if (dovizSinir === undefined && row.DovizSinir && Number(row.DovizSinir) > 0) {
+            dovizSinir = Number(row.DovizSinir);
+          }
+        }
+      } catch (err) {
+        logger.warn("TODVZ_TANIM vergi sınırları okunamadı:", err);
+      }
+    }
+
+    return {
+      tlSinir: tlSinir && tlSinir > 0 ? tlSinir : 185000,
+      dovizSinir: dovizSinir && dovizSinir > 0 ? dovizSinir : 5000,
+    };
+  }
+
+  public static getLimitConditionSql(): string {
+    return `
+      AND (
+        (F.TOPLAM_TUTAR >= @tlSinir)
+        OR (ISNULL(F.ODEME_TUTARI, 0) >= @tlSinir)
+        OR (
+          EXISTS (
+            SELECT 1 
+            FROM dbo.TODVZ_FIS_SATIRI S2 
+            JOIN dbo.TODVZ_PARA P2 ON P2.PARA_ID = S2.PARA_ID 
+            WHERE S2.FIS_ID = F.FIS_ID 
+              AND (
+                S2.TUTAR >= @tlSinir
+                OR (UPPER(RTRIM(P2.KOD)) = 'USD' AND S2.MIKTAR >= @dovizSinir)
+                OR (S2.MIKTAR * ISNULL(NULLIF(S2.KUR, 0), 1) >= @tlSinir)
+              )
+          )
+        )
+        OR (ISNULL(F.MASAK_LISTESINDE_VAR, 0) = 1)
+      )
+    `;
+  }
+
   /**
    * 1. Merkez Kur Kontrolü
    * Belirtilen tarih aralığındaki döviz fişlerinin işlem tarihlerinde Merkez Bankası kurlarının
@@ -326,23 +385,7 @@ export class XmlDosyaService {
     bitis.setHours(23, 59, 59, 999);
 
     // 1) Firma tanımından vergi sınırlarını al (parametre gelmemişse veritabanındaki tanım değerleri kullanılır)
-    let tlSinir = filter.tlVergiSiniri;
-    let dovizSinir = filter.dovizVergiSiniri;
-
-    if (tlSinir === undefined || dovizSinir === undefined) {
-      try {
-        const tanimRes = await pool.request().query(
-          "SELECT TOP 1 ISNULL(TL_VERGI_SINIRI, 185000) AS TlSinir, ISNULL(DOVIZ_VERGI_SINIRI, 5000) AS DovizSinir FROM dbo.TODVZ_TANIM"
-        );
-        if (tanimRes.recordset && tanimRes.recordset.length > 0) {
-          if (tlSinir === undefined) tlSinir = Number(tanimRes.recordset[0].TlSinir) || 185000;
-          if (dovizSinir === undefined) dovizSinir = Number(tanimRes.recordset[0].DovizSinir) || 5000;
-        }
-      } catch {
-        if (tlSinir === undefined) tlSinir = 185000;
-        if (dovizSinir === undefined) dovizSinir = 5000;
-      }
-    }
+    const { tlSinir, dovizSinir } = await this.getVergiSinirlari(pool, filter.tlVergiSiniri, filter.dovizVergiSiniri);
 
     const req = pool.request();
     req.input("baslangic", sql.DateTime, baslangic);
@@ -449,53 +492,7 @@ export class XmlDosyaService {
       WHERE ISNULL(F.IPTAL, 0) = 0
         AND F.TARIH >= @baslangic 
         AND F.TARIH <= @bitis
-        AND (
-          (@tlSinir = 0 AND @dovizSinir = 0)
-          OR (@tlSinir > 0 AND F.TOPLAM_TUTAR >= @tlSinir)
-          OR (@dovizSinir > 0 AND (
-            EXISTS (
-              SELECT 1 
-              FROM dbo.TODVZ_FIS_SATIRI S2 
-              JOIN dbo.TODVZ_PARA P2 ON P2.PARA_ID = S2.PARA_ID 
-              WHERE S2.FIS_ID = F.FIS_ID 
-                AND UPPER(RTRIM(P2.KOD)) = 'USD' 
-                AND S2.MIKTAR >= @dovizSinir
-            )
-            OR (
-              F.TOPLAM_TUTAR / NULLIF(
-                COALESCE(
-                  NULLIF(NULLIF(F.MERKEZ_USD_KURU, 0), 1),
-                  NULLIF(NULLIF(F.GISE_USD_KURU, 0), 1),
-                  (
-                    SELECT TOP 1 S3.KUR 
-                    FROM dbo.TODVZ_FIS_SATIRI S3 
-                    JOIN dbo.TODVZ_PARA P3 ON P3.PARA_ID = S3.PARA_ID 
-                    WHERE S3.FIS_ID = F.FIS_ID AND UPPER(RTRIM(P3.KOD)) = 'USD' AND S3.KUR > 1
-                    ORDER BY S3.SATIR_NO
-                  ),
-                  (
-                    SELECT TOP 1 ISNULL(K3.DOVIZ_SATIS, ISNULL(K3.EFEKTIF_SATIS, K3.DOVIZ_ALIS))
-                    FROM dbo.TODVZ_KUR_TABLOSU KT3 
-                    JOIN dbo.TODVZ_KUR K3 ON K3.KUR_TABLOSU_ID = KT3.KUR_TABLOSU_ID
-                    JOIN dbo.TODVZ_PARA P3 ON P3.PARA_ID = K3.PARA_ID 
-                    WHERE UPPER(RTRIM(P3.KOD)) = 'USD' 
-                      AND CAST(KT3.TARIH AS DATE) <= CAST(F.TARIH AS DATE)
-                      AND ISNULL(K3.DOVIZ_SATIS, ISNULL(K3.EFEKTIF_SATIS, K3.DOVIZ_ALIS)) > 1
-                    ORDER BY KT3.TARIH DESC, KT3.KUR_TABLOSU_ID DESC
-                  ),
-                  (
-                    SELECT TOP 1 ISNULL(K3.DOVIZ_SATIS, ISNULL(K3.EFEKTIF_SATIS, K3.DOVIZ_ALIS))
-                    FROM dbo.TODVZ_KUR K3 
-                    JOIN dbo.TODVZ_PARA P3 ON P3.PARA_ID = K3.PARA_ID 
-                    WHERE UPPER(RTRIM(P3.KOD)) = 'USD' 
-                      AND ISNULL(K3.DOVIZ_SATIS, ISNULL(K3.EFEKTIF_SATIS, K3.DOVIZ_ALIS)) > 1
-                    ORDER BY K3.KUR_TABLOSU_ID DESC
-                  )
-                ), 0
-              ) >= @dovizSinir
-            )
-          ))
-        )
+        ${this.getLimitConditionSql()}
         ${ekFiltre}
       ORDER BY F.TARIH ASC, F.FIS_ID ASC
     `;
@@ -714,6 +711,10 @@ export class XmlDosyaService {
     req.input("baslangic", sql.DateTime, baslangic);
     req.input("bitis", sql.DateTime, bitis);
 
+    const { tlSinir, dovizSinir } = await this.getVergiSinirlari(pool, filter.tlVergiSiniri, filter.dovizVergiSiniri);
+    req.input("tlSinir", sql.Decimal(18, 4), tlSinir || 0);
+    req.input("dovizSinir", sql.Decimal(18, 4), dovizSinir || 0);
+
     let ekFiltre = "";
     if (filter.belgeIslemNo?.trim()) {
       req.input("belgeNo", sql.VarChar(50), filter.belgeIslemNo.trim());
@@ -751,6 +752,7 @@ export class XmlDosyaService {
       WHERE ISNULL(F.IPTAL, 0) = 0
         AND F.TARIH >= @baslangic 
         AND F.TARIH <= @bitis
+        ${this.getLimitConditionSql()}
         ${ekFiltre}
       ORDER BY F.TARIH ASC, F.FIS_ID ASC
     `;
@@ -889,6 +891,10 @@ export class XmlDosyaService {
     req.input("baslangic", sql.DateTime, baslangic);
     req.input("bitis", sql.DateTime, bitis);
 
+    const { tlSinir, dovizSinir } = await this.getVergiSinirlari(pool, filter.tlVergiSiniri, filter.dovizVergiSiniri);
+    req.input("tlSinir", sql.Decimal(18, 4), tlSinir || 0);
+    req.input("dovizSinir", sql.Decimal(18, 4), dovizSinir || 0);
+
     let ekFiltre = "";
     if (filter.belgeIslemNo?.trim()) {
       req.input("belgeNo", sql.VarChar(50), filter.belgeIslemNo.trim());
@@ -913,6 +919,7 @@ export class XmlDosyaService {
       WHERE ISNULL(F.IPTAL, 0) = 0
         AND F.TARIH >= @baslangic 
         AND F.TARIH <= @bitis
+        ${this.getLimitConditionSql()}
         ${ekFiltre}
       ORDER BY F.TARIH ASC, F.FIS_ID ASC, S.SATIR_NO ASC
     `;
@@ -1057,9 +1064,17 @@ export class XmlDosyaService {
     const bitis = new Date(params.sonTarih);
     bitis.setHours(23, 59, 59, 999);
 
+    const { tlSinir, dovizSinir } = await this.getVergiSinirlari(
+      pool,
+      params.tlVergiSiniri,
+      params.dovizVergiSiniri
+    );
+
     const req = pool.request();
     req.input("baslangic", sql.DateTime, baslangic);
     req.input("bitis", sql.DateTime, bitis);
+    req.input("tlSinir", sql.Decimal(18, 4), tlSinir || 0);
+    req.input("dovizSinir", sql.Decimal(18, 4), dovizSinir || 0);
 
     const query = `
       SELECT 
@@ -1096,6 +1111,13 @@ export class XmlDosyaService {
         AND F.TARIH <= @bitis
         AND P.KOD IS NOT NULL 
         AND P.KOD NOT IN ('TL', 'TRY')
+        ${this.getLimitConditionSql()}
+        AND (
+          (S.TUTAR >= @tlSinir)
+          OR (UPPER(RTRIM(P.KOD)) = 'USD' AND S.MIKTAR >= @dovizSinir)
+          OR (S.MIKTAR * ISNULL(NULLIF(S.KUR, 0), 1) >= @tlSinir)
+          OR (ISNULL(F.MASAK_LISTESINDE_VAR, 0) = 1)
+        )
       ORDER BY F.TARIH ASC, F.FIS_ID ASC, S.SATIR_NO ASC
     `;
 

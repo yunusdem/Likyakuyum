@@ -115,6 +115,8 @@ export const XmlDosyaService = {
     sonTarih: string;
     belgeIslemNo?: string;
     belgeIslemNoTuru?: "seri" | "belge";
+    tlVergiSiniri?: number;
+    dovizVergiSiniri?: number;
   }): Promise<FisKontrolItem[]> {
     const res = await apiClient.get<FisKontrolItem[]>("/xml-dosya/kontrol/fis", params);
     return res.data || [];
@@ -125,6 +127,8 @@ export const XmlDosyaService = {
     sonTarih: string;
     belgeIslemNo?: string;
     belgeIslemNoTuru?: "seri" | "belge";
+    tlVergiSiniri?: number;
+    dovizVergiSiniri?: number;
   }): Promise<FisSatirKontrolItem[]> {
     const res = await apiClient.get<FisSatirKontrolItem[]>("/xml-dosya/kontrol/fis-satiri", params);
     return res.data || [];
@@ -140,6 +144,8 @@ export const XmlDosyaService = {
     dosyaAdi?: string;
     ilkTarih: string;
     sonTarih: string;
+    tlVergiSiniri?: number;
+    dovizVergiSiniri?: number;
   }): Promise<XmlOlusturResult> {
     const res = await apiClient.post<XmlOlusturResult>("/xml-dosya/olustur", params);
     return res.data;

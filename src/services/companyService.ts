@@ -423,6 +423,7 @@ export interface CompanyAlanDto {
   unvan: string;
   dbName: string;
   aciklama?: string;
+  isCurrentDb?: boolean;
 }
 
 export interface FirmaKlasorOgesi {

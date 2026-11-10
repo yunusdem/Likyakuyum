@@ -26,6 +26,7 @@ import {
   DovizFisAktarmaCalistirResult,
 } from "../../services/dovizFisService";
 import { CompanyService } from "../../services/companyService";
+import { AuthService } from "../../services/authService";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
 import { useToast } from "../../context/ToastContext";
 
@@ -52,12 +53,15 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
 }) => {
   const { showSuccess, showError } = useToast();
   const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const activeDb = useMemo(() => {
+    return (AuthService.getActiveDb() || localStorage.getItem("kuyumcu_erp_active_db") || "").trim();
+  }, []);
 
   const [ilkTarih, setIlkTarih] = useState<string>(todayStr);
   const [sonTarih, setSonTarih] = useState<string>(todayStr);
   const [dizaynKodu, setDizaynKodu] = useState<string>("");
 
-  // Aktarılan DB (Firma tanımlarından gelir)
+  // Aktarılan DB (Firma tanımlarından veya sayfadan gelir)
   const [hedefVeritabani, setHedefVeritabani] = useState<string>("");
 
   const [previewResult, setPreviewResult] = useState<DovizFisAktarmaOnizlemeResult | null>(null);
@@ -163,7 +167,11 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
       setDizaynKodu(dKodu);
 
       if (initialHedefVeritabani !== undefined) {
-        setHedefVeritabani(initialHedefVeritabani);
+        if (activeDb && initialHedefVeritabani.trim().toLowerCase() === activeDb.toLowerCase()) {
+          setHedefVeritabani("");
+        } else {
+          setHedefVeritabani(initialHedefVeritabani);
+        }
       }
 
       loadCompanyDefaults();
@@ -186,7 +194,13 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
     try {
       const def = await CompanyService.getDefinitions();
       if (def?.DIGER_VERITABANI_ADI) {
-        setHedefVeritabani(def.DIGER_VERITABANI_ADI);
+        const val = def.DIGER_VERITABANI_ADI.trim();
+        if (activeDb && val.toLowerCase() === activeDb.toLowerCase()) {
+          // Aktif çalışılan DB hedef olarak seçilemez (pasif)
+          setHedefVeritabani("");
+        } else if (!hedefVeritabani) {
+          setHedefVeritabani(val);
+        }
       }
     } catch (err) {
       console.error("Firma tanımları okunamadı:", err);
@@ -228,9 +242,24 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
       return;
     }
 
+    const targetDb = (hedefVeritabani || previewResult?.hedefVeritabani || "").trim();
+    if (!targetDb) {
+      const msg = "Lütfen fişlerin aktarılacağı hedef veritabanı alanını belirleyiniz.";
+      setErrorMsg(msg);
+      showError(msg);
+      return;
+    }
+
+    if (activeDb && targetDb.toLowerCase() === activeDb.toLowerCase()) {
+      const msg = "Aktif çalışılan veritabanına fiş aktarımı yapılamaz. Lütfen firmanıza ait farklı bir hedef alan seçiniz.";
+      setErrorMsg(msg);
+      showError(msg);
+      return;
+    }
+
     if (
       !window.confirm(
-        `${selectedIds.size} adet fiş hedef veritabanına (${hedefVeritabani || previewResult?.hedefVeritabani || "Kayıtlı DB"}) kopyalanacak/aktarılacaktır. Devam etmek istiyor musunuz?`
+        `${selectedIds.size} adet fiş hedef veritabanına (${targetDb}) kopyalanacak/aktarılacaktır. Devam etmek istiyor musunuz?`
       )
     ) {
       return;
@@ -300,29 +329,62 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
           <IconArrowsExchange size={20} />
           <span>Fiş Aktarma Listesi (Veritabanına Kopyalama / Aktarma)</span>
         </Modal.Title>
-        <div className="d-flex align-items-center gap-2 me-4">
-          <span className="small text-secondary fw-bold">Aktarılan DB:</span>
-          <Badge bg="primary" className="px-3 py-1.5 font-monospace fs-7 shadow-xs d-flex align-items-center gap-1.5">
-            <IconDatabase size={15} />
-            <span>{hedefVeritabani || previewResult?.hedefVeritabani || "Firma Tanımlarındaki Kayıtlı DB"}</span>
-          </Badge>
-        </div>
+        {(() => {
+          const target = (hedefVeritabani || previewResult?.hedefVeritabani || "").trim();
+          const isSelf = Boolean(target) && Boolean(activeDb) && target.toLowerCase() === activeDb.toLowerCase();
+          return (
+            <div className="d-flex align-items-center gap-2 me-4">
+              <span className="small text-secondary fw-bold">Aktarılan DB:</span>
+              <Badge
+                bg={isSelf || !target ? "danger" : "primary"}
+                className="px-3 py-1.5 font-monospace fs-7 shadow-xs d-flex align-items-center gap-1.5"
+              >
+                <IconDatabase size={15} />
+                <span>{target || "Hedef Alan Seçilmedi"}</span>
+              </Badge>
+              {isSelf && (
+                <Badge bg="danger" className="small">
+                  ⚠️ Aktif Alan (Pasif / Seçilemez)
+                </Badge>
+              )}
+            </div>
+          );
+        })()}
       </Modal.Header>
 
       <Modal.Body className="p-3 bg-light-subtle">
         {/* Aktarılan Veritabanı Bilgilendirme Bandı (Üstte) */}
-        <div className="d-flex flex-wrap align-items-center justify-content-between p-2 mb-2.5 bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded-2">
-          <div className="d-flex align-items-center gap-2 small">
-            <IconDatabase size={17} className="text-primary flex-shrink-0" />
-            <span className="text-secondary fw-bold">Fiş Aktarma Alanı (Aktarılan DB):</span>
-            <Badge bg="primary" className="font-monospace px-3 py-1 fs-7">
-              {hedefVeritabani || previewResult?.hedefVeritabani || "Firma Tanımlarındaki Kayıtlı DB"}
-            </Badge>
-          </div>
-          <span className="text-muted small" style={{ fontSize: "12px" }}>
-            * Fişler seçilen kriterlere göre doğrudan hedef veritabanına kopyalanır / aktarılır.
-          </span>
-        </div>
+        {(() => {
+          const target = (hedefVeritabani || previewResult?.hedefVeritabani || "").trim();
+          const isSelf = Boolean(target) && Boolean(activeDb) && target.toLowerCase() === activeDb.toLowerCase();
+          return (
+            <div
+              className={`d-flex flex-wrap align-items-center justify-content-between p-2 mb-2.5 rounded-2 ${
+                isSelf || !target
+                  ? "bg-danger bg-opacity-10 border border-danger border-opacity-25"
+                  : "bg-primary bg-opacity-10 border border-primary border-opacity-25"
+              }`}
+            >
+              <div className="d-flex align-items-center gap-2 small">
+                <IconDatabase size={17} className={isSelf || !target ? "text-danger flex-shrink-0" : "text-primary flex-shrink-0"} />
+                <span className="text-secondary fw-bold">Fiş Aktarma Alanı (Aktarılan DB):</span>
+                <Badge bg={isSelf || !target ? "danger" : "primary"} className="font-monospace px-3 py-1 fs-7">
+                  {target || "Hedef Veritabanı Seçilmedi"}
+                </Badge>
+                {isSelf && (
+                  <Badge bg="danger">
+                    ⚠️ Aktif Çalışılan Alan Seçilemez (Pasif)
+                  </Badge>
+                )}
+              </div>
+              <span className="text-muted small" style={{ fontSize: "12px" }}>
+                {isSelf
+                  ? "⚠️ Aktif veritabanına aktarım yapılamaz. Lütfen firmanıza ait farklı bir hedef alan seçiniz."
+                  : "* Fişler seçilen kriterlere göre doğrudan hedef veritabanına kopyalanır / aktarılır."}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* 1. Filtre Kartı (Yalnızca Tarihler ve Fiş Dizayn Tipi) */}
         <Card className="border shadow-none mb-3">
@@ -609,41 +671,51 @@ export const FisAktarmaModal: React.FC<FisAktarmaModalProps> = ({
       </Modal.Body>
 
       <Modal.Footer className="bg-light py-2 px-3 border-top d-flex justify-content-between align-items-center">
-        <div className="small text-secondary d-flex flex-wrap align-items-center gap-3">
-          {selectedIds.size > 0 && (
-            <span>
-              <strong>{selectedIds.size}</strong> adet fiş seçildi.
-            </span>
-          )}
-          <span className="d-inline-flex align-items-center gap-1 font-monospace text-primary fw-bold">
-            <IconDatabase size={15} />
-            Aktarılan DB: <strong>{hedefVeritabani || previewResult?.hedefVeritabani || "Firma Tanımlarındaki DB"}</strong>
-          </span>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={loadingAktar}>
-            Kapat
-          </Button>
-          <Button
-            variant="success"
-            size="sm"
-            className="d-flex align-items-center gap-1.5 fw-semibold shadow-sm px-3"
-            onClick={handleCalistirAktarma}
-            disabled={loadingAktar || selectedIds.size === 0}
-          >
-            {loadingAktar ? (
-              <>
-                <Spinner animation="border" size="sm" />
-                <span>Aktarılıyor...</span>
-              </>
-            ) : (
-              <>
-                <IconArrowsExchange size={17} />
-                <span>Seçili Fişleri Aktar ({selectedIds.size})</span>
-              </>
-            )}
-          </Button>
-        </div>
+        {(() => {
+          const target = (hedefVeritabani || previewResult?.hedefVeritabani || "").trim();
+          const isSelf = Boolean(target) && Boolean(activeDb) && target.toLowerCase() === activeDb.toLowerCase();
+          return (
+            <>
+              <div className="small text-secondary d-flex flex-wrap align-items-center gap-3">
+                {selectedIds.size > 0 && (
+                  <span>
+                    <strong>{selectedIds.size}</strong> adet fiş seçildi.
+                  </span>
+                )}
+                <span className={`d-inline-flex align-items-center gap-1 font-monospace fw-bold ${isSelf || !target ? "text-danger" : "text-primary"}`}>
+                  <IconDatabase size={15} />
+                  Aktarılan DB: <strong>{target || "Seçilmedi"}</strong>
+                  {isSelf && <span className="ms-1 small text-danger">(Aktif Alan - Pasif)</span>}
+                </span>
+              </div>
+              <div className="d-flex align-items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={onClose} disabled={loadingAktar}>
+                  Kapat
+                </Button>
+                <Button
+                  variant="success"
+                  size="sm"
+                  className="d-inline-flex align-items-center gap-1.5 fw-semibold shadow-sm px-3"
+                  onClick={handleCalistirAktarma}
+                  disabled={loadingAktar || selectedIds.size === 0 || !target || isSelf}
+                  title={isSelf ? "Aktif alana aktarım yapılamaz" : !target ? "Hedef alan seçiniz" : "Aktarımı Başlat"}
+                >
+                  {loadingAktar ? (
+                    <>
+                      <Spinner animation="border" size="sm" />
+                      <span>Aktarılıyor...</span>
+                    </>
+                  ) : (
+                    <>
+                      <IconArrowsExchange size={17} />
+                      <span>Seçili Fişleri Aktar ({selectedIds.size})</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          );
+        })()}
       </Modal.Footer>
     </Modal>
   );

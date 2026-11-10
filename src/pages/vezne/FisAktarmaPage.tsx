@@ -25,13 +25,18 @@ import {
   DovizFisAktarmaCalistirResult,
   DovizFisAktarmaDetay,
 } from "../../services/dovizFisService";
-import { CompanyService, TodvzTanimDto } from "../../services/companyService";
+import { CompanyService, TodvzTanimDto, CompanyAlanDto } from "../../services/companyService";
+import { AuthService } from "../../services/authService";
 import { useToast } from "../../context/ToastContext";
 import FisAktarmaModal from "./FisAktarmaModal";
 
 export const FisAktarmaPage: React.FC = () => {
   const { showSuccess, showError } = useToast();
   const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  const activeDb = useMemo(() => {
+    return (AuthService.getActiveDb() || localStorage.getItem("kuyumcu_erp_active_db") || "").trim();
+  }, []);
 
   const [ilkTarih, setIlkTarih] = useState<string>(todayStr);
   const [sonTarih, setSonTarih] = useState<string>(todayStr);
@@ -40,6 +45,8 @@ export const FisAktarmaPage: React.FC = () => {
 
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(null);
   const [isLoadingDefs, setIsLoadingDefs] = useState<boolean>(true);
+  const [dbAlanlari, setDbAlanlari] = useState<CompanyAlanDto[]>([]);
+  const [hedefVeritabani, setHedefVeritabani] = useState<string>("");
 
   const [loading, setLoading] = useState<boolean>(false);
   const [showModal, setShowModal] = useState<boolean>(false);
@@ -52,27 +59,75 @@ export const FisAktarmaPage: React.FC = () => {
   const [hataList, setHataList] = useState<string[]>([]);
   const [sonucOzet, setSonucOzet] = useState<DovizFisAktarmaCalistirResult | null>(null);
 
-  // Firma tanımlarını yükle (hedef veritabanı ve aktarma hesabı bilgileri)
+  // Firma tanımlarını ve alan listesini yükle (hedef veritabanı ve aktarma bilgileri)
   useEffect(() => {
     setIsLoadingDefs(true);
-    CompanyService.getDefinitions()
-      .then((defs) => {
+    Promise.all([CompanyService.getDefinitions(), CompanyService.getAlanlar()])
+      .then(([defs, alanlar]) => {
         setCompanyDefinitions(defs);
+        setDbAlanlari(alanlar || []);
+
+        const tanimDb = (defs?.DIGER_VERITABANI_ADI || "").trim();
+        const validOtherDbs = (alanlar || []).filter(
+          (a) => (a.dbName || "").trim().toLowerCase() !== (activeDb || "").toLowerCase()
+        );
+        // Hedef DB geçerli olması için:
+        // 1) Boş olmamalı
+        // 2) Kendi aktif DB'si ile aynı olmamalı (kendi alanını seçemez)
+        // 3) Firmanın kayıtlı diğer alanları arasında bulunmalı
+        const isValid =
+          Boolean(tanimDb) &&
+          Boolean(activeDb) &&
+          tanimDb.toLowerCase() !== activeDb.toLowerCase() &&
+          validOtherDbs.some((a) => (a.dbName || "").trim().toLowerCase() === tanimDb.toLowerCase());
+
+        if (isValid) {
+          setHedefVeritabani(tanimDb);
+        } else {
+          // Alan yoksa veya aktif alan seçilmişse boş kalmalıdır; kendi aktif DB'si pasiftir
+          setHedefVeritabani("");
+        }
       })
       .catch((err) => {
-        console.error("Firma tanımları yüklenemedi:", err);
+        console.error("Firma tanımları veya alanlar yüklenemedi:", err);
       })
       .finally(() => {
         setIsLoadingDefs(false);
       });
-  }, []);
+  }, [activeDb]);
 
-  const hedefVeritabani = useMemo(() => {
-    return (companyDefinitions?.DIGER_VERITABANI_ADI || "").trim();
-  }, [companyDefinitions]);
+  const isSelfTarget = useMemo(() => {
+    return (
+      Boolean(hedefVeritabani) &&
+      Boolean(activeDb) &&
+      hedefVeritabani.trim().toLowerCase() === activeDb.toLowerCase()
+    );
+  }, [hedefVeritabani, activeDb]);
+
+  const hasOtherDb = useMemo(() => {
+    return dbAlanlari.some(
+      (a) => (a.dbName || "").trim().toLowerCase() !== activeDb.toLowerCase()
+    );
+  }, [dbAlanlari, activeDb]);
+
+  const alanYok = useMemo(() => {
+    if (!hedefVeritabani || isSelfTarget) return true;
+    if (dbAlanlari.length === 0) return true;
+    const existsInOther = dbAlanlari.some(
+      (a) =>
+        (a.dbName || "").trim().toLowerCase() === hedefVeritabani.trim().toLowerCase() &&
+        (a.dbName || "").trim().toLowerCase() !== activeDb.toLowerCase()
+    );
+    return !existsInOther;
+  }, [hedefVeritabani, isSelfTarget, dbAlanlari, activeDb]);
 
   // Modal Açılması (Kullanıcı fişleri inceleyip istemediklerinin tikini kaldırabilir)
   const handleOpenModal = () => {
+    if (alanYok) {
+      showError("Fiş aktarma alanı tanımlı olmadığı veya aktif alan olduğu için veritabanı aktarma çalışmaz.");
+      return;
+    }
+
     if (!ilkTarih || !sonTarih) {
       showError("Lütfen geçerli bir ilk ve son tarih aralığı seçiniz.");
       return;
@@ -152,21 +207,29 @@ export const FisAktarmaPage: React.FC = () => {
         {/* Hedef Veritabanı Bilgi Bandı (Üstte) */}
         {!isLoadingDefs && (
           <div className="d-flex flex-wrap align-items-center justify-content-between p-2.5 mb-3 bg-white border border-primary border-opacity-25 rounded-2 shadow-sm small">
-            <div className="d-flex align-items-center gap-3">
+            <div className="d-flex flex-wrap align-items-center gap-3">
+              <span className="d-flex align-items-center gap-2 fw-bold text-dark fs-7">
+                <IconDatabase size={18} className="text-secondary" />
+                Aktif Alan (Kaynak):
+                <Badge bg="secondary" className="ms-1 px-2.5 py-1 font-monospace fs-7 shadow-xs">
+                  {activeDb || "Mevcut DB"}
+                </Badge>
+              </span>
+              <span className="text-muted">➔</span>
               <span className="d-flex align-items-center gap-2 fw-bold text-dark fs-7">
                 <IconDatabase size={18} className="text-primary" />
-                Aktarılan DB:
-                <Badge bg="primary" className="ms-1 px-3 py-1.5 font-monospace fs-7 shadow-xs">
-                  {hedefVeritabani || "Firma Tanımlarındaki Kayıtlı DB"}
+                Aktarılan DB (Hedef):
+                <Badge bg={alanYok ? "danger" : "primary"} className="ms-1 px-3 py-1 font-monospace fs-7 shadow-xs">
+                  {alanYok ? "Alan Yok (Aktarım Çalışmaz)" : hedefVeritabani}
                 </Badge>
               </span>
               <span className="text-muted" style={{ fontSize: "12px" }}>
-                (Fiş Aktarma Alanı: Fişler doğrudan hedef veritabanına kopyalanır / aktarılır)
+                (Fişler doğrudan hedef veritabanına kopyalanır / aktarılır)
               </span>
             </div>
-            {!hedefVeritabani && (
-              <span className="text-muted" style={{ fontSize: "11.5px" }}>
-                * Farklı bir veritabanına aktarmak için <strong>Firma Tanımları → Sistem → Diğer Veritabanı Adı</strong> alanını doldurabilirsiniz.
+            {alanYok && (
+              <span className="text-danger fw-bold" style={{ fontSize: "12px" }}>
+                ⚠️ Fiş aktarma alanı yok: Veritabanına aktarma işlemi çalışmaz!
               </span>
             )}
           </div>
@@ -186,16 +249,60 @@ export const FisAktarmaPage: React.FC = () => {
 
           <Card.Body className="p-4">
             <div className="mx-auto" style={{ maxWidth: "560px" }}>
-              {/* Aktarılan DB Bilgisi (Üstte) */}
-              <div className="d-flex align-items-center justify-content-center gap-2 mb-3 p-2 bg-light rounded border">
-                <Form.Label className="mb-0 fw-bold text-dark text-nowrap d-flex align-items-center gap-1.5">
-                  <IconDatabase size={16} className="text-primary" />
-                  Aktarılan DB:
-                </Form.Label>
-                <Badge bg="primary" className="px-3 py-1.5 font-monospace fs-7 shadow-xs">
-                  {hedefVeritabani || "Firma Tanımlarındaki Kayıtlı DB"}
-                </Badge>
-                <span className="text-muted small ms-1">(Fiş Aktarma Alanı)</span>
+              {/* Aktarılan DB Seçimi / Bilgisi (Üstte) */}
+              <div className="mb-3 p-3 bg-light rounded border">
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                  <span className="small text-muted d-flex align-items-center gap-1">
+                    <IconDatabase size={14} className="text-secondary" />
+                    Aktif Alan (Kaynak DB): <strong className="text-dark font-monospace">{activeDb || "Mevcut DB"}</strong>
+                  </span>
+                  <Badge bg="secondary" className="px-2 py-0.5" style={{ fontSize: "10px" }}>
+                    Aktif Alan Pasiftir (Seçilemez)
+                  </Badge>
+                </div>
+
+                <div className="d-flex align-items-center gap-2">
+                  <Form.Label className="mb-0 fw-bold text-dark text-nowrap d-flex align-items-center gap-1.5" style={{ minWidth: "125px" }}>
+                    <IconDatabase size={16} className="text-primary" />
+                    Aktarılan DB:
+                  </Form.Label>
+                  <Form.Select
+                    size="sm"
+                    value={hedefVeritabani}
+                    onChange={(e) => setHedefVeritabani(e.target.value)}
+                    disabled={loading || dbAlanlari.length === 0}
+                    className={`font-monospace fw-bold ${alanYok ? "border-danger text-danger bg-danger bg-opacity-10" : "text-primary"}`}
+                  >
+                    <option value="">-- Hedef Alan Seçiniz (Tanımlı Alan Yok) --</option>
+                    {dbAlanlari.map((a) => {
+                      const isOwn =
+                        Boolean(a.isCurrentDb) ||
+                        (Boolean(activeDb) && (a.dbName || "").trim().toLowerCase() === activeDb.toLowerCase());
+                      return (
+                        <option
+                          key={a.dbName}
+                          value={a.dbName}
+                          disabled={isOwn}
+                          style={isOwn ? { color: "#94a3b8", backgroundColor: "#f1f5f9" } : { fontWeight: "bold" }}
+                        >
+                          {a.dbName} {a.unvan ? `— ${a.unvan}` : ""} {isOwn ? "(Aktif Çalışılan Alan - Pasif / Seçilemez)" : "(Hedef Alan)"}
+                        </option>
+                      );
+                    })}
+                  </Form.Select>
+                </div>
+
+                {alanYok && (
+                  <Alert variant="danger" className="py-2 px-3 mt-2 mb-0 small text-center fw-bold">
+                    ⚠️ Fiş aktarma alanı belirlenmediği için veritabanı aktarma işlemi çalışmaz! Lütfen Firma Tanımlarından veya yukarıdan hedef alan seçiniz.
+                  </Alert>
+                )}
+
+                {!hasOtherDb && !alanYok && (
+                  <Alert variant="warning" className="py-1 px-2.5 mt-2 mb-0 small text-center">
+                    ⚠️ Firmanıza ait aktarım yapılabilecek başka bir çalışma alanı bulunmamaktadır. Kendi aktif veritabanınız pasiftir.
+                  </Alert>
+                )}
               </div>
 
               {/* Tarih Alanları (İlk tarih & Son tarih) */}
@@ -251,25 +358,37 @@ export const FisAktarmaPage: React.FC = () => {
                 </Form.Select>
               </div>
 
-              {/* Durum / İlerleme Çubuğu (Görseldeki Gri Alan) */}
+              {/* Durum / İlerleme Çubuğu */}
               <div
                 className="rounded-2 p-3 mb-3 d-flex align-items-center justify-content-center text-center shadow-inner"
                 style={{
                   minHeight: "72px",
                   backgroundColor:
-                    statusType === "error"
+                    alanYok
                       ? "#fee2e2"
-                      : statusType === "success"
-                        ? "#dcfce7"
-                        : statusType === "warning"
-                          ? "#fef3c7"
-                          : "#64748b",
-                  color: statusType === "info" ? "#ffffff" : statusType === "loading" ? "#ffffff" : "#0f172a",
+                      : statusType === "error"
+                        ? "#fee2e2"
+                        : statusType === "success"
+                          ? "#dcfce7"
+                          : statusType === "warning"
+                            ? "#fef3c7"
+                            : "#64748b",
+                  color:
+                    alanYok
+                      ? "#991b1b"
+                      : statusType === "info" || statusType === "loading"
+                        ? "#ffffff"
+                        : "#0f172a",
                   transition: "all 0.25s ease",
-                  border: "1px solid rgba(0,0,0,0.1)",
+                  border: alanYok ? "1px solid #ef4444" : "1px solid rgba(0,0,0,0.1)",
                 }}
               >
-                {loading ? (
+                {alanYok ? (
+                  <div className="d-flex align-items-center justify-content-center gap-2 fw-bold text-danger">
+                    <IconAlertTriangle size={22} className="flex-shrink-0" />
+                    <span>Fiş aktarma alanı yok: Veritabanına aktarma işlemi çalışmaz!</span>
+                  </div>
+                ) : loading ? (
                   <div className="d-flex align-items-center gap-2">
                     <Spinner animation="border" size="sm" variant="light" />
                     <span className="fw-semibold">{statusText}</span>
@@ -284,27 +403,36 @@ export const FisAktarmaPage: React.FC = () => {
               {/* Butonlar: Fişleri Listele ve Aktar */}
               <div className="d-flex justify-content-center align-items-center gap-3">
                 <Button
-                  variant="outline-primary"
+                  variant="outline-secondary"
                   className="d-inline-flex align-items-center justify-content-center gap-2 px-4 py-2 fw-semibold shadow-sm"
-                  style={{ minWidth: "150px", fontSize: "14px" }}
+                  style={{
+                    minWidth: "150px",
+                    fontSize: "14px",
+                    cursor: alanYok ? "not-allowed" : "pointer",
+                    opacity: alanYok ? 0.45 : 1,
+                  }}
                   onClick={handleOpenModal}
-                  disabled={loading}
+                  disabled={loading || alanYok}
+                  title={alanYok ? "Fiş aktarma alanı yok, çalışmaz" : "Fişleri Listele"}
                 >
                   <IconListCheck size={18} />
                   <span>Fişleri Listele</span>
                 </Button>
 
                 <Button
-                  variant="success"
+                  variant={alanYok ? "secondary" : "success"}
                   className="d-inline-flex align-items-center justify-content-center gap-2 px-5 py-2 fw-bold shadow-sm"
                   style={{
                     minWidth: "160px",
                     fontSize: "14px",
-                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    background: alanYok ? "#94a3b8" : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                     border: "none",
+                    cursor: alanYok ? "not-allowed" : "pointer",
+                    opacity: alanYok ? 0.45 : 1,
                   }}
                   onClick={handleOpenModal}
-                  disabled={loading}
+                  disabled={loading || alanYok}
+                  title={alanYok ? "Fiş aktarma alanı yok, çalışmaz" : "Fiş Aktar"}
                 >
                   {loading ? (
                     <>

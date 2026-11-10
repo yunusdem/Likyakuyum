@@ -28,7 +28,12 @@ export class BankaService {
     }
     // ─── Banka Hesap Hareketleri ───────────────────────────────────────────────
     static async listHareketler(filter, dbContext) {
-        return BankaSqlRepository.listHareketler(filter, dbContext);
+        const hareketler = await BankaSqlRepository.listHareketler(filter, dbContext);
+        // Cari / vezne / işlem tipi / arama süzgeci olan çağrılar banka fişine özgü; fiş satırları yalnız istenince ve bu süzgeçler yokken eklenir
+        if (!filter?.fisSatirlari || filter.cariKartId || filter.vezneId || filter.islemTipi !== undefined || filter.search)
+            return hareketler;
+        const fisSatirlari = await BankaSqlRepository.listFisBankaSatirlari({ bankaId: filter.bankaId, baslangicTarihi: filter.baslangicTarihi, bitisTarihi: filter.bitisTarihi, limit: filter.limit }, dbContext);
+        return [...hareketler, ...fisSatirlari].sort((a, b) => a.tarih.localeCompare(b.tarih) || a.bankaHareketId - b.bankaHareketId);
     }
     static async getHareketById(bankaHareketId, dbContext) {
         const item = await BankaSqlRepository.getHareketById(bankaHareketId, dbContext);

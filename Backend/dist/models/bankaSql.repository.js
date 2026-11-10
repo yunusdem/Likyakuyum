@@ -437,6 +437,103 @@ export class BankaSqlRepository {
             satirlar: satirlarMap.get(h.BANKA_HAREKET_ID) || [],
         }));
     }
+    /**
+     * Fişlerin Hesap (banka) ödeme satırları, banka hareketi biçiminde (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M17): sarraf fişi
+     * (TODVZ_ODEME_SATIRI) ve perakende / ticari fiş (TODVZ_FATURA_ODEME). Eşleşme ve giriş / çıkış yönü listBankalar'daki bakiye
+     * hesabıyla aynı: sarraf satış ve perakende FATURA_TIPI 1 giriş, sarraf alış ve FATURA_TIPI 2 çıkış. Yeni kayıt yazılmaz.
+     * Kimlik çakışmasın diye bankaHareketId eksi sayıdır (sarraf çift, perakende tek).
+     */
+    static async listFisBankaSatirlari(filter, dbContext) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        const limit = filter?.limit && filter.limit > 0 ? Math.min(filter.limit, 5000) : 200;
+        const kosul = (tarihKolonu) => `${filter?.bankaId ? " AND b.BANKA_ID = @BANKA_ID" : ""}${filter?.baslangicTarihi ? ` AND ${tarihKolonu} >= @BASLANGIC` : ""}${filter?.bitisTarihi ? ` AND ${tarihKolonu} <= @BITIS` : ""}`;
+        const istek = () => {
+            const r = pool.request().input("LIMIT", sql.Int, limit);
+            if (filter?.bankaId)
+                r.input("BANKA_ID", sql.Int, filter.bankaId);
+            if (filter?.baslangicTarihi)
+                r.input("BASLANGIC", sql.DateTime, new Date(filter.baslangicTarihi));
+            if (filter?.bitisTarihi)
+                r.input("BITIS", sql.DateTime, new Date(filter.bitisTarihi));
+            return r;
+        };
+        const tablolar = (await pool.request().query(`
+      SELECT OBJECT_ID('dbo.TODVZ_ODEME_SATIRI') AS ODEME, OBJECT_ID('dbo.TODVZ_SARRAF_FISI') AS SARRAF,
+             OBJECT_ID('dbo.TODVZ_FATURA_ODEME') AS FATURA_ODEME, OBJECT_ID('dbo.TODVZ_FATURA') AS FATURA,
+             COL_LENGTH('dbo.TODVZ_FATURA', 'FIS_KAYNAGI') AS FIS_KAYNAGI,
+             COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'CARI_KART_ID') AS ODEME_CARI,
+             COL_LENGTH('dbo.TODVZ_FATURA_ODEME', 'CARI_KART_ID') AS FATURA_ODEME_CARI`)).recordset[0] || {};
+        const satirlar = [];
+        const ekle = (r, kaynak, giris, id, fisAdi) => {
+            const tutar = Number(r.TUTAR) || 0;
+            satirlar.push({
+                bankaHareketId: id,
+                islemTipi: giris ? 0 : 1,
+                bankaId: r.BANKA_ID,
+                bankaHesapNo: r.HESAP_NO ? String(r.HESAP_NO).trim() : "",
+                bankaHesapAdi: r.HESAP_ADI ? String(r.HESAP_ADI).trim() : "",
+                bankaIban: r.IBAN ? String(r.IBAN).trim() : "",
+                cariKartId: r.CARI_KART_ID || null,
+                cariKod: r.CARI_KOD ? String(r.CARI_KOD).trim() : null,
+                cariUnvan: r.CARI_UNVAN ? String(r.CARI_UNVAN).trim() : null,
+                vezneId: r.VEZNE_ID || null,
+                vezneKod: r.VEZNE_KOD ? String(r.VEZNE_KOD).trim() : null,
+                vezneAd: r.VEZNE_AD ? String(r.VEZNE_AD).trim() : null,
+                tarih: r.TARIH ? new Date(r.TARIH).toISOString() : new Date().toISOString(),
+                belgeNo: r.FIS_NO ? String(r.FIS_NO).trim() : null,
+                aciklama: `${fisAdi} ${giris ? "(giriş)" : "(çıkış)"}`,
+                iptal: false,
+                iptalTarihi: null,
+                toplamTutarTl: tutar,
+                toplamMeblag: tutar,
+                ekleyenId: null,
+                eklemeZamani: r.EKLEME_ZAMANI ? new Date(r.EKLEME_ZAMANI).toISOString() : null,
+                guncelleyenId: null,
+                guncellemeZamani: null,
+                satirlar: [{ bankaHareketId: id, satirNo: 1, paraId: 0, paraKodu: "TL", paraAdi: "TÜRK LİRASI", meblag: tutar, kur: 1, giseKuru: 1, tutarTl: tutar, aciklama: null }],
+                kaynak,
+                kaynakFisId: r.FIS_ID,
+            });
+        };
+        // Eski şemada ödeme satırında CARI_KART_ID (Hesap satırının bankası) yoksa o kaynak atlanır
+        if (tablolar.ODEME && tablolar.SARRAF && tablolar.ODEME_CARI) {
+            const res = await istek().query(`
+        SELECT TOP (@LIMIT) os.SARRAF_FISI_ID AS FIS_ID, os.SATIR_NO, sf.TIP, sf.TARIH, sf.FIS_NO, os.TUTAR, sf.EKLEME_ZAMANI,
+          b.BANKA_ID, b.HESAP_NO, b.HESAP_ADI, b.IBAN, sf.CARI_KART_ID, c.KOD AS CARI_KOD,
+          COALESCE(NULLIF(LTRIM(RTRIM(sf.UNVAN)), ''), c.AD) AS CARI_UNVAN, sf.VEZNE_ID, v.KOD AS VEZNE_KOD, v.AD AS VEZNE_AD
+        FROM TODVZ_ODEME_SATIRI os
+        JOIN TODVZ_SARRAF_FISI sf ON sf.SARRAF_FISI_ID = os.SARRAF_FISI_ID
+        JOIN TODVZ_BANKA b ON (os.CARI_KART_ID = b.BANKA_ID OR os.POS_CIHAZI_ID = b.BANKA_ID)
+        LEFT JOIN TODVZ_CARI_KART c ON c.CARI_KART_ID = sf.CARI_KART_ID
+        LEFT JOIN TODVZ_VEZNE v ON v.VEZNE_ID = sf.VEZNE_ID
+        WHERE os.ODEME_ARACI_TURU = 3${kosul("sf.TARIH")}
+        ORDER BY sf.TARIH DESC, os.SARRAF_FISI_ID DESC, os.SATIR_NO`);
+            for (const r of res.recordset || []) {
+                const satis = Number(r.TIP) === 1;
+                ekle(r, "sarraf", satis, -((Number(r.FIS_ID) * 100 + Number(r.SATIR_NO)) * 2), satis ? "Sarraf satış fişi" : "Sarraf alış fişi");
+            }
+        }
+        if (tablolar.FATURA_ODEME && tablolar.FATURA && tablolar.FATURA_ODEME_CARI) {
+            const res = await istek().query(`
+        SELECT TOP (@LIMIT) fo.FATURA_ID AS FIS_ID, fo.SATIR_NO, fat.FATURA_TIPI, fat.TARIH, fat.FATURA_NO AS FIS_NO, fo.TUTAR, NULL AS EKLEME_ZAMANI,
+          ${tablolar.FIS_KAYNAGI ? "ISNULL(fat.FIS_KAYNAGI, 0)" : "0"} AS FIS_KAYNAGI,
+          b.BANKA_ID, b.HESAP_NO, b.HESAP_ADI, b.IBAN, fat.CARI_KART_ID, c.KOD AS CARI_KOD,
+          COALESCE(NULLIF(LTRIM(RTRIM(fat.ALICI_UNVAN)), ''), c.AD) AS CARI_UNVAN, fat.VEZNE_ID, v.KOD AS VEZNE_KOD, v.AD AS VEZNE_AD
+        FROM TODVZ_FATURA_ODEME fo
+        JOIN TODVZ_FATURA fat ON fat.FATURA_ID = fo.FATURA_ID
+        JOIN TODVZ_BANKA b ON (fo.CARI_KART_ID = b.BANKA_ID OR fo.POS_CIHAZI_ID = b.BANKA_ID)
+        LEFT JOIN TODVZ_CARI_KART c ON c.CARI_KART_ID = fat.CARI_KART_ID
+        LEFT JOIN TODVZ_VEZNE v ON v.VEZNE_ID = fat.VEZNE_ID
+        WHERE fo.ODEME_ARACI_TURU = 3 AND fat.FATURA_TIPI IN (1, 2)${kosul("fat.TARIH")}
+        ORDER BY fat.TARIH DESC, fo.FATURA_ID DESC, fo.SATIR_NO`);
+            for (const r of res.recordset || []) {
+                const giris = Number(r.FATURA_TIPI) === 1;
+                const ticari = Number(r.FIS_KAYNAGI) === 1;
+                ekle(r, ticari ? "ticari" : "perakende", giris, -((Number(r.FIS_ID) * 100 + Number(r.SATIR_NO)) * 2 + 1), ticari ? "Ticari satış fişi" : giris ? "Perakende satış fişi" : "Perakende alış fişi");
+            }
+        }
+        return satirlar;
+    }
     static async getHareketById(bankaHareketId, dbContext) {
         const list = await this.listHareketler({ search: undefined, limit: 1 }, dbContext);
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);

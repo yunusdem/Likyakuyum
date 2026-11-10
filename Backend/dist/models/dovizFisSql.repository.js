@@ -2984,13 +2984,16 @@ export class DovizFisSqlRepository {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await DovizFisSqlRepository.ensureAktarmaSchema(pool);
         // 1. Get definitions to check configured target database and target account
+        const currentDb = (dbContext?.dbName || "").trim().toLowerCase();
         const tanimRes = await pool.request().query("SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM]");
         const tanim = tanimRes.recordset?.[0] || {};
         let targetDb = (params.hedefVeritabani || tanim.DIGER_VERITABANI_ADI || "").trim().replace(/[\[\]]/g, "");
+        if (targetDb && targetDb.toLowerCase() === currentDb) {
+            targetDb = "";
+        }
         if (targetDb) {
             const dbCheck = await pool.request().input("dbName", sql.VarChar(100), targetDb).query("SELECT 1 FROM sys.databases WHERE name = @dbName");
             if (!dbCheck.recordset || dbCheck.recordset.length === 0) {
-                // Target database doesn't exist on server, fall back to current DB
                 targetDb = "";
             }
             else {
@@ -3181,13 +3184,17 @@ export class DovizFisSqlRepository {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await DovizFisSqlRepository.ensureAktarmaSchema(pool);
         // 1. Resolve definitions and target DB
+        const currentDb = (dbContext?.dbName || "").trim().toLowerCase();
         const tanimRes = await pool.request().query("SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM]");
         const tanim = tanimRes.recordset?.[0] || {};
         let targetDb = (payload.hedefVeritabani || tanim.DIGER_VERITABANI_ADI || "").trim().replace(/[\[\]]/g, "");
+        if (!targetDb || (currentDb && targetDb.toLowerCase() === currentDb)) {
+            throw new Error("Aktif çalışılan veritabanına fiş aktarımı yapılamaz. Lütfen firmanıza ait farklı bir hedef veritabanı alanı seçiniz.");
+        }
         if (targetDb) {
             const dbCheck = await pool.request().input("dbName", sql.VarChar(100), targetDb).query("SELECT 1 FROM sys.databases WHERE name = @dbName");
             if (!dbCheck.recordset || dbCheck.recordset.length === 0) {
-                targetDb = "";
+                throw new Error(`Hedef veritabanı '${targetDb}' sunucuda bulunamadı.`);
             }
             else {
                 await DovizFisSqlRepository.ensureAktarmaSchema(pool, targetDb);

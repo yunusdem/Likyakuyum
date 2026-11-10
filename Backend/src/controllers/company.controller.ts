@@ -29,6 +29,7 @@ export class CompanyController {
       unvan: string;
       dbName: string;
       aciklama?: string;
+      isCurrentDb?: boolean;
     }> = [];
 
     const eklenenDbSet = new Set<string>();
@@ -96,7 +97,8 @@ export class CompanyController {
                 kod: (row.FIRMA_KODU || row.DB_NAME || "").trim(),
                 unvan: (row.UNVAN || row.DB_NAME || "").trim(),
                 dbName: (row.DB_NAME || "").trim(),
-                aciklama: dbLower === currentDb ? "Mevcut Alan" : "Çalışma Alanı / Şube",
+                aciklama: dbLower === currentDb ? "Aktif Alan (Seçilemez)" : "Hedef Çalışma Alanı",
+                isCurrentDb: dbLower === currentDb,
               });
             }
           }
@@ -110,7 +112,8 @@ export class CompanyController {
               kod: (matchedFirma.firmaKodu || matchedFirma.dbName || "").trim(),
               unvan: (matchedFirma.unvan || matchedFirma.dbName || "").trim(),
               dbName: (matchedFirma.dbName || "").trim(),
-              aciklama: "Mevcut Alan",
+              aciklama: "Aktif Alan (Seçilemez)",
+              isCurrentDb: true,
             });
           }
         }
@@ -143,7 +146,8 @@ export class CompanyController {
         kod: dbRaw,
         unvan: unvan,
         dbName: dbRaw,
-        aciklama: "Mevcut Veritabanı",
+        aciklama: "Aktif Alan (Seçilemez)",
+        isCurrentDb: true,
       });
     }
 

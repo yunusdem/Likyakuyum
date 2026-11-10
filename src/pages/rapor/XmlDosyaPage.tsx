@@ -249,6 +249,8 @@ export default function XmlDosyaPage() {
         sonTarih: son,
         belgeIslemNo: belgeIslemNo || undefined,
         belgeIslemNoTuru,
+        tlVergiSiniri,
+        dovizVergiSiniri,
       });
       setFisSonuclari(data);
       const hataliSayisi = data.filter((d) => !d.gecerli).length;
@@ -275,6 +277,8 @@ export default function XmlDosyaPage() {
         sonTarih: son,
         belgeIslemNo: belgeIslemNo || undefined,
         belgeIslemNoTuru,
+        tlVergiSiniri,
+        dovizVergiSiniri,
       });
       setFisSatirSonuclari(data);
       const hataliSayisi = data.filter((d) => !d.gecerli).length;
@@ -317,6 +321,8 @@ export default function XmlDosyaPage() {
         dosyaAdi,
         ilkTarih,
         sonTarih,
+        tlVergiSiniri,
+        dovizVergiSiniri,
       });
 
       setOlusturulanXml(res);

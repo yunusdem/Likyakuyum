@@ -262,8 +262,8 @@ export class CariHareketSqlRepository {
       if (filters?.cariKartId) sfWhere.push("COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) = @cariKartId");
       if (filters?.vezneId) sfWhere.push("SF.[VEZNE_ID] = @vezneId");
       if (filters?.tip !== undefined && filters?.tip !== null && String(filters?.tip) !== "-1") {
-        // SF.TIP: 1 Satış (Alacak=1), 0 Alış (Borç=0)
-        sfWhere.push("(CASE WHEN SF.[TIP] = 1 THEN 1 ELSE 0 END) = @tip");
+        // SF.TIP: 1 Satış (Borç=0), 0 Alış (Alacak=1)
+        sfWhere.push("(CASE WHEN SF.[TIP] = 1 THEN 0 ELSE 1 END) = @tip");
       }
       if (filters?.hareketTipi !== undefined && filters?.hareketTipi !== null && String(filters?.hareketTipi) !== "-1") {
         // Sarraf fişleri hareketTipi = 10
@@ -281,7 +281,7 @@ export class CariHareketSqlRepository {
           SF.[TARIH],
           10 AS [HAREKET_TIPI],
           CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
-          CASE WHEN SF.[TIP] = 1 THEN 1 ELSE 0 END AS [TIP],
+          CASE WHEN SF.[TIP] = 1 THEN 0 ELSE 1 END AS [TIP],
           1 AS [EKLEYEN_ID],
           ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
           1 AS [GUNCELLEYEN_ID],
@@ -299,7 +299,7 @@ export class CariHareketSqlRepository {
         WHERE ${sfWhere.join(" AND ")}
       `);
 
-      // 3. TODVZ_FIS (Döviz Fişi)
+      // 3. TODVZ_FIS (Döviz Fişi - Sadece Cari Kartı seçilmiş olanlar)
       let dfWhere = ["F.[CARI_KART_ID] IS NOT NULL AND F.[CARI_KART_ID] > 0", "ISNULL(F.[IPTAL], 0) = 0"];
       if (startParam) dfWhere.push("F.[TARIH] >= @startDate");
       if (endParam) dfWhere.push("F.[TARIH] <= @endDate");
@@ -345,7 +345,7 @@ export class CariHareketSqlRepository {
         WHERE ${dfWhere.join(" AND ")}
       `);
 
-      // 4. TODVZ_FATURA (Perakende Faturası)
+      // 4. TODVZ_FATURA (Perakende Faturası - Sadece Cari seçilmiş ödemeler)
       let fatWhere = ["(COALESCE(NULLIF(FO.[CARI_KART_ID], 0), NULLIF(FAT.[CARI_KART_ID], 0)) IS NOT NULL)"];
       if (startParam) fatWhere.push("FAT.[TARIH] >= @startDate");
       if (endParam) fatWhere.push("FAT.[TARIH] <= @endDate");
@@ -464,7 +464,11 @@ export class CariHareketSqlRepository {
             OS.[SARRAF_FISI_ID],
             OS.[SATIR_NO],
             ISNULL(OS.[PARA_ID], 1) AS [PARA_ID],
-            ISNULL(NULLIF(OS.[ADET], 0), ISNULL(NULLIF(OS.[MIKTAR], 0), OS.[TUTAR])) AS [MEBLAG],
+            CASE 
+              WHEN UPPER(LTRIM(RTRIM(ISNULL(P.[KOD], OS.[PARA_KODU])))) IN ('HAS', 'ALTIN', 'HAS ALTIN', 'HASALTIN') THEN ISNULL(NULLIF(OS.[HAS_GRAM], 0), OS.[MIKTAR])
+              WHEN COALESCE(OS.[PARA_ID], P.[PARA_ID], 1) = 1 THEN ISNULL(NULLIF(OS.[TUTAR], 0), OS.[MIKTAR])
+              ELSE ISNULL(NULLIF(OS.[MIKTAR], 0), ISNULL(NULLIF(OS.[ADET], 0), OS.[TUTAR]))
+            END AS [MEBLAG],
             ISNULL(NULLIF(RTRIM(OS.[PARA_KODU]), ''), RTRIM(P.[KOD])) AS [PARA_KOD],
             ISNULL(NULLIF(RTRIM(OS.[PARA_ADI]), ''), RTRIM(P.[AD])) AS [PARA_AD],
             ISNULL(P.[HAS_ORANI], 1) AS [HAS_ORANI]
@@ -657,7 +661,7 @@ export class CariHareketSqlRepository {
             SF.[TARIH],
             10 AS [HAREKET_TIPI],
             CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
-            CASE WHEN SF.[TIP] = 1 THEN 1 ELSE 0 END AS [TIP],
+            CASE WHEN SF.[TIP] = 1 THEN 0 ELSE 1 END AS [TIP],
             1 AS [EKLEYEN_ID],
             ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
             1 AS [GUNCELLEYEN_ID],
@@ -1356,35 +1360,49 @@ export class CariHareketSqlRepository {
 
           UNION ALL
 
-          -- 4. Döviz Fişi Satırı (Banka / Cari)
+          -- 4. Döviz Fişi Satırı (Sadece Cari Kartı seçilmiş olanlar)
           SELECT 
             FS.[PARA_ID],
             CASE WHEN F.[TIP] = 0 THEN FS.[MIKTAR] ELSE 0.0 END AS [BORC],
             CASE WHEN F.[TIP] = 1 THEN FS.[MIKTAR] ELSE 0.0 END AS [ALACAK]
           FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
             INNER JOIN [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK) ON FS.[FIS_ID] = F.[FIS_ID]
-          WHERE (FS.[BANKA_HESABI_ID] = @id OR F.[CARI_KART_ID] = @id) AND ISNULL(F.[IPTAL], 0) = 0
+          WHERE F.[CARI_KART_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
 
           UNION ALL
 
-          -- 5. Döviz Fişi TL Karşılığı
+          -- 5. Döviz Fişi TL Karşılığı (Sadece Cari Kartı seçilmiş olanlar)
           SELECT 
             1 AS [PARA_ID],
             CASE WHEN F.[TIP] = 1 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [BORC],
             CASE WHEN F.[TIP] = 0 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [ALACAK]
           FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
-          WHERE (F.[BANKA_HESABI_ID] = @id OR F.[CARI_KART_ID] = @id) AND ISNULL(F.[IPTAL], 0) = 0
+          WHERE F.[CARI_KART_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
 
           UNION ALL
 
-          -- 6. Sarraf Fişi Ödeme / Tahsilat Satırı (Sadece Türü Cari olan Ödeme Satırları: Satış -> Alacak (1), Alış -> Borç (0))
+          -- 6. Sarraf Fişi Ödeme / Tahsilat Satırı (Sadece Türü Cari olan Ödeme Satırları: Satış -> Borç (0), Alış -> Alacak (1))
           SELECT 
-            ISNULL(S.[PARA_ID], 1) AS [PARA_ID],
-            CASE WHEN F.[TIP] = 0 THEN ISNULL(NULLIF(S.[ADET], 0), ISNULL(NULLIF(S.[MIKTAR], 0), S.[TUTAR])) ELSE 0.0 END AS [BORC],
-            CASE WHEN F.[TIP] = 1 THEN ISNULL(NULLIF(S.[ADET], 0), ISNULL(NULLIF(S.[MIKTAR], 0), S.[TUTAR])) ELSE 0.0 END AS [ALACAK]
+            COALESCE(S.[PARA_ID], P.[PARA_ID], 1) AS [PARA_ID],
+            CASE WHEN F.[TIP] = 1 THEN 
+              CASE 
+                WHEN COALESCE(S.[PARA_ID], P.[PARA_ID], 1) = 1 THEN ISNULL(NULLIF(S.[TUTAR], 0), S.[MIKTAR])
+                WHEN UPPER(LTRIM(RTRIM(ISNULL(P.[KOD], S.[PARA_KODU])))) IN ('HAS', 'ALTIN', 'HAS ALTIN', 'HASALTIN') THEN ISNULL(NULLIF(S.[HAS_GRAM], 0), S.[MIKTAR])
+                ELSE ISNULL(NULLIF(S.[MIKTAR], 0), ISNULL(NULLIF(S.[ADET], 0), S.[TUTAR]))
+              END
+            ELSE 0.0 END AS [BORC],
+            CASE WHEN F.[TIP] = 0 THEN 
+              CASE 
+                WHEN COALESCE(S.[PARA_ID], P.[PARA_ID], 1) = 1 THEN ISNULL(NULLIF(S.[TUTAR], 0), S.[MIKTAR])
+                WHEN UPPER(LTRIM(RTRIM(ISNULL(P.[KOD], S.[PARA_KODU])))) IN ('HAS', 'ALTIN', 'HAS ALTIN', 'HASALTIN') THEN ISNULL(NULLIF(S.[HAS_GRAM], 0), S.[MIKTAR])
+                ELSE ISNULL(NULLIF(S.[MIKTAR], 0), ISNULL(NULLIF(S.[ADET], 0), S.[TUTAR]))
+              END
+            ELSE 0.0 END AS [ALACAK]
           FROM [dbo].[TODVZ_SARRAF_FISI] F WITH (NOLOCK)
             INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] S WITH (NOLOCK) ON S.[SARRAF_FISI_ID] = F.[SARRAF_FISI_ID]
-          WHERE S.[ODEME_ARACI_TURU] = 1 AND (S.[CARI_KART_ID] = @id OR (S.[CARI_KART_ID] IS NULL AND F.[CARI_KART_ID] = @id))
+            LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON (S.[PARA_ID] = P.[PARA_ID] OR UPPER(LTRIM(RTRIM(P.[KOD]))) = UPPER(LTRIM(RTRIM(S.[PARA_KODU]))))
+          WHERE S.[ODEME_ARACI_TURU] = 1 
+            AND (S.[CARI_KART_ID] = @id OR (ISNULL(S.[CARI_KART_ID], 0) = 0 AND F.[CARI_KART_ID] = @id))
         )
         SELECT 
           PR.[PARA_ID],

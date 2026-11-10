@@ -33,6 +33,7 @@ import {
 import ERPToolbar from "components/common/ERPToolbar";
 import { printReportTable } from "../../utils/printReport";
 import { CompanyService, TodvzTanimDto, defaultCompanyTanim, CompanyAlanDto } from "../../services/companyService";
+import { AuthService } from "../../services/authService";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import FirmaKlasoruModal from "../../components/common/FirmaKlasoruModal";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
@@ -379,6 +380,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
     addNewLabel?: string;
     onEdit?: (item: any) => void;
     editLabel?: string;
+    isItemDisabled?: (item: any) => boolean;
   }>({
     show: false,
     title: "",
@@ -392,6 +394,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
     addNewLabel: "Yeni Kayıt",
     onEdit: undefined,
     editLabel: "Düzenle",
+    isItemDisabled: undefined,
   });
 
   // Yeni Kayıt / Düzenleme Modalı (Vergi Dairesi, İl, İlçe, Ülke)
@@ -956,32 +959,51 @@ export const CompanyDefinitionsPage: React.FC = () => {
         list = await CompanyService.getAlanlar();
         if (list) setDbAlanlari(list);
       }
+      const activeDb = (AuthService.getActiveDb() || localStorage.getItem("kuyumcu_erp_active_db") || "").trim().toLowerCase();
+
       setLookupModalConfig({
         show: true,
         title: "Fiş Aktarma Alanı / Veritabanı Seçimi",
-        items: list.map((a) => ({
-          id: a.dbName,
-          kod: a.dbName,
-          unvan: a.unvan,
-          aciklama: a.aciklama || "Kayıtlı Veritabanı",
-        })),
+        items: (list || []).map((a) => {
+          const isOwnDb = Boolean(a.isCurrentDb) || (Boolean(activeDb) && (a.dbName || "").trim().toLowerCase() === activeDb);
+          return {
+            id: a.dbName,
+            kod: a.dbName,
+            unvan: a.unvan,
+            aciklama: isOwnDb ? "Aktif Alan (Pasif - Seçilemez)" : (a.aciklama || "Hedef Alan"),
+            isOwnDb,
+          };
+        }),
         selectedId: formData.DIGER_VERITABANI_ADI,
         columns: [
           {
             header: "Veritabanı Alanı",
-            render: (it) => <span className="font-monospace fw-bold">{it.kod}</span>,
-            width: "150px",
+            render: (it) => (
+              <span className={`font-monospace ${it.isOwnDb ? "text-muted text-decoration-line-through" : "fw-bold text-dark"}`}>
+                {it.kod}
+              </span>
+            ),
+            width: "160px",
           },
           {
             header: "Firma / Şube Ünvanı",
-            render: (it) => <span className="fw-medium">{it.unvan}</span>,
+            render: (it) => (
+              <span className={it.isOwnDb ? "text-muted" : "fw-medium"}>
+                {it.unvan}
+              </span>
+            ),
           },
           {
             header: "Durum",
-            render: (it) => <Badge bg="primary">{it.aciklama}</Badge>,
-            width: "140px",
+            render: (it) => (
+              <Badge bg={it.isOwnDb ? "secondary" : "success"}>
+                {it.aciklama}
+              </Badge>
+            ),
+            width: "180px",
           },
         ],
+        isItemDisabled: (it) => Boolean(it.isOwnDb),
         filterFn: (it, term) => {
           const t = term.toLowerCase();
           return (
@@ -990,6 +1012,10 @@ export const CompanyDefinitionsPage: React.FC = () => {
           );
         },
         onSelect: (it) => {
+          if (it.isOwnDb) {
+            setAlertError("Aktif çalıştığınız veritabanına fiş aktarımı yapılamaz. Lütfen firmanıza ait farklı bir hedef alan seçiniz.");
+            return;
+          }
           handleChange("DIGER_VERITABANI_ADI", it.kod);
           handleChange("FIS_AKTARMA_HESABI", it.unvan || it.kod);
           setLookupModalConfig((prev) => ({ ...prev, show: false }));
@@ -1233,6 +1259,15 @@ export const CompanyDefinitionsPage: React.FC = () => {
     try {
       setIsSaving(true);
       setAlertError(null);
+
+      const activeDb = (AuthService.getActiveDb() || localStorage.getItem("kuyumcu_erp_active_db") || "").trim().toLowerCase();
+      const digerDb = (formData.DIGER_VERITABANI_ADI || "").trim().toLowerCase();
+      if (digerDb && activeDb && digerDb === activeDb) {
+        setAlertError(`Aktif çalışılan veritabanı ('${formData.DIGER_VERITABANI_ADI}') fiş aktarma alanı olarak seçilemez. Lütfen firmanıza ait farklı bir hedef alan seçiniz veya bu alanı temizleyiniz.`);
+        setIsSaving(false);
+        return;
+      }
+
       // Kur Kaynağı sekmesi: kaynak seçimi ve komisyon tablosu (değiştiyse)
       await kurKaynakRef.current?.kaydet();
       await komisyonRef.current?.kaydet();
@@ -2387,39 +2422,52 @@ export const CompanyDefinitionsPage: React.FC = () => {
                             <Form.Group as={Row} className="mb-2 align-items-center g-2">
                               <Form.Label column style={labelColStyle} className="small fw-semibold text-secondary text-start text-nowrap pe-1 mb-0">Fiş Aktarma Alanı:</Form.Label>
                               <Col>
-                                <InputGroup size="sm" className="flex-nowrap" style={{ maxWidth: "260px" }}>
-                                  <Form.Control
-                                    type="text"
-                                    readOnly
-                                    value={formData.DIGER_VERITABANI_ADI || ""}
-                                    placeholder="Veritabanı Alanı Seçiniz..."
-                                    onClick={openFisAktarmaAlaniLookup}
-                                    className="bg-white border font-monospace text-dark"
-                                    style={{ fontSize: "0.82rem", cursor: "pointer" }}
-                                    title={formData.DIGER_VERITABANI_ADI ? `Veritabanı Alanı: ${formData.DIGER_VERITABANI_ADI}` : "Veritabanı Alanı Seçiniz"}
-                                  />
-                                  {formData.DIGER_VERITABANI_ADI ? (
-                                    <Button
-                                      variant="outline-secondary"
-                                      onClick={() => {
-                                        handleChange("DIGER_VERITABANI_ADI", "");
-                                        handleChange("FIS_AKTARMA_HESABI", "");
-                                      }}
-                                      title="Seçimi Temizle"
-                                      className="d-flex align-items-center px-1.5 flex-shrink-0"
-                                    >
-                                      <IconX size={15} />
-                                    </Button>
-                                  ) : null}
-                                  <Button
-                                    variant="outline-primary"
-                                    onClick={openFisAktarmaAlaniLookup}
-                                    title="Listeden Seç (Dürbün - Fiş Aktarılacak Veritabanı Alanları)"
-                                    className="d-flex align-items-center px-2 flex-shrink-0"
-                                  >
-                                    <IconBinoculars size={16} />
-                                  </Button>
-                                </InputGroup>
+                                {(() => {
+                                  const activeDb = (AuthService.getActiveDb() || localStorage.getItem("kuyumcu_erp_active_db") || "").trim().toLowerCase();
+                                  const isSelfDb = Boolean(formData.DIGER_VERITABANI_ADI) && Boolean(activeDb) && formData.DIGER_VERITABANI_ADI.trim().toLowerCase() === activeDb;
+                                  return (
+                                    <>
+                                      <InputGroup size="sm" className="flex-nowrap" style={{ maxWidth: "260px" }}>
+                                        <Form.Control
+                                          type="text"
+                                          readOnly
+                                          value={formData.DIGER_VERITABANI_ADI || ""}
+                                          placeholder="Veritabanı Alanı Seçiniz..."
+                                          onClick={openFisAktarmaAlaniLookup}
+                                          className={`bg-white border font-monospace ${isSelfDb ? "is-invalid text-danger fw-bold" : "text-dark"}`}
+                                          style={{ fontSize: "0.82rem", cursor: "pointer" }}
+                                          title={formData.DIGER_VERITABANI_ADI ? `Veritabanı Alanı: ${formData.DIGER_VERITABANI_ADI}` : "Veritabanı Alanı Seçiniz"}
+                                        />
+                                        {formData.DIGER_VERITABANI_ADI ? (
+                                          <Button
+                                            variant="outline-secondary"
+                                            onClick={() => {
+                                              handleChange("DIGER_VERITABANI_ADI", "");
+                                              handleChange("FIS_AKTARMA_HESABI", "");
+                                            }}
+                                            title="Seçimi Temizle"
+                                            className="d-flex align-items-center px-1.5 flex-shrink-0"
+                                          >
+                                            <IconX size={15} />
+                                          </Button>
+                                        ) : null}
+                                        <Button
+                                          variant="outline-primary"
+                                          onClick={openFisAktarmaAlaniLookup}
+                                          title="Listeden Seç (Dürbün - Fiş Aktarılacak Veritabanı Alanları)"
+                                          className="d-flex align-items-center px-2 flex-shrink-0"
+                                        >
+                                          <IconBinoculars size={16} />
+                                        </Button>
+                                      </InputGroup>
+                                      {isSelfDb && (
+                                        <div className="text-danger small mt-1" style={{ fontSize: "11px" }}>
+                                          ⚠️ Aktif çalıştığınız alan seçilemez. Lütfen firmanıza ait farklı bir hedef alan seçiniz.
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </Col>
                             </Form.Group>
                           </Col>
@@ -3234,6 +3282,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
           addNewLabel={lookupModalConfig.addNewLabel || "Yeni Kayıt"}
           onEdit={lookupModalConfig.onEdit}
           editLabel={lookupModalConfig.editLabel || "Düzenle"}
+          isItemDisabled={lookupModalConfig.isItemDisabled}
         />
 
         {/* Yeni Kayıt / Düzenleme Ekleme Modalı (Vergi Dairesi, İl, İlçe, Ülke) */}

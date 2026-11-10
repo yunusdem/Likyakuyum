@@ -6791,8 +6791,95 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setOdemeRows((prev) =>
       prev.map((r, idx) => {
         if (r.id !== rowId && String(idx) !== String(rowId)) return r;
+
+        // 1. İskonto Satırı Kontrolü
+        const isIskonto = Boolean(
+          r.iskontoId ||
+          (r.paraId && r.paraId >= 100000) ||
+          (r.paraKodu && (r.paraKodu.trim().toUpperCase().startsWith("ISK") || r.paraKodu.trim().toUpperCase().startsWith("İSK") || iskontolar.some((i) => (i.kod || "").trim().toLowerCase() === r.paraKodu?.trim().toLowerCase()))) ||
+          (r.paraAdi && (r.paraAdi.toUpperCase().includes("İSKONTO") || r.paraAdi.toUpperCase().includes("ISKONTO")))
+        );
+
+        if (isIskonto) {
+          const rawIskId = r.iskontoId || (r.paraId && r.paraId >= 100000 ? r.paraId - 100000 : null);
+          const matchedIsk = iskontolar.find((i) =>
+            (rawIskId && i.iskontoId === rawIskId) ||
+            (r.paraKodu && i.kod && i.kod.trim().toLowerCase() === r.paraKodu.trim().toLowerCase()) ||
+            (r.paraKodu && `ISK-${i.iskontoId}`.toLowerCase() === r.paraKodu.trim().toLowerCase())
+          );
+
+          let iskTut = 0;
+          let iskOran: number | undefined = undefined;
+          let iskHas: number | undefined = undefined;
+
+          if (matchedIsk) {
+            if (matchedIsk.minTutar && brutToplam < Number(matchedIsk.minTutar)) {
+              showWarning?.(`Bu iskonto için asgari fiş tutarı (${Number(matchedIsk.minTutar).toLocaleString("tr-TR")} TL) sağlanmalıdır.`);
+            }
+
+            if (matchedIsk.iskontoTipi === 1) {
+              const oranVal = Number(matchedIsk.oran) || 0;
+              iskOran = oranVal;
+              if (oranVal > 0) {
+                const calcByOran = parseFloat(((brutToplam * oranVal) / 100).toFixed(2));
+                iskTut = Math.min(calcByOran, kalanTL);
+              } else {
+                iskTut = kalanTL;
+              }
+            } else if (matchedIsk.iskontoTipi === 2) {
+              const tutarVal = Number(matchedIsk.tutar) || 0;
+              iskTut = tutarVal > 0 ? Math.min(tutarVal, kalanTL) : kalanTL;
+            } else if (matchedIsk.iskontoTipi === 3) {
+              const hasVal = Number(matchedIsk.hasTutar) || 0;
+              const effHasKur = hasKuruVal > 0 ? hasKuruVal : 1;
+              const calcByHas = parseFloat((hasVal * effHasKur).toFixed(2));
+              iskTut = calcByHas > 0 ? Math.min(calcByHas, kalanTL) : kalanTL;
+              iskHas = parseFloat((iskTut / effHasKur).toFixed(4));
+            } else {
+              if (matchedIsk.oran && Number(matchedIsk.oran) > 0) {
+                const oranVal = Number(matchedIsk.oran);
+                iskOran = oranVal;
+                const calcByOran = parseFloat(((brutToplam * oranVal) / 100).toFixed(2));
+                iskTut = Math.min(calcByOran, kalanTL);
+              } else if (matchedIsk.tutar && Number(matchedIsk.tutar) > 0) {
+                iskTut = Math.min(Number(matchedIsk.tutar), kalanTL);
+              } else {
+                iskTut = kalanTL;
+              }
+            }
+
+            const maxCap = Number(matchedIsk.maxIskontoTutari) || 0;
+            if (maxCap > 0 && iskTut > maxCap) {
+              iskTut = maxCap;
+            }
+          } else {
+            iskTut = kalanTL;
+          }
+
+          iskTut = Math.max(0, parseFloat(iskTut.toFixed(2)));
+          const iskKod = (matchedIsk?.kod || r.paraKodu || "İSKONTO").toUpperCase().trim();
+          const iskAd = matchedIsk?.tanim || r.paraAdi || "İSKONTO";
+          const desc = iskOran ? `${iskAd} (%${iskOran})` : iskAd;
+
+          return {
+            ...r,
+            paraId: matchedIsk?.iskontoId ? 100000 + matchedIsk.iskontoId : (r.paraId || 100000),
+            iskontoId: matchedIsk?.iskontoId || r.iskontoId || null,
+            paraKodu: iskKod,
+            paraAdi: desc,
+            adet: "1",
+            miktar: iskTut,
+            milyem: "",
+            hasGram: iskHas !== undefined ? iskHas : "",
+            kur: iskOran !== undefined ? iskOran : 1,
+            tutar: iskTut,
+            birimFiyat: iskTut,
+          };
+        }
+
+        // 2. Vezne / Para Satırı
         const pk = r.paraKodu ? r.paraKodu.trim().toUpperCase() : "";
-        const isTL = pk === "TL" || pk === "TRY" || !pk;
+        const isTL = pk === "TL" || pk === "TRY" || pk === "TRL" || !pk;
 
         if (isTL) {
           const hasVal = hasKuruVal > 0 && kalanTL > 0 ? parseFloat((kalanTL / hasKuruVal).toFixed(4)) : "";
@@ -6808,22 +6895,66 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           };
         }
 
+        // Para seçilmiş (USD, EUR, HAS, ÇEYREK vb.)
+        const foundUrun = (odemeUrunList || []).find((u) => u.kod?.trim().toLowerCase() === pk.toLowerCase());
+        const uTipi = foundUrun?.urunTipi !== undefined ? foundUrun.urunTipi : (r.urunTipi ?? 0);
+        const isDoviz = uTipi === 0 || pk === "USD" || pk === "EUR" || pk === "GBP" || pk === "CHF";
+        const isZiynet = uTipi === 3 || pk.includes("CEY") || pk.includes("ÇEY") || pk.includes("YARIM") || pk.includes("TAM");
+        const isMaden = !isDoviz && !isZiynet;
+
         let rowKur = parseDecimal(r.kur) || 0;
+        if (rowKur <= 0) {
+          if (isMaden) {
+            rowKur = hasKuruVal > 0 ? hasKuruVal : 1;
+          } else if (foundUrun?.satisFiyati && Number(foundUrun.satisFiyati) > 0) {
+            rowKur = Number(foundUrun.satisFiyati);
+          } else if (kurMap && kurMap[pk]) {
+            rowKur = Number(kurMap[pk].satis || kurMap[pk].alis || 1);
+          }
+        }
         if (rowKur <= 0) rowKur = 1;
 
-        const miktarVal = rowKur > 0 && kalanTL > 0 ? parseFloat((kalanTL / rowKur).toFixed(4)) : (kalanTL || "");
-        const hasVal = hasKuruVal > 0 && kalanTL > 0 ? parseFloat((kalanTL / hasKuruVal).toFixed(4)) : "";
-        return {
-          ...r,
-          adet: 1,
-          miktar: miktarVal,
-          tutar: kalanTL > 0 ? kalanTL : "",
-          hasGram: hasVal,
-          kur: rowKur,
-        };
+        if (isMaden) {
+          const hasVal = rowKur > 0 && kalanTL > 0 ? parseFloat((kalanTL / rowKur).toFixed(4)) : "";
+          const rawM = parseDecimal(r.milyem) > 0 ? parseDecimal(r.milyem) : (Number(foundUrun?.hasOrani) > 0 ? Number(foundUrun.hasOrani) : 1000);
+          const effM = rawM > 1 ? (rawM <= 100 ? rawM / 100 : rawM / 1000) : (rawM > 0 ? rawM : 1);
+          const miktarVal = effM > 0 && hasVal ? parseFloat((Number(hasVal) / effM).toFixed(4)) : (hasVal || "");
+          return {
+            ...r,
+            adet: "",
+            miktar: miktarVal,
+            tutar: kalanTL > 0 ? kalanTL : "",
+            hasGram: hasVal,
+            kur: rowKur,
+          };
+        } else if (isZiynet) {
+          const adetVal = rowKur > 0 && kalanTL > 0 ? Math.round(kalanTL / rowKur) || 1 : 1;
+          const tutarVal = parseFloat((adetVal * rowKur).toFixed(2));
+          const hasVal = hasKuruVal > 0 && tutarVal > 0 ? parseFloat((tutarVal / hasKuruVal).toFixed(4)) : "";
+          return {
+            ...r,
+            adet: adetVal,
+            miktar: "",
+            tutar: tutarVal,
+            hasGram: hasVal,
+            kur: rowKur,
+          };
+        } else {
+          // Döviz
+          const miktarVal = rowKur > 0 && kalanTL > 0 ? parseFloat((kalanTL / rowKur).toFixed(2)) : 0;
+          const hasVal = hasKuruVal > 0 && kalanTL > 0 ? parseFloat((kalanTL / hasKuruVal).toFixed(4)) : "";
+          return {
+            ...r,
+            adet: miktarVal,
+            miktar: miktarVal,
+            tutar: kalanTL > 0 ? kalanTL : "",
+            hasGram: hasVal,
+            kur: rowKur,
+          };
+        }
       })
     );
-  }, [odemeRows, genelToplam, altinHasKuru]);
+  }, [odemeRows, genelToplam, brutToplam, altinHasKuru, iskontolar, odemeUrunList, kurMap, showWarning]);
 
   // Sağ tık ERP Menüsü Olayları (Kalanı Kapat, Satırı Sil & Satır Ekle)
   useEffect(() => {

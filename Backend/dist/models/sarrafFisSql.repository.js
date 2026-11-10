@@ -4,6 +4,7 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ensureSarrafStoredProcedures } from "./sarrafProcsSql.js";
+import { EBankaMutabakatSqlRepository } from "./ebankaMutabakatSql.repository.js";
 export class SarrafFisSqlRepository {
     static async getUserVezneId(kullaniciId, dbContext) {
         try {
@@ -176,8 +177,14 @@ export class SarrafFisSqlRepository {
             const seriNo = rawFisNo;
             const belgeNo = rawIrsaliyeNo;
             const iskontolar = (await pool.request().query(`SELECT ISKONTO_ID, RTRIM(KOD) AS KOD, TANIM FROM dbo.TODVZ_ISKONTO WITH (NOLOCK)`).catch(() => ({ recordset: [] }))).recordset || [];
+            // e-Banka hareketine eşli fiş: düzeltme ekranı toplamı banka tutarına sabitler (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M32)
+            const ebanka = await EBankaMutabakatSqlRepository.fisBagi(pool, "sarraf", Number(h.SARRAF_FISI_ID)).catch((e) => {
+                logger.warn("Sarraf fişinin e-Banka bağı okunamadı:", e?.message || e);
+                return null;
+            });
             return {
                 sarrafFisiId: h.SARRAF_FISI_ID,
+                ebanka,
                 fisNo: rawFisNo,
                 seriNo: seriNo,
                 belgeNo: belgeNo,
@@ -968,7 +975,9 @@ export class SarrafFisSqlRepository {
             PARA_KODU = NULLIF(@o_${idx}_pkod, ''),
             PARA_ADI = NULLIF(@o_${idx}_pad, ''),
             ADET = @o_${idx}_ad,
-            BANKA_ID = @o_${idx}_bankaId
+            BANKA_ID = @o_${idx}_bankaId,
+            MIKTAR = @o_${idx}_mik,
+            TUTAR = @o_${idx}_tut
         WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID AND SATIR_NO = @o_${idx}_sNo;
         `).join("\n")}
 

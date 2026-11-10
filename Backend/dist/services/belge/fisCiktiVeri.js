@@ -340,7 +340,9 @@ export function sarrafFisVerisi(g, firma) {
         .filter(o => sayiOku(o.miktar) > 0 || sayiOku(o.tutar) > 0 || sayiOku(o.adet) > 0 || yazi(o.paraKodu) !== "")
         .map((o, i) => {
         const miktar = sayiOku(o.miktar) || sayiOku(o.adet);
-        const ad = Number(o.odemeAraciTuru) === 2 ? posOdemeAdi(o.paraKodu) : yazi(o.paraKodu) || yazi(o.paraAdi) || "Nakit TL";
+        const ad = Number(o.odemeAraciTuru) === 2 ? posOdemeAdi(o.paraKodu)
+            : Number(o.odemeAraciTuru) === 3 && yazi(o.hesapAdi) ? yazi(o.hesapAdi)
+                : yazi(o.paraKodu) || yazi(o.paraAdi) || "Nakit TL";
         return { sira: i + 1, ad, miktar, miktarYazi: miktar > 0 ? tr(miktar) : "", tutar: sayiOku(o.tutar) };
     });
     const tutar = sayiOku(g.toplamTutar), has = sayiOku(g.toplamHas), odenen = sayiOku(g.odenenTutar), kalan = sayiOku(g.kalanTutar);

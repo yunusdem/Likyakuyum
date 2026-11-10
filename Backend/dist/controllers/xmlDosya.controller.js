@@ -44,7 +44,7 @@ export class XmlDosyaController {
     }
     static async kontrolFis(req, res, next) {
         try {
-            const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru } = req.query;
+            const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru, tlVergiSiniri, dovizVergiSiniri } = req.query;
             if (!ilkTarih || !sonTarih) {
                 throw ApiError.badRequest("İlk tarih ve son tarih gereklidir.");
             }
@@ -53,6 +53,8 @@ export class XmlDosyaController {
                 sonTarih: String(sonTarih),
                 belgeIslemNo: belgeIslemNo ? String(belgeIslemNo) : undefined,
                 belgeIslemNoTuru: belgeIslemNoTuru,
+                tlVergiSiniri: tlVergiSiniri !== undefined ? Number(tlVergiSiniri) : undefined,
+                dovizVergiSiniri: dovizVergiSiniri !== undefined ? Number(dovizVergiSiniri) : undefined,
             }, getDbContext(req));
             return ApiResponse.ok(res, "Fiş kontrolü tamamlandı.", result);
         }
@@ -62,7 +64,7 @@ export class XmlDosyaController {
     }
     static async kontrolFisSatiri(req, res, next) {
         try {
-            const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru } = req.query;
+            const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru, tlVergiSiniri, dovizVergiSiniri } = req.query;
             if (!ilkTarih || !sonTarih) {
                 throw ApiError.badRequest("İlk tarih ve son tarih gereklidir.");
             }
@@ -71,6 +73,8 @@ export class XmlDosyaController {
                 sonTarih: String(sonTarih),
                 belgeIslemNo: belgeIslemNo ? String(belgeIslemNo) : undefined,
                 belgeIslemNoTuru: belgeIslemNoTuru,
+                tlVergiSiniri: tlVergiSiniri !== undefined ? Number(tlVergiSiniri) : undefined,
+                dovizVergiSiniri: dovizVergiSiniri !== undefined ? Number(dovizVergiSiniri) : undefined,
             }, getDbContext(req));
             return ApiResponse.ok(res, "Fiş satırı kontrolü tamamlandı.", result);
         }
@@ -80,7 +84,7 @@ export class XmlDosyaController {
     }
     static async olustur(req, res, next) {
         try {
-            const { bildirimTuru, hazirlamaTarihi, dosyaNo, islemYok, aciklama, belgeIslemNoTuru, dosyaAdi, ilkTarih, sonTarih, } = req.body;
+            const { bildirimTuru, hazirlamaTarihi, dosyaNo, islemYok, aciklama, belgeIslemNoTuru, dosyaAdi, ilkTarih, sonTarih, tlVergiSiniri, dovizVergiSiniri, } = req.body;
             if (!ilkTarih || !sonTarih) {
                 throw ApiError.badRequest("İlk işlem tarihi ve son işlem tarihi gereklidir.");
             }
@@ -94,6 +98,8 @@ export class XmlDosyaController {
                 dosyaAdi,
                 ilkTarih,
                 sonTarih,
+                tlVergiSiniri: tlVergiSiniri !== undefined ? Number(tlVergiSiniri) : undefined,
+                dovizVergiSiniri: dovizVergiSiniri !== undefined ? Number(dovizVergiSiniri) : undefined,
             }, getDbContext(req));
             return ApiResponse.ok(res, "XML dosyası başarıyla oluşturuldu.", result);
         }

@@ -54,7 +54,7 @@ export class XmlDosyaController {
 
   public static async kontrolFis(req: Request, res: Response, next: NextFunction) {
     try {
-      const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru } = req.query;
+      const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru, tlVergiSiniri, dovizVergiSiniri } = req.query;
       if (!ilkTarih || !sonTarih) {
         throw ApiError.badRequest("İlk tarih ve son tarih gereklidir.");
       }
@@ -65,6 +65,8 @@ export class XmlDosyaController {
           sonTarih: String(sonTarih),
           belgeIslemNo: belgeIslemNo ? String(belgeIslemNo) : undefined,
           belgeIslemNoTuru: belgeIslemNoTuru as any,
+          tlVergiSiniri: tlVergiSiniri !== undefined ? Number(tlVergiSiniri) : undefined,
+          dovizVergiSiniri: dovizVergiSiniri !== undefined ? Number(dovizVergiSiniri) : undefined,
         },
         getDbContext(req)
       );
@@ -77,7 +79,7 @@ export class XmlDosyaController {
 
   public static async kontrolFisSatiri(req: Request, res: Response, next: NextFunction) {
     try {
-      const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru } = req.query;
+      const { ilkTarih, sonTarih, belgeIslemNo, belgeIslemNoTuru, tlVergiSiniri, dovizVergiSiniri } = req.query;
       if (!ilkTarih || !sonTarih) {
         throw ApiError.badRequest("İlk tarih ve son tarih gereklidir.");
       }
@@ -88,6 +90,8 @@ export class XmlDosyaController {
           sonTarih: String(sonTarih),
           belgeIslemNo: belgeIslemNo ? String(belgeIslemNo) : undefined,
           belgeIslemNoTuru: belgeIslemNoTuru as any,
+          tlVergiSiniri: tlVergiSiniri !== undefined ? Number(tlVergiSiniri) : undefined,
+          dovizVergiSiniri: dovizVergiSiniri !== undefined ? Number(dovizVergiSiniri) : undefined,
         },
         getDbContext(req)
       );
@@ -110,6 +114,8 @@ export class XmlDosyaController {
         dosyaAdi,
         ilkTarih,
         sonTarih,
+        tlVergiSiniri,
+        dovizVergiSiniri,
       } = req.body;
 
       if (!ilkTarih || !sonTarih) {
@@ -127,6 +133,8 @@ export class XmlDosyaController {
           dosyaAdi,
           ilkTarih,
           sonTarih,
+          tlVergiSiniri: tlVergiSiniri !== undefined ? Number(tlVergiSiniri) : undefined,
+          dovizVergiSiniri: dovizVergiSiniri !== undefined ? Number(dovizVergiSiniri) : undefined,
         },
         getDbContext(req)
       );

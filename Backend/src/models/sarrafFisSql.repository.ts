@@ -1151,7 +1151,9 @@ export class SarrafFisSqlRepository {
             PARA_KODU = NULLIF(@o_${idx}_pkod, ''),
             PARA_ADI = NULLIF(@o_${idx}_pad, ''),
             ADET = @o_${idx}_ad,
-            BANKA_ID = @o_${idx}_bankaId
+            BANKA_ID = @o_${idx}_bankaId,
+            MIKTAR = @o_${idx}_mik,
+            TUTAR = @o_${idx}_tut
         WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID AND SATIR_NO = @o_${idx}_sNo;
         `).join("\n")}
 

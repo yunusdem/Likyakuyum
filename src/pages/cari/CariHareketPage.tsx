@@ -222,11 +222,6 @@ export const CariHareketPage: React.FC = () => {
   // Balance status
   const [bakiyeSummary, setBakiyeSummary] = useState<CariBakiyeSummary | null>(null);
   const [isLoadingBakiye, setIsLoadingBakiye] = useState<boolean>(false);
-  const [originalRecord, setOriginalRecord] = useState<{
-    id: number;
-    tip: number;
-    lines: { paraId: number; paraKodu: string; meblag: number }[];
-  } | null>(null);
 
   // Canlı Girilen Kalemlerin Özeti
   const liveGridSummary = useMemo(() => {
@@ -268,52 +263,36 @@ export const CariHareketPage: React.FC = () => {
       });
     });
 
-    // Düzenleme modunda, açılan mevcut kaydın orijinal değerleri veritabanı bakiyesinden düşülür
-    // Böylece mevcut kayıt kendisini mükerrer (2 kat) eklemez
-    if (isEditMode && originalRecord && String(currentHareketId) === String(originalRecord.id)) {
-      originalRecord.lines.forEach((orig) => {
-        const kod = (orig.paraKodu || "").trim().toUpperCase();
-        if ((!kod && !orig.paraId) || orig.meblag <= 0) return;
-        const item = (kod ? rowMap.get(kod) : undefined) ||
-          (orig.paraId ? Array.from(rowMap.values()).find((x) => x.paraId === orig.paraId) : undefined);
-        if (item) {
-          if (originalRecord.tip === 0) {
-            item.baseBorc = Math.max(0, item.baseBorc - orig.meblag);
-          } else if (originalRecord.tip === 1) {
-            item.baseAlacak = Math.max(0, item.baseAlacak - orig.meblag);
-          }
+    if (!isEditMode) {
+      lines.forEach((l) => {
+        const kod = (l.paraKodu || "").trim().toUpperCase();
+        const m = parseDecimal(l.meblag);
+        if (!kod || m <= 0) return;
+
+        let item = rowMap.get(kod);
+        if (!item) {
+          const matchedPara = paraList.find(
+            (p) => p.kod.toUpperCase() === kod || p.id === l.paraId
+          );
+          item = {
+            paraId: l.paraId || matchedPara?.id || 0,
+            kod,
+            ad: matchedPara?.ad || kod,
+            baseBorc: 0,
+            baseAlacak: 0,
+            currentEntryBorc: 0,
+            currentEntryAlacak: 0,
+          };
+          rowMap.set(kod, item);
+        }
+
+        if (cariTipi === 0) {
+          item.currentEntryBorc += m;
+        } else if (cariTipi === 1) {
+          item.currentEntryAlacak += m;
         }
       });
     }
-
-    lines.forEach((l) => {
-      const kod = (l.paraKodu || "").trim().toUpperCase();
-      const m = parseDecimal(l.meblag);
-      if (!kod || m <= 0) return;
-
-      let item = rowMap.get(kod);
-      if (!item) {
-        const matchedPara = paraList.find(
-          (p) => p.kod.toUpperCase() === kod || p.id === l.paraId
-        );
-        item = {
-          paraId: l.paraId || matchedPara?.id || 0,
-          kod,
-          ad: matchedPara?.ad || kod,
-          baseBorc: 0,
-          baseAlacak: 0,
-          currentEntryBorc: 0,
-          currentEntryAlacak: 0,
-        };
-        rowMap.set(kod, item);
-      }
-
-      if (cariTipi === 0) {
-        item.currentEntryBorc += m;
-      } else if (cariTipi === 1) {
-        item.currentEntryAlacak += m;
-      }
-    });
 
     return Array.from(rowMap.values()).map((r) => {
       const totalBorc = r.baseBorc + r.currentEntryBorc;
@@ -329,18 +308,6 @@ export const CariHareketPage: React.FC = () => {
         net = 0;
       }
 
-      const origBorc =
-        isEditMode && originalRecord && String(currentHareketId) === String(originalRecord.id) && originalRecord.tip === 0
-          ? originalRecord.lines.find((x) => (x.paraKodu || "").trim().toUpperCase() === r.kod.trim().toUpperCase() || (x.paraId && x.paraId === r.paraId))?.meblag || 0
-          : 0;
-      const origAlacak =
-        isEditMode && originalRecord && String(currentHareketId) === String(originalRecord.id) && originalRecord.tip === 1
-          ? originalRecord.lines.find((x) => (x.paraKodu || "").trim().toUpperCase() === r.kod.trim().toUpperCase() || (x.paraId && x.paraId === r.paraId))?.meblag || 0
-          : 0;
-
-      const diffBorc = r.currentEntryBorc - origBorc;
-      const diffAlacak = r.currentEntryAlacak - origAlacak;
-
       return {
         paraId: r.paraId,
         kod: r.kod,
@@ -351,11 +318,9 @@ export const CariHareketPage: React.FC = () => {
         yon,
         currentEntryBorc: r.currentEntryBorc,
         currentEntryAlacak: r.currentEntryAlacak,
-        diffBorc,
-        diffAlacak,
       };
     });
-  }, [bakiyeSummary, lines, cariTipi, paraList, isEditMode, originalRecord, currentHareketId]);
+  }, [bakiyeSummary, lines, cariTipi, paraList, isEditMode]);
 
   // Canlı Net HAS Bakiyesi
   const liveNetHas = useMemo(() => {
@@ -364,34 +329,22 @@ export const CariHareketPage: React.FC = () => {
     if (bakiyeSummary?.netHasYon === "A") baseHas = baseHas;
     else if (bakiyeSummary?.netHasYon === "B") baseHas = -baseHas;
 
-    // Düzenleme modunda orijinal kaydın HAS etkisini çıkar
-    if (isEditMode && originalRecord && String(currentHareketId) === String(originalRecord.id)) {
-      originalRecord.lines.forEach((orig) => {
-        const matchedPara = paraList.find((p) => p.kod.toUpperCase() === orig.paraKodu || p.id === orig.paraId);
-        const hasOrani = matchedPara?.hasOrani ?? (orig.paraKodu === "HAS" ? 1 : 0);
-        const origHas = orig.meblag * hasOrani;
-        if (originalRecord.tip === 0) {
-          baseHas += origHas; // Borç idi, çıkarınca bakiye artar (+)
+    let deltaHas = 0;
+    if (!isEditMode) {
+      lines.forEach((l) => {
+        const kod = (l.paraKodu || "").trim().toUpperCase();
+        const m = parseDecimal(l.meblag);
+        if (!kod || m <= 0) return;
+        const matchedPara = paraList.find((p) => p.kod.toUpperCase() === kod || p.id === l.paraId);
+        const hasOrani = matchedPara?.hasOrani ?? (kod === "HAS" ? 1 : 0);
+        const itemHas = m * hasOrani;
+        if (cariTipi === 0) {
+          deltaHas -= itemHas; // Borç
         } else {
-          baseHas -= origHas; // Alacak idi, çıkarınca bakiye azalır (-)
+          deltaHas += itemHas; // Alacak
         }
       });
     }
-
-    let deltaHas = 0;
-    lines.forEach((l) => {
-      const kod = (l.paraKodu || "").trim().toUpperCase();
-      const m = parseDecimal(l.meblag);
-      if (!kod || m <= 0) return;
-      const matchedPara = paraList.find((p) => p.kod.toUpperCase() === kod || p.id === l.paraId);
-      const hasOrani = matchedPara?.hasOrani ?? (kod === "HAS" ? 1 : 0);
-      const itemHas = m * hasOrani;
-      if (cariTipi === 0) {
-        deltaHas -= itemHas; // Borç
-      } else {
-        deltaHas += itemHas; // Alacak
-      }
-    });
 
     const totalHas = baseHas + deltaHas;
     let yon: "B" | "A" | "-" = "-";
@@ -409,7 +362,7 @@ export const CariHareketPage: React.FC = () => {
       netHasYon: yon,
       hasDelta: deltaHas !== 0,
     };
-  }, [cariKartId, bakiyeSummary, lines, cariTipi, paraList, isEditMode, originalRecord, currentHareketId]);
+  }, [cariKartId, bakiyeSummary, lines, cariTipi, paraList, isEditMode]);
 
   // UI state
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -563,17 +516,6 @@ export const CariHareketPage: React.FC = () => {
         initialSmbRef.current = initSmb;
         smbEditedRef.current = initSmbEdited;
 
-        // Düzenleme modunda mükerrer bakiye eklenmesini önlemek için orijinal kaydı sakla
-        setOriginalRecord({
-          id: item.id,
-          tip: item.tip,
-          lines: (item.satirlar || []).map((s) => ({
-            paraId: s.paraId,
-            paraKodu: (s.paraKodu || "").trim().toUpperCase(),
-            meblag: parseDecimal(s.meblag),
-          })),
-        });
-
         // Fetch balance canlı olarak
         await loadCariBakiye(item.cariKartId);
 
@@ -600,7 +542,6 @@ export const CariHareketPage: React.FC = () => {
   // Reset form to brand new record (F4)
   const handleNewRecord = () => {
     setCurrentHareketId(null);
-    setOriginalRecord(null);
     applyUserVezne(vezneList);
     setCariKartId(null);
     setCariKod("");
@@ -872,7 +813,7 @@ export const CariHareketPage: React.FC = () => {
         setCariAd(exactMatch.ad);
         loadCariBakiye(exactMatch.id);
         if (isEditMode) {
-          CariHareketService.list({ cariKartId: exactMatch.id }).then((cariHareketler) => {
+          CariHareketService.list({ cariKartId: exactMatch.id, onlyCariHareket: true }).then((cariHareketler) => {
             if (cariHareketler && cariHareketler.length > 0) {
               loadRecordById(cariHareketler[0].id);
             }
@@ -914,7 +855,7 @@ export const CariHareketPage: React.FC = () => {
 
     if (isEditMode) {
       try {
-        const cariHareketler = await CariHareketService.list({ cariKartId: c.id });
+        const cariHareketler = await CariHareketService.list({ cariKartId: c.id, onlyCariHareket: true });
         if (cariHareketler && cariHareketler.length > 0) {
           await loadRecordById(cariHareketler[0].id);
         }
@@ -1012,7 +953,7 @@ export const CariHareketPage: React.FC = () => {
         setCariKod(exactMatch.kod);
         loadCariBakiye(exactMatch.id);
         if (isEditMode) {
-          CariHareketService.list({ cariKartId: exactMatch.id }).then((cariHareketler) => {
+          CariHareketService.list({ cariKartId: exactMatch.id, onlyCariHareket: true }).then((cariHareketler) => {
             if (cariHareketler && cariHareketler.length > 0) {
               loadRecordById(cariHareketler[0].id);
             }
@@ -1107,7 +1048,7 @@ export const CariHareketPage: React.FC = () => {
 
     if (isEditMode) {
       try {
-        const cariHareketler = await CariHareketService.list({ cariKartId: c.id });
+        const cariHareketler = await CariHareketService.list({ cariKartId: c.id, onlyCariHareket: true });
         if (cariHareketler && cariHareketler.length > 0) {
           await loadRecordById(cariHareketler[0].id);
         }
@@ -2235,7 +2176,7 @@ export const CariHareketPage: React.FC = () => {
                     Bakiye durumunu anlık görüntülemek için soldan cari kart seçiniz.
                   </p>
                 </div>
-              ) : !bakiyeSummary || (liveBakiyeRows.length === 0 && bakiyeSummary.satirlar.length === 0) ? (
+              ) : !bakiyeSummary || (liveBakiyeRows.length === 0 && (bakiyeSummary?.satirlar?.length || 0) === 0) ? (
                 <div className="p-4 text-center text-muted">
                   <p className="mb-0 small">Bu cariye ait henüz kayıtlı hareket veya bakiye bulunmuyor.</p>
                 </div>
@@ -2270,15 +2211,9 @@ export const CariHareketPage: React.FC = () => {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 }).format(row.borcBakiye)}
-                                {Math.abs(row.diffBorc) > 0.0001 && (
-                                  <span
-                                    className={`badge ${row.diffBorc > 0 ? "bg-danger-subtle text-danger" : "bg-secondary-subtle text-secondary"} ms-1`}
-                                    style={{ fontSize: "10px" }}
-                                    title="Bu işlemle değişim"
-                                  >
-                                    {row.diffBorc > 0
-                                      ? `+${new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(row.diffBorc)}`
-                                      : new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(row.diffBorc)}
+                                {!isEditMode && row.currentEntryBorc > 0 && (
+                                  <span className="badge bg-danger-subtle text-danger ms-1" style={{ fontSize: "10px" }} title="Bu işlemle eklendi">
+                                    +{new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(row.currentEntryBorc)}
                                   </span>
                                 )}
                               </span>
@@ -2293,15 +2228,9 @@ export const CariHareketPage: React.FC = () => {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 }).format(row.alacakBakiye)}
-                                {Math.abs(row.diffAlacak) > 0.0001 && (
-                                  <span
-                                    className={`badge ${row.diffAlacak > 0 ? "bg-success-subtle text-success" : "bg-secondary-subtle text-secondary"} ms-1`}
-                                    style={{ fontSize: "10px" }}
-                                    title="Bu işlemle değişim"
-                                  >
-                                    {row.diffAlacak > 0
-                                      ? `+${new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(row.diffAlacak)}`
-                                      : new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(row.diffAlacak)}
+                                {!isEditMode && row.currentEntryAlacak > 0 && (
+                                  <span className="badge bg-success-subtle text-success ms-1" style={{ fontSize: "10px" }} title="Bu işlemle eklendi">
+                                    +{new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2 }).format(row.currentEntryAlacak)}
                                   </span>
                                 )}
                               </span>

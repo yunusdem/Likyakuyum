@@ -580,10 +580,11 @@ const HAS_KODLARI = ["HAS", "ALTIN", "HAS ALTIN", "HASALTIN"];
 // GMS: Hızlı Satış'ın gümüş kodu (hizliSatisHesap) — Hızlı Satış Sarraf satırları da bu uçtan kaydedilir
 const GUMUS_KODLARI = ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS", "GMS"];
 /**
- * Sarraf satırı gişe kuru (SarrafFisiPage getKurForProduct ile aynı): ürünün kendi kur satırı (efektif, yoksa döviz);
- * yoksa ziynette bilinmez, gümüşte gümüş has kuru, diğerlerinde altın has kuru.
+ * Sarraf satırı gişe kuru (SarrafFisiPage getKurForProduct ile aynı):
+ * Altın ve gümüş satırlarında kur her zaman fişteki Has Kuru'dur (asla ürünün adet/satış fiyatı tablosundaki kuru alınmaz).
+ * Döviz veya Ziynet ise ürünün kendi kur satırı kullanılır.
  */
-export const sarrafGiseKuru = (kurlar, urun, tip) => {
+export const sarrafGiseKuru = (kurlar, urun, tip, fiHasKuru, fiGumusKuru) => {
     if (!urun)
         return null;
     const kod = buyuk(urun.kod);
@@ -597,14 +598,29 @@ export const sarrafGiseKuru = (kurlar, urun, tip) => {
         const kur = Number(tip) === 0 ? alis : satis;
         return kur > 0 ? { kur, alis: alis || null, satis: satis || null } : null;
     };
+    const urunTipi = Number(urun.urunTipi);
+    const gumus = urunTipi === 2 || kod.includes("GUMUS") || kod.includes("GÜMÜŞ") || buyuk(urun.ad).includes("GÜMÜŞ");
+    const isZiynet = urunTipi === 3;
+    const isPara = urunTipi === 0;
+    // Gümüş: Fişteki gümüş has kuru veya kur listesindeki gümüş has kuru
+    if (gumus) {
+        if (fiGumusKuru && fiGumusKuru > 0)
+            return { kur: fiGumusKuru, alis: fiGumusKuru, satis: fiGumusKuru };
+        return satir(kurlar.find((k) => GUMUS_KODLARI.includes(buyuk(k.kod))));
+    }
+    // Altın (urunTipi === 1 veya ziynet/döviz/gümüş harici):
+    // Sarraf fişinde altın kalemleri her zaman Has Kuru ile işlem görür!
+    const isAltin = urunTipi === 1 || (!isZiynet && !isPara && !gumus);
+    if (isAltin) {
+        if (fiHasKuru && fiHasKuru > 0)
+            return { kur: fiHasKuru, alis: fiHasKuru, satis: fiHasKuru };
+        return satir(kurlar.find((k) => HAS_KODLARI.includes(buyuk(k.kod))));
+    }
+    // Sadece Ziynet veya Döviz ise ürünün anlık fiyat listesindeki kendi kuru denetlenir
     const kendi = satir(kurlar.find((k) => (urun.paraId && k.paraId === urun.paraId) || (kod && buyuk(k.kod) === kod)));
     if (kendi)
         return kendi;
-    if (Number(urun.urunTipi) === 3)
-        return null;
-    const gumus = Number(urun.urunTipi) === 2 || kod.includes("GUMUS") || kod.includes("GÜMÜŞ") || buyuk(urun.ad).includes("GÜMÜŞ");
-    const liste = gumus ? GUMUS_KODLARI : HAS_KODLARI;
-    return satir(kurlar.find((k) => liste.includes(buyuk(k.kod))));
+    return null;
 };
 /**
  * Farklı dövizli (çapraz) emanet dekontta iki tarafın karşılığı (miktar × satır kuru) firma toleransı içinde eşit olmalı;

@@ -333,6 +333,40 @@ export class EBankaMutabakatSqlRepository {
         const rows = (await pool.request().query(`SELECT DISTINCT FIS_TURU, FIS_ID FROM TODVZ_EBANKA_MUTABAKAT WHERE RED = 0 AND (${kosullar.join(" OR ")})`)).recordset;
         return new Set(rows.map((r) => `${r.FIS_TURU}:${r.FIS_ID}`));
     }
+    /**
+     * Fişin eşli olduğu banka hareketi (docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M32): fiş düzeltme ekranı, listeden açılan e-Banka
+     * fişini de banka tutarına sabitler. Havuzu fişin deposu verir; e-Banka tabloları yoksa (modül kullanılmamış) tablo kurulmaz, null döner.
+     */
+    static async fisBagi(pool, fisTuru, fisId) {
+        if (!Number.isSafeInteger(fisId) || fisId <= 0)
+            return null;
+        const req = pool.request();
+        req.input("TUR", sql.VarChar(10), fisTuru);
+        req.input("FIS", sql.Int, fisId);
+        const r = (await req.query(`
+        IF OBJECT_ID('dbo.TODVZ_EBANKA_MUTABAKAT', 'U') IS NOT NULL AND OBJECT_ID('dbo.TODVZ_EBANKA_HAREKET', 'U') IS NOT NULL
+          SELECT TOP 1 t.VOMSIS_ID, t.TUTAR, t.DOVIZ, h.HESAP_NO, b.BANKA_ADI, ${FIS_BANKA_ID} AS FIS_BANKA_ID
+          FROM TODVZ_EBANKA_MUTABAKAT m
+          JOIN TODVZ_EBANKA_HAREKET t ON t.VOMSIS_ID = m.VOMSIS_ID
+          LEFT JOIN TODVZ_EBANKA_HESAP h ON h.VOMSIS_HESAP_ID = t.VOMSIS_HESAP_ID
+          LEFT JOIN TODVZ_BANKA k ON k.BANKA_ID = h.BANKA_ID
+          LEFT JOIN TODVZ_EBANKA_BANKA b ON b.VOMSIS_BANKA_ID = h.VOMSIS_BANKA_ID
+          WHERE m.FIS_TURU = @TUR AND m.FIS_ID = @FIS AND m.RED = 0 AND t.TUTAR <> 0
+          ORDER BY m.EKLEME_ZAMANI DESC
+      `)).recordset?.[0];
+        if (!r)
+            return null;
+        const tutar = Number(r.TUTAR) || 0;
+        return {
+            vomsisId: Number(r.VOMSIS_ID),
+            yon: tutar > 0 ? "gelen" : "giden",
+            tutar: Math.abs(tutar),
+            doviz: r.DOVIZ ?? null,
+            bankaId: r.FIS_BANKA_ID ?? null,
+            bankaAdi: r.BANKA_ADI || "",
+            hesapNo: r.HESAP_NO ?? null,
+        };
+    }
     static async esle(e, kullaniciId, dbContext) {
         const pool = await this.pool(dbContext);
         const req = pool.request();
