@@ -330,7 +330,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
           <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2 mb-0">
             <IconPrinter size={18} className="text-primary" />
             <span>
-              e-Döviz Fişi ({props.isArbitraj ? `ARBİTRAJ ${isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ"}` : (isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ")} - 80mm)
+              e-Döviz Fişi ({props.isArbitraj ? (toplamFisSayisi > 1 ? "DÖVİZ & ARBİTRAJ" : "ARBİTRAJ") : (isSatis ? "SATIŞ BELGESİ" : "ALIM BELGESİ")} - 80mm)
             </span>
             {toplamFisSayisi > 1 && (
               <span className="badge bg-primary ms-1 fs-xs px-2 py-0.5">

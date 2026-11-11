@@ -115,6 +115,11 @@ const initialFormState: CariKartFormData = {
   whatsappAdi: "",
   eFaturaPostaKutusu: "",
   eIrsaliyePostaKutusu: "",
+  islemGostermeGunSayisi: 0,
+  kimlikDegistirmeNedeni: "",
+  kimlikBelgeData: null,
+  kimlikBelgeMime: null,
+  kimlikBelgeDosyaAdi: null,
 };
 
 const KISILIK_TIPI_OPTIONS: Record<number, string> = {
@@ -802,6 +807,11 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       whatsappAdi: item.whatsappAdi || "",
       eFaturaPostaKutusu: item.eFaturaPostaKutusu || "",
       eIrsaliyePostaKutusu: item.eIrsaliyePostaKutusu || "",
+      islemGostermeGunSayisi: item.islemGostermeGunSayisi ?? 0,
+      kimlikDegistirmeNedeni: (item as any).kimlikDegistirmeNedeni || "",
+      kimlikBelgeData: (item as any).kimlikBelgeData || null,
+      kimlikBelgeMime: (item as any).kimlikBelgeMime || null,
+      kimlikBelgeDosyaAdi: (item as any).kimlikBelgeDosyaAdi || null,
     });
     setFieldErrors({});
     setAlertError(null);
@@ -1209,6 +1219,16 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
       whatsappAdi: formData.whatsappAdi ? formData.whatsappAdi.trim() : null,
       eFaturaPostaKutusu: formData.eFaturaPostaKutusu ? formData.eFaturaPostaKutusu.trim() : null,
       eIrsaliyePostaKutusu: formData.eIrsaliyePostaKutusu ? formData.eIrsaliyePostaKutusu.trim() : null,
+      islemGostermeGunSayisi:
+        formData.islemGostermeGunSayisi !== null &&
+          formData.islemGostermeGunSayisi !== undefined &&
+          String(formData.islemGostermeGunSayisi) !== ""
+          ? parseInt(String(formData.islemGostermeGunSayisi), 10)
+          : 0,
+      kimlikDegistirmeNedeni: formData.kimlikDegistirmeNedeni || null,
+      kimlikBelgeData: formData.kimlikBelgeData || null,
+      kimlikBelgeMime: formData.kimlikBelgeMime || null,
+      kimlikBelgeDosyaAdi: formData.kimlikBelgeDosyaAdi || null,
     };
 
     try {
@@ -1722,6 +1742,19 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
                         onPhotoDeleted={handlePhotoDeleted}
                         onOcrApply={handleOcrApply}
                         disabled={isSaving}
+                        kimlikDegistirmeNedeni={formData.kimlikDegistirmeNedeni || ""}
+                        onKimlikDegistirmeNedeniChange={(neden) => handleInputChange("kimlikDegistirmeNedeni", neden)}
+                        kimlikBelgeData={formData.kimlikBelgeData}
+                        kimlikBelgeMime={formData.kimlikBelgeMime}
+                        kimlikBelgeDosyaAdi={formData.kimlikBelgeDosyaAdi}
+                        onKimlikBelgeChange={(payload) => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            kimlikBelgeData: payload.belgeData,
+                            kimlikBelgeMime: payload.belgeMime,
+                            kimlikBelgeDosyaAdi: payload.belgeDosyaAdi,
+                          }));
+                        }}
                       />
                     </div>
                   </div>

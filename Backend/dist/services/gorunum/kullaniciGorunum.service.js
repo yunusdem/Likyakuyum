@@ -1,5 +1,4 @@
 import { KullaniciGorunumRepository, MODUL_KODU_SINIRI } from "../../models/kullaniciGorunum.repository.js";
-import { FirmaKullaniciMerkezService } from "../firmaKullaniciMerkez.service.js";
 import { kullaniciYetkisi } from "../yetki/kullaniciYetkisi.js";
 /**
  * Kullanıcı görünümü (docs/KULLANICI_GORUNUM_YOL_HARITASI.md): yöneticinin çalışana kapattığı modül kodları.
@@ -12,9 +11,7 @@ export const gecerliKodMu = (kod) => typeof kod === "string" && kod.length > 0 &
 /** Görünüm ayarını yöneten / görünümden muaf kullanıcı mı (G5) */
 export const gorunumYoneticisiMi = async (req) => {
     try {
-        const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
-        if (merkez)
-            return !!merkez.kullanici.firmaYoneticisi;
+        // Firma Yöneticisi ya da Sistem Yöneticisi (Y3); kullaniciYetkisi ikisine de bakar
         return (await kullaniciYetkisi(req)).yonetici;
     }
     catch {

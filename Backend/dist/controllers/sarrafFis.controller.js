@@ -1,6 +1,7 @@
 import { SarrafFisService } from "../services/sarrafFis.service.js";
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
+import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
 import { bankaHesabiDenetle, sarrafKurDenetle, sarrafMilyemDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 export const SarrafFisController = {
@@ -20,12 +21,24 @@ export const SarrafFisController = {
         try {
             const dbContext = SarrafFisController.getDbContext(req);
             const { search, tip, vezneId, limit } = req.query;
+            const yetkiler = await kullaniciYetkisi(req);
+            const u = req.user;
+            const userId = u?.userId ? Number(u.userId) : (u?.id ? Number(u.id) : 1);
+            let onlyOwnRecords = false;
+            let userVezneId = undefined;
+            if (yetkiler.kendiKayitlari) {
+                onlyOwnRecords = true;
+                userVezneId = (await fisVeznesi(userId, dbContext)) ?? undefined;
+            }
             const data = await SarrafFisService.getFisList({
                 search: search,
                 tip: tip !== undefined ? Number(tip) : undefined,
                 vezneId: vezneId ? Number(vezneId) : undefined,
                 limit: limit ? Number(limit) : 200,
                 baslangic: await gunSiniri(req),
+                onlyOwnRecords,
+                userId,
+                userVezneId,
             }, dbContext);
             res.json({ success: true, data });
         }
@@ -82,10 +95,15 @@ export const SarrafFisController = {
             // Fişi kaydeden oturumdaki kullanıcıdır (istekteki kullaniciId'ye bakılmaz)
             if (req.user?.userId)
                 dto.kullaniciId = Number(req.user.userId);
-            // Vezne kullanıcının kasası: yenide kart veznesi, düzeltmede kaydın veznesi (istekteki yok sayılır)
-            dto.vezneId = await fisVeznesi(dto.kullaniciId, dbContext, { tur: "sarraf", id: dto.sarrafFisiId });
             // Gün sınırı, tarih ve fiş numarası yetkisi: numara yetkisi yoksa yenide numaratör, düzeltmede kaydın numarası
             const { nolar, yetki } = await fisKayitYetkisi(req, "sarraf", dto.sarrafFisiId, dto.tarih);
+            // Sınırsız yetkili yönetici istediği vezneyi seçebilir; değilse kart/kayıt veznesi kullanılır
+            if (yetki.yonetici && dto.vezneId && Number(dto.vezneId) > 0) {
+                dto.vezneId = Number(dto.vezneId);
+            }
+            else {
+                dto.vezneId = await fisVeznesi(dto.kullaniciId, dbContext, { tur: "sarraf", id: dto.sarrafFisiId });
+            }
             // Banka hesabı ödemesi ve kur / milyem yetkisi (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
             bankaHesabiDenetle(yetki, dto.odemeSatirlari);
             await sarrafKurDenetle(req, yetki, dto);
@@ -109,7 +127,7 @@ export const SarrafFisController = {
             const kullaniciId = Number(req.user?.userId || req.body.kullaniciId || req.query.kullaniciId);
             if (!id)
                 return res.status(400).json({ success: false, message: "Geçersiz ID" });
-            await kayitErisimi(req, "sarraf", id);
+            await kayitErisimi(req, "sarraf", id, { isDelete: true });
             await SarrafFisService.deleteFis(id, kullaniciId, dbContext);
             notifyVezneBakiyeDegisti({ type: "sarraf_delete", id });
             res.json({ success: true });

@@ -84,11 +84,32 @@ export class CariSqlRepository {
             whatsappAdi: entity.WHATSAPP_ADI ? entity.WHATSAPP_ADI.trim() : null,
             eFaturaPostaKutusu: entity.E_FATURA_POSTA_KUTUSU ? entity.E_FATURA_POSTA_KUTUSU.trim() : null,
             eIrsaliyePostaKutusu: entity.E_IRSALIYE_POSTA_KUTUSU ? entity.E_IRSALIYE_POSTA_KUTUSU.trim() : null,
+            islemGostermeGunSayisi: entity.ISLEM_GOSTERME_GUN_SAYISI ?? 0,
+            kimlikDegistirmeNedeni: entity.KIMLIK_DEGISTIRME_NEDENI || null,
+            kimlikBelgeData: entity.KIMLIK_BELGE_DATA
+                ? `data:${entity.KIMLIK_BELGE_MIME || "application/octet-stream"};base64,${Buffer.isBuffer(entity.KIMLIK_BELGE_DATA)
+                    ? entity.KIMLIK_BELGE_DATA.toString("base64")
+                    : Buffer.from(entity.KIMLIK_BELGE_DATA).toString("base64")}`
+                : null,
+            kimlikBelgeMime: entity.KIMLIK_BELGE_MIME || null,
+            kimlikBelgeDosyaAdi: entity.KIMLIK_BELGE_DOSYA_ADI || null,
         };
     }
-    static async findAll(dbContext) {
+    static async findAll(dbContext, filter) {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+            let whereClause = "WHERE 1=1";
+            const request = pool.request();
+            if (!filter?.isSysAdmin && filter?.userId && filter?.cariSinirlamaTipi === 1) {
+                // İzin verilen cariler: yalnızca atananlar
+                whereClause += ` AND [CARI_KART_ID] IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @uId)`;
+                request.input("uId", sql.Int, filter.userId);
+            }
+            else if (!filter?.isSysAdmin && filter?.userId && filter?.cariSinirlamaTipi === 2) {
+                // Yasaklanan cariler: atananlar hariç
+                whereClause += ` AND [CARI_KART_ID] NOT IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @uId)`;
+                request.input("uId", sql.Int, filter.userId);
+            }
             const query = `
         SELECT 
           [CARI_KART_ID], [KOD], [AD], [KISILIK_TIPI], [YETKILI_KISI], [VERGI_DAIRESI_ID],
@@ -101,11 +122,14 @@ export class CariSqlRepository {
           [VERGI_LEVHASI_ALINDI], [IMZA_SIRKULERI_ALINDI], [IMZA_SIRKU_GECERLILIK_TARIHI],
           [YETKILI_KIMLIK_NO], [YETKILI_KMLK_GECERLIK_TARIH], [FILTRE], [CARI_BAKIYE_SINIRI],
           [SIRKET_TURU], [KIMLIK_BELGE_TURU], [DERNEK_AMACI], [YETKILI_KISI_ID],
-          [FAVORI_PARA_ID], [WHATSAPP_ADI], [E_FATURA_POSTA_KUTUSU], [E_IRSALIYE_POSTA_KUTUSU]
+          [FAVORI_PARA_ID], [WHATSAPP_ADI], [E_FATURA_POSTA_KUTUSU], [E_IRSALIYE_POSTA_KUTUSU],
+          [ISLEM_GOSTERME_GUN_SAYISI],
+          [KIMLIK_DEGISTIRME_NEDENI], [KIMLIK_BELGE_DATA], [KIMLIK_BELGE_MIME], [KIMLIK_BELGE_DOSYA_ADI]
         FROM [dbo].[TODVZ_CARI_KART] WITH (NOLOCK)
+        ${whereClause}
         ORDER BY [CARI_KART_ID] ASC;
       `;
-            const result = await pool.request().query(query);
+            const result = await request.query(query);
             const list = result.recordset.map(CariSqlRepository.mapEntityToModel);
             if (list.length === 0)
                 return [];
@@ -262,7 +286,9 @@ export class CariSqlRepository {
           [VERGI_LEVHASI_ALINDI], [IMZA_SIRKULERI_ALINDI], [IMZA_SIRKU_GECERLILIK_TARIHI],
           [YETKILI_KIMLIK_NO], [YETKILI_KMLK_GECERLIK_TARIH], [FILTRE], [CARI_BAKIYE_SINIRI],
           [SIRKET_TURU], [KIMLIK_BELGE_TURU], [DERNEK_AMACI], [YETKILI_KISI_ID],
-          [FAVORI_PARA_ID], [WHATSAPP_ADI], [E_FATURA_POSTA_KUTUSU], [E_IRSALIYE_POSTA_KUTUSU]
+          [FAVORI_PARA_ID], [WHATSAPP_ADI], [E_FATURA_POSTA_KUTUSU], [E_IRSALIYE_POSTA_KUTUSU],
+          [ISLEM_GOSTERME_GUN_SAYISI],
+          [KIMLIK_DEGISTIRME_NEDENI], [KIMLIK_BELGE_DATA], [KIMLIK_BELGE_MIME], [KIMLIK_BELGE_DOSYA_ADI]
         FROM [dbo].[TODVZ_CARI_KART]
         WHERE [CARI_KART_ID] = @id;
       `;
@@ -293,7 +319,9 @@ export class CariSqlRepository {
           [VERGI_LEVHASI_ALINDI], [IMZA_SIRKULERI_ALINDI], [IMZA_SIRKU_GECERLILIK_TARIHI],
           [YETKILI_KIMLIK_NO], [YETKILI_KMLK_GECERLIK_TARIH], [FILTRE], [CARI_BAKIYE_SINIRI],
           [SIRKET_TURU], [KIMLIK_BELGE_TURU], [DERNEK_AMACI], [YETKILI_KISI_ID],
-          [FAVORI_PARA_ID], [WHATSAPP_ADI], [E_FATURA_POSTA_KUTUSU], [E_IRSALIYE_POSTA_KUTUSU]
+          [FAVORI_PARA_ID], [WHATSAPP_ADI], [E_FATURA_POSTA_KUTUSU], [E_IRSALIYE_POSTA_KUTUSU],
+          [ISLEM_GOSTERME_GUN_SAYISI],
+          [KIMLIK_DEGISTIRME_NEDENI], [KIMLIK_BELGE_DATA], [KIMLIK_BELGE_MIME], [KIMLIK_BELGE_DOSYA_ADI]
         FROM [dbo].[TODVZ_CARI_KART]
         WHERE UPPER(LTRIM(RTRIM([KOD]))) = UPPER(@kod);
       `;
@@ -636,6 +664,38 @@ export class CariSqlRepository {
             const savedId = result.recordset?.[0]?.CARI_KART_ID || idNum;
             if (!savedId) {
                 throw ApiError.internal("Cari kart kaydedildi fakat kimlik bilgisi alınamadı.");
+            }
+            // Kimlik Değiştirme Nedeni ve Doğrudan SQL'de Saklanan Belge / Fotoğrafı Güncelle
+            try {
+                let belgeBuffer = null;
+                if (sanitized.kimlikBelgeData) {
+                    const m = sanitized.kimlikBelgeData.match(/^data:([^;]+);base64,(.+)$/);
+                    if (m) {
+                        belgeBuffer = Buffer.from(m[2], "base64");
+                    }
+                    else {
+                        belgeBuffer = Buffer.from(sanitized.kimlikBelgeData, "base64");
+                    }
+                }
+                const updReq = pool.request();
+                updReq.input("ID", sql.Int, savedId);
+                updReq.input("NEDEN", sql.NVarChar(100), sanitized.kimlikDegistirmeNedeni || null);
+                updReq.input("DATA", sql.VarBinary(sql.MAX), belgeBuffer);
+                updReq.input("MIME", sql.VarChar(100), sanitized.kimlikBelgeMime || null);
+                updReq.input("DOSYA", sql.NVarChar(255), sanitized.kimlikBelgeDosyaAdi || null);
+                updReq.input("ISLEM_GOSTERME_GUN_SAYISI", sql.Int, sanitized.islemGostermeGunSayisi != null ? Math.max(0, Math.trunc(Number(sanitized.islemGostermeGunSayisi) || 0)) : 0);
+                await updReq.query(`
+          UPDATE [dbo].[TODVZ_CARI_KART]
+          SET [KIMLIK_DEGISTIRME_NEDENI] = @NEDEN,
+              [KIMLIK_BELGE_DATA] = @DATA,
+              [KIMLIK_BELGE_MIME] = @MIME,
+              [KIMLIK_BELGE_DOSYA_ADI] = @DOSYA,
+              [ISLEM_GOSTERME_GUN_SAYISI] = @ISLEM_GOSTERME_GUN_SAYISI
+          WHERE [CARI_KART_ID] = @ID;
+        `);
+            }
+            catch (updErr) {
+                logger.warn(`[CariSqlRepository.saveViaProcedure] Belge update uyarısı: ${updErr.message}`);
             }
             const saved = await CariSqlRepository.findById(savedId, dbContext);
             if (!saved) {

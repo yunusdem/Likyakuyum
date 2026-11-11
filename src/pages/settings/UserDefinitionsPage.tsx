@@ -49,12 +49,14 @@ import {
   IconLayoutSidebar,
   IconTools,
   IconCoins,
+  IconUserCheck,
 } from "@tabler/icons-react";
 
 import ERPToolbar from "components/common/ERPToolbar";
 import { printReportTable } from "../../utils/printReport";
 import { UserService, UserProfileDto } from "../../services/userService";
 import { CashDeskService } from "../../services/cashDeskService";
+import { CariService, CariKartItem } from "../../services/cariService";
 import LookupModal from "../../components/common/LookupModal";
 
 import { useAuth } from "../../context/AuthContext";
@@ -65,6 +67,7 @@ import { PrinterService, YaziciItem } from "../../services/printerService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
 import { SIDEBAR_STYLES } from "../../hooks/useSidebarStyle";
 import { SidebarStyleSecimModal } from "../../components/theme/SidebarStyleSecimModal";
+import { CariKartAtamaModal } from "./CariKartAtamaModal";
 
 
 export type UserProfile = UserProfileDto;
@@ -310,6 +313,10 @@ const defaultNewUserTemplate: UserProfile = {
   hasSlipAmountChangePerm: false,
   isSuspiciousTransAuth: false,
   noCrossRateCheck: false,
+  hasVezneLastTransactionsPerm: false,
+  hasOnlyOwnRecordsPerm: false,
+  cariSinirlamaTipi: 0,
+  atananCariIdler: [],
 
   printerId: "1",
   horizontalZoom: 0,
@@ -405,6 +412,8 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
     milyemPermType: normalizedMilyemType,
     milyemPermValue: normalizedMilyemValue,
     dovizZiynetGirisSekli: u.dovizZiynetGirisSekli !== undefined ? Number(u.dovizZiynetGirisSekli) : 0,
+    cariSinirlamaTipi: u.cariSinirlamaTipi !== undefined ? Number(u.cariSinirlamaTipi) : 0,
+    atananCariIdler: Array.isArray(u.atananCariIdler) ? u.atananCariIdler : [],
     appearance: {
       ...defaultNewUserTemplate.appearance,
       ...currentApp,
@@ -435,6 +444,26 @@ const UserDefinitionsPage: React.FC = () => {
   const [alertError, setAlertError] = useState<string | null>(null);
   const [showSidebarStyleModal, setShowSidebarStyleModal] = useState<boolean>(false);
 
+  // Cari Kart Sınırlama / Atama State'leri
+  const [showCariAtamaModal, setShowCariAtamaModal] = useState<boolean>(false);
+  const [cariListesi, setCariListesi] = useState<CariKartItem[]>([]);
+  const [cariListesiYukleniyor, setCariListesiYukleniyor] = useState<boolean>(false);
+
+  const handleOpenCariAtamaModal = async () => {
+    setShowCariAtamaModal(true);
+    if (cariListesi.length === 0) {
+      setCariListesiYukleniyor(true);
+      try {
+        const cariler = await CariService.getCariKartlar(true);
+        setCariListesi(cariler || []);
+      } catch (err) {
+        console.error("Cari kartlar yüklenemedi:", err);
+      } finally {
+        setCariListesiYukleniyor(false);
+      }
+    }
+  };
+
 
   const autoSaveTimerRef = useRef<any>(null);
   const autoSavePermTimerRef = useRef<any>(null);
@@ -445,19 +474,24 @@ const UserDefinitionsPage: React.FC = () => {
         ...currentUser,
         ...patch,
       };
-      // 1. Anında localStorage ve AuthContext senkronizasyonu
-      try {
-        const storedUser = AuthService.getUser();
-        // Yalnız kendi kartı düzenleniyorsa: başka kullanıcının kur / milyem yetkisi oturumdaki profile yazılmasın (Y12)
-        if (storedUser && updatedUser.id && String((storedUser as any).id) === String(updatedUser.id)) {
-          if (patch.ratePermType !== undefined) (storedUser as any).ratePermType = patch.ratePermType;
-          if (patch.ratePermValue !== undefined) (storedUser as any).ratePermValue = patch.ratePermValue;
-          if (patch.milyemPermType !== undefined) (storedUser as any).milyemPermType = patch.milyemPermType;
-          if (patch.milyemPermValue !== undefined) (storedUser as any).milyemPermValue = patch.milyemPermValue;
-          localStorage.setItem("kuyumcu_erp_user", JSON.stringify(storedUser));
-          window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
-        }
-      } catch { }
+      // 1. Yalnızca giriş yapan kullanıcının kendi kartı güncelleniyorsa localStorage senkronizasyonu yapılır
+      const isSelf =
+        authUser?.id &&
+        String(currentUser.id) === String(authUser.id) &&
+        (authUser.username || "").toLowerCase().trim() === (currentUser.username || "").toLowerCase().trim();
+      if (isSelf) {
+        try {
+          const storedUser = AuthService.getUser();
+          if (storedUser) {
+            if (patch.ratePermType !== undefined) (storedUser as any).ratePermType = patch.ratePermType;
+            if (patch.ratePermValue !== undefined) (storedUser as any).ratePermValue = patch.ratePermValue;
+            if (patch.milyemPermType !== undefined) (storedUser as any).milyemPermType = patch.milyemPermType;
+            if (patch.milyemPermValue !== undefined) (storedUser as any).milyemPermValue = patch.milyemPermValue;
+            localStorage.setItem("kuyumcu_erp_user", JSON.stringify(storedUser));
+            window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
+          }
+        } catch { }
+      }
 
       // 2. Mevcut kayıtlı kullanıcıysa veritabanına (TODVZ_KULLANICI) otomatik kaydet
       if (autoSavePermTimerRef.current) {
@@ -481,48 +515,55 @@ const UserDefinitionsPage: React.FC = () => {
             setUsers((prev) =>
               prev.map((u) => (String(u.id) === String(updatedUser.id) ? ensureUserSidebarStyle(toSave) : u))
             );
-            await refreshUser().catch(() => { });
-            window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
+            if (isSelf) {
+              await refreshUser().catch(() => { });
+              window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
+            }
           } catch (err) {
             console.warn("Otomatik yetki kaydı hatası:", err);
           }
         }, 250);
       }
     },
-    [currentUser, isNewRecord, refreshUser]
+    [currentUser, isNewRecord, refreshUser, authUser?.id]
   );
 
   const autoSaveAppearance = useCallback(
     (newAppearance: UserProfile["appearance"], userToSave?: UserProfile) => {
-      // 1. Anında localStorage'a kaydet (F5 / Sayfa yenilemede 0ms içinde kalıcı koruma)
-      try {
-        localStorage.setItem("kuyumcu_active_appearance", JSON.stringify(newAppearance));
-        const storedUser = AuthService.getUser();
-        if (storedUser) {
-          storedUser.appearance = newAppearance;
-          localStorage.setItem("kuyumcu_erp_user", JSON.stringify(storedUser));
+      const targetUser = userToSave || currentUser;
+      const isSelf =
+        authUser?.id &&
+        String(targetUser?.id) === String(authUser.id) &&
+        (authUser.username || "").toLowerCase().trim() === (targetUser?.username || "").toLowerCase().trim();
+
+      // 1. Yalnızca giriş yapan kullanıcının kendi kartı güncelleniyorsa aktif tema/görünüm güncellenir
+      if (isSelf) {
+        try {
+          localStorage.setItem("kuyumcu_active_appearance", JSON.stringify(newAppearance));
+          const storedUser = AuthService.getUser();
+          if (storedUser) {
+            storedUser.appearance = newAppearance;
+            localStorage.setItem("kuyumcu_erp_user", JSON.stringify(storedUser));
+          }
+        } catch (e) {
+          console.warn("Yerel depolama görünüm yazma hatası:", e);
         }
-      } catch (e) {
-        console.warn("Yerel depolama görünüm yazma hatası:", e);
+        window.dispatchEvent(new CustomEvent("kuyumcu_preview_appearance", { detail: newAppearance }));
       }
 
-      // 2. Anında DOM'a ve diğer pencerelere CustomEvent ile canlı uygula
-      window.dispatchEvent(new CustomEvent("kuyumcu_preview_appearance", { detail: newAppearance }));
-
-      // 3. Veritabanına (MSSQL TODVZ_KULLANICI) kalıcı olarak kaydet
+      // 2. Veritabanına (MSSQL TODVZ_KULLANICI) kalıcı olarak kaydet
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
 
       autoSaveTimerRef.current = setTimeout(async () => {
         try {
-          // A) Giriş yapmış kullanıcının görünümünü veritabanına doğrudan kaydet
-          await UserService.updateMyAppearance(newAppearance).catch((err) => {
-            console.warn("updateMyAppearance hatası:", err);
-          });
+          if (isSelf) {
+            await UserService.updateMyAppearance(newAppearance).catch((err) => {
+              console.warn("updateMyAppearance hatası:", err);
+            });
+          }
 
-          // B) Eğer düzenlenmekte olan kullanıcının ID'si varsa, o kullanıcının kartını da güncelle
-          const targetUser = userToSave || currentUser;
           if (targetUser && targetUser.id) {
             await UserService.updateUser(targetUser.id, {
               ...targetUser,
@@ -537,14 +578,15 @@ const UserDefinitionsPage: React.FC = () => {
             );
           }
 
-          // C) Auth context profilini yenile
-          await refreshUser().catch(() => { });
+          if (isSelf) {
+            await refreshUser().catch(() => { });
+          }
         } catch (err) {
           console.warn("Otomatik görünüm veritabanı kaydı hatası:", err);
         }
       }, 150);
     },
-    [currentUser, refreshUser]
+    [currentUser, refreshUser, authUser?.id]
   );
 
 
@@ -806,6 +848,76 @@ const UserDefinitionsPage: React.FC = () => {
     setCurrentUser((prev) => ({ ...prev, [field]: value }));
   };
 
+  /** Kullanıcı adı değiştiğinde: kayıt varsa mevcut kartı yükler, kayıt yoksa yeni kayıt moduna geçirir */
+  const handleUsernameChange = (newVal: string) => {
+    const cleanVal = newVal.replace(/\s+/g, "");
+    const trimmed = cleanVal.trim().toLowerCase();
+
+    if (!trimmed) {
+      setCurrentUser((prev) => ({
+        ...prev,
+        id: "",
+        username: "",
+      }));
+      setIsNewRecord(true);
+      return;
+    }
+
+    const matched = users.find(
+      (u) => u.username && u.username.toLowerCase().trim() === trimmed
+    );
+
+    if (matched) {
+      // Kayıt var! Mevcut kullanıcının kartını yükle
+      const matchedIdx = users.findIndex((u) => String(u.id) === String(matched.id));
+      if (matchedIdx !== -1) setUserIndex(matchedIdx);
+      setCurrentUser(
+        ensureUserSidebarStyle({
+          ...JSON.parse(JSON.stringify(matched)),
+          password: currentUser.password || "", // şifre kutusunda yazılanı koru
+        })
+      );
+      setIsNewRecord(false);
+    } else {
+      // Kayıt yok! Sıfırdan yeni kayıt modu. Giriş yapanın ID'si temizlenir!
+      setIsNewRecord(true);
+      setCurrentUser((prev) => ({
+        ...prev,
+        id: "",
+        username: cleanVal,
+      }));
+    }
+  };
+
+  const handleUsernameBlur = (newVal: string) => {
+    const cleanVal = newVal.replace(/\s+/g, "");
+    const trimmed = cleanVal.trim().toLowerCase();
+    if (!trimmed) return;
+
+    const matched = users.find(
+      (u) => u.username && u.username.toLowerCase().trim() === trimmed
+    );
+
+    if (matched) {
+      const matchedIdx = users.findIndex((u) => String(u.id) === String(matched.id));
+      if (matchedIdx !== -1) setUserIndex(matchedIdx);
+      setCurrentUser(
+        ensureUserSidebarStyle({
+          ...JSON.parse(JSON.stringify(matched)),
+          password: currentUser.password || "",
+        })
+      );
+      setIsNewRecord(false);
+    } else {
+      setIsNewRecord(true);
+      setCurrentUser((prev) => ({
+        ...prev,
+        id: "",
+        username: cleanVal,
+      }));
+    }
+  };
+
   const handleInputFocusOrClick = (
     e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement> | React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>,
     _field?: keyof UserProfile
@@ -888,109 +1000,46 @@ const UserDefinitionsPage: React.FC = () => {
       const trimmedUsername = (currentUser.username || "").trim();
       if (!trimmedUsername) {
         setAlertError("Lütfen kullanıcı adı alanını doldurunuz.");
+        setTimeout(() => setAlertError(null), 2500);
         return;
       }
 
       if (trimmedUsername.includes(" ")) {
         setAlertError("Kullanıcı adında boşluk karakteri kullanılamaz.");
+        setTimeout(() => setAlertError(null), 2500);
         return;
       }
 
       const cashierVal = String(currentUser.cashierCode ?? "").trim();
       if (!cashierVal) {
         setAlertError("Lütfen vezne numarasını doldurunuz.");
+        setTimeout(() => setAlertError(null), 2500);
         return;
       }
 
-      if (!isNewRecord && currentUser.id) {
-        // Mevcut kullanıcıyı güncelle
-        // Vezne kullanıcının kasasıdır: yalnız yönetici değiştirir (kullanıcı kendi veznesini de değiştiremez)
-        if (!kartYoneticisi) {
-          const originalUser = users.find((u) => String(u.id) === String(currentUser.id));
-          if (originalUser && String(originalUser.cashierCode).trim() !== cashierVal) {
-            setAlertError("Veznenizi yalnız sistem yöneticisi değiştirebilir.");
-            return;
-          }
-        }
+      const passwordVal = (currentUser.password || "").trim();
 
-        const toSaveUser = {
-          ...currentUser,
-          username: trimmedUsername.replace(/\s+/g, ""),
-          ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
-          ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
-            ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
-                ? String(currentUser.ratePermValue).replace(/,/g, ".")
-                : "0.00")
-            : "0.00",
-          milyemPermType: currentUser.milyemPermType === "Limitli" ? "Yüzde" : (currentUser.milyemPermType || "Var"),
-          milyemPermValue: (currentUser.milyemPermType === "Yüzde" || currentUser.milyemPermType === "Limitli")
-            ? (currentUser.milyemPermValue !== undefined && currentUser.milyemPermValue !== null && String(currentUser.milyemPermValue).trim() !== ""
-                ? String(currentUser.milyemPermValue).replace(/,/g, ".")
-                : "0.00")
-            : "0.00",
-        };
+      // Veritabanında / listede bu kullanıcı adına sahip kayıt var mı kontrol et:
+      const existingUser = users.find(
+        (u) => u.username && u.username.toLowerCase().trim() === trimmedUsername.toLowerCase()
+      );
 
-        const updated = await UserService.updateUser(currentUser.id, toSaveUser);
-        await kisayollariKaydet(String(currentUser.id));
-        setAlertSuccess(`"${updated?.username || trimmedUsername}" kullanıcısı başarıyla güncellendi.`);
-        const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
-        const updatedList = (res.data || []).map(ensureUserSidebarStyle);
-        setUsers(updatedList);
-        const found = updatedList.find((u) => String(u.id) === String(currentUser.id));
-        if (found) {
-          setCurrentUser(ensureUserSidebarStyle(found));
-        } else if (updated) {
-          setCurrentUser(ensureUserSidebarStyle(updated));
-        }
-        const storedUserStr = localStorage.getItem("kuyumcu_erp_user");
-        let isMatchingAuth =
-          (authUser?.id && String(currentUser.id) === String(authUser.id)) ||
-          (authUser?.username && currentUser.username && currentUser.username.toLowerCase().trim() === authUser.username.toLowerCase().trim());
-        if (!isMatchingAuth && storedUserStr) {
-          try {
-            const parsed = JSON.parse(storedUserStr);
-            if ((parsed.id && String(parsed.id) === String(currentUser.id)) ||
-                (parsed.username && currentUser.username && parsed.username.toLowerCase().trim() === currentUser.username.toLowerCase().trim())) {
-              isMatchingAuth = true;
-            }
-          } catch { }
-        }
-        if (isMatchingAuth) {
-          if (storedUserStr) {
-            try {
-              const parsed = JSON.parse(storedUserStr);
-              const merged = {
-                ...parsed,
-                ...currentUser,
-                ratePermType: toSaveUser.ratePermType,
-                ratePermValue: toSaveUser.ratePermValue,
-                milyemPermType: toSaveUser.milyemPermType,
-                milyemPermValue: toSaveUser.milyemPermValue,
-                iscilikGirisSekli: currentUser.iscilikGirisSekli,
-                dovizZiynetGirisSekli: currentUser.dovizZiynetGirisSekli,
-              };
-              localStorage.setItem("kuyumcu_erp_user", JSON.stringify(merged));
-            } catch { }
-          }
-          await refreshUser().catch(() => { });
-          window.dispatchEvent(new Event("storage"));
-          window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
-        }
-        setTimeout(() => setAlertSuccess(null), 4000);
-      } else {
-        // Yeni kullanıcı oluştur
-        const isDuplicate = users.some(
-          (u) => u.id && u.username.toLowerCase() === trimmedUsername.toLowerCase()
-        );
-        if (isDuplicate) {
-          setAlertError(`"${trimmedUsername}" kullanıcı adı daha önce kayıtlıdır. Lütfen farklı bir kullanıcı adı seçiniz.`);
+      // =========================================================================
+      // 1. DURUM: KAYIT YOK İSE -> SIFIRDAN YENİ KAYIT
+      // Giriş yapan kullanıcının kaydı güncellenmeyecek, sıfırdan yeni kayıt oluşacak
+      // =========================================================================
+      if (!existingUser) {
+        if (!passwordVal) {
+          setAlertError("Yeni kullanıcı oluşturmak için lütfen bir şifre giriniz.");
+          setTimeout(() => setAlertError(null), 2500);
           return;
         }
 
-        const { id, ...newUserData } = currentUser;
+        const { id: _ignoreId, ...newUserData } = currentUser;
         const toCreateUser = {
           ...newUserData,
           username: trimmedUsername.replace(/\s+/g, ""),
+          password: passwordVal,
           ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
           ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
             ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
@@ -1003,16 +1052,22 @@ const UserDefinitionsPage: React.FC = () => {
                 ? String(currentUser.milyemPermValue).replace(/,/g, ".")
                 : "0.00")
             : "0.00",
+          cariSinirlamaTipi: currentUser.cariSinirlamaTipi !== undefined ? Number(currentUser.cariSinirlamaTipi) : 0,
+          atananCariIdler: currentUser.atananCariIdler || [],
         };
+
         const created = await UserService.createUser(toCreateUser);
         if (created?.id && kisayolKapali.length) await kisayollariKaydet(String(created.id));
-        setAlertSuccess(`"${created?.username || trimmedUsername}" kullanıcısı başarıyla veritabanına eklendi.`);
+
+        // 2 saniyelik bildirim
+        setAlertSuccess("Kullanıcı başarıyla kaydedildi.");
+        setTimeout(() => setAlertSuccess(null), 2000);
 
         // Veritabanındaki kullanıcı listesini güncelle
         const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
         const updatedList = (res.data || []).map(ensureUserSidebarStyle);
         setUsers(updatedList);
-        const newIdx = updatedList.findIndex((u) => u.id === created?.id);
+        const newIdx = updatedList.findIndex((u) => String(u.id) === String(created?.id));
         if (newIdx !== -1) {
           setUserIndex(newIdx);
           setCurrentUser(ensureUserSidebarStyle(updatedList[newIdx]));
@@ -1020,11 +1075,106 @@ const UserDefinitionsPage: React.FC = () => {
           setCurrentUser(ensureUserSidebarStyle(created));
         }
         setIsNewRecord(false);
-        setTimeout(() => setAlertSuccess(null), 4500);
+        // ÖNEMLİ: Oturum (authUser / localStorage) ASLA değiştirilmez!
+      } else {
+        // =========================================================================
+        // 2. DURUM: KAYIT VAR İSE -> ŞİFRE KULLANICI ADI UYUŞUYORSA GÜNCELLENECEK
+        // =========================================================================
+        if (!passwordVal) {
+          setAlertError(`"${existingUser.username}" kullanıcısının bilgilerini güncellemek için lütfen kullanıcının şifresini giriniz.`);
+          setTimeout(() => setAlertError(null), 3000);
+          return;
+        }
+
+        // Şifre doğrulama kontrolü:
+        const isMatched = await UserService.verifyPassword({
+          userId: String(existingUser.id),
+          username: existingUser.username,
+          password: passwordVal,
+        });
+
+        if (!isMatched) {
+          setAlertError("Girilen şifre kullanıcı adı ile uyuşmuyor! Güncelleme yapılamadı.");
+          setTimeout(() => setAlertError(null), 3000);
+          return;
+        }
+
+        // Şifre uyuştu, güncelleme yapılabilir
+        if (!kartYoneticisi) {
+          if (String(existingUser.cashierCode).trim() !== cashierVal) {
+            setAlertError("Veznenizi yalnız sistem yöneticisi değiştirebilir.");
+            setTimeout(() => setAlertError(null), 2000);
+            return;
+          }
+        }
+
+        const toSaveUser = {
+          ...currentUser,
+          id: existingUser.id,
+          username: existingUser.username,
+          password: passwordVal,
+          verifyPassword: true,
+          ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
+          ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
+            ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
+                ? String(currentUser.ratePermValue).replace(/,/g, ".")
+                : "0.00")
+            : "0.00",
+          milyemPermType: currentUser.milyemPermType === "Limitli" ? "Yüzde" : (currentUser.milyemPermType || "Var"),
+          milyemPermValue: (currentUser.milyemPermType === "Yüzde" || currentUser.milyemPermType === "Limitli")
+            ? (currentUser.milyemPermValue !== undefined && currentUser.milyemPermValue !== null && String(currentUser.milyemPermValue).trim() !== ""
+                ? String(currentUser.milyemPermValue).replace(/,/g, ".")
+                : "0.00")
+            : "0.00",
+          cariSinirlamaTipi: currentUser.cariSinirlamaTipi !== undefined ? Number(currentUser.cariSinirlamaTipi) : 0,
+          atananCariIdler: currentUser.atananCariIdler || [],
+        };
+
+        const updated = await UserService.updateUser(existingUser.id, toSaveUser);
+        await kisayollariKaydet(String(existingUser.id));
+
+        // 2 saniyelik bildirim
+        setAlertSuccess("Kullanıcı başarıyla güncellendi.");
+        setTimeout(() => setAlertSuccess(null), 2000);
+
+        const res = await UserService.listUsers({ limit: TUM_KULLANICILAR });
+        const updatedList = (res.data || []).map(ensureUserSidebarStyle);
+        setUsers(updatedList);
+        const found = updatedList.find((u) => String(u.id) === String(existingUser.id));
+        if (found) {
+          setCurrentUser(ensureUserSidebarStyle({ ...found, password: passwordVal }));
+        } else if (updated) {
+          setCurrentUser(ensureUserSidebarStyle({ ...updated, password: passwordVal }));
+        }
+        setIsNewRecord(false);
+
+        // Yalnızca kullanıcı gerçekten kendi profilini güncelliyorsa senkronize edilir
+        const isSelfUpdate =
+          authUser?.id &&
+          String(existingUser.id) === String(authUser.id) &&
+          existingUser.username.toLowerCase().trim() === (authUser.username || "").toLowerCase().trim();
+
+        if (isSelfUpdate) {
+          const storedUserStr = localStorage.getItem("kuyumcu_erp_user");
+          if (storedUserStr) {
+            try {
+              const parsed = JSON.parse(storedUserStr);
+              const merged = {
+                ...parsed,
+                ...toSaveUser,
+                appearance: toSaveUser.appearance || parsed.appearance,
+              };
+              localStorage.setItem("kuyumcu_erp_user", JSON.stringify(merged));
+              await refreshUser().catch(() => {});
+              window.dispatchEvent(new Event("storage"));
+              window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
+            } catch {}
+          }
+        }
       }
     } catch (err: any) {
       setAlertError(err.message || "Kaydetme sırasında bir hata oluştu.");
-      setTimeout(() => setAlertError(null), 6000);
+      setTimeout(() => setAlertError(null), 2000);
     } finally {
       setIsLoading(false);
     }
@@ -1033,7 +1183,7 @@ const UserDefinitionsPage: React.FC = () => {
   const handleRefresh = async () => {
     await loadUsersFromDb(isNewRecord ? undefined : userIndex);
     setAlertSuccess("Veritabanından kullanıcı verileri yenilendi.");
-    setTimeout(() => setAlertSuccess(null), 2500);
+    setTimeout(() => setAlertSuccess(null), 2000);
   };
 
 
@@ -1044,13 +1194,13 @@ const UserDefinitionsPage: React.FC = () => {
       username: "",
       fullName: "",
       password: "",
-      cashierCode: "",
+      cashierCode: "01",
       isActive: true,
     });
     setCurrentUser(blankUser);
     setIsNewRecord(true);
     setAlertSuccess("Yeni kullanıcı modu aktif. Bilgileri girip 'Kaydet' butonuna basınız.");
-    setTimeout(() => setAlertSuccess(null), 3000);
+    setTimeout(() => setAlertSuccess(null), 2000);
   };
 
   const handleDelete = async () => {
@@ -1164,132 +1314,110 @@ const UserDefinitionsPage: React.FC = () => {
           {/* Kullanıcı Adı, Şifre, Vezne Giriş Alanları (Her zaman yeni kullanıcı eklemeye hazır) */}
 
 
-          <Row className="g-3 align-items-center">
+          <Row className="g-3 align-items-start">
+            {/* 1. Sol: Kullanıcı Adı */}
             <Col xs={12} md={4}>
-              <Form.Group as={Row} className="align-items-center mb-0">
-                <Form.Label column sm={4} className="small text-secondary fw-semibold text-sm-end pe-2 mb-0">
+              <Form.Group className="mb-0">
+                <Form.Label className="small text-secondary fw-semibold mb-1 d-block">
                   Kullanıcı Adı:
                 </Form.Label>
-                <Col sm={8}>
-                  <InputGroup size="sm">
-                    <InputGroup.Text className="bg-light text-muted">
-                      <IconUser size={16} />
-                    </InputGroup.Text>
-                    <Form.Control
-                      type="text"
-                      value={currentUser.username || ""}
-                      disabled={isLoading}
-                      onFocus={(e) => handleInputFocusOrClick(e, "username")}
-                      onClick={(e) => handleInputFocusOrClick(e, "username")}
-                      onChange={(e) => updateField("username", e.target.value.replace(/\s+/g, ""))}
-                      className="border"
-                    />
-                    <Button
-                      variant="outline-secondary"
-                      disabled={isLoading}
-                      onClick={() => setShowUserLookupModal(true)}
-                      title="Kullanıcı Listesinde Ara & Seç (F3)"
-                      className="d-flex align-items-center justify-content-center px-2.5 bg-light"
-                    >
-                      <IconSearch size={16} />
-                    </Button>
-                  </InputGroup>
-                </Col>
+                <InputGroup size="sm">
+                  <InputGroup.Text className="bg-light text-muted">
+                    <IconUser size={16} />
+                  </InputGroup.Text>
+                  <Form.Control
+                    type="text"
+                    value={currentUser.username || ""}
+                    disabled={isLoading}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => handleUsernameChange(e.target.value)}
+                    onBlur={(e) => handleUsernameBlur(e.target.value)}
+                    className="border fw-semibold"
+                  />
+                  <Button
+                    variant="outline-secondary"
+                    disabled={isLoading}
+                    onClick={() => setShowUserLookupModal(true)}
+                    title="Kullanıcı Listesinde Ara & Seç (F3)"
+                    className="d-flex align-items-center justify-content-center px-2.5 bg-light"
+                  >
+                    <IconSearch size={16} />
+                  </Button>
+                </InputGroup>
               </Form.Group>
             </Col>
 
+            {/* 2. Ortada: Şifre */}
             <Col xs={12} md={4}>
-              <Form.Group as={Row} className="align-items-center mb-0">
-                <Form.Label column sm={4} className="small text-secondary fw-semibold text-sm-end pe-2 mb-0">
+              <Form.Group className="mb-0">
+                <Form.Label className="small text-secondary fw-semibold mb-1 d-block">
                   Şifre:
                 </Form.Label>
-                <Col sm={8}>
-                  {merkez && !isNewRecord ? (
-                    <Button
-                      variant="outline-secondary"
-                      size="sm"
-                      className="w-100 d-flex align-items-center justify-content-center gap-1"
-                      disabled={isLoading || !merkez.firmaYoneticisi || String(currentUser.id) === String(authUser?.id)}
-                      title={
-                        String(currentUser.id) === String(authUser?.id)
-                          ? "Kendi şifrenizi Şifre Değiştir ekranından değiştirin"
-                          : !merkez.firmaYoneticisi
-                            ? "Şifre sıfırlamak için firma yöneticisi olmalısınız"
-                            : "Kullanıcıya geçici şifre verir; ilk girişte kendi şifresini belirler"
-                      }
-                      onClick={() => setSifreSifirlaOnay(true)}
-                    >
-                      <IconKey size={16} />
-                      Şifre Sıfırla
-                    </Button>
-                  ) : (
-                    <InputGroup size="sm">
-                      <InputGroup.Text className="bg-light text-muted">
-                        <IconKey size={16} />
-                      </InputGroup.Text>
-                      <Form.Control
-                        type={showPassword ? "text" : "password"}
-                        value={currentUser.password || ""}
-                        disabled={isLoading}
-                        onFocus={(e) => handleInputFocusOrClick(e, "password")}
-                        onClick={(e) => handleInputFocusOrClick(e, "password")}
-                        onChange={(e) => updateField("password", e.target.value)}
-                        className="border"
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        onClick={() => setShowPassword(!showPassword)}
-                        title={showPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
-                      >
-                        {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-                      </Button>
-                    </InputGroup>
-                  )}
-                </Col>
+                <InputGroup size="sm">
+                  <InputGroup.Text className="bg-light text-muted">
+                    <IconKey size={16} />
+                  </InputGroup.Text>
+                  <Form.Control
+                    type={showPassword ? "text" : "password"}
+                    value={currentUser.password || ""}
+                    placeholder="Şifre giriniz"
+                    disabled={isLoading}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => updateField("password", e.target.value)}
+                    className="border fw-semibold"
+                    autoComplete="new-password"
+                  />
+                  <Button
+                    variant="outline-secondary"
+                    onClick={() => setShowPassword(!showPassword)}
+                    title={showPassword ? "Şifreyi Gizle" : "Şifreyi Göster"}
+                  >
+                    {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                  </Button>
+                </InputGroup>
               </Form.Group>
             </Col>
 
+            {/* 3. Sağ: Vezne */}
             <Col xs={12} md={4}>
-              <Form.Group as={Row} className="align-items-center mb-0">
-                <Form.Label column sm={4} className="small text-secondary fw-semibold text-sm-end pe-2 mb-0">
+              <Form.Group className="mb-0">
+                <Form.Label className="small text-secondary fw-semibold mb-1 d-block">
                   Vezne:
                 </Form.Label>
-                <Col sm={8}>
-                  <InputGroup size="sm">
-                    <InputGroup.Text className="bg-light text-muted">
-                      <IconCash size={16} />
-                    </InputGroup.Text>
-                    <Form.Select
-                      size="sm"
-                      value={selectedCashierValue}
-                      disabled={isLoading || !kartYoneticisi}
-                      onChange={(e) => updateField("cashierCode", e.target.value)}
-                      className="border fw-bold font-monospace"
-                    >
-                      <option value="">-- Vezne Seçiniz --</option>
-                      {cashierList.map((c) => (
-                        <option key={c.id} value={String(c.id)}>
-                          [{c.kod || c.id}] {c.name}
-                        </option>
-                      ))}
-                    </Form.Select>
-                    <Button
-                      variant="outline-secondary"
-                      disabled={isLoading || !kartYoneticisi}
-                      onClick={() => setShowCashierModal(true)}
-                      title={!kartYoneticisi ? "Vezneyi yalnız sistem yöneticisi değiştirebilir" : "Vezne Listesinde Ara & Seç"}
-                      className="d-flex align-items-center justify-content-center px-2.5 bg-light"
-                    >
-                      <IconSearch size={16} />
-                    </Button>
-                  </InputGroup>
-                  {!kartYoneticisi && (
-                    <div className="text-danger mt-1 fw-semibold d-flex align-items-center gap-1" style={{ fontSize: "11px" }}>
-                      <IconShieldLock size={13} />
-                      Vezneyi yalnız sistem yöneticisi değiştirebilir.
-                    </div>
-                  )}
-                </Col>
+                <InputGroup size="sm">
+                  <InputGroup.Text className="bg-light text-muted">
+                    <IconCash size={16} />
+                  </InputGroup.Text>
+                  <Form.Select
+                    size="sm"
+                    value={selectedCashierValue}
+                    disabled={isLoading || !kartYoneticisi}
+                    onChange={(e) => updateField("cashierCode", e.target.value)}
+                    className="border fw-bold font-monospace"
+                  >
+                    <option value="">-- Vezne Seçiniz --</option>
+                    {cashierList.map((c) => (
+                      <option key={c.id} value={String(c.id)}>
+                        [{c.kod || c.id}] {c.name}
+                      </option>
+                    ))}
+                  </Form.Select>
+                  <Button
+                    variant="outline-secondary"
+                    disabled={isLoading || !kartYoneticisi}
+                    onClick={() => setShowCashierModal(true)}
+                    title={!kartYoneticisi ? "Vezneyi yalnız sistem yöneticisi değiştirebilir" : "Vezne Listesinde Ara & Seç"}
+                    className="d-flex align-items-center justify-content-center px-2.5 bg-light"
+                  >
+                    <IconSearch size={16} />
+                  </Button>
+                </InputGroup>
+                {!kartYoneticisi && (
+                  <div className="text-danger mt-1 fw-semibold d-flex align-items-center gap-1" style={{ fontSize: "11px" }}>
+                    <IconShieldLock size={13} />
+                    Vezneyi yalnız sistem yöneticisi değiştirebilir.
+                  </div>
+                )}
               </Form.Group>
             </Col>
           </Row>
@@ -1354,7 +1482,13 @@ const UserDefinitionsPage: React.FC = () => {
                           id="isSysAdmin"
                           label={<span className="fw-bold text-primary">Sistem yöneticisi</span>}
                           checked={currentUser.isSysAdmin}
-                          onChange={(e) => updateField("isSysAdmin", e.target.checked)}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            updateField("isSysAdmin", val);
+                            if (val && currentUser.cariSinirlamaTipi > 0) {
+                              updateField("cariSinirlamaTipi", 0);
+                            }
+                          }}
                         />
 
                         {/* İşlem Gösterme Gün Sayısı */}
@@ -1477,6 +1611,90 @@ const UserDefinitionsPage: React.FC = () => {
                             updateField("noCrossRateCheck", e.target.checked)
                           }
                         />
+                        <Form.Check
+                          type="checkbox"
+                          id="hasVezneLastTransactionsPerm"
+                          label="Vezne son işlemleri görebilir"
+                          checked={currentUser.hasVezneLastTransactionsPerm || currentUser.isSysAdmin}
+                          disabled={currentUser.isSysAdmin}
+                          onChange={(e) =>
+                            updateField("hasVezneLastTransactionsPerm", e.target.checked)
+                          }
+                        />
+                        <Form.Check
+                          type="checkbox"
+                          id="hasOnlyOwnRecordsPerm"
+                          label="Yalnız kendi kayıtlarını görebilir ve düzeltebilir"
+                          checked={!!currentUser.hasOnlyOwnRecordsPerm && !currentUser.isSysAdmin}
+                          disabled={currentUser.isSysAdmin}
+                          onChange={(e) =>
+                            updateField("hasOnlyOwnRecordsPerm", e.target.checked)
+                          }
+                        />
+
+                        {/* Cari Sınırlama (0: Yok, 1: İzin verilen cariler, 2: Yasaklanan cariler) */}
+                        <div className="pt-2 mt-2 border-top">
+                          <div className="p-2 rounded border bg-white shadow-sm">
+                            <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                              <span className="small fw-bold text-dark d-flex align-items-center gap-1 text-nowrap">
+                                <IconUserCheck size={16} className="text-primary" />
+                                Cari sınırlama:
+                              </span>
+                              <Form.Select
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                value={currentUser.cariSinirlamaTipi ?? 0}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  updateField("cariSinirlamaTipi", val);
+                                  if (val > 0 && currentUser.isSysAdmin) {
+                                    updateField("isSysAdmin", false);
+                                  }
+                                  if (val > 0 && (!currentUser.atananCariIdler || currentUser.atananCariIdler.length === 0)) {
+                                    handleOpenCariAtamaModal();
+                                  }
+                                }}
+                                style={{ maxWidth: "175px" }}
+                                className="bg-light border fw-semibold"
+                              >
+                                <option value={0}>0 - Yok</option>
+                                <option value={1}>1 - İzin verilen cariler</option>
+                                <option value={2}>2 - Yasaklanan cariler</option>
+                              </Form.Select>
+                            </div>
+
+                            {Number(currentUser.cariSinirlamaTipi || 0) === 1 && (
+                              <div className="alert alert-success py-1 px-2 mb-2 small" style={{ fontSize: "11px", lineHeight: "1.3" }}>
+                                <strong>İzin verilen cariler:</strong> Kullanıcı yalnızca atanmış cari kartları ve işlemlerini görebilir.
+                              </div>
+                            )}
+
+                            {Number(currentUser.cariSinirlamaTipi || 0) === 2 && (
+                              <div className="alert alert-danger py-1 px-2 mb-2 small" style={{ fontSize: "11px", lineHeight: "1.3" }}>
+                                <strong>Yasaklanan cariler:</strong> Kullanıcı atanmış cari kartlar dışındaki tüm carileri görebilir (seçilenler gizlenir).
+                              </div>
+                            )}
+
+                            {Number(currentUser.cariSinirlamaTipi || 0) > 0 && (
+                              <div className="d-flex align-items-center justify-content-between gap-2 pt-1 border-top">
+                                <span className="small text-muted" style={{ fontSize: "11.5px" }}>
+                                  Atanan: <strong className="text-primary">{(currentUser.atananCariIdler || []).length}</strong> cari
+                                </span>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  disabled={!kartYoneticisi}
+                                  onClick={handleOpenCariAtamaModal}
+                                  className="d-flex align-items-center gap-1 py-1 px-2"
+                                  style={{ fontSize: "11.5px" }}
+                                  title="Kullanıcıya atanacak cari kartları seçin"
+                                >
+                                  <IconUserCheck size={14} /> Cari Kartları Ata
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </Col>
@@ -3037,6 +3255,20 @@ const UserDefinitionsPage: React.FC = () => {
         onClose={() => setShowSidebarStyleModal(false)}
         selectedStyle={(currentUser.appearance?.sidebarStyle as any) || "classic"}
         onSelect={(newStyle) => updateAppearanceField("sidebarStyle", newStyle)}
+      />
+
+      {/* Modal: Cari Kart Sınırlama & Atama Modalı */}
+      <CariKartAtamaModal
+        show={showCariAtamaModal}
+        onHide={() => setShowCariAtamaModal(false)}
+        userTitle={currentUser.fullName || currentUser.username}
+        cariSinirlamaTipi={currentUser.cariSinirlamaTipi}
+        initialSelectedIds={currentUser.atananCariIdler || []}
+        cariListesi={cariListesi}
+        isLoading={cariListesiYukleniyor}
+        onApply={(selectedIds) => {
+          updateField("atananCariIdler", selectedIds);
+        }}
       />
     </div>
   );

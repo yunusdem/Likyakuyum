@@ -10,6 +10,7 @@ router.use(authenticate);
 // Okuma: Vezne İzleme menü yetkisi (Y8)
 router.get("/", okumaYetkisi("vezneIzleme"), VezneIzlemeController.getIzlemeData);
 router.get("/data", okumaYetkisi("vezneIzleme"), VezneIzlemeController.getIzlemeData);
+router.get("/son-islemler", VezneIzlemeController.getSonIslemler);
 router.get("/stream", okumaYetkisi("vezneIzleme"), VezneIzlemeController.stream);
 router.post("/tanim", VezneIzlemeController.saveSettings);
 router.post("/bakiye", VezneIzlemeController.updateBakiye);

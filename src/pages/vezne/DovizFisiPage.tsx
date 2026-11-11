@@ -35,6 +35,7 @@ import {
   IconAlertCircle,
   IconArrowsExchange,
   IconPrinter,
+  IconBuildingBank,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { SayfaCikisUyarisiModal, useSayfaCikisUyarisi } from "../../components/common/SayfaCikisUyarisiModal";
@@ -55,10 +56,12 @@ import { CashDeskService } from "../../services/cashDeskService";
 import { kullaniciVeznesi } from "../../utils/kullaniciVeznesi";
 import { FastLookupCache } from "../../services/fastLookupCache";
 import { TlHesabiModal } from "./TlHesabiModal";
+import { BankaTlHesabiModal, BankaTlHesabiApplyPayload } from "./BankaTlHesabiModal";
 import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { CariService, CariKartItem } from "../../services/cariService";
+import { KimlikDegistirmeNedeniBelgeSection } from "../../components/cari/KimlikDegistirmeNedeniBelgeSection";
 import { apiClient } from "../../services/apiClient";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
@@ -383,6 +386,7 @@ export const DovizFisiPage: React.FC = () => {
     type: "success" | "danger" | "warning" | "info";
     message: string;
   } | null>(null);
+  const [isRecordLockedByUser, setIsRecordLockedByUser] = useState<boolean>(false);
 
   // Lookups
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
@@ -731,6 +735,11 @@ export const DovizFisiPage: React.FC = () => {
   const [gecerlilikFocused, setGecerlilikFocused] = useState<boolean>(false);
   const [dogumFocused, setDogumFocused] = useState<boolean>(false);
   const [detayDogumYeri, setDetayDogumYeri] = useState<string>("");
+  const [detayKimlikBelgeTuru, setDetayKimlikBelgeTuru] = useState<number>(0);
+  const [detayKimlikDegistirmeNedeni, setDetayKimlikDegistirmeNedeni] = useState<string>("");
+  const [detayKimlikBelgeData, setDetayKimlikBelgeData] = useState<string | null>(null);
+  const [detayKimlikBelgeMime, setDetayKimlikBelgeMime] = useState<string | null>(null);
+  const [detayKimlikBelgeDosyaAdi, setDetayKimlikBelgeDosyaAdi] = useState<string | null>(null);
   const [detayKimlikKaynagi, setDetayKimlikKaynagi] = useState<string>("");
   const [detayKimlikSeriNo, setDetayKimlikSeriNo] = useState<string>("");
   const [detayBabaAdi, setDetayBabaAdi] = useState<string>("");
@@ -844,6 +853,10 @@ export const DovizFisiPage: React.FC = () => {
   const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
   const [showKurListesiModal, setShowKurListesiModal] = useState<boolean>(false);
   const [showVezneBakiyeModal, setShowVezneBakiyeModal] = useState<boolean>(false);
+  const [showBankaTlHesabiModal, setShowBankaTlHesabiModal] = useState<boolean>(false);
+  const [bankaAciklama, setBankaAciklama] = useState<string>("");
+  const [bankaDagitimSatirlari, setBankaDagitimSatirlari] = useState<Array<{ bankaId: number; bankaAdi: string; tutar: number; aciklama: string }>>([]);
+  const [vezneNakitTutari, setVezneNakitTutari] = useState<number | null>(null);
   const [showTlHesabiModal, setShowTlHesabiModal] = useState<boolean>(false);
   const tlHesabiTargetRowRef = useRef<number | "new">("new");
   const [showParaSaymaModal, setShowParaSaymaModal] = useState<boolean>(false);
@@ -1105,6 +1118,7 @@ export const DovizFisiPage: React.FC = () => {
 
   // Clear form for fresh new entry (Registration mode)
   const resetForm = useCallback((lookupsParam?: typeof lookupData, compDefParam?: TodvzTanimDto | null) => {
+    setIsRecordLockedByUser(false);
     setFisId(null);
     setIsLocked(false);
     setGibeGonderildi(false);
@@ -1140,6 +1154,11 @@ export const DovizFisiPage: React.FC = () => {
     setGecerlilikFocused(false);
     setDogumFocused(false);
     setDetayDogumYeri("");
+    setDetayKimlikBelgeTuru(0);
+    setDetayKimlikDegistirmeNedeni("");
+    setDetayKimlikBelgeData(null);
+    setDetayKimlikBelgeMime(null);
+    setDetayKimlikBelgeDosyaAdi(null);
     setDetayKimlikKaynagi("");
     setDetayKimlikSeriNo("");
     setDetayBabaAdi("");
@@ -1177,6 +1196,10 @@ export const DovizFisiPage: React.FC = () => {
     setShowKurListesiModal(false);
     setShowVezneBakiyeModal(false);
     setShowTlHesabiModal(false);
+    setShowBankaTlHesabiModal(false);
+    setBankaAciklama("");
+    setBankaDagitimSatirlari([]);
+    setVezneNakitTutari(null);
     setCurrentIndex(-1);
     // Yeni fişte vezne kullanıcının veznesine döner (düzeltmede açılan fişin veznesi kalmasın)
     if (kullaniciVezneRef.current !== undefined) {
@@ -1267,7 +1290,16 @@ export const DovizFisiPage: React.FC = () => {
       }
 
       setStatisticList(istatistikler);
-      setSavedFisList(fisler);
+      const curUserId = Number(user?.id) || 1;
+      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const allowedFisler = (fisler || []).filter((f: any) => {
+        if (!hasOnlyOwn) return true;
+        const kId = Number(f.kullaniciId || f.ekleyenId || 0);
+        const vId = Number(f.vezneId || 0);
+        return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+      });
+      setSavedFisList(allowedFisler);
 
       // Lazily populate search list in background in Kayıt mode
       if (!isDuzeltmeMode && fisler.length === 0) {
@@ -1446,9 +1478,21 @@ export const DovizFisiPage: React.FC = () => {
 
       const gonderildi = Boolean(fis.gibeGonderildi); // sunucu Kaynak ekranıyla aynı kuralla belirler
       setGibeGonderildi(gonderildi);
+
+      // Kendi kayıtları yetkisi denetimi: Sınırsız yetkili olmayan kullanıcılar fiş düzeltme ekranında vezne kayıtlarını pasif olarak görür, düzenleyemez
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const isOwner = !hasOnlyOwn;
+      const lockedByUser = !isOwner;
+      setIsRecordLockedByUser(lockedByUser);
+
       const isGibLocked = isDuzeltmeMode ? false : gonderildi;
-      setIsLocked(isGibLocked);
-      if (isGibLocked) {
+      setIsLocked(isGibLocked || lockedByUser);
+      if (lockedByUser) {
+        setNotification({
+          type: "warning",
+          message: "Kayıt Kilitli (Pasif Mod): Yetkiniz doğrultusunda vezne kayıtlarını yalnızca pasif olarak görüntüleyebilirsiniz; düzenleme ve silme yetkiniz bulunmamaktadır.",
+        });
+      } else if (isGibLocked) {
         setNotification({
           type: "warning",
           message: "Bu fiş GİB'e gönderilmiştir ve üzerinde değişiklik yapılamaz (Salt Okunur).",
@@ -1479,6 +1523,7 @@ export const DovizFisiPage: React.FC = () => {
 
       if (isArbitrajFis) {
         setIsArbitrajState(true);
+      setLines((prev) => (prev.length > 1 ? prev.slice(0, 1) : prev));
 
         // 1. Müstakil TODVZ_FIS_ARBITRAJ tablosundan gelen satırlar (Normal ürünlerle asla karışmaz)
         if (fis.arbitrajSatirlar && fis.arbitrajSatirlar.length > 0) {
@@ -1750,9 +1795,30 @@ export const DovizFisiPage: React.FC = () => {
         if (matchM) setDetayMeslek(matchM.ad);
       }
       if ((fis as any).bankaHesabiId) {
-        setDetayBankaHesabiId((fis as any).bankaHesabiId);
-        const matchB = (lookupData.bankaList && lookupData.bankaList.length > 0 ? lookupData.bankaList : cariList).find((c) => c.id === (fis as any).bankaHesabiId);
-        if (matchB) setDetayBankaHesabi(matchB.ad || matchB.kod || "");
+        const bId = Number((fis as any).bankaHesabiId);
+        setDetayBankaHesabiId(bId);
+        const matchB = (lookupData.bankaList && lookupData.bankaList.length > 0 ? lookupData.bankaList : cariList).find((c) => c.id === bId);
+        const bAd = matchB ? (matchB.ad || matchB.kod || "") : "";
+        if (matchB) setDetayBankaHesabi(bAd);
+        const totTutar = Number((fis as any).toplamTutar) || 0;
+        const vezneTut = Number((fis as any).odemeTutari) || 0;
+        const bTutar = Math.max(0, totTutar - vezneTut);
+        setBankaDagitimSatirlari([
+          {
+            bankaId: bId,
+            bankaAdi: bAd,
+            tutar: bTutar > 0 ? bTutar : totTutar,
+            aciklama: String((fis as any).bankaAciklama || "").trim(),
+          },
+        ]);
+      } else {
+        setBankaDagitimSatirlari([]);
+      }
+      setVezneNakitTutari((fis as any).odemeTutari !== undefined && (fis as any).odemeTutari !== null ? Number((fis as any).odemeTutari) : null);
+      if ((fis as any).bankaAciklama) {
+        setBankaAciklama(String((fis as any).bankaAciklama).trim());
+      } else {
+        setBankaAciklama("");
       }
       if ((fis as any).yetkiliKisi) {
         setDetayYetkiliKisi((fis as any).yetkiliKisi);
@@ -1763,6 +1829,13 @@ export const DovizFisiPage: React.FC = () => {
       if ((fis as any).yetkiliKisiId) {
         setDetayYetkiliKisiId(Number((fis as any).yetkiliKisiId));
       }
+      if ((fis as any).kimlikBelgeTuru !== undefined && (fis as any).kimlikBelgeTuru !== null) {
+        setDetayKimlikBelgeTuru(Number((fis as any).kimlikBelgeTuru));
+      }
+      setDetayKimlikDegistirmeNedeni((fis as any).kimlikDegistirmeNedeni || "");
+      setDetayKimlikBelgeData((fis as any).kimlikBelgeData || null);
+      setDetayKimlikBelgeMime((fis as any).kimlikBelgeMime || null);
+      setDetayKimlikBelgeDosyaAdi((fis as any).kimlikBelgeDosyaAdi || null);
       if ((fis as any).kimlikKaynagi) {
         setDetayKimlikKaynagi((fis as any).kimlikKaynagi);
       }
@@ -1811,8 +1884,9 @@ export const DovizFisiPage: React.FC = () => {
       setGmFaturaNo(fis.gmFaturaNo || (fis as any).GM_FATURA_NO || "");
 
       if (fis.satirlar && fis.satirlar.length > 0) {
+        const rawSatirlar = isArbitrajFis ? [fis.satirlar[0]] : fis.satirlar;
         setLines(
-          fis.satirlar.map((s, idx) => {
+          rawSatirlar.map((s, idx) => {
             let rawKmvOrani = s.kmvOrani ?? (s as any).KMV_ORANI;
             let rawKmv = s.kmv ?? (s as any).KMV;
             let rawBmvOrani = s.bmvOrani ?? (s as any).BMV_ORANI;
@@ -1825,13 +1899,19 @@ export const DovizFisiPage: React.FC = () => {
             const parsedBmv = rawBmv != null && Number(rawBmv) > 0 ? parseFloat(Number(rawBmv).toFixed(2)).toFixed(2) : "";
             const parsedKmv = rawKmv != null && Number(rawKmv) > 0 ? parseFloat(Number(rawKmv).toFixed(2)).toFixed(2) : "";
 
+            const rawAdet = (s as any).adet;
+            const rowMiktar = s.miktar != null && String(s.miktar).trim() !== ""
+              ? formatMiktar(s.miktar)
+              : (rawAdet != null && String(rawAdet).trim() !== "" ? formatMiktar(rawAdet) : "");
+
             return {
               id: `row-${idx}-${Date.now()}`,
               satirNo: s.satirNo || idx + 1,
               paraId: s.paraId,
               paraKodu: s.paraKodu || "",
               paraAdi: s.paraAdi || "",
-              miktar: s.miktar != null ? formatMiktar(s.miktar) : "",
+              adet: rowMiktar,
+              miktar: rowMiktar,
               kur: s.kur ? Number(s.kur).toFixed(kurKurusSayisi) : "",
               komisyonOrani: rawKomOrani != null && Number(rawKomOrani) > 0 ? String(rawKomOrani) : "",
               komisyon: rawKom != null && Number(rawKom) > 0 ? parseFloat(Number(rawKom).toFixed(2)).toFixed(2) : "",
@@ -1869,7 +1949,16 @@ export const DovizFisiPage: React.FC = () => {
     setShowSearchModal(true);
     try {
       const rawFisler = await DovizFisService.getFisList({ limit: 500 });
-      setSavedFisList(rawFisler);
+      const curUserId = Number(user?.id) || 1;
+      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const allowedFisler = (rawFisler || []).filter((f: any) => {
+        if (!hasOnlyOwn) return true;
+        const kId = Number(f.kullaniciId || f.ekleyenId || 0);
+        const vId = Number(f.vezneId || 0);
+        return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+      });
+      setSavedFisList(allowedFisler);
     } catch (e) {
       console.error(e);
     } finally {
@@ -2191,7 +2280,7 @@ export const DovizFisiPage: React.FC = () => {
 
   const handleAddRow = () => {
     if (isLocked) return;
-    if (!isCokluSatirIzinli && lines.length >= 1) {
+    if ((!isCokluSatirIzinli || isArbitrajActive) && lines.length >= 1) {
       focusGelisNedeni();
       return;
     }
@@ -2393,7 +2482,11 @@ export const DovizFisiPage: React.FC = () => {
               updated.kur = autoKur.toFixed(kurKurusSayisi);
             }
             const em = parseMiktar(updated.miktar) > 0 ? null : ebMiktar(prev, id, matched.kod, parseKur(updated.kur));
-            if (em) updated.miktar = formatMiktar(em);
+            if (em) {
+              const formattedEm = formatMiktar(em);
+              updated.miktar = formattedEm;
+              updated.adet = formattedEm;
+            }
           } else if (upper === "") {
             updated.paraId = 0;
             updated.paraAdi = "";
@@ -2533,7 +2626,7 @@ export const DovizFisiPage: React.FC = () => {
     setLines((prev) =>
       prev.map((row) => {
         if (row.id !== rowId) return row;
-        const m = row.miktar;
+        const m = row.miktar || row.adet || "";
         const k = autoKur > 0 ? autoKur.toFixed(kurKurusSayisi) : "";
         const bmvOrani = defaultBmvRate > 0 ? defaultBmvRate.toString() : "";
         const kmvOrani = defaultKmvRate > 0 ? defaultKmvRate.toString() : "";
@@ -2556,6 +2649,8 @@ export const DovizFisiPage: React.FC = () => {
           urunTipi: para.urunTipi,
           hasOrani: para.hasOrani,
           gramaj: para.gramaj,
+          adet: row.adet || m,
+          miktar: row.miktar || m,
           kur: k,
           tutar: calculated.tutar,
           bmvOrani,
@@ -2651,6 +2746,15 @@ export const DovizFisiPage: React.FC = () => {
       if (raw.telefon) setDetayTelefon(raw.telefon);
       if (raw.adres) setDetayAdres(raw.adres);
       if (raw.pasaportNo) setDetayPasaportNo(raw.pasaportNo);
+      if (raw.kimlikBelgeTuru !== undefined && raw.kimlikBelgeTuru !== null) {
+        setDetayKimlikBelgeTuru(Number(raw.kimlikBelgeTuru));
+      }
+      if (raw.kimlikDegistirmeNedeni) setDetayKimlikDegistirmeNedeni(raw.kimlikDegistirmeNedeni);
+      if (raw.kimlikBelgeData) {
+        setDetayKimlikBelgeData(raw.kimlikBelgeData);
+        setDetayKimlikBelgeMime(raw.kimlikBelgeMime || null);
+        setDetayKimlikBelgeDosyaAdi(raw.kimlikBelgeDosyaAdi || null);
+      }
 
       if (raw.ilId) {
         setDetayIlId(Number(raw.ilId));
@@ -3092,7 +3196,7 @@ export const DovizFisiPage: React.FC = () => {
       if (emptyRow) {
         rowIdToUse = emptyRow.id;
         targetIdx = lines.findIndex((r) => r.id === emptyRow.id);
-      } else if (!isCokluSatirIzinli && lines.length >= 1) {
+      } else if ((!isCokluSatirIzinli || isArbitrajActive) && lines.length >= 1) {
         rowIdToUse = lines[0].id;
         targetIdx = 0;
       } else {
@@ -3232,8 +3336,31 @@ export const DovizFisiPage: React.FC = () => {
             : r
         )
       );
+    } else if ((!isCokluSatirIzinli || isArbitrajActive) && lines.length >= 1) {
+      setLines((prev) =>
+        prev.map((r, i) =>
+          i === 0
+            ? {
+                ...r,
+                paraId: data.para.id,
+                paraKodu: data.para.kod,
+                paraAdi: data.para.ad,
+                adet: formatMiktar(data.miktar),
+                miktar: formatMiktar(data.miktar),
+                kur: data.kur.toFixed(kurKurusSayisi),
+                tutar: calculated.tutar,
+                bmvOrani,
+                bmv: calculated.bmv,
+                kmvOrani: calculated.kmvOrani,
+                kmv: calculated.kmv,
+                komisyonOrani: komOrani,
+                komisyon: calculated.komisyon,
+              }
+            : r
+        )
+      );
+      targetIdx = 0;
     } else {
-      // Dolu bir yerde veya doğrudan sayfada F6 yapıldı: yeni satır olarak ekle
       const newRow: GridLineItem = {
         ...createEmptyRow(lines.length + 1),
         paraId: data.para.id,
@@ -4025,7 +4152,7 @@ export const DovizFisiPage: React.FC = () => {
       if (isLastVisibleCol) {
         // Satırın son alanında Enter'a basıldı:
         if (rowIndex >= lines.length - 1) {
-          if (!isCokluSatirIzinli) {
+          if (!isCokluSatirIzinli || isArbitrajActive) {
             focusGelisNedeni();
             return;
           }
@@ -4121,7 +4248,7 @@ export const DovizFisiPage: React.FC = () => {
       if (isLastVisibleCol) {
         e.preventDefault();
         if (rowIndex >= lines.length - 1) {
-          if (!isCokluSatirIzinli) {
+          if (!isCokluSatirIzinli || isArbitrajActive) {
             focusGelisNedeni();
             return;
           }
@@ -4251,6 +4378,14 @@ export const DovizFisiPage: React.FC = () => {
     targetPrinter?: YaziciItem | null,
     targetCopies?: number
   ) => {
+    if (isDuzeltmeMode && isRecordLockedByUser) {
+      setNotification({
+        type: "danger",
+        message: "Bu fiş başka bir kullanıcıya aittir; yalnızca kendi kayıtlarınızı görüntüleyebilir veya düzeltebilirsiniz.",
+      });
+      return;
+    }
+
     // MASAK Malvarlığı Dondurulanlar Bloke Kontrolü (Kesinlikle Kayıt Yapılamaz!)
     if (isMasakKontroluVar && isMasakBlocked) {
       setNotification({
@@ -4733,6 +4868,11 @@ export const DovizFisiPage: React.FC = () => {
           dernekAmaci: detayDernekAmaci.trim() || undefined,
           yetkiliKisi: detayYetkiliKisi.trim() || undefined,
           yetkiliKisiId: finalYetkiliKisiId,
+          kimlikBelgeTuru: detayKimlikBelgeTuru || undefined,
+          kimlikDegistirmeNedeni: detayKimlikDegistirmeNedeni.trim() || undefined,
+          kimlikBelgeData: detayKimlikBelgeData || undefined,
+          kimlikBelgeMime: detayKimlikBelgeMime || undefined,
+          kimlikBelgeDosyaAdi: detayKimlikBelgeDosyaAdi || undefined,
           kimlikKaynagi: detayKimlikKaynagi.trim() || undefined,
           masakListesindeVar: (masakResult.matches && masakResult.matches.length > 0) ? true : false,
           gmBeyannameNo: gmBeyannameNo.trim() || undefined,
@@ -4743,7 +4883,8 @@ export const DovizFisiPage: React.FC = () => {
           gmTeyitTarih: (gmTeyitTarih.trim() && !gmTeyitTarih.startsWith("1899") && !gmTeyitTarih.startsWith("1900") && !gmTeyitTarih.startsWith("0001")) ? formatIsoDate(gmTeyitTarih) : undefined,
           gmFaturaNo: gmFaturaNo.trim() || undefined,
           toplamTutar: Number(totalTutar) || 0,
-          odemeTutari: Number(sonToplam) || 0,
+          odemeTutari: vezneNakitTutari !== null ? vezneNakitTutari : (Number(sonToplam) || 0),
+          bankaAciklama: bankaAciklama.trim() || undefined,
           yuvarlama: 0,
           satirlar: validLines.map((l, idx) => {
             let pId = Number(l.paraId);
@@ -4787,6 +4928,67 @@ export const DovizFisiPage: React.FC = () => {
       setSavedFisList(rawFresh);
 
       const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
+      const baseMainList = (saved.satirlar && saved.satirlar.length > 0 ? saved.satirlar : lines);
+      const validMainList = baseMainList.filter((l: any) => {
+        const hasKod = (l.paraKodu || l.kod) && String(l.paraKodu || l.kod).trim() !== "";
+        const m = parseDecimal(l.miktar);
+        const t = parseDecimal(l.tutar);
+        return hasKod && (m > 0 || t > 0);
+      });
+
+      const singleArbSnapshot = (validArbToSave || []).slice(0, 1);
+      const arbKod = String(singleArbSnapshot[0]?.paraKodu || (singleArbSnapshot[0] as any)?.kod || "").toUpperCase();
+      const filteredMainList = isArbitrajActive
+        ? validMainList.filter((l: any) => String(l.paraKodu || l.kod || "").toUpperCase() !== arbKod).slice(0, 1)
+        : validMainList;
+
+      const baseMainToUse = filteredMainList.length > 0 ? filteredMainList : validMainList.slice(0, isArbitrajActive ? 1 : undefined);
+
+      const mappedMainSnapshotLines = baseMainToUse.map((l: any, idx: number) => ({
+        paraKodu: l.paraKodu || l.kod,
+        paraAdi: l.paraAdi || l.ad || l.kod,
+        miktar: l.miktar,
+        kur: l.kur,
+        tutar: l.tutar,
+        bmv: l.bmv,
+        kmv: l.kmv,
+        kmvOrani: l.kmvOrani,
+        komisyon: l.komisyon,
+        seriNo: (l.seriNo && l.seriNo !== (saved.seriNo || "")) ? l.seriNo : (saved.seriNo ? incrementDocNo(saved.seriNo, idx) : ""),
+        belgeNo: (l.belgeNo && l.belgeNo !== (saved.belgeNo || "")) ? l.belgeNo : (saved.belgeNo ? incrementDocNo(saved.belgeNo, idx) : ""),
+        ettn: l.ettn,
+        tip: tip,
+        islemYonu: tip === 1 ? "satis" : "alis",
+        isArbitraj: false,
+      }));
+
+      const arbTip = savedArbitrajInfo?.tip !== undefined ? savedArbitrajInfo.tip : (tip === 0 ? 1 : 0);
+      const mappedArbSnapshotLines = singleArbSnapshot.map((a: any, idx: number) => {
+        const actualIdx = mappedMainSnapshotLines.length + idx;
+        const rowSeriNo = (a.seriNo && a.seriNo !== (saved.seriNo || "")) ? a.seriNo : (saved.seriNo ? incrementDocNo(saved.seriNo, actualIdx) : "");
+        const rowBelgeNo = (a.belgeNo && a.belgeNo !== (saved.belgeNo || "")) ? a.belgeNo : (saved.belgeNo ? incrementDocNo(saved.belgeNo, actualIdx) : "");
+        const rowTip = a.tip !== undefined && a.tip !== null
+          ? Number(a.tip)
+          : (a.islemYonu ? (a.islemYonu === "satis" ? 1 : 0) : arbTip);
+        return {
+          paraKodu: a.paraKodu || a.kod,
+          paraAdi: a.paraAdi || a.ad || a.paraKodu || a.kod,
+          miktar: a.miktar,
+          kur: a.kur,
+          tutar: a.tutar,
+          bmv: a.bmv,
+          kmv: a.kmv,
+          kmvOrani: a.kmvOrani,
+          komisyon: a.komisyon,
+          seriNo: rowSeriNo,
+          belgeNo: rowBelgeNo,
+          ettn: a.ettn,
+          tip: rowTip,
+          islemYonu: rowTip === 1 ? "satis" : "alis",
+          isArbitraj: true,
+        };
+      });
+
       const currentSnapshot = {
         fisId: saved.fisId || fisId,
         tip,
@@ -4803,23 +5005,10 @@ export const DovizFisiPage: React.FC = () => {
         detayMeslek,
         detayCariTipi,
         gelisNedeni: saved.gelisNedeni || payload.gelisNedeni || gelisNedeni || undefined,
-        isArbitraj: isArbitrajActive,
+        isArbitraj: isArbitrajActive || validArbToSave.length > 0,
         vezneKod,
         istatistikKodu,
-        lines: (saved.satirlar && saved.satirlar.length > 0 ? saved.satirlar : lines).map((l: any, idx: number) => ({
-          paraKodu: l.paraKodu,
-          paraAdi: l.paraAdi,
-          miktar: l.miktar,
-          kur: l.kur,
-          tutar: l.tutar,
-          bmv: l.bmv,
-          kmv: l.kmv,
-          kmvOrani: l.kmvOrani,
-          komisyon: l.komisyon,
-          seriNo: (l.seriNo && l.seriNo !== (saved.seriNo || "")) ? l.seriNo : (saved.seriNo ? incrementDocNo(saved.seriNo, idx) : ""),
-          belgeNo: (l.belgeNo && l.belgeNo !== (saved.belgeNo || "")) ? l.belgeNo : (saved.belgeNo ? incrementDocNo(saved.belgeNo, idx) : ""),
-          ettn: l.ettn,
-        })),
+        lines: [...mappedMainSnapshotLines, ...mappedArbSnapshotLines],
         toplamTutar: totalTutar,
         totalMasraf: totalMasraf,
         sonToplam: sonToplam,
@@ -4932,6 +5121,13 @@ export const DovizFisiPage: React.FC = () => {
   };
 
   const handleToolbarDelete = async () => {
+    if (isRecordLockedByUser) {
+      setNotification({
+        type: "warning",
+        message: "Bu fiş başka bir kullanıcıya aittir; silinemez.",
+      });
+      return;
+    }
     if (isLocked || gibeGonderildi) {
       setNotification({
         type: "warning",
@@ -5052,6 +5248,7 @@ export const DovizFisiPage: React.FC = () => {
   const handleApplyArbitrajToDovizFis = useCallback(
     (result: ArbitrajApplyResult) => {
       setIsArbitrajState(true);
+      setLines((prev) => (prev.length > 1 ? prev.slice(0, 1) : prev));
       if (result.gelisNedeni !== undefined) {
         const cleanGn = (result.gelisNedeni || "").trim();
         setGelisNedeni(cleanGn.toLowerCase() === "arbitraj" ? "" : cleanGn);
@@ -5254,10 +5451,77 @@ export const DovizFisiPage: React.FC = () => {
         const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
         const baseBelgeNo = saved.belgeNo || String(saved.fisId);
         const baseSeriNo = saved.seriNo || "";
-        const sourceLines = (saved.satirlar && saved.satirlar.length > 0) ? saved.satirlar : arbSatirlar;
-        const mappedLines = sourceLines.map((l: any, idx: number) => {
+
+        // Ana fiş satırları (varsa) ve arbitraj satırları birleştirilir; her biri kendi işlem yönünü taşır
+        const singleArb = arbSatirlar.slice(0, 1);
+        const arbKod = String(singleArb[0]?.paraKodu || (singleArb[0] as any)?.kod || "").toUpperCase();
+
+        const mainRows = (saved.satirlar && saved.satirlar.length > 0)
+          ? saved.satirlar
+          : (lines && lines.length > 0 && lines.some((l: any) => parseDecimal(l.miktar) > 0 || parseDecimal(l.tutar) > 0) ? lines : []);
+        
+        const validMainRows = mainRows.filter((l: any) => {
+          const kod = String(l.paraKodu || l.kod || "").toUpperCase();
+          const hasKod = kod !== "";
+          const m = parseDecimal(l.miktar);
+          const t = parseDecimal(l.tutar);
+          return hasKod && (m > 0 || t > 0) && kod !== arbKod;
+        });
+
+        const mappedMain = validMainRows.slice(0, 1).map((l: any, idx: number) => {
           const rowBelgeNo = (l.belgeNo && l.belgeNo !== baseBelgeNo) ? l.belgeNo : (baseBelgeNo ? incrementDocNo(baseBelgeNo, idx) : "");
           const rowSeriNo = (l.seriNo && l.seriNo !== baseSeriNo) ? l.seriNo : (baseSeriNo ? incrementDocNo(baseSeriNo, idx) : "");
+          return {
+            paraKodu: l.paraKodu || l.kod,
+            paraAdi: l.paraAdi || l.ad || l.kod,
+            miktar: l.miktar,
+            kur: l.kur,
+            tutar: l.tutar,
+            bmv: l.bmv,
+            kmv: l.kmv,
+            kmvOrani: l.kmvOrani,
+            komisyon: l.komisyon,
+            seriNo: rowSeriNo,
+            belgeNo: rowBelgeNo,
+            ettn: l.ettn,
+            tip: tip,
+            islemYonu: tip === 1 ? "satis" : "alis",
+            isArbitraj: false,
+          };
+        });
+
+        if (mappedMain.length === 0) {
+          const otherLegPara = isAlis ? result.cikisPara : result.girisPara;
+          const otherLegMiktar = isAlis ? result.cikisMiktar : result.girisMiktar;
+          const otherLegKur = isAlis ? result.cikisKur : result.girisKur;
+          if (otherLegPara && Number(otherLegMiktar) > 0) {
+            const m = Number(otherLegMiktar);
+            const k = Number(otherLegKur) || 1;
+            mappedMain.push({
+              paraKodu: otherLegPara.kod,
+              paraAdi: otherLegPara.ad || otherLegPara.kod,
+              miktar: m,
+              kur: k,
+              tutar: m * k,
+              bmv: 0,
+              kmv: 0,
+              kmvOrani: 0,
+              komisyon: 0,
+              seriNo: baseSeriNo,
+              belgeNo: baseBelgeNo,
+              ettn: undefined,
+              tip: isAlis ? 1 : 0,
+              islemYonu: isAlis ? "satis" : "alis",
+              isArbitraj: false,
+            });
+          }
+        }
+
+        const startIdxArb = mappedMain.length;
+        const mappedArb = singleArb.map((l: any, idx: number) => {
+          const actualIdx = startIdxArb + idx;
+          const rowBelgeNo = (l.belgeNo && l.belgeNo !== baseBelgeNo) ? l.belgeNo : (baseBelgeNo ? incrementDocNo(baseBelgeNo, actualIdx) : "");
+          const rowSeriNo = (l.seriNo && l.seriNo !== baseSeriNo) ? l.seriNo : (baseSeriNo ? incrementDocNo(baseSeriNo, actualIdx) : "");
           return {
             paraKodu: l.paraKodu,
             paraAdi: l.paraAdi,
@@ -5271,8 +5535,13 @@ export const DovizFisiPage: React.FC = () => {
             seriNo: rowSeriNo,
             belgeNo: rowBelgeNo,
             ettn: l.ettn,
+            tip: arbitrajTip,
+            islemYonu: arbitrajTip === 1 ? "satis" : "alis",
+            isArbitraj: true,
           };
         });
+
+        const mappedLines = [...mappedMain, ...mappedArb];
 
         const snapshot = {
           fisId: saved.fisId,
@@ -5393,6 +5662,7 @@ export const DovizFisiPage: React.FC = () => {
     setShowKurListesiModal(false);
     setShowVezneBakiyeModal(false);
     setShowTlHesabiModal(false);
+    setShowBankaTlHesabiModal(false);
     setShowDetayModal(false);
     setShowParaSaymaModal(false);
     setShowIstatistikModal(false);
@@ -5405,6 +5675,21 @@ export const DovizFisiPage: React.FC = () => {
     setShowPrintModal(false);
     setShowTeklifTaniModal(false);
     setActiveLookupType(null);
+  }, []);
+
+  const handleApplyBankaTlHesabi = useCallback((data: BankaTlHesabiApplyPayload) => {
+    setBankaAciklama(data.bankaAciklama);
+    setBankaDagitimSatirlari(data.bankaSatirlari);
+    setVezneNakitTutari(data.vezneTutari);
+    if (data.bankaSatirlari.length > 0) {
+      setDetayBankaHesabiId(data.bankaSatirlari[0].bankaId);
+      setDetayBankaHesabi(data.bankaSatirlari[0].bankaAdi);
+    }
+    if (data.vezneId) {
+      setVezneId(data.vezneId);
+      if (data.vezneKodu) setVezneKod(data.vezneKodu);
+      if (data.vezneAdi) setVezneAd(data.vezneAdi);
+    }
   }, []);
 
   const handleTriggerF10 = useCallback(() => {
@@ -5512,6 +5797,74 @@ export const DovizFisiPage: React.FC = () => {
     }
 
     const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
+
+    const rawArb = (savedArbitrajInfo?.result?.allLines && savedArbitrajInfo.result.allLines.length > 0)
+      ? savedArbitrajInfo.result.allLines
+      : (savedArbitrajInfo?.result?.lines || []);
+    const validArb = rawArb.filter((l: any) => {
+      const hasKod = (l.kod || l.paraKodu) && String(l.kod || l.paraKodu).trim() !== "";
+      const m = parseDecimal(l.miktar);
+      const t = parseDecimal(l.tutar);
+      return hasKod && (m > 0 || t > 0);
+    });
+    const singleArbList = validArb.slice(0, 1);
+    const arbKod = String(singleArbList[0]?.kod || singleArbList[0]?.paraKodu || "").toUpperCase();
+
+    const filteredMain = isArbitrajActive
+      ? validLines.filter((l: any) => String(l.paraKodu || l.kod || "").toUpperCase() !== arbKod).slice(0, 1)
+      : validLines;
+
+    const baseMainToUse = filteredMain.length > 0 ? filteredMain : validLines.slice(0, isArbitrajActive ? 1 : undefined);
+
+    const mappedMain = baseMainToUse.map((l: any, idx: number) => ({
+      paraKodu: l.paraKodu || l.kod,
+      paraAdi: l.paraAdi || l.ad || l.kod,
+      miktar: l.miktar,
+      kur: l.kur,
+      tutar: l.tutar,
+      bmv: l.bmv,
+      kmv: l.kmv,
+      kmvOrani: l.kmvOrani,
+      komisyon: l.komisyon,
+      seriNo: (l.seriNo && l.seriNo !== (seriNo || "")) ? l.seriNo : (seriNo ? incrementDocNo(seriNo, idx) : ""),
+      belgeNo: (l.belgeNo && l.belgeNo !== (belgeNo || "")) ? l.belgeNo : (belgeNo ? incrementDocNo(belgeNo, idx) : ""),
+      ettn: l.ettn,
+      tip: tip,
+      islemYonu: tip === 1 ? "satis" : "alis",
+      isArbitraj: false,
+    }));
+
+    const arbTip = savedArbitrajInfo?.tip !== undefined ? savedArbitrajInfo.tip : (tip === 0 ? 1 : 0);
+    const mappedArb = (isArbitrajActive && singleArbList.length > 0)
+      ? singleArbList.map((a: any, idx: number) => {
+          const actualIdx = mappedMain.length + idx;
+          const rowSeriNo = (a.seriNo && a.seriNo !== (seriNo || "")) ? a.seriNo : (seriNo ? incrementDocNo(seriNo, actualIdx) : "");
+          const rowBelgeNo = (a.belgeNo && a.belgeNo !== (belgeNo || "")) ? a.belgeNo : (belgeNo ? incrementDocNo(belgeNo, actualIdx) : "");
+          const rowTip = a.tip !== undefined && a.tip !== null
+            ? Number(a.tip)
+            : (a.islemYonu ? (a.islemYonu === "satis" ? 1 : 0) : arbTip);
+          return {
+            paraKodu: a.paraKodu || a.kod,
+            paraAdi: a.paraAdi || a.ad || a.paraKodu || a.kod,
+            miktar: a.miktar,
+            kur: a.kur,
+            tutar: a.tutar,
+            bmv: a.bmv,
+            kmv: a.kmv,
+            kmvOrani: a.kmvOrani,
+            komisyon: a.komisyon,
+            seriNo: rowSeriNo,
+            belgeNo: rowBelgeNo,
+            ettn: a.ettn,
+            tip: rowTip,
+            islemYonu: rowTip === 1 ? "satis" : "alis",
+            isArbitraj: true,
+          };
+        })
+      : [];
+
+    const printLines = [...mappedMain, ...mappedArb];
+
     const currentSnapshot = {
       fisId: fisId || undefined,
       tip,
@@ -5528,23 +5881,10 @@ export const DovizFisiPage: React.FC = () => {
       detayMeslek,
       detayCariTipi,
       gelisNedeni: gelisNedeni || undefined,
-      isArbitraj: isArbitrajActive,
+      isArbitraj: isArbitrajActive || mappedArb.length > 0,
       vezneKod,
       istatistikKodu,
-      lines: lines.map((l: any, idx: number) => ({
-        paraKodu: l.paraKodu,
-        paraAdi: l.paraAdi,
-        miktar: l.miktar,
-        kur: l.kur,
-        tutar: l.tutar,
-        bmv: l.bmv,
-        kmv: l.kmv,
-        kmvOrani: l.kmvOrani,
-        komisyon: l.komisyon,
-        seriNo: (l.seriNo && l.seriNo !== (seriNo || "")) ? l.seriNo : (seriNo ? incrementDocNo(seriNo, idx) : ""),
-        belgeNo: (l.belgeNo && l.belgeNo !== (belgeNo || "")) ? l.belgeNo : (belgeNo ? incrementDocNo(belgeNo, idx) : ""),
-        ettn: l.ettn,
-      })),
+      lines: printLines,
       toplamTutar: totalTutar,
       totalMasraf: totalMasraf,
       sonToplam: sonToplam,
@@ -5587,12 +5927,91 @@ export const DovizFisiPage: React.FC = () => {
         message: `⚠️ Fiş yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`,
       });
     }
-  }, [lines, paraList, fisId, tip, tarih, saat, seriNo, belgeNo, unvan, vergiKimlikNo, detayIl, detayIlce, detayUyruk, detayPasaportNo, detayMeslek, detayCariTipi, vezneKod, istatistikKodu, totalTutar, sonToplam, calculatedBsmv, totalKmv, totalKomisyon, kurTuru, vezneList, vezneId, user, printers, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi]);
+  }, [lines, paraList, fisId, tip, tarih, saat, seriNo, belgeNo, unvan, vergiKimlikNo, detayIl, detayIlce, detayUyruk, detayPasaportNo, detayMeslek, detayCariTipi, vezneKod, istatistikKodu, totalTutar, sonToplam, calculatedBsmv, totalKmv, totalKomisyon, kurTuru, vezneList, vezneId, user, printers, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi, savedArbitrajInfo, isArbitrajActive]);
 
   const handleOpenPrintPreview = useCallback(() => {
     const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
     const baseBelgeNo = belgeNo || (fisId ? String(fisId) : (seriNo || "TEKLİF"));
     const baseSeriNo = seriNo || "";
+
+    const rawArb = (savedArbitrajInfo?.result?.allLines && savedArbitrajInfo.result.allLines.length > 0)
+      ? savedArbitrajInfo.result.allLines
+      : (savedArbitrajInfo?.result?.lines || []);
+    const validArb = rawArb.filter((l: any) => {
+      const hasKod = (l.kod || l.paraKodu) && String(l.kod || l.paraKodu).trim() !== "";
+      const m = parseDecimal(l.miktar);
+      const t = parseDecimal(l.tutar);
+      return hasKod && (m > 0 || t > 0);
+    });
+    const singleArbList = validArb.slice(0, 1);
+    const arbKod = String(singleArbList[0]?.kod || singleArbList[0]?.paraKodu || "").toUpperCase();
+
+    const validMain = lines.filter((l: any) => {
+      const hasKod = (l.paraKodu || l.kod) && String(l.paraKodu || l.kod).trim() !== "";
+      const m = parseDecimal(l.miktar);
+      const t = parseDecimal(l.tutar);
+      return hasKod && (m > 0 || t > 0);
+    });
+
+    const filteredMain = isArbitrajActive
+      ? validMain.filter((l: any) => String(l.paraKodu || l.kod || "").toUpperCase() !== arbKod).slice(0, 1)
+      : validMain;
+
+    const baseMainToUse = filteredMain.length > 0 ? filteredMain : validMain.slice(0, isArbitrajActive ? 1 : undefined);
+
+    const mappedMain = baseMainToUse.map((l: any, idx: number) => {
+      const rowBelgeNo = (l.belgeNo && l.belgeNo !== baseBelgeNo) ? l.belgeNo : (baseBelgeNo ? incrementDocNo(baseBelgeNo, idx) : "");
+      const rowSeriNo = (l.seriNo && l.seriNo !== baseSeriNo) ? l.seriNo : (baseSeriNo ? incrementDocNo(baseSeriNo, idx) : "");
+      return {
+        paraKodu: l.paraKodu || l.kod,
+        paraAdi: l.paraAdi || l.ad || l.kod,
+        miktar: l.miktar,
+        kur: l.kur,
+        tutar: l.tutar,
+        bmv: l.bmv,
+        kmv: l.kmv,
+        kmvOrani: l.kmvOrani,
+        komisyon: l.komisyon,
+        seriNo: rowSeriNo,
+        belgeNo: rowBelgeNo,
+        ettn: l.ettn,
+        tip: tip,
+        islemYonu: tip === 1 ? "satis" : "alis",
+        isArbitraj: false,
+      };
+    });
+
+    const arbTip = savedArbitrajInfo?.tip !== undefined ? savedArbitrajInfo.tip : (tip === 0 ? 1 : 0);
+    const mappedArb = (isArbitrajActive && singleArbList.length > 0)
+      ? singleArbList.map((a: any, idx: number) => {
+          const actualIdx = mappedMain.length + idx;
+          const rowSeriNo = (a.seriNo && a.seriNo !== (seriNo || "")) ? a.seriNo : (seriNo ? incrementDocNo(seriNo, actualIdx) : "");
+          const rowBelgeNo = (a.belgeNo && a.belgeNo !== (belgeNo || "")) ? a.belgeNo : (belgeNo ? incrementDocNo(belgeNo, actualIdx) : "");
+          const rowTip = a.tip !== undefined && a.tip !== null
+            ? Number(a.tip)
+            : (a.islemYonu ? (a.islemYonu === "satis" ? 1 : 0) : arbTip);
+          return {
+            paraKodu: a.paraKodu || a.kod,
+            paraAdi: a.paraAdi || a.ad || a.paraKodu || a.kod,
+            miktar: a.miktar,
+            kur: a.kur,
+            tutar: a.tutar,
+            bmv: a.bmv,
+            kmv: a.kmv,
+            kmvOrani: a.kmvOrani,
+            komisyon: a.komisyon,
+            seriNo: rowSeriNo,
+            belgeNo: rowBelgeNo,
+            ettn: a.ettn,
+            tip: rowTip,
+            islemYonu: rowTip === 1 ? "satis" : "alis",
+            isArbitraj: true,
+          };
+        })
+      : [];
+
+    const previewLines = [...mappedMain, ...mappedArb];
+
     setPrintSnapshot({
       fisId,
       tip,
@@ -5600,7 +6019,7 @@ export const DovizFisiPage: React.FC = () => {
       saat,
       seriNo: baseSeriNo,
       belgeNo: baseBelgeNo,
-      isArbitraj: isArbitrajActive,
+      isArbitraj: isArbitrajActive || mappedArb.length > 0,
       gelisNedeni,
       unvan,
       vergiKimlikNo,
@@ -5612,24 +6031,7 @@ export const DovizFisiPage: React.FC = () => {
       detayCariTipi,
       vezneKod,
       istatistikKodu,
-      lines: lines.map((l: any, idx: number) => {
-        const rowBelgeNo = (l.belgeNo && l.belgeNo !== baseBelgeNo) ? l.belgeNo : (baseBelgeNo ? incrementDocNo(baseBelgeNo, idx) : "");
-        const rowSeriNo = (l.seriNo && l.seriNo !== baseSeriNo) ? l.seriNo : (baseSeriNo ? incrementDocNo(baseSeriNo, idx) : "");
-        return {
-          paraKodu: l.paraKodu,
-          paraAdi: l.paraAdi,
-          miktar: l.miktar,
-          kur: l.kur,
-          tutar: l.tutar,
-          bmv: l.bmv,
-          kmv: l.kmv,
-          kmvOrani: l.kmvOrani,
-          komisyon: l.komisyon,
-          seriNo: rowSeriNo,
-          belgeNo: rowBelgeNo,
-          ettn: l.ettn,
-        };
-      }),
+      lines: previewLines,
       toplamTutar: totalTutar,
       totalMasraf: totalMasraf,
       sonToplam: sonToplam,
@@ -5668,6 +6070,7 @@ export const DovizFisiPage: React.FC = () => {
     resolveCurrencyRate,
     kurTuru,
     isArbitrajActive,
+    savedArbitrajInfo,
     gelisNedeni,
   ]);
 
@@ -5687,11 +6090,73 @@ export const DovizFisiPage: React.FC = () => {
 
       if (validArbLines.length === 0) return;
 
+      const singleArbLine = validArbLines.slice(0, 1);
+      const arbKod = String(singleArbLine[0]?.kod || "").toUpperCase();
+
       const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
       const baseBelgeNo = savedArbitrajInfo?.belgeNo || (belgeNo && !isDuzeltmeMode ? belgeNo : "ARB00000001");
       const baseSeriNo = savedArbitrajInfo?.seriNo || (seriNo && !isDuzeltmeMode ? seriNo : "ARB");
 
-      const arbSatirlar = validArbLines.map((l: any, idx: number) => {
+      const validMainLines = (lines || []).filter((l: any) => {
+        const kod = String(l.paraKodu || l.kod || "").toUpperCase();
+        const hasKod = kod !== "";
+        const m = parseDecimal(l.miktar);
+        const t = parseDecimal(l.tutar);
+        return hasKod && (m > 0 || t > 0) && kod !== arbKod;
+      });
+
+      const singleMainLine = validMainLines.slice(0, 1);
+      const mappedMain = singleMainLine.map((l: any, idx: number) => {
+        const rowBelgeNo = (l.belgeNo && l.belgeNo !== baseBelgeNo) ? l.belgeNo : (baseBelgeNo ? incrementDocNo(baseBelgeNo, idx) : "");
+        const rowSeriNo = (l.seriNo && l.seriNo !== baseSeriNo) ? l.seriNo : (baseSeriNo ? incrementDocNo(baseSeriNo, idx) : "");
+        return {
+          paraKodu: l.paraKodu || l.kod,
+          paraAdi: l.paraAdi || l.ad || l.kod,
+          miktar: l.miktar,
+          kur: l.kur,
+          tutar: l.tutar,
+          bmv: l.bmv,
+          kmv: l.kmv,
+          kmvOrani: l.kmvOrani,
+          komisyon: l.komisyon,
+          seriNo: rowSeriNo,
+          belgeNo: rowBelgeNo,
+          ettn: l.ettn,
+          tip: tip,
+          islemYonu: tip === 1 ? "satis" : "alis",
+          isArbitraj: false,
+        };
+      });
+
+      if (mappedMain.length === 0) {
+        const otherLegPara = isAlis ? result.cikisPara : result.girisPara;
+        const otherLegMiktar = isAlis ? result.cikisMiktar : result.girisMiktar;
+        const otherLegKur = isAlis ? result.cikisKur : result.girisKur;
+        if (otherLegPara && Number(otherLegMiktar) > 0) {
+          const m = Number(otherLegMiktar);
+          const k = Number(otherLegKur) || 1;
+          mappedMain.push({
+            paraKodu: otherLegPara.kod,
+            paraAdi: otherLegPara.ad || otherLegPara.kod,
+            miktar: m,
+            kur: k,
+            tutar: m * k,
+            bmv: 0,
+            kmv: 0,
+            kmvOrani: 0,
+            komisyon: 0,
+            seriNo: baseSeriNo,
+            belgeNo: baseBelgeNo,
+            ettn: undefined,
+            tip: isAlis ? 1 : 0,
+            islemYonu: isAlis ? "satis" : "alis",
+            isArbitraj: false,
+          });
+        }
+      }
+
+      const startIdxArb = mappedMain.length;
+      const arbSatirlar = singleArbLine.map((l: any, idx: number) => {
         let pId = l.paraId;
         if (!pId || pId <= 0) {
           const matched = paraList.find((p) => p.kod.toUpperCase() === (l.kod || "").toUpperCase());
@@ -5700,8 +6165,9 @@ export const DovizFisiPage: React.FC = () => {
         const m = Number(parseDecimal(String(l.miktar || "0"))) || 0;
         const k = Number(parseDecimal(String(l.kur || "0"))) || 0;
         const tutarVal = Number(parseDecimal(String(l.tutar || "0"))) || m * k;
-        const rowBelgeNo = (l.belgeNo && l.belgeNo !== baseBelgeNo) ? l.belgeNo : (baseBelgeNo ? incrementDocNo(baseBelgeNo, idx) : "");
-        const rowSeriNo = (l.seriNo && l.seriNo !== baseSeriNo) ? l.seriNo : (baseSeriNo ? incrementDocNo(baseSeriNo, idx) : "");
+        const actualIdx = startIdxArb + idx;
+        const rowBelgeNo = (l.belgeNo && l.belgeNo !== baseBelgeNo) ? l.belgeNo : (baseBelgeNo ? incrementDocNo(baseBelgeNo, actualIdx) : "");
+        const rowSeriNo = (l.seriNo && l.seriNo !== baseSeriNo) ? l.seriNo : (baseSeriNo ? incrementDocNo(baseSeriNo, actualIdx) : "");
 
         return {
           satirNo: idx + 1,
@@ -5722,8 +6188,13 @@ export const DovizFisiPage: React.FC = () => {
           seriNo: rowSeriNo,
           belgeNo: rowBelgeNo,
           ettn: l.ettn,
+          tip: arbitrajTip,
+          islemYonu: isAlis ? "alis" : "satis",
+          isArbitraj: true,
         };
       });
+
+      const combinedArbitrajLines = [...mappedMain, ...arbSatirlar];
 
       const totalT = arbSatirlar.reduce((acc, r) => acc + r.tutar, 0);
       const totalKom = arbSatirlar.reduce((acc, r) => acc + (r.komisyon || 0), 0);
@@ -5737,7 +6208,7 @@ export const DovizFisiPage: React.FC = () => {
       const finalZaman = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
       const snapshot = {
-        fisId: savedArbitrajInfo?.fisId || null,
+        fisId: fisId || savedArbitrajInfo?.fisId || undefined,
         tip: arbitrajTip,
         tarih: finalTarih,
         saat: finalZaman,
@@ -5755,7 +6226,7 @@ export const DovizFisiPage: React.FC = () => {
         detayCariTipi: result.detay?.cariTipi || detayCariTipi,
         vezneKod,
         istatistikKodu: result.istatistikKodu || istatistikKodu,
-        lines: arbSatirlar,
+        lines: combinedArbitrajLines,
         toplamTutar: totalT,
         totalMasraf: totalM,
         sonToplam: sonT,
@@ -5769,12 +6240,20 @@ export const DovizFisiPage: React.FC = () => {
       setPrintSnapshot(snapshot);
       setShowPrintModal(true);
     },
-    [paraList, savedArbitrajInfo, belgeNo, seriNo, isDuzeltmeMode, unvan, vergiKimlikNo, detayIl, detayIlce, detayUyruk, detayPasaportNo, detayMeslek, detayCariTipi, vezneKod, istatistikKodu, resolveCurrencyRate]
+    [paraList, savedArbitrajInfo, belgeNo, seriNo, isDuzeltmeMode, unvan, vergiKimlikNo, detayIl, detayIlce, detayUyruk, detayPasaportNo, detayMeslek, detayCariTipi, vezneKod, istatistikKodu, resolveCurrencyRate, lines, tip]
   );
 
   // Keyboard shortcut listener (F1..F10, ESC)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isShiftF5 = (e.key === "F5" || e.code === "F5" || e.keyCode === 116 || e.which === 116) && e.shiftKey;
+      if (isShiftF5) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowBankaTlHesabiModal(true);
+        return;
+      }
+
       const key = e.key ? e.key.toUpperCase() : "";
       const isEscape = key === "ESCAPE" || e.code === "Escape" || e.keyCode === 27;
       const isF1 = key === "F1" || e.code === "F1" || e.keyCode === 112;
@@ -5837,6 +6316,11 @@ export const DovizFisiPage: React.FC = () => {
         if (showVezneBakiyeModal) {
           e.preventDefault();
           setShowVezneBakiyeModal(false);
+          return;
+        }
+        if (showBankaTlHesabiModal) {
+          e.preventDefault();
+          setShowBankaTlHesabiModal(false);
           return;
         }
         if (showTlHesabiModal) {
@@ -5930,8 +6414,12 @@ export const DovizFisiPage: React.FC = () => {
         e.preventDefault();
         e.stopPropagation();
         closeAllModals();
-        fetchVezneBalances(vezneId);
-        setShowVezneBakiyeModal(true);
+        if (e.shiftKey) {
+          setShowBankaTlHesabiModal(true);
+        } else {
+          fetchVezneBalances(vezneId);
+          setShowVezneBakiyeModal(true);
+        }
       } else if (isF6) {
         e.preventDefault();
         e.stopPropagation();
@@ -6303,20 +6791,28 @@ export const DovizFisiPage: React.FC = () => {
       } as React.CSSProperties}
     >
       {ebFis.bant}
+      {isDuzeltmeMode && isRecordLockedByUser && (
+        <Alert variant="warning" className="d-flex align-items-center mb-2 mx-1 py-1.5 px-3">
+          <div>
+            <strong>Kayıt Kilitli (Pasif Mod):</strong> Yetkiniz doğrultusunda vezne kayıtlarını yalnızca pasif olarak görüntüleyebilirsiniz; düzenleme ve silme yetkiniz bulunmamaktadır.
+          </div>
+        </Alert>
+      )}
       {/* Top ERP Toolbar with Refresh Icon on right and Dynamic Balances */}
       <ERPToolbar
         disableShortcuts={true}
         pageTitle={isDuzeltmeMode ? "F- Döviz Fişi Düzeltme" : "E- Döviz Fişi Kayıt"}
         onNew={isDuzeltmeMode ? undefined : handleToolbarNew}
         hideNew={isDuzeltmeMode}
-        onSave={handleToolbarSave}
-        onSaveAndPrint={handleTriggerF10}
+        onSave={isRecordLockedByUser ? undefined : handleToolbarSave}
+        hideSave={isRecordLockedByUser}
+        onSaveAndPrint={isRecordLockedByUser ? undefined : handleTriggerF10}
         onDirectPrint={handleOpenPrintPreview}
         onPreview={handleOpenPrintPreview}
         onSearch={isDuzeltmeMode ? openFisSecimModal : undefined}
-        onDelete={isDuzeltmeMode ? handleToolbarDelete : undefined}
+        onDelete={isDuzeltmeMode && !isRecordLockedByUser ? handleToolbarDelete : undefined}
         hideSearch={!isDuzeltmeMode}
-        hideDelete={!isDuzeltmeMode}
+        hideDelete={!isDuzeltmeMode || isRecordLockedByUser}
         onFirst={handleFirst}
         onPrev={handlePrev}
         onNext={handleNext}
@@ -6355,6 +6851,19 @@ export const DovizFisiPage: React.FC = () => {
               >
                 <IconArrowsExchange size={14} /> ARBİTRAJ
               </Badge>
+            )}
+            {!isDuzeltmeMode && (
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="py-0 px-2 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs ms-1"
+                style={{ fontSize: "11.5px", height: "26px" }}
+                onClick={() => setShowBankaTlHesabiModal(true)}
+                title="Banka TL Hesabı ve Dağıtımı (Shift+F5)"
+              >
+                <IconBuildingBank size={14} />
+                <span>Banka TL (Shift+F5)</span>
+              </Button>
             )}
           </div>
         }
@@ -6479,6 +6988,54 @@ export const DovizFisiPage: React.FC = () => {
                     backgroundColor: activeFisThemeBg,
                   }}
                 >
+                  {/* Vezne: Sınırsız yetkili yönetici vezne seçebilir; sınırsız yetkili olmayan kullanıcılar kendi veznesini pasif görür */}
+                  <div className="d-flex flex-row align-items-center gap-2">
+                    <label
+                      className="small fw-semibold mb-0 text-nowrap"
+                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                    >
+                      Vezne
+                    </label>
+                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                      {user?.isSysAdmin ? (
+                        <Form.Select
+                          size="sm"
+                          value={vezneId}
+                          disabled={isLocked}
+                          onChange={async (e) => {
+                            const vId = Number(e.target.value);
+                            setVezneId(vId);
+                            const vz = vezneList.find((v) => v.id === vId);
+                            if (vz) {
+                              setVezneKod(vz.kod);
+                              setVezneAd(vz.ad);
+                            }
+                            await fetchVezneBalances(vId);
+                          }}
+                          className="fw-bold"
+                          style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
+                          title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
+                        >
+                          {vezneList.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.kod} - {v.ad}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      ) : (
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={`${vezneKod || "01"} - ${vezneAd || "Ana Vezne"}`}
+                          className="form-control form-control-sm bg-light text-muted fw-semibold"
+                          style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1", cursor: "not-allowed" }}
+                          title="Kullanıcı kartınıza ait vezne (Değiştirilemez)"
+                        />
+                      )}
+                    </div>
+                  </div>
+
                   <div className="d-flex flex-row align-items-center gap-2">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
@@ -6959,6 +7516,54 @@ export const DovizFisiPage: React.FC = () => {
                     backgroundColor: activeFisThemeBg,
                   }}
                 >
+                  {/* Vezne: Sınırsız yetkili yönetici vezne seçebilir; sınırsız yetkili olmayan kullanıcılar kendi veznesini pasif görür */}
+                  <div className="d-flex flex-row align-items-center gap-2">
+                    <label
+                      className="small fw-semibold mb-0 text-nowrap"
+                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                    >
+                      Vezne
+                    </label>
+                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                      {user?.isSysAdmin ? (
+                        <Form.Select
+                          size="sm"
+                          value={vezneId}
+                          disabled={isLocked}
+                          onChange={async (e) => {
+                            const vId = Number(e.target.value);
+                            setVezneId(vId);
+                            const vz = vezneList.find((v) => v.id === vId);
+                            if (vz) {
+                              setVezneKod(vz.kod);
+                              setVezneAd(vz.ad);
+                            }
+                            await fetchVezneBalances(vId);
+                          }}
+                          className="fw-bold"
+                          style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
+                          title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
+                        >
+                          {vezneList.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.kod} - {v.ad}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      ) : (
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={`${vezneKod || "01"} - ${vezneAd || "Ana Vezne"}`}
+                          className="form-control form-control-sm bg-light text-muted fw-semibold"
+                          style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1", cursor: "not-allowed" }}
+                          title="Kullanıcı kartınıza ait vezne (Değiştirilemez)"
+                        />
+                      )}
+                    </div>
+                  </div>
+
                   <div className="d-flex flex-row align-items-center gap-2">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
@@ -7419,8 +8024,13 @@ export const DovizFisiPage: React.FC = () => {
                   const isAdetPassive = !isPZ || userDovizZiynetGirisSekli === 1;
                   const isMiktarPassive = isPZ && userDovizZiynetGirisSekli === 0;
 
-                  const isAdetMissing = hasPara && isPZ && userDovizZiynetGirisSekli === 0 && (!row.adet || String(row.adet).trim() === "" || parseMiktar(row.adet) <= 0);
-                  const isMiktarMissing = hasPara && !isMiktarPassive && (!row.miktar || String(row.miktar).trim() === "" || parseMiktar(row.miktar) <= 0);
+                  const isMiktarFilled = Boolean(
+                    (row.miktar && String(row.miktar).trim() !== "" && parseMiktar(row.miktar) > 0) ||
+                    (row.adet && String(row.adet).trim() !== "" && parseMiktar(row.adet) > 0)
+                  );
+
+                  const isAdetMissing = hasPara && isPZ && userDovizZiynetGirisSekli === 0 && !isMiktarFilled;
+                  const isMiktarMissing = hasPara && !isMiktarPassive && !isMiktarFilled;
                   const isKurMissing = hasPara && !isTL && (!row.kur || String(row.kur).trim() === "" || parseKur(row.kur) <= 0);
 
                   return (
@@ -7630,7 +8240,7 @@ export const DovizFisiPage: React.FC = () => {
                             boxShadow: isMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
                             cursor: isMiktarPassive ? "not-allowed" : undefined,
                           }}
-                          value={isMiktarPassive ? "" : row.miktar}
+                          value={isMiktarPassive ? "" : (row.miktar ?? (row.adet || ""))}
                           onFocus={() => {
                             setActiveRowIndex(idx);
                             cleanupEmptyRows(idx);
@@ -7913,6 +8523,9 @@ export const DovizFisiPage: React.FC = () => {
                 </Button>
                 <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => { fetchVezneBalances(vezneId); setShowVezneBakiyeModal(true); }}>
                   F5) Vezne
+                </Button>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowBankaTlHesabiModal(true)} title="Banka TL Hesabı (Shift+F5)">
+                  Shift+F5) Banka TL Hesabı
                 </Button>
                 <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={handleOpenTlHesabi}>
                   F6) TL Hesabı
@@ -8303,6 +8916,20 @@ export const DovizFisiPage: React.FC = () => {
               </div>
 
               <div className="d-flex align-items-center mb-2">
+                <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Belge türü</span>
+                <Form.Select
+                  size="sm"
+                  value={detayKimlikBelgeTuru}
+                  onChange={(e) => setDetayKimlikBelgeTuru(Number(e.target.value))}
+                >
+                  <option value={0}>T.C. Kimlik</option>
+                  <option value={1}>Pasaport</option>
+                  <option value={2}>Ehliyet</option>
+                  <option value={3}>Vergi Levhası</option>
+                </Form.Select>
+              </div>
+
+              <div className="d-flex align-items-center mb-2">
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Kimlik kaynağı</span>
                 <Form.Control
                   size="sm"
@@ -8683,6 +9310,24 @@ export const DovizFisiPage: React.FC = () => {
               </div>
             </Col>
           </Row>
+
+          {/* Kimlik Değiştirme Nedeni ve Doğrudan SQL'de Saklanan Belge / Fotoğraf (En altta ve sayfa düzenini bozmayacak tam genişlikte) */}
+          <div className="border-top pt-2 mt-2 w-100">
+            <KimlikDegistirmeNedeniBelgeSection
+              neden={detayKimlikDegistirmeNedeni}
+              onNedenChange={(val) => setDetayKimlikDegistirmeNedeni(val)}
+              belgeData={detayKimlikBelgeData}
+              belgeMime={detayKimlikBelgeMime}
+              belgeDosyaAdi={detayKimlikBelgeDosyaAdi}
+              onBelgeChange={(p) => {
+                setDetayKimlikBelgeData(p.belgeData);
+                setDetayKimlikBelgeMime(p.belgeMime);
+                setDetayKimlikBelgeDosyaAdi(p.belgeDosyaAdi);
+              }}
+              layout="horizontal"
+              labelWidth="110px"
+            />
+          </div>
         </Modal.Body>
         <Modal.Footer className="py-2 bg-light d-flex justify-content-between">
           <Button
@@ -9148,6 +9793,11 @@ export const DovizFisiPage: React.FC = () => {
           gecerlilikTarihi: detayGecerlilikTarihi,
           dogumTarihi: detayDogumTarihi,
           dogumYeri: detayDogumYeri,
+          kimlikBelgeTuru: detayKimlikBelgeTuru,
+          kimlikDegistirmeNedeni: detayKimlikDegistirmeNedeni,
+          kimlikBelgeData: detayKimlikBelgeData,
+          kimlikBelgeMime: detayKimlikBelgeMime,
+          kimlikBelgeDosyaAdi: detayKimlikBelgeDosyaAdi,
           kimlikKaynagi: detayKimlikKaynagi,
           kimlikSeriNo: detayKimlikSeriNo,
           babaAdi: detayBabaAdi,
@@ -9487,6 +10137,22 @@ export const DovizFisiPage: React.FC = () => {
         vezneKod={vezneKod}
         bakiyeler={vezneBakiyeler}
         tlKurusSayisi={tlKurusSayisi}
+      />
+
+      {/* Shift+F5) Banka TL Hesabı Modalı */}
+      <BankaTlHesabiModal
+        show={showBankaTlHesabiModal}
+        onClose={() => setShowBankaTlHesabiModal(false)}
+        toplamTutar={sonToplam}
+        islemTipi={tip === 0 ? "odeme" : "tahsilat"}
+        initialBankaSatirlari={bankaDagitimSatirlari}
+        initialVezneTutari={vezneNakitTutari !== null ? vezneNakitTutari : 0}
+        initialVezneId={vezneId}
+        currentVezneId={vezneId}
+        currentVezneKod={vezneKod}
+        currentVezneAd={vezneAd}
+        initialBankaAciklama={bankaAciklama}
+        onApply={handleApplyBankaTlHesabi}
       />
 
       {/* F6) TL Hesabı Modalı */}

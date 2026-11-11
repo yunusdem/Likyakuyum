@@ -34,7 +34,10 @@ import {
   VezneIzlemeSettings,
   VezneIzlemeColumn,
   VezneIzlemeRow,
+  VezneSonIslemItem,
 } from "../../services/vezneIzlemeService";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { useAuth } from "../../context/AuthContext";
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
@@ -106,6 +109,24 @@ export const VezneIzlemePage: React.FC = () => {
   }, []);
 
   // Modals
+  const { user } = useAuth();
+  const yetki = useKullaniciYetkisi();
+  const canViewSonIslemler = Boolean(
+    user?.isSysAdmin ||
+    yetki.yonetici ||
+    yetki.vezneSonIslemler ||
+    user?.hasVezneLastTransactionsPerm
+  );
+
+  // F5 Son İşlemler Modal
+  const [showSonIslemlerModal, setShowSonIslemlerModal] = useState<boolean>(false);
+  const [sonIslemler, setSonIslemler] = useState<VezneSonIslemItem[]>([]);
+  const [isLoadingSonIslemler, setIsLoadingSonIslemler] = useState<boolean>(false);
+  const [sonIslemlerError, setSonIslemlerError] = useState<string | null>(null);
+  const [sonIslemlerFilterText, setSonIslemlerFilterText] = useState<string>("" );
+  const [sonIslemlerVezneFilter, setSonIslemlerVezneFilter] = useState<string>("ALL");
+  const [sonIslemlerYonFilter, setSonIslemlerYonFilter] = useState<string>("ALL");
+
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [editSettings, setEditSettings] = useState<VezneIzlemeSettings>({
     tazelemeSuresi: 5,
@@ -120,7 +141,7 @@ export const VezneIzlemePage: React.FC = () => {
   const [kurList, setKurList] = useState<KurRowItem[]>([]);
   const [isLoadingKur, setIsLoadingKur] = useState<boolean>(false);
 
-  // F5 Detay Modal
+  // F6 Detay Modal
   const [showDetayModal, setShowDetayModal] = useState<boolean>(false);
 
   // F8 Vezne Bakiye Modal
@@ -135,7 +156,8 @@ export const VezneIzlemePage: React.FC = () => {
     showKurModal ||
     showDetayModal ||
     showVezneBakiyeModal ||
-    showFirmaDurumuModal;
+    showFirmaDurumuModal ||
+    showSonIslemlerModal;
 
   // Load company definitions for decimal formatting and tazeleme suresi
   useEffect(() => {
@@ -333,7 +355,32 @@ export const VezneIzlemePage: React.FC = () => {
     }
   }, []);
 
-  // F5) Open Detay Modal
+  // F5) Son İşlemler
+  const fetchSonIslemler = useCallback(async (vId?: number) => {
+    setIsLoadingSonIslemler(true);
+    setSonIslemlerError(null);
+    try {
+      const data = await VezneIzlemeService.getSonIslemler(100, vId);
+      setSonIslemler(data || []);
+    } catch (err: any) {
+      console.error("Son işlemler getirme hatası:", err);
+      setSonIslemler([]);
+      setSonIslemlerError(err?.message || "Son işlemler yüklenemedi.");
+    } finally {
+      setIsLoadingSonIslemler(false);
+    }
+  }, []);
+
+  const handleOpenSonIslemler = useCallback(() => {
+    if (!canViewSonIslemler) return;
+    setShowSonIslemlerModal(true);
+    setSonIslemlerFilterText("");
+    setSonIslemlerYonFilter("ALL");
+    setSonIslemlerVezneFilter("ALL");
+    fetchSonIslemler(undefined);
+  }, [canViewSonIslemler, fetchSonIslemler]);
+
+  // F6) Open Detay Modal
   const handleOpenDetay = useCallback(() => {
     setShowDetayModal(true);
   }, []);
@@ -410,6 +457,27 @@ export const VezneIzlemePage: React.FC = () => {
     return rows[0] || null;
   }, [rows, selectedParaId]);
 
+  // Filtered Son İşlemler
+  const filteredSonIslemler = useMemo(() => {
+    return sonIslemler.filter((it) => {
+      if (sonIslemlerYonFilter !== "ALL" && it.yon !== sonIslemlerYonFilter) {
+        return false;
+      }
+      if (sonIslemlerFilterText.trim()) {
+        const q = sonIslemlerFilterText.toLocaleLowerCase("tr-TR");
+        const matchBelge = it.belgeNo.toLocaleLowerCase("tr-TR").includes(q);
+        const matchUnvan = it.unvan.toLocaleLowerCase("tr-TR").includes(q);
+        const matchPara = it.paraKod.toLocaleLowerCase("tr-TR").includes(q);
+        const matchAciklama = it.aciklama.toLocaleLowerCase("tr-TR").includes(q);
+        const matchTur = it.belgeTipiAdi.toLocaleLowerCase("tr-TR").includes(q);
+        if (!matchBelge && !matchUnvan && !matchPara && !matchAciklama && !matchTur) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [sonIslemler, sonIslemlerYonFilter, sonIslemlerFilterText]);
+
   // Global Keyboard listener for F-keys and Arrow navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -422,6 +490,11 @@ export const VezneIzlemePage: React.FC = () => {
         e.preventDefault();
         handleOpenKur();
       } else if (e.key === "F5") {
+        e.preventDefault();
+        if (canViewSonIslemler) {
+          handleOpenSonIslemler();
+        }
+      } else if (e.key === "F6") {
         e.preventDefault();
         handleOpenDetay();
       } else if (e.key === "F8") {
@@ -532,7 +605,9 @@ export const VezneIzlemePage: React.FC = () => {
     vezneChunks,
     scrollActiveIntoView,
     handleOpenKur,
+    handleOpenSonIslemler,
     handleOpenDetay,
+    canViewSonIslemler,
     handleOpenVezneBakiye,
     handleOpenFirmaDurumu,
   ]);
@@ -1005,7 +1080,31 @@ export const VezneIzlemePage: React.FC = () => {
               <span>F4) Kur</span>
             </button>
 
-            {/* F5) Detay */}
+            {/* F5) Son işlemler - Yetkili kullanıcılarda görünür */}
+            {canViewSonIslemler && (
+              <button
+                type="button"
+                onClick={handleOpenSonIslemler}
+                className="btn btn-sm d-inline-flex align-items-center"
+                style={{
+                  backgroundColor: "#f4f4f4",
+                  border: "1px solid #a8a8a8",
+                  borderRadius: "2px",
+                  padding: "2px 12px",
+                  height: "28px",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "#000000",
+                  boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
+                }}
+                title="Son 100 İşlemi Görüntüle (F5)"
+              >
+                <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
+                <span>F5) Son işlemler</span>
+              </button>
+            )}
+
+            {/* F6) Detay */}
             <button
               type="button"
               onClick={handleOpenDetay}
@@ -1021,10 +1120,10 @@ export const VezneIzlemePage: React.FC = () => {
                 color: "#000000",
                 boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
               }}
-              title="Seçili Para / Vezne Detayını Görüntüle (F5)"
+              title="Seçili Para / Vezne Detayını Görüntüle (F6)"
             >
               <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
-              <span>F5) Detay</span>
+              <span>F6) Detay</span>
             </button>
 
             {/* F8) Vezne bakiye */}
@@ -1274,7 +1373,7 @@ export const VezneIzlemePage: React.FC = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* ─── MODAL 3: F5 Detay Modalı ─── */}
+      {/* ─── MODAL 3: F6 Detay Modalı ─── */}
       <Modal
         show={showDetayModal}
         onHide={() => setShowDetayModal(false)}
@@ -1283,7 +1382,7 @@ export const VezneIzlemePage: React.FC = () => {
         <Modal.Header closeButton className="bg-light py-2 px-3">
           <Modal.Title className="fs-6 fw-bold text-primary d-flex align-items-center gap-2">
             <IconListDetails size={18} />
-            F5) Detay Dağılımı ({selectedRow ? `${selectedRow.paraKodu} - ${selectedRow.paraAdi}` : ""})
+            F6) Detay Dağılımı ({selectedRow ? `${selectedRow.paraKodu} - ${selectedRow.paraAdi}` : ""})
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3">
@@ -1399,6 +1498,215 @@ export const VezneIzlemePage: React.FC = () => {
         </Modal.Body>
         <Modal.Footer className="bg-light py-1.5 px-3">
           <Button variant="secondary" size="sm" onClick={() => setShowFirmaDurumuModal(false)}>
+            Kapat (ESC)
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ─── MODAL 6: F5 Son İşlemler Modalı (Son 100 İşlem) ─── */}
+      <Modal
+        show={showSonIslemlerModal}
+        onHide={() => setShowSonIslemlerModal(false)}
+        size="xl"
+        centered
+        dialogClassName="modal-90w"
+      >
+        <Modal.Header closeButton className="bg-light py-2 px-3">
+          <Modal.Title className="fs-6 fw-bold text-primary d-flex align-items-center gap-2">
+            <IconClock size={18} />
+            <span>F5) Son İşlemler (Son 100 İşlem)</span>
+            <Badge bg="primary" pill className="ms-2" style={{ fontSize: "11px" }}>
+              {filteredSonIslemler.length} Kayıt
+            </Badge>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          {/* Süzgeç Araç Çubuğu */}
+          <div className="d-flex flex-wrap gap-2 align-items-center mb-3 bg-light p-2 rounded border">
+            <div className="flex-grow-1" style={{ minWidth: "220px" }}>
+              <Form.Control
+                type="text"
+                size="sm"
+                placeholder="Fiş No, Cari Ünvanı, Açıklama veya Para Kodu ara..."
+                value={sonIslemlerFilterText}
+                onChange={(e) => setSonIslemlerFilterText(e.target.value)}
+              />
+            </div>
+            <div style={{ minWidth: "160px" }}>
+              <Form.Select
+                size="sm"
+                value={sonIslemlerVezneFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSonIslemlerVezneFilter(val);
+                  fetchSonIslemler(val === "ALL" ? undefined : Number(val));
+                }}
+              >
+                <option value="ALL">Tüm Vezneler</option>
+                {columns.map((c) => (
+                  <option key={c.vezneId} value={c.vezneId}>
+                    {c.kod} - {c.ad}
+                  </option>
+                ))}
+              </Form.Select>
+            </div>
+            <div style={{ minWidth: "130px" }}>
+              <Form.Select
+                size="sm"
+                value={sonIslemlerYonFilter}
+                onChange={(e) => setSonIslemlerYonFilter(e.target.value)}
+              >
+                <option value="ALL">Tüm Hareketler</option>
+                <option value="GIRIS">Yalnız Giriş / Alış</option>
+                <option value="CIKIS">Yalnız Çıkış / Satış</option>
+              </Form.Select>
+            </div>
+            <Button
+              variant="outline-primary"
+              size="sm"
+              className="d-flex align-items-center gap-1"
+              disabled={isLoadingSonIslemler}
+              onClick={() =>
+                fetchSonIslemler(
+                  sonIslemlerVezneFilter === "ALL" ? undefined : Number(sonIslemlerVezneFilter)
+                )
+              }
+            >
+              {isLoadingSonIslemler ? <Spinner animation="border" size="sm" /> : <IconRefresh size={14} />}
+              <span>Yenile</span>
+            </Button>
+          </div>
+
+          {sonIslemlerError && (
+            <Alert variant="danger" className="py-2 px-3 mb-2 small d-flex align-items-center gap-2">
+              <IconAlertCircle size={16} />
+              <span>{sonIslemlerError}</span>
+            </Alert>
+          )}
+
+          {/* Liste Tablosu */}
+          {isLoadingSonIslemler ? (
+            <div className="d-flex justify-content-center align-items-center py-5">
+              <Spinner animation="border" variant="primary" />
+              <span className="ms-2 text-muted fw-semibold">Son 100 işlem yükleniyor...</span>
+            </div>
+          ) : (
+            <div className="table-responsive" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+              <Table bordered hover size="sm" className="mb-0 text-nowrap" style={{ fontSize: "12px" }}>
+                <thead className="table-light sticky-top" style={{ zIndex: 1 }}>
+                  <tr>
+                    <th style={{ width: "40px" }} className="text-center">#</th>
+                    <th style={{ width: "125px" }}>Tarih & Saat</th>
+                    <th style={{ width: "110px" }}>Belge / Fiş No</th>
+                    <th style={{ width: "135px" }}>İşlem Türü</th>
+                    <th>Cari / Müşteri Ünvanı</th>
+                    <th style={{ width: "120px" }}>Vezne</th>
+                    <th style={{ width: "80px" }}>Para / Emtia</th>
+                    <th style={{ width: "100px" }} className="text-end">Miktar</th>
+                    <th style={{ width: "95px" }} className="text-end">Kur / Milyem</th>
+                    <th style={{ width: "115px" }} className="text-end">Tutar</th>
+                    <th>Açıklama</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSonIslemler.map((item, idx) => {
+                    const isGiris = item.yon === "GIRIS";
+                    return (
+                      <tr key={item.id || idx}>
+                        <td className="text-center text-muted small">{idx + 1}</td>
+                        <td className="font-monospace">
+                          {item.tarih ? item.tarih.split("-").reverse().join(".") : ""}{" "}
+                          <span className="text-muted small">{item.saat}</span>
+                        </td>
+                        <td className="fw-semibold font-monospace">{item.belgeNo || "-"}</td>
+                        <td>
+                          <Badge
+                            bg={
+                              item.belgeTipi === 5
+                                ? "warning"
+                                : item.belgeTipi === 0
+                                ? "info"
+                                : item.belgeTipi === 6
+                                ? "secondary"
+                                : item.belgeTipi === 1
+                                ? "primary"
+                                : "light"
+                            }
+                            className="text-dark fw-semibold"
+                            style={{
+                              backgroundColor:
+                                item.belgeTipi === 5
+                                  ? "#fef3c7"
+                                  : item.belgeTipi === 0
+                                  ? "#e0f2fe"
+                                  : item.belgeTipi === 6
+                                  ? "#f3e8ff"
+                                  : item.belgeTipi === 1
+                                  ? "#cffafe"
+                                  : "#f3f4f6",
+                              color:
+                                item.belgeTipi === 5
+                                  ? "#92400e"
+                                  : item.belgeTipi === 0
+                                  ? "#0369a1"
+                                  : item.belgeTipi === 6
+                                  ? "#6b21a8"
+                                  : item.belgeTipi === 1
+                                  ? "#0e7490"
+                                  : "#374151",
+                              border: "1px solid rgba(0,0,0,0.08)",
+                              padding: "2px 6px",
+                            }}
+                          >
+                            {item.belgeTipiAdi}
+                          </Badge>
+                        </td>
+                        <td className="text-truncate" style={{ maxWidth: "200px" }} title={item.unvan}>
+                          {item.unvan || "-"}
+                        </td>
+                        <td>
+                          <span className="small text-muted">{item.vezneKod}</span> {item.vezneAd}
+                        </td>
+                        <td className="fw-bold">{item.paraKod}</td>
+                        <td
+                          className={`text-end font-monospace fw-bold ${
+                            isGiris ? "text-success" : "text-danger"
+                          }`}
+                        >
+                          {isGiris ? "+" : "-"}
+                          {formatNumber(item.miktar, item.paraKod)}
+                        </td>
+                        <td className="text-end font-monospace text-muted">
+                          {item.kur > 0 ? item.kur.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : "-"}
+                        </td>
+                        <td className="text-end font-monospace fw-semibold">
+                          {item.tutar > 0
+                            ? item.tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL"
+                            : "-"}
+                        </td>
+                        <td className="text-muted small text-truncate" style={{ maxWidth: "180px" }} title={item.aciklama}>
+                          {item.aciklama || "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredSonIslemler.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="text-center text-muted py-4">
+                        Kayıt bulunamadı.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer className="bg-light py-2 px-3 d-flex justify-content-between">
+          <div className="small text-muted">
+            Gösterilen işlem: <strong>{filteredSonIslemler.length}</strong> / <strong>{sonIslemler.length}</strong>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setShowSonIslemlerModal(false)}>
             Kapat (ESC)
           </Button>
         </Modal.Footer>

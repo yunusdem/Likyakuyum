@@ -35,9 +35,11 @@ import {
   IconClock,
   IconDiscount,
   IconCoins,
+  IconBuildingBank,
   IconBuildingStore,
   IconPercentage,
 } from "@tabler/icons-react";
+import { BankaTlHesabiModal, BankaTlHesabiApplyPayload } from "./BankaTlHesabiModal";
 import { ERPToolbar } from "../../components/common/ERPToolbar";
 import { SayfaCikisUyarisiModal, useSayfaCikisUyarisi } from "../../components/common/SayfaCikisUyarisiModal";
 import { isCtrlNEvent, isCtrlKEvent } from "../../utils/keyboardShortcuts";
@@ -53,6 +55,7 @@ import {
   CariLookups,
   CariService,
 } from "../../services/cariService";
+import { KimlikDegistirmeNedeniBelgeSection } from "../../components/cari/KimlikDegistirmeNedeniBelgeSection";
 import { ebelgeService } from "../../services/ebelgeService";
 import { gibService } from "../../services/gibService";
 import { adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
@@ -152,6 +155,7 @@ export interface OdemeRow {
   iskontoId?: number | null;
   urunTipi?: number;
   birimFiyat?: number | string;
+  aciklama?: string | null;
 }
 
 /** Önizleme fişinin ödeme satırları (kayıtlı fişte sunucudan gelir); POS satırı fişte "POS TL" yazar. */
@@ -603,6 +607,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   }, [companyDefinitions]);
   const [statisticList, setStatisticList] = useState<StatisticItem[]>([]);
   const [faturaTipi, setFaturaTipi] = useState<number>(1); // 0: Alış, 1: Satış
+  const [isRecordLockedByUser, setIsRecordLockedByUser] = useState<boolean>(false);
   const [senaryo, setSenaryo] = useState<string>("EARSIVFATURA");
 
   // İstatistik Kodu State'leri (Kullanıcı Tanımları öncelikli, yoksa Firma Tanımları)
@@ -824,6 +829,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // Payment Rows State
   const [odemeRows, setOdemeRows] = useState<OdemeRow[]>([createEmptyOdemeRow(1)]);
+  const [showBankaTlHesabiModal, setShowBankaTlHesabiModal] = useState<boolean>(false);
+  const [bankaAciklama, setBankaAciklama] = useState<string>("");
   const [activeOdemeRowIndex, setActiveOdemeRowIndex] = useState<number>(0);
   const [activeOdemeRowIdForUrun, setActiveOdemeRowIdForUrun] = useState<string | null>(null);
   const [showOdemeUrunModal, setShowOdemeUrunModal] = useState<boolean>(false);
@@ -1026,6 +1033,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // Müşteri & MASAK Detay Bilgileri Modalı State
   const [showMusteriDetayModal, setShowMusteriDetayModal] = useState<boolean>(false);
+  const [detayKimlikBelgeTuru, setDetayKimlikBelgeTuru] = useState<number>(0);
+  const [detayKimlikDegistirmeNedeni, setDetayKimlikDegistirmeNedeni] = useState<string>("");
+  const [detayKimlikBelgeData, setDetayKimlikBelgeData] = useState<string | null>(null);
+  const [detayKimlikBelgeMime, setDetayKimlikBelgeMime] = useState<string | null>(null);
+  const [detayKimlikBelgeDosyaAdi, setDetayKimlikBelgeDosyaAdi] = useState<string | null>(null);
   const [detayUnvan, setDetayUnvan] = useState<string>("");
   const [detayVknTckn, setDetayVknTckn] = useState<string>("");
   const [detayAdres, setDetayAdres] = useState<string>("");
@@ -1448,7 +1460,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               eklemeZamani: f.eklemeZamani || f.EKLEME_ZAMANI || null,
             })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
 
-            setHistoryList(mappedList);
+            const curUserId = Number(user?.id) || 1;
+            const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+            const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+            const filteredMappedList = mappedList.filter((f) => {
+              if (!hasOnlyOwn) return true;
+              const kId = Number(f.ekleyenId || 0);
+              const vId = Number(f.vezneId || 0);
+              return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+            });
+
+            setHistoryList(filteredMappedList);
             const queryParams = new URLSearchParams(location.search);
             const qId = queryParams.get("id");
             if (qId) {
@@ -4938,12 +4960,64 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   );
 
   // Global Keyboard Shortcuts
+  const handleApplyBankaTlHesabi = useCallback((data: BankaTlHesabiApplyPayload) => {
+    setBankaAciklama(data.bankaAciklama);
+
+    const newRows: OdemeRow[] = [];
+    let sNo = 1;
+
+    data.bankaSatirlari.forEach((b) => {
+      const hesap = bankaHesaplari.find((x) => x.bankaId === b.bankaId);
+      const row: OdemeRow = {
+        ...createEmptyOdemeRow(sNo++),
+        odemeAraciTuru: 3,
+        bankaId: b.bankaId,
+        cariKartId: b.bankaId,
+        cariKod: b.hesapNo || hesap?.hesapNo || "",
+        cariUnvan: b.bankaAdi || hesap?.hesapAdi || "BANKA HAVALE / EFT",
+        aciklama: b.aciklama || data.bankaAciklama || hesap?.hesapAdi || "",
+        paraKodu: "TL",
+        paraAdi: "TÜRK LİRASI",
+        kur: 1,
+        miktar: b.tutar,
+        tutar: b.tutar,
+      };
+      newRows.push(row);
+    });
+
+    if (data.vezneTutari > 0) {
+      const nakitRow: OdemeRow = {
+        ...createEmptyOdemeRow(sNo++),
+        odemeAraciTuru: 0,
+        paraKodu: "TL",
+        paraAdi: "TÜRK LİRASI",
+        kur: 1,
+        miktar: data.vezneTutari,
+        tutar: data.vezneTutari,
+        aciklama: data.vezneAdi ? `Vezne Nakit (${data.vezneAdi})` : "Vezne Nakit",
+      };
+      newRows.push(nakitRow);
+    }
+
+    if (data.vezneId && vezneler.length > 0) {
+      const targetV = vezneler.find((v) => v.id === data.vezneId);
+      if (targetV) setSelectedVezne(targetV);
+    }
+
+    if (newRows.length > 0) {
+      setOdemeRows(newRows);
+    } else {
+      setOdemeRows([createEmptyOdemeRow(1)]);
+    }
+  }, [bankaHesaplari]);
+
   const closeAllModals = useCallback(() => {
     setShowMusteriModal(false);
     setShowHistoryModal(false);
     setShowOdemeUrunModal(false);
     setShowIskontoModal(false);
     setShowPrintModal(false);
+    setShowBankaTlHesabiModal(false);
     setShowMusteriDetayModal(false);
     setShowVezneModal(false);
     setShowProductLookup(false);
@@ -4977,8 +5051,31 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         return;
       }
 
-      // Eğer ekranda açık bir modal varsa diğer kısayolları çalıştırma
+      // Shift+F5: Banka TL Hesabı Modalı
+      const isShiftF5 = (e.key === "F5" || e.code === "F5" || e.keyCode === 116 || e.which === 116) && e.shiftKey;
+      if (isShiftF5) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowBankaTlHesabiModal(true);
+        return;
+      }
+
+      // Escape: Banka TL Hesabı Modalı kapat
+      if (e.key === "Escape" && showBankaTlHesabiModal) {
+        e.preventDefault();
+        setShowBankaTlHesabiModal(false);
+        return;
+      }
+
+      // Eğer ekranda açık bir modal varsa diğer kısayolları çalıştırma (Shift+F5 hariç)
       if (document.querySelector(".modal.show")) {
+        if (e.key === "F5" && e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeAllModals();
+          setShowBankaTlHesabiModal(true);
+          return;
+        }
         return;
       }
 
@@ -5067,6 +5164,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   };
 
   const handleReset = async () => {
+    setIsRecordLockedByUser(false);
     setCurrentFaturaId(null);
     setCurrentIndex(0);
     setItems([createEmptyRow()]);
@@ -5086,6 +5184,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setSenaryo("EARSIVFATURA");
     setFaturaNo("");
     setSelectedIskontoId(null);
+    setBankaAciklama("");
     setIskontoOrani(0);
     setIskontoTutari(0);
     setIskontoKodu("");
@@ -5446,6 +5545,21 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setDetayEposta(resolvedEposta);
     setDetayUnvan(res.unvan);
     setDetayVknTckn(identVal);
+    if ((res as any).kimlikBelgeTuru !== undefined && (res as any).kimlikBelgeTuru !== null) {
+      setDetayKimlikBelgeTuru(Number((res as any).kimlikBelgeTuru));
+    } else if (passportNo) {
+      setDetayKimlikBelgeTuru(1);
+    } else {
+      setDetayKimlikBelgeTuru(0);
+    }
+    if ((res as any).kimlikDegistirmeNedeni) {
+      setDetayKimlikDegistirmeNedeni((res as any).kimlikDegistirmeNedeni);
+    }
+    if ((res as any).kimlikBelgeData) {
+      setDetayKimlikBelgeData((res as any).kimlikBelgeData);
+      setDetayKimlikBelgeMime((res as any).kimlikBelgeMime || null);
+      setDetayKimlikBelgeDosyaAdi((res as any).kimlikBelgeDosyaAdi || null);
+    }
 
     if (res.type === "registered" && res.id) {
       setCariKartId(res.id);
@@ -5986,6 +6100,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     handleCompleteSaleRef.current = handleCompleteSale;
     if (isSubmittingRef.current) return;
 
+    if (isDuzeltmeMode && isRecordLockedByUser) {
+      showError("Bu fiş başka bir kullanıcıya aittir; yalnızca kendi kayıtlarınızı görüntüleyebilir veya düzeltebilirsiniz.");
+      return;
+    }
+
     // MASAK Malvarlığı Dondurulanlar Bloke Kontrolü (Kesinlikle Kayıt Yapılamaz!)
     if (isMasakKontroluVar && isMasakBlocked) {
       showError(
@@ -6227,6 +6346,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         kur: 1.0,
         istatistikId: istatistikId || null,
         istatistikKodu: (istatistikKodu || "").trim() || null,
+        bankaAciklama: bankaAciklama.trim() || undefined,
+        kimlikDegistirmeNedeni: detayKimlikDegistirmeNedeni.trim() || undefined,
+        kimlikBelgeData: detayKimlikBelgeData || undefined,
+        kimlikBelgeMime: detayKimlikBelgeMime || undefined,
+        kimlikBelgeDosyaAdi: detayKimlikBelgeDosyaAdi || undefined,
         iskontoId: selectedIskontoId,
         iskontoKodu: iskontoKodu || (selectedIskonto ? selectedIskonto.kod || "" : ""),
         iskontoOrani: calculatedIskontoOrani,
@@ -6327,7 +6451,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             eklemeZamani: f.eklemeZamani || f.EKLEME_ZAMANI || null,
           })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
 
-          setHistoryList(mappedList);
+          const curUserId = Number(user?.id) || 1;
+      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const filteredList = mappedList.filter((f) => {
+        if (!hasOnlyOwn) return true;
+        const kId = Number(f.ekleyenId || 0);
+        const vId = Number(f.vezneId || 0);
+        return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+      });
+      setHistoryList(filteredList);
         }
         if (await ebFis.kaydedildi(result?.faturaId, true)) return;
         if (withPrint) {
@@ -6417,7 +6550,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         eklemeZamani: f.eklemeZamani || f.EKLEME_ZAMANI || null,
       })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
 
-      setHistoryList(mappedList);
+      const curUserId = Number(user?.id) || 1;
+      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const filteredList = mappedList.filter((f) => {
+        if (!hasOnlyOwn) return true;
+        const kId = Number(f.ekleyenId || 0);
+        const vId = Number(f.vezneId || 0);
+        return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+      });
+      setHistoryList(filteredList);
     } catch (err: any) {
       showError("Faturalar aranırken hata oluştu: " + (err.message || ""));
     } finally {
@@ -6470,7 +6612,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         eklemeZamani: f.eklemeZamani || f.EKLEME_ZAMANI || null,
       })).sort((a, b) => (Number(a.faturaId) || 0) - (Number(b.faturaId) || 0));
 
-      setHistoryList(mappedList);
+      const curUserId = Number(user?.id) || 1;
+      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const filteredList = mappedList.filter((f) => {
+        if (!hasOnlyOwn) return true;
+        const kId = Number(f.ekleyenId || 0);
+        const vId = Number(f.vezneId || 0);
+        return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+      });
+      setHistoryList(filteredList);
     } catch (err: any) {
       showError("Filtreleme hatası: " + (err.message || ""));
     } finally {
@@ -6489,6 +6640,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
       setCurrentFaturaId(inv.faturaId);
       setFaturaNo(inv.faturaNo || "");
+
+      // Kendi kayıtları yetkisi denetimi
+      // Kendi kayıtları yetkisi denetimi: Sınırsız yetkili olmayan kullanıcılar fiş düzeltme ekranında vezne kayıtlarını pasif olarak görür, düzenleyemez
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const isOwner = !hasOnlyOwn;
+      const lockedByUser = !isOwner;
+      setIsRecordLockedByUser(lockedByUser);
+      if (lockedByUser) {
+        showError("Kayıt Kilitli (Pasif Mod): Yetkiniz doğrultusunda vezne kayıtlarını yalnızca pasif olarak görüntüleyebilirsiniz; düzenleme ve silme yetkiniz bulunmamaktadır.");
+      }
       // Düzeltmede fişin kendi veznesi (sunucu da kaydın veznesini korur); yeni fişte kullanıcının veznesine döner
       if (inv.vezneId) {
         setSelectedVezne(vezneler.find((v) => v.id === Number(inv.vezneId)) ?? ({ id: Number(inv.vezneId), kod: inv.vezneKod || String(inv.vezneId), ad: inv.vezneAd || "" } as VezneItem));
@@ -6508,6 +6669,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       setVergiDairesi(inv.vergiDairesi || "");
       setTelefon(inv.telefon || "");
       setEposta(inv.eposta || "");
+      if (inv.kimlikBelgeTuru !== undefined && inv.kimlikBelgeTuru !== null) {
+        setDetayKimlikBelgeTuru(Number(inv.kimlikBelgeTuru));
+      }
+      setDetayKimlikDegistirmeNedeni(inv.kimlikDegistirmeNedeni || "");
+      setDetayKimlikBelgeData(inv.kimlikBelgeData || null);
+      setDetayKimlikBelgeMime(inv.kimlikBelgeMime || null);
+      setDetayKimlikBelgeDosyaAdi(inv.kimlikBelgeDosyaAdi || null);
+      setBankaAciklama(inv.bankaAciklama || "");
       setSelectedIskontoId(inv.iskontoId ?? inv.ISKONTO_ID ?? null);
       setIskontoKodu(inv.iskontoKodu || inv.ISKONTO_KODU || "");
       setIskontoOrani(Number(inv.iskontoOrani ?? inv.ISKONTO_ORANI) || 0);
@@ -6673,11 +6842,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             id: `odeme-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`,
             satirNo: idx + 1,
             odemeAraciTuru: oat,
-            bankaId: rowPosId || (oat === 2 ? rowCariId : null),
+            bankaId: oat === 3 ? (o.bankaId || rowCariId || rowPosId || null) : (rowPosId || (oat === 2 ? rowCariId : null)),
             paraId: o.paraId ?? o.PARA_ID ?? null,
             paraKodu: rawKod || "TL",
             paraAdi: rowParaAdi || (rawKod === "TL" ? "TÜRK LİRASI" : ""),
-            cariKartId: oat === 1 ? rowCariId : null,
+            cariKartId: oat === 1 ? rowCariId : (oat === 3 ? (o.bankaId || rowCariId || null) : null),
             cariKod: rowCariKod,
             cariUnvan: rowCariUnvan,
             adet: (() => {
@@ -6729,6 +6898,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // Delete invoice (Toolbar onDelete / F2)
   const handleDeleteInvoice = async (id: number, no: string) => {
+    if (isRecordLockedByUser) {
+      showError("Bu fiş başka bir kullanıcıya aittir; silinemez.");
+      return;
+    }
     if (!window.confirm(`'${no}' numaralı faturayı silmek ve ürünleri stoğa iade etmek istediğinize emin misiniz?`)) {
       return;
     }
@@ -7315,6 +7488,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         </Alert>
       )}
 
+      {isDuzeltmeMode && isRecordLockedByUser && (
+        <Alert variant="warning" className="d-flex align-items-center mb-2 mx-1 py-1.5 px-3">
+          <div>
+            <strong>Kayıt Kilitli (Pasif Mod):</strong> Yetkiniz doğrultusunda vezne kayıtlarını yalnızca pasif olarak görüntüleyebilirsiniz; düzenleme ve silme yetkiniz bulunmamaktadır.
+          </div>
+        </Alert>
+      )}
+
       {/* ─── 1. Top ERP Toolbar ────────────────────────────────────────── */}
       <ERPToolbar
         disableShortcuts
@@ -7323,15 +7504,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         pageIcon={<IconBarcode size={20} />}
         onNew={isDuzeltmeMode ? undefined : handleNew}
         hideNew={isDuzeltmeMode}
-        onSave={() => handleCompleteSale(false)}
-        onSaveAndPrint={() => handleCompleteSale(true)}
+        onSave={isRecordLockedByUser ? undefined : () => handleCompleteSale(false)}
+        hideSave={isRecordLockedByUser}
+        onSaveAndPrint={isRecordLockedByUser ? undefined : () => handleCompleteSale(true)}
         onDirectPrint={handleDirectPrintF9}
         onPreview={handleOpenPrintPreview}
         onDetailSearch={openMusteriDetayModal}
         onSearch={isDuzeltmeMode ? handleOpenHistory : undefined}
-        onDelete={isDuzeltmeMode && currentFaturaId ? handleDeleteCurrent : undefined}
+        onDelete={isDuzeltmeMode && currentFaturaId && !isRecordLockedByUser ? handleDeleteCurrent : undefined}
         hideSearch={!isDuzeltmeMode}
-        hideDelete={!isDuzeltmeMode || !currentFaturaId}
+        hideDelete={!isDuzeltmeMode || !currentFaturaId || isRecordLockedByUser}
         hideNavigation={!isDuzeltmeMode}
         onFirst={isDuzeltmeMode ? handleFirst : undefined}
         onPrev={isDuzeltmeMode ? handlePrev : undefined}
@@ -7368,6 +7550,20 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   ? "Temel Fatura"
                   : "e-Fatura"}
             </Badge>
+
+            {!isDuzeltmeMode && (
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="py-0 px-2 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs ms-1"
+                style={{ fontSize: "11.5px", height: "26px" }}
+                onClick={() => setShowBankaTlHesabiModal(true)}
+                title="Banka TL Hesabı ve Dağıtımı (Shift+F5)"
+              >
+                <IconBuildingBank size={14} />
+                <span>Banka TL (Shift+F5)</span>
+              </Button>
+            )}
           </div>
         }
         rightContent={
@@ -7430,28 +7626,51 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         }
       />
 
+      <fieldset disabled={isDuzeltmeMode && isRecordLockedByUser} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, ...(isDuzeltmeMode && isRecordLockedByUser ? { opacity: 0.95 } : {}) }}>
       {/* ─── 2. Top Vezne & Fatura Parametreleri Barı (Responsive) ───── */}
       <div
         className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2 p-1.5 border rounded bg-light"
         style={{ fontSize: "12px" }}
       >
         <div className="d-flex align-items-center flex-wrap gap-2">
-          {/* Vezne (Giriş Yapanın Veznesi - Sabit ve Değiştirilemez) */}
+          {/* Vezne: Sınırsız yetkili yönetici vezne seçebilir; sınırsız yetkili olmayan kullanıcılar kendi veznesini pasif görür */}
           <div className="d-flex align-items-center gap-1">
             <span className="fw-bold text-primary" style={{ minWidth: 45 }}>
               VEZNE
             </span>
-            <input
-              type="text"
-              value={selectedVezne?.kod || user?.cashierCode || "01"}
-              readOnly
-              disabled
-              className="form-control form-control-sm text-center fw-bold bg-light"
-              style={{ width: 60, fontSize: "12px", cursor: "not-allowed" }}
-              title="Vezne giriş yapan kullanıcıya aittir ve değiştirilemez"
-            />
-            {selectedVezne?.ad && (
-              <span className="text-muted small ms-1 d-none d-md-inline">({selectedVezne.ad})</span>
+            {user?.isSysAdmin ? (
+              <select
+                className="form-select form-select-sm fw-bold bg-white text-dark"
+                style={{ width: "auto", minWidth: "120px", fontSize: "12px", cursor: "pointer", height: "30px" }}
+                value={selectedVezne?.id || 1}
+                onChange={(e) => {
+                  const vId = Number(e.target.value);
+                  const vz = vezneler.find((v) => v.id === vId);
+                  if (vz) setSelectedVezne(vz);
+                }}
+                title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
+              >
+                {vezneler.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.kod} - {v.ad}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={selectedVezne?.kod || user?.cashierCode || "01"}
+                  readOnly
+                  disabled
+                  className="form-control form-control-sm text-center fw-bold bg-light"
+                  style={{ width: 60, fontSize: "12px", cursor: "not-allowed" }}
+                  title="Kullanıcı kartınıza ait vezne (Değiştirilemez)"
+                />
+                {selectedVezne?.ad && (
+                  <span className="text-muted small ms-1 d-none d-md-inline">({selectedVezne.ad})</span>
+                )}
+              </>
             )}
           </div>
 
@@ -8182,8 +8401,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   );
                   const hasProduct = Boolean((item.barkod && String(item.barkod).trim()) || (item.urunAdi && String(item.urunAdi).trim()) || item.altinUrunId || (item.birimFiyat && Number(item.birimFiyat) > 0));
                   const isZD = !isBarkodlu && isKalemZiynetOrDoviz(item);
-                  const isAdetMissing = hasProduct && isZD && (userDovizZiynetGirisSekli === 0) && (!item.adet || String(item.adet).trim() === "" || Number(item.adet) <= 0 || parseDecimal(item.adet) <= 0);
-                  const isMiktarMissing = hasProduct && (!isZD || (isZD && userDovizZiynetGirisSekli === 1)) && (!item.miktar || String(item.miktar).trim() === "" || Number(item.miktar) <= 0 || parseDecimal(item.miktar) <= 0);
+                  const isKalemFilled = Boolean(
+                    (item.miktar && String(item.miktar).trim() !== "" && (Number(item.miktar) > 0 || parseDecimal(item.miktar) > 0)) ||
+                    (item.adet && String(item.adet).trim() !== "" && (Number(item.adet) > 0 || parseDecimal(item.adet) > 0))
+                  );
+                  const isAdetMissing = hasProduct && isZD && (userDovizZiynetGirisSekli === 0) && !isKalemFilled;
+                  const isMiktarMissing = hasProduct && (!isZD || (isZD && userDovizZiynetGirisSekli === 1)) && (!isZD ? (!item.miktar || String(item.miktar).trim() === "" || Number(item.miktar) <= 0 || parseDecimal(item.miktar) <= 0) : !isKalemFilled);
 
                   return (
                     <tr
@@ -9575,6 +9798,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             <strong className="text-dark">Müşteri Detayı</strong>
           </span>
           <span className="text-secondary">•</span>
+          <span
+            className="user-select-none"
+            onClick={() => setShowBankaTlHesabiModal(true)}
+            style={{ cursor: "pointer" }}
+            title="Banka TL Hesabı ve Dağıtımı (Shift+F5)"
+          >
+            <kbd className="bg-primary text-white px-1.5 py-0.5 rounded me-1 fw-bold">Shift+F5</kbd>
+            <strong className="text-dark">Banka TL Hesabı</strong>
+          </span>
+          <span className="text-secondary">•</span>
           <span>
             <kbd className="bg-success text-white px-1.5 py-0.5 rounded me-1 fw-bold">F10</kbd>
             <strong className="text-dark">Kaydet / Yazdır</strong>
@@ -9619,6 +9852,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           Likya Kuyumculuk ERP
         </div>
       </div>
+      </fieldset>
 
       {/* ─── MODALS ───────────────────────────────────────────────────── */}
 
@@ -10064,6 +10298,22 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
             <Col xs={12} md={6}>
               <Form.Group className="mb-2">
                 <Form.Label className="small fw-bold text-secondary mb-1">
+                  Kimlik Belge Türü
+                </Form.Label>
+                <Form.Select
+                  size="sm"
+                  value={detayKimlikBelgeTuru}
+                  onChange={(e) => setDetayKimlikBelgeTuru(Number(e.target.value))}
+                >
+                  <option value={0}>T.C. Kimlik</option>
+                  <option value={1}>Pasaport</option>
+                  <option value={2}>Ehliyet</option>
+                  <option value={3}>Vergi Levhası</option>
+                </Form.Select>
+              </Form.Group>
+
+              <Form.Group className="mb-2">
+                <Form.Label className="small fw-bold text-secondary mb-1">
                   Müşteri Adı / Ünvanı <span className="text-danger">*</span>
                 </Form.Label>
                 <Form.Control
@@ -10178,6 +10428,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               </Form.Group>
             </Col>
           </Row>
+
+          {/* Kimlik Değiştirme Nedeni ve Doğrudan SQL'de Saklanan Belge / Fotoğraf (En altta ve sayfa düzenini bozmayacak tam genişlikte) */}
+          <div className="border-top pt-2 mt-2 w-100">
+            <KimlikDegistirmeNedeniBelgeSection
+              neden={detayKimlikDegistirmeNedeni}
+              onNedenChange={(val) => setDetayKimlikDegistirmeNedeni(val)}
+              belgeData={detayKimlikBelgeData}
+              belgeMime={detayKimlikBelgeMime}
+              belgeDosyaAdi={detayKimlikBelgeDosyaAdi}
+              onBelgeChange={(p) => {
+                setDetayKimlikBelgeData(p.belgeData);
+                setDetayKimlikBelgeMime(p.belgeMime);
+                setDetayKimlikBelgeDosyaAdi(p.belgeDosyaAdi);
+              }}
+              layout="horizontal"
+              labelWidth="160px"
+            />
+          </div>
         </Modal.Body>
         <Modal.Footer className="py-2 bg-light border-top d-flex justify-content-between">
           <Button
@@ -10629,6 +10897,33 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           setShowIstatistikModal(false);
         }}
       />
+      {/* Shift+F5) Banka TL Hesabı Modalı */}
+      <BankaTlHesabiModal
+        show={showBankaTlHesabiModal}
+        onClose={() => setShowBankaTlHesabiModal(false)}
+        toplamTutar={genelToplam}
+        islemTipi={faturaTipi === 1 ? "tahsilat" : "odeme"}
+        initialBankaSatirlari={odemeRows
+          .filter((o) => o.odemeAraciTuru === 3 && (o.bankaId || (o.cariKartId && o.cariKartId > 0) || Number(o.tutar) > 0))
+          .map((o) => ({
+            bankaId: o.bankaId || o.cariKartId || 0,
+            bankaAdi: o.cariUnvan || "",
+            hesapNo: o.cariKod || "",
+            tutar: parseDecimal(o.tutar) || 0,
+            aciklama: o.aciklama || "",
+          }))}
+        initialVezneTutari={(() => {
+          const nakitRow = odemeRows.find((o) => o.odemeAraciTuru === 0 && parseDecimal(o.tutar) > 0);
+          return nakitRow ? parseDecimal(nakitRow.tutar) : 0;
+        })()}
+        initialVezneId={selectedVezne?.id ?? (user?.vezneId ? Number(user.vezneId) : undefined)}
+        currentVezneId={selectedVezne?.id ?? (user?.vezneId ? Number(user.vezneId) : undefined)}
+        currentVezneKod={selectedVezne?.kod || user?.cashierCode || "01"}
+        currentVezneAd={selectedVezne?.ad || "Ana Vezne"}
+        initialBankaAciklama={bankaAciklama}
+        onApply={handleApplyBankaTlHesabi}
+      />
+
       <SayfaCikisUyarisiModal
         acik={cikisUyarisi.acik}
         vazgec={cikisUyarisi.vazgec}

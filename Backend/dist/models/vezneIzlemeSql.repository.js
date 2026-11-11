@@ -3,6 +3,7 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { VezneBakiyeDuzeltmeSqlRepository } from "./vezneBakiyeDuzeltmeSql.repository.js";
+import { VEZNE_HAREKET_KOLONLARI, VEZNE_BELGE, belgeTablolari, saatTr, vezneHareketleriSql, } from "../services/rapor/kaynak.js";
 export class VezneIzlemeSqlRepository {
     static spEnsured = false;
     /**
@@ -263,5 +264,124 @@ export class VezneIzlemeSqlRepository {
             logger.error("VezneIzlemeSqlRepository.updateAllBakiyeler error:", error);
             throw ApiError.internal("Toplu vezne bakiyeleri kaydedilemedi: " + (error?.message || ""));
         }
+    }
+    /**
+     * Retrieves the last transactions across all cash desks (Son 100 İşlem)
+     */
+    static async getSonIslemler(dbContext, limit = 100, vezneId) {
+        const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+        const d = await belgeTablolari(pool);
+        const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+        const request = pool.request();
+        let whereFilter = "(ABS(ISNULL(X.giris, 0)) > 0.0000001 OR ABS(ISNULL(X.cikis, 0)) > 0.0000001)";
+        if (vezneId !== undefined && vezneId !== null && Number(vezneId) > 0) {
+            request.input("vezneId", sql.Int, Number(vezneId));
+            whereFilter += " AND X.vezneId = @vezneId";
+        }
+        const query = `
+      ;WITH X (${VEZNE_HAREKET_KOLONLARI}) AS (
+        ${vezneHareketleriSql(d)}
+      )
+      SELECT TOP (${safeLimit})
+        X.belgeTipi,
+        X.belgeId,
+        X.satirNo,
+        X.ayak,
+        X.vezneId,
+        X.tarih,
+        X.zaman,
+        X.paraId,
+        X.giris,
+        X.cikis,
+        X.kur,
+        X.aciklama,
+        X.fisTip,
+        X.belgeNo,
+        X.unvan,
+        X.tutar,
+        X.komisyon,
+        X.bmv,
+        V.KOD AS vezneKod,
+        V.AD AS vezneAd,
+        P.KOD AS paraKod,
+        P.AD AS paraAd
+      FROM X
+      LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID = X.vezneId
+      LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID = X.paraId
+      WHERE ${whereFilter}
+      ORDER BY 
+        CAST(X.tarih AS date) DESC, 
+        ISNULL(CONVERT(varchar(8), X.zaman, 108), ISNULL(CONVERT(varchar(8), X.tarih, 108), '00:00:00')) DESC, 
+        X.belgeId DESC, 
+        X.satirNo DESC;
+    `;
+        const res = await request.query(query);
+        return (res.recordset || []).map((r) => {
+            const giris = Number(r.giris) || 0;
+            const cikis = Number(r.cikis) || 0;
+            const miktar = giris > 0 ? giris : cikis;
+            const bTipi = Number(r.belgeTipi);
+            const fisTipNum = r.fisTip != null ? Number(r.fisTip) : null;
+            let belgeTipiAdi = VEZNE_BELGE[bTipi] || "İşlem";
+            if (bTipi === 0) {
+                belgeTipiAdi = fisTipNum === 1 ? "Döviz Satış Fişi" : "Döviz Alış Fişi";
+            }
+            else if (bTipi === 5) {
+                belgeTipiAdi = fisTipNum === 1 ? "Sarraf Satış Fişi" : "Sarraf Alış Fişi";
+            }
+            else if (bTipi === 6) {
+                belgeTipiAdi = fisTipNum === 1 ? "Perakende Satış Fişi" : "Perakende Alış Fişi";
+            }
+            else if (bTipi === 1) {
+                belgeTipiAdi = "Vezne Transferi";
+            }
+            else if (bTipi === 2) {
+                belgeTipiAdi = "Nakit Cari Hareket";
+            }
+            else if (bTipi === 3) {
+                belgeTipiAdi = "Kasa Hesap Hareketi";
+            }
+            else if (bTipi === 4) {
+                belgeTipiAdi = "Cari Dekont";
+            }
+            else if (bTipi === 8) {
+                belgeTipiAdi = "Bakiye Düzeltme";
+            }
+            else if (bTipi === 9) {
+                belgeTipiAdi = "Ticari Fiş";
+            }
+            const tarihStr = r.tarih
+                ? (r.tarih instanceof Date
+                    ? `${r.tarih.getFullYear()}-${String(r.tarih.getMonth() + 1).padStart(2, "0")}-${String(r.tarih.getDate()).padStart(2, "0")}`
+                    : String(r.tarih).slice(0, 10))
+                : "";
+            const saat = saatTr(r.zaman || r.tarih) || "00:00";
+            return {
+                id: `${bTipi}-${r.belgeId}-${r.satirNo}-${r.ayak}`,
+                belgeTipi: bTipi,
+                belgeTipiAdi,
+                belgeId: Number(r.belgeId),
+                satirNo: Number(r.satirNo),
+                ayak: Number(r.ayak),
+                vezneId: Number(r.vezneId),
+                vezneKod: String(r.vezneKod || "").trim(),
+                vezneAd: String(r.vezneAd || "").trim(),
+                tarih: tarihStr,
+                saat,
+                paraId: Number(r.paraId),
+                paraKod: String(r.paraKod || "").trim(),
+                paraAdi: String(r.paraAd || "").trim(),
+                giris,
+                cikis,
+                miktar,
+                yon: giris > 0 ? "GIRIS" : "CIKIS",
+                kur: Number(r.kur) || 0,
+                tutar: Number(r.tutar) || 0,
+                belgeNo: String(r.belgeNo || "").trim(),
+                unvan: String(r.unvan || "").trim(),
+                aciklama: String(r.aciklama || "").trim(),
+                fisTip: fisTipNum,
+            };
+        });
     }
 }

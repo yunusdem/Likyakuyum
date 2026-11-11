@@ -2,6 +2,7 @@ import { PerakendeService } from "../services/perakende.service.js";
 import { logger } from "../utils/logger.js";
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
+import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
 import { bankaHesabiDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 export const PerakendeController = {
@@ -22,10 +23,12 @@ export const PerakendeController = {
             const dbContext = PerakendeController.getDbContext(req);
             const user = req.user;
             const userId = user?.userId || user?.id || req.body?.KULLANICI_ID;
-            // Vezne kullanıcının kasası: yenide kart veznesi, düzeltmede kaydın veznesi (istekteki yok sayılır)
-            const vezneId = await fisVeznesi(userId, dbContext, { tur: "fatura", id: req.body?.faturaId });
             // Gün sınırı, tarih ve fatura numarası yetkisi: numara yetkisi yoksa yenide numaratör, düzeltmede kaydın numarası
             const { nolar, yetki } = await fisKayitYetkisi(req, "fatura", req.body?.faturaId, req.body?.tarih);
+            // Sınırsız yetkili yönetici istediği vezneyi seçebilir; değilse kart/kayıt veznesi kullanılır
+            const vezneId = (yetki.yonetici && req.body?.vezneId && Number(req.body.vezneId) > 0)
+                ? Number(req.body.vezneId)
+                : await fisVeznesi(userId, dbContext, { tur: "fatura", id: req.body?.faturaId });
             bankaHesabiDenetle(yetki, req.body?.odemeler);
             const result = await PerakendeService.createInvoice({ ...req.body, vezneId, ...(nolar && { faturaNo: nolar.FATURA_NO ?? "" }) }, userId ? Number(userId) : undefined, dbContext);
             notifyVezneBakiyeDegisti({ type: "perakende" });
@@ -48,6 +51,15 @@ export const PerakendeController = {
         try {
             const dbContext = PerakendeController.getDbContext(req);
             const { baslangicTarihi, bitisTarihi, aliciVknTckn, eBelgeDurumu, search, limit, } = req.query;
+            const yetkiler = await kullaniciYetkisi(req);
+            const u = req.user;
+            const userId = u?.userId ? Number(u.userId) : (u?.id ? Number(u.id) : 1);
+            let onlyOwnRecords = false;
+            let userVezneId = undefined;
+            if (yetkiler.kendiKayitlari) {
+                onlyOwnRecords = true;
+                userVezneId = (await fisVeznesi(userId, dbContext)) ?? undefined;
+            }
             const data = await PerakendeService.listInvoices({
                 // Kullanıcının işlem gösterme sınırı istekteki başlangıçtan sonraysa o geçerli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
                 baslangicTarihi: (sonrakiGun(baslangicTarihi, await gunSiniri(req)) ?? undefined),
@@ -56,6 +68,9 @@ export const PerakendeController = {
                 eBelgeDurumu: eBelgeDurumu !== undefined ? Number(eBelgeDurumu) : undefined,
                 search: search,
                 limit: limit ? Number(limit) : 200,
+                onlyOwnRecords,
+                userId,
+                userVezneId,
             }, dbContext);
             res.json({ success: true, data });
         }
@@ -88,7 +103,7 @@ export const PerakendeController = {
             if (!id || isNaN(id)) {
                 return res.status(400).json({ success: false, message: "Geçersiz fatura ID" });
             }
-            await kayitErisimi(req, "fatura", id);
+            await kayitErisimi(req, "fatura", id, { isDelete: true });
             await PerakendeService.deleteInvoice(id, dbContext);
             res.json({
                 success: true,

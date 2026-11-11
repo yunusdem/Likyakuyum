@@ -82,6 +82,11 @@ export interface FaturaModel {
   genelToplam: number;
   istatistikId?: number | null;
   istatistikKodu?: string | null;
+  bankaAciklama?: string | null;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   eBelgeDurumu: number; // 0: Taslak, 1: İletildi, 2: Onaylandı, 3: Hata, 4: İptal
   gibStatuKodu?: string | null;
   ekleyenId?: number | null;
@@ -154,6 +159,11 @@ export interface CreateFaturaDto {
   genelToplam?: number;
   istatistikId?: number | null;
   istatistikKodu?: string | null;
+  bankaAciklama?: string | null;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   satirlar: CreateFaturaSatiriDto[];
   odemeler?: CreateFaturaOdemeDto[];
 }
@@ -165,6 +175,9 @@ export interface FaturaFilterDto {
   eBelgeDurumu?: number;
   search?: string;
   limit?: number;
+  onlyOwnRecords?: boolean;
+  userId?: number;
+  userVezneId?: number;
 }
 
 export type CreateInvoiceDto = CreateFaturaDto;
@@ -1171,6 +1184,21 @@ export class PerakendeSqlRepository {
       saveHeadReq.input("ISTATISTIK_KODU", sql.VarChar(50), istatistikKodu);
       saveHeadReq.input("KULLANICI_ID", sql.Int, userId || null);
 
+      let belgeBuffer: Buffer | null = null;
+      if (dto.kimlikBelgeData) {
+        const m = dto.kimlikBelgeData.match(/^data:([^;]+);base64,(.+)$/);
+        if (m) {
+          belgeBuffer = Buffer.from(m[2], "base64");
+        } else {
+          belgeBuffer = Buffer.from(dto.kimlikBelgeData, "base64");
+        }
+      }
+      saveHeadReq.input("KIMLIK_DEGISTIRME_NEDENI", sql.NVarChar(100), dto.kimlikDegistirmeNedeni || null);
+      saveHeadReq.input("KIMLIK_BELGE_DATA", sql.VarBinary(sql.MAX), belgeBuffer);
+      saveHeadReq.input("KIMLIK_BELGE_MIME", sql.VarChar(100), dto.kimlikBelgeMime || null);
+      saveHeadReq.input("KIMLIK_BELGE_DOSYA_ADI", sql.NVarChar(255), dto.kimlikBelgeDosyaAdi || null);
+      saveHeadReq.input("BANKA_ACIKLAMA", sql.VarChar(250), dto.bankaAciklama ? dto.bankaAciklama.trim().slice(0, 250) : null);
+
       const headQuery = `
         DECLARE @OUT_ID INT = @FATURA_ID;
 
@@ -1182,6 +1210,8 @@ export class PerakendeSqlRepository {
             VERGI_DAIRESI, EPOSTA, TELEFON, PARA_ID, KUR,
             ARA_TOPLAM, TOPLAM_KDV, ISKONTO_ID, ISKONTO_KODU, ISKONTO_ORANI, ISKONTO_TUTARI, GENEL_TOPLAM,
             ISTATISTIK_ID, ISTATISTIK_KODU,
+            BANKA_ACIKLAMA,
+            KIMLIK_DEGISTIRME_NEDENI, KIMLIK_BELGE_DATA, KIMLIK_BELGE_MIME, KIMLIK_BELGE_DOSYA_ADI,
             E_BELGE_DURUMU, EKLEYEN_ID, EKLEME_ZAMANI
           )
           OUTPUT INSERTED.FATURA_ID
@@ -1191,6 +1221,8 @@ export class PerakendeSqlRepository {
             @VERGI_DAIRESI, @EPOSTA, @TELEFON, @PARA_ID, @KUR,
             @ARA_TOPLAM, @TOPLAM_KDV, @ISKONTO_ID, @ISKONTO_KODU, @ISKONTO_ORANI, @ISKONTO_TUTARI, @GENEL_TOPLAM,
             @ISTATISTIK_ID, @ISTATISTIK_KODU,
+            @BANKA_ACIKLAMA,
+            @KIMLIK_DEGISTIRME_NEDENI, @KIMLIK_BELGE_DATA, @KIMLIK_BELGE_MIME, @KIMLIK_BELGE_DOSYA_ADI,
             0, @KULLANICI_ID, GETDATE()
           );
         END
@@ -1222,6 +1254,11 @@ export class PerakendeSqlRepository {
               GENEL_TOPLAM      = @GENEL_TOPLAM,
               ISTATISTIK_ID     = @ISTATISTIK_ID,
               ISTATISTIK_KODU   = @ISTATISTIK_KODU,
+              BANKA_ACIKLAMA    = @BANKA_ACIKLAMA,
+              KIMLIK_DEGISTIRME_NEDENI = @KIMLIK_DEGISTIRME_NEDENI,
+              KIMLIK_BELGE_DATA = @KIMLIK_BELGE_DATA,
+              KIMLIK_BELGE_MIME = @KIMLIK_BELGE_MIME,
+              KIMLIK_BELGE_DOSYA_ADI = @KIMLIK_BELGE_DOSYA_ADI,
               GUNCELLEYEN_ID    = @KULLANICI_ID,
               GUNCELLEME_ZAMANI = GETDATE()
           WHERE FATURA_ID = @OUT_ID;
@@ -1595,7 +1632,9 @@ export class PerakendeSqlRepository {
         ISNULL(f.[ISKONTO_TUTARI], 0) AS [ISKONTO_TUTARI],
         ISNULL(f.[ISTATISTIK_ID], NULL) AS [ISTATISTIK_ID],
         ISNULL(f.[ISTATISTIK_KODU], '') AS [ISTATISTIK_KODU],
+        f.[BANKA_ACIKLAMA],
         f.[GENEL_TOPLAM], f.[E_BELGE_DURUMU], f.[GIB_STATU_KODU],
+        f.[KIMLIK_DEGISTIRME_NEDENI], f.[KIMLIK_BELGE_DATA], f.[KIMLIK_BELGE_MIME], f.[KIMLIK_BELGE_DOSYA_ADI],
         f.[EKLEYEN_ID], f.[EKLEME_ZAMANI],
         v.[KOD] AS [VEZNE_KOD], v.[AD] AS [VEZNE_AD],
         p.[KOD] AS [PARA_KODU],
@@ -1786,6 +1825,17 @@ export class PerakendeSqlRepository {
       genelToplam: Number(row.GENEL_TOPLAM) || 0,
       istatistikId: row.ISTATISTIK_ID || null,
       istatistikKodu: row.ISTATISTIK_KODU || null,
+      bankaAciklama: row.BANKA_ACIKLAMA ? String(row.BANKA_ACIKLAMA).trim() : null,
+      kimlikDegistirmeNedeni: row.KIMLIK_DEGISTIRME_NEDENI || null,
+      kimlikBelgeData: row.KIMLIK_BELGE_DATA
+        ? `data:${row.KIMLIK_BELGE_MIME || "application/octet-stream"};base64,${
+            Buffer.isBuffer(row.KIMLIK_BELGE_DATA)
+              ? row.KIMLIK_BELGE_DATA.toString("base64")
+              : Buffer.from(row.KIMLIK_BELGE_DATA).toString("base64")
+          }`
+        : null,
+      kimlikBelgeMime: row.KIMLIK_BELGE_MIME || null,
+      kimlikBelgeDosyaAdi: row.KIMLIK_BELGE_DOSYA_ADI || null,
       eBelgeDurumu: row.E_BELGE_DURUMU ?? 0,
       gibStatuKodu: row.GIB_STATU_KODU,
       ekleyenId: row.EKLEYEN_ID,
@@ -1874,6 +1924,12 @@ export class PerakendeSqlRepository {
       req.input("SEARCH", sql.VarChar(200), `%${filter.search.trim()}%`);
     }
 
+    if (filter.onlyOwnRecords && filter.userId) {
+      query += ` AND (f.[EKLEYEN_ID] = @userId OR (@userVezneId > 0 AND f.[VEZNE_ID] = @userVezneId))`;
+      req.input("userId", sql.Int, filter.userId);
+      req.input("userVezneId", sql.Int, filter.userVezneId || 0);
+    }
+
     query += ` ORDER BY f.[FATURA_ID] DESC;`;
 
     const res = await req.query(query);
@@ -1913,6 +1969,7 @@ export class PerakendeSqlRepository {
       istatistikKodu: row.ISTATISTIK_KODU || null,
       eBelgeDurumu: Number(row.E_BELGE_DURUMU) || 0,
       gibStatuKodu: row.GIB_STATU_KODU,
+      kullaniciId: Number(row.EKLEYEN_ID || 0),
       ekleyenId: row.EKLEYEN_ID,
       eklemeZamani: row.EKLEME_ZAMANI ? new Date(row.EKLEME_ZAMANI).toISOString() : null,
     }));

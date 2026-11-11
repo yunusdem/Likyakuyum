@@ -3,6 +3,9 @@ export class VezneIzlemeService {
     static async getIzlemeData(dbContext) {
         return await VezneIzlemeSqlRepository.getIzlemeData(dbContext);
     }
+    static async getSonIslemler(dbContext, limit = 100, vezneId) {
+        return await VezneIzlemeSqlRepository.getSonIslemler(dbContext, limit, vezneId);
+    }
     static async saveSettings(settings, dbContext) {
         return await VezneIzlemeSqlRepository.saveSettings(settings, dbContext);
     }

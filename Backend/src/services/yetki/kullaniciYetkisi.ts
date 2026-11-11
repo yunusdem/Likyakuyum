@@ -41,6 +41,8 @@ const KOLONLAR = [
   "SAPMA_UYARISI_VERILMESIN",
   "MASAK_UYARISI_VERSIN",
   "ALAN_ISLEMLERI_YETKISI",
+  "VEZNE_SON_ISLEMLER_YETKISI",
+  "KENDI_KAYITLARI_YETKISI",
 ];
 
 const ONBELLEK = Symbol("kullaniciYetkisi");
@@ -90,6 +92,18 @@ export async function kullaniciYetkisi(req: Request): Promise<KullaniciYetkisi> 
       return y;
     }
     throw ApiError.unauthorized("Kullanıcı kartı bulunamadı.");
+  }
+  if (satir.CARI_SINIRLAMA_TIPI != null && Number(satir.CARI_SINIRLAMA_TIPI) > 0) {
+    try {
+      const kId = satir.KULLANICI_ID || id;
+      const cariRes = await pool
+        .request()
+        .input("uid", sql.Int, kId)
+        .query("SELECT CARI_KART_ID FROM dbo.TODVZ_KULLANICI_CARI WITH (NOLOCK) WHERE KULLANICI_ID = @uid");
+      satir.atananCariIdler = (cariRes.recordset || []).map((row: any) => Number(row.CARI_KART_ID));
+    } catch {
+      satir.atananCariIdler = [];
+    }
   }
   // Merkezde Firma Yöneticisi olan da yöneticidir (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y3); kartta zaten yöneticiyse sorulmaz
   const firmaYoneticisi = String(satir.SISTEM_YONETICISI ?? "") === "1" || satir.SISTEM_YONETICISI === true

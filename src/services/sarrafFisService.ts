@@ -42,6 +42,7 @@ export interface OdemeSatiriItem {
   hasGram: number | string;
   kur: number | string;
   tutar: number | string;
+  aciklama?: string | null;
   degistirildi?: boolean;
 }
 
@@ -106,10 +107,15 @@ export interface SarrafFisModel {
   anneAdi?: string | null;
   sirketTuru?: number | null;
   kimlikBelgeTuru?: number | null;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   dernekAmaci?: string | null;
   yetkiliKisiId?: number | null;
   kimlikGecerlilikTarihi?: string | null;
   masakListesindeVar?: boolean;
+  bankaAciklama?: string | null;
   istatistikId?: number | null;
   istatistikKodu?: string | null;
   satirlar: SarrafFisSatiriItem[];
@@ -127,6 +133,7 @@ export interface SaveSarrafFisPayload {
   seriNo?: string | null;
   belgeNo?: string | null;
   irsaliyeNo?: string | null;
+  bankaAciklama?: string | null;
   tip: number;
   altinHasKuru: number;
   istatistikId?: number | null;
@@ -163,6 +170,10 @@ export interface SaveSarrafFisPayload {
   sirketTuru?: number | null;
   kimlikGecerlilikTarihi?: string | null;
   kimlikBelgeTuru?: number | null;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   dernekAmaci?: string | null;
   yetkiliKisi?: string | null;
   belgeTuru?: number;

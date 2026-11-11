@@ -12,6 +12,8 @@ import {
 } from "../../services/raporService";
 import { DurbunAlan, type SecimKolon } from "./RaporSecim";
 import { buildRaporWhatsAppMessage, openWhatsAppDirect, sharePdfToWhatsApp } from "../../utils/whatsAppMessageBuilder";
+import { useAuth } from "../../context/AuthContext";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 
 /**
  * Tek rapor sayfası (G- Raporlar altındaki 9 rapor): /raporlar/:yol
@@ -95,8 +97,14 @@ const paraArama = (p: ProductItem) => [p.kod, p.ad, p.bagliParaKodu];
 
 export const RaporPage: React.FC = () => {
   const { yol } = useParams<{ yol: string }>();
+  const { user } = useAuth();
+  const kYetki = useKullaniciYetkisi();
   const menu = useMemo(() => RAPOR_MENU.find(m => m.yol === yol), [yol]);
   const kod = menu?.kod;
+  const isVezneRaporu = useMemo(() => ["VEZHAR1", "VEZHAS1", "VEZALT1", "VEZBAK1"].includes(kod || ""), [kod]);
+  // Sınırsız yetkili (sistem yöneticisi) olmayan kullanıcılar vezne hareket raporlarında kendi veznesini pasif (kilitli) olarak görür
+  const isVezneKilitli = isVezneRaporu && !user?.isSysAdmin;
+  const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
 
   const [tanim, setTanim] = useState<RaporTanim | null>(null);
   const [degerler, setDegerler] = useState<RaporParametreDegerleri>({});
@@ -161,11 +169,35 @@ export const RaporPage: React.FC = () => {
     RaporService.tanim(kod).then(async t => {
       setTanim(t);
       const def = baslangicDegerleri(t.parametreler);
+      if (isVezneKilitli && user?.vezneId) {
+        def.vezneId = user.vezneId;
+        def.vezneIdler = String(user.vezneId);
+      }
       setDegerler(def);
       const tipler = new Set(t.parametreler.map(p => p.tip));
       setListeYukleniyor(true);
       const isler: Promise<unknown>[] = [];
-      if (tipler.has("vezne") || tipler.has("vezneAralik") || tipler.has("vezneCoklu")) isler.push(CashDeskService.getVezneler().then(v => setVezneler([...v].sort((a, b) => a.kod.localeCompare(b.kod)))).catch(() => setVezneler([])));
+      if (tipler.has("vezne") || tipler.has("vezneAralik") || tipler.has("vezneCoklu")) {
+        isler.push(CashDeskService.getVezneler().then(v => {
+          const sorted = [...v].sort((a, b) => a.kod.localeCompare(b.kod));
+          const allowed = (isVezneKilitli && user?.vezneId)
+            ? sorted.filter(item => item.id === Number(user.vezneId))
+            : sorted;
+          setVezneler(allowed);
+          if (isVezneKilitli && user?.vezneId) {
+            const myV = sorted.find(item => item.id === Number(user.vezneId));
+            if (myV) {
+              setDegerler(prev => ({
+                ...prev,
+                vezneId: myV.id,
+                vezneBaslangic: myV.kod,
+                vezneBitis: myV.kod,
+                vezneIdler: String(myV.id),
+              }));
+            }
+          }
+        }).catch(() => setVezneler([])));
+      }
       if (tipler.has("para") || tipler.has("paraCoklu")) isler.push(ProductDefinitionService.getProducts().then(p => setParalar([...p].sort((a, b) => (a.siraNo ?? 99) - (b.siraNo ?? 99) || a.kod.localeCompare(b.kod)))).catch(() => setParalar([])));
       if (tipler.has("cari") || tipler.has("cariAralik") || tipler.has("cariCoklu")) isler.push(CariService.getCariKartlar().then(c => setCariler([...c].sort((a, b) => a.kod.localeCompare(b.kod)))).catch(() => setCariler([])));
       for (const kaynak of new Set(t.parametreler.filter(p => p.tip === "listeCoklu" && p.kaynak).map(p => p.kaynak!)))
@@ -319,14 +351,14 @@ export const RaporPage: React.FC = () => {
 
   /** İlk kod (çoklu dürbün) + Son kod (tek dürbün): yalnızca ilk seçiliyse seçilenler; son da seçiliyse ilk→son kod aralığı */
   /** Çoklu seçim satırı (vezne, para): dürbünden istenen kayıtlar işaretlenir; boş = tümü */
-  const coklu = <T extends { id: number; kod: string }>(p: RaporParametre, tur: string, ad: string, items: T[], kolonlar: SecimKolon<T>[], arama: (x: T) => (string | number | null | undefined)[], yerTutucu: string) => {
+  const coklu = <T extends { id: number; kod: string }>(p: RaporParametre, tur: string, ad: string, items: T[], kolonlar: SecimKolon<T>[], arama: (x: T) => (string | number | null | undefined)[], yerTutucu: string, disabledEk?: boolean) => {
     const secili = secimler(ad);
     const kodu = (id: string | number | undefined) => items.find(v => String(v.id) === String(id ?? ""))?.kod || (id ? String(id) : "");
     return satir(ad, <>{tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)}{zorunluIsareti(p)}</>,
       <DurbunAlan<T> value={secili.map(kodu).join(", ")} saltOkunur onChange={() => undefined} placeholder={p.zorunlu ? `${tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)} seçin…` : `Tüm ${tur}ler`} title={`${tur[0].toLocaleUpperCase("tr-TR") + tur.slice(1)} seçimi — birden fazla seçilebilir`} items={items} yukleniyor={listeYukleniyor}
-        kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek} coklu secili={secili} onSelect={() => undefined}
+        kolonlar={kolonlar} aramaAlanlari={arama} anahtar={v => String(v.id)} aramaYerTutucu={yerTutucu} disabled={meslek || disabledEk} coklu secili={secili} onSelect={() => undefined}
         onCokluSec={sec => set(ad, sec.map(x => String(x.id)).join(","))} />,
-      secili.length ? <>{secili.length} seçili · <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(ad, "")}>Tümü</Button></>
+      secili.length ? <>{secili.length} seçili {!disabledEk && <>· <Button variant="link" size="sm" className="p-0 small align-baseline" onClick={() => set(ad, "")}>Tümü</Button></>}</>
         : p.zorunlu ? `En az bir ${tur} seçin` : `Hiçbiri seçilmezse tüm ${tur}ler`);
   };
   /** Cari: İlk kod (çoklu) + Son kod (tek). Son boşsa yalnızca seçilenler; son seçiliyse ilk seçimin en küçük kodundan son koda aralık; yalnız son seçiliyse baştan son koda kadar */
@@ -375,8 +407,8 @@ export const RaporPage: React.FC = () => {
         : null;
       case "saatAralik": return ciftSatir("saatAralik", ["İlk saat", saatKutu("baslangicSaat", "00:00")], ["Son saat", saatKutu("bitisSaat", "23:59")], GENISLIK.saat);
       case "vezne": return satir(p.ad, etiket, <DurbunAlan<VezneItem> value={vezneAd(degerler[p.ad]) || ""} saltOkunur onChange={() => undefined} placeholder="Tüm vezneler" title="Vezne seçimi" items={vezneler} yukleniyor={listeYukleniyor}
-          kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} aramaYerTutucu="Vezne kodu veya adıyla arayın…" disabled={meslek} onSelect={v => set(p.ad, v.id)} />,
-        degerler[p.ad] ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Tümü</Button> : null);
+          kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} aramaYerTutucu="Vezne kodu veya adıyla arayın…" disabled={meslek || isVezneKilitli} onSelect={v => set(p.ad, v.id)} />,
+        degerler[p.ad] && !isVezneKilitli ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Tümü</Button> : null);
       case "para": return satir(p.ad, etiket, <DurbunAlan<ProductItem> value={paraAd(degerler[p.ad]) || ""} saltOkunur onChange={() => undefined} placeholder="Tüm paralar" title="Para birimi / kıymet seçimi" items={paralar} yukleniyor={listeYukleniyor}
           kolonlar={paraKolonlar} aramaAlanlari={paraArama} anahtar={v => String(v.id)} aramaYerTutucu="Para kodu veya adıyla arayın…" disabled={meslek} onSelect={v => set(p.ad, v.id)} />,
         degerler[p.ad] ? <Button variant="link" size="sm" className="p-0 small" onClick={() => set(p.ad, "")}>Tümü</Button> : null);
@@ -409,11 +441,11 @@ export const RaporPage: React.FC = () => {
           kolonlar={cariKolonlar} aramaAlanlari={cariArama} anahtar={v => String(v.id)} disabled={meslek} onSelect={v => set("cariBitis", v.kod)} />)];
       case "vezneAralik": return [
         satir("vezneBaslangic", etiket, <DurbunAlan<VezneItem> value={String(degerler.vezneBaslangic ?? "")} onChange={v => set("vezneBaslangic", v.toUpperCase())} placeholder="Başlangıç vezne" title="Başlangıç vezne" items={vezneler} yukleniyor={listeYukleniyor}
-          kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} disabled={meslek} onSelect={v => set("vezneBaslangic", v.kod)} />),
+          kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} disabled={meslek || isVezneKilitli} onSelect={v => set("vezneBaslangic", v.kod)} />),
         satir("vezneBitis", "Bitiş vezne", <DurbunAlan<VezneItem> value={String(degerler.vezneBitis ?? "")} onChange={v => set("vezneBitis", v.toUpperCase())} placeholder="Bitiş vezne" title="Bitiş vezne" items={vezneler} yukleniyor={listeYukleniyor}
-          kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} disabled={meslek} onSelect={v => set("vezneBitis", v.kod)} />)];
+          kolonlar={vezneKolonlar} aramaAlanlari={vezneArama} anahtar={v => String(v.id)} disabled={meslek || isVezneKilitli} onSelect={v => set("vezneBitis", v.kod)} />)];
       case "cariCoklu": return ilkSon<CariKartItem>(p, "cari", "cariIdler", "cariSonId", cariler, cariKolonlar, cariArama, "Cari kodu, ünvan, telefon veya vergi no ile arayın…");
-      case "vezneCoklu": return coklu<VezneItem>(p, "vezne", "vezneIdler", vezneler, vezneKolonlar, vezneArama, "Vezne kodu veya adıyla arayın…");
+      case "vezneCoklu": return coklu<VezneItem>(p, "vezne", "vezneIdler", vezneler, vezneKolonlar, vezneArama, "Vezne kodu veya adıyla arayın…", isVezneKilitli);
       case "paraCoklu": return coklu<ProductItem>(p, "para", "paraIdler", paralar, paraKolonlar, paraArama, "Para kodu veya adıyla arayın…");
       case "onay": return satir(p.ad, etiket, <Form.Check type="checkbox" id={`rapor-onay-${p.ad}`} checked={String(degerler[p.ad] ?? "") === "1"} onChange={e => set(p.ad, e.target.checked ? "1" : "0")} />, p.not, "auto");
       case "metinAralik": { const kucuk = p.etiket.toLocaleLowerCase("tr");
@@ -573,9 +605,17 @@ export const RaporPage: React.FC = () => {
                   </div>
                 </div>
                 {parametreAcik && (
-                  <div className="mt-2"><div className="d-inline-flex flex-column align-items-start border rounded px-3 py-2" style={{ gap: 6, background: "#f8fafc", maxWidth: "100%" }}>
-                    {tanim.parametreler.map(alan)}
-                  </div></div>
+                  <div className="mt-2">
+                    {isVezneKilitli && (
+                      <Alert variant="info" className="py-1 px-3 mb-2 small d-inline-flex align-items-center gap-2 border-0 bg-info-subtle text-info-emphasis">
+                        <IconAdjustments size={15} />
+                        <span>Kullanıcı yetkisi: Yalnızca kendi veznenize ait hareketleri görüntüleyebilirsiniz.</span>
+                      </Alert>
+                    )}
+                    <div className="d-inline-flex flex-column align-items-start border rounded px-3 py-2" style={{ gap: 6, background: "#f8fafc", maxWidth: "100%" }}>
+                      {tanim.parametreler.map(alan)}
+                    </div>
+                  </div>
                 )}
               </fieldset>
             </Form>

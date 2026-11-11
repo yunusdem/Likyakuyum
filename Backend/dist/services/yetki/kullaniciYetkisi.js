@@ -2,6 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../../config/mssql.config.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { yetkiSatirdan } from "./kullaniciYetkiKural.js";
+import { FirmaKullaniciMerkezService } from "../firmaKullaniciMerkez.service.js";
 /**
  * Oturumdaki kullanıcının kart yetkileri (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4). Jeton yalnız kimliği taşır; yetkiler
  * kullanıcı kartından her istekte okunur (yönetici kartta değiştirince hemen geçerli olur). İstek başına bir kez okunur.
@@ -37,6 +38,8 @@ const KOLONLAR = [
     "SAPMA_UYARISI_VERILMESIN",
     "MASAK_UYARISI_VERSIN",
     "ALAN_ISLEMLERI_YETKISI",
+    "VEZNE_SON_ISLEMLER_YETKISI",
+    "KENDI_KAYITLARI_YETKISI",
 ];
 const ONBELLEK = Symbol("kullaniciYetkisi");
 /**
@@ -88,7 +91,24 @@ export async function kullaniciYetkisi(req) {
         }
         throw ApiError.unauthorized("Kullanıcı kartı bulunamadı.");
     }
-    const y = yetkiSatirdan(satir);
+    if (satir.CARI_SINIRLAMA_TIPI != null && Number(satir.CARI_SINIRLAMA_TIPI) > 0) {
+        try {
+            const kId = satir.KULLANICI_ID || id;
+            const cariRes = await pool
+                .request()
+                .input("uid", sql.Int, kId)
+                .query("SELECT CARI_KART_ID FROM dbo.TODVZ_KULLANICI_CARI WITH (NOLOCK) WHERE KULLANICI_ID = @uid");
+            satir.atananCariIdler = (cariRes.recordset || []).map((row) => Number(row.CARI_KART_ID));
+        }
+        catch {
+            satir.atananCariIdler = [];
+        }
+    }
+    // Merkezde Firma Yöneticisi olan da yöneticidir (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y3); kartta zaten yöneticiyse sorulmaz
+    const firmaYoneticisi = String(satir.SISTEM_YONETICISI ?? "") === "1" || satir.SISTEM_YONETICISI === true
+        ? false
+        : await FirmaKullaniciMerkezService.baglam(req.user).then((b) => !!b?.kullanici?.firmaYoneticisi).catch(() => false);
+    const y = yetkiSatirdan(satir, firmaYoneticisi);
     r[ONBELLEK] = y;
     return y;
 }

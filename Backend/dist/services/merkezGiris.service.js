@@ -8,7 +8,7 @@ import { ESKI_SIFRE_ISARETI, } from "../types/admin.types.js";
 import { ApiError } from "../utils/ApiError.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
-import { sahteSifreDogrula, sifreDogrula, sifreHashle, sifreKuralHatasi } from "../utils/sifre.utils.js";
+import { sahteSifreDogrula, sifreDogrula, sifreHashle } from "../utils/sifre.utils.js";
 import { comparePassword, hashPassword } from "../utils/password.utils.js";
 import { baglantiSina, firmaDbAnahtari } from "./admin/firmaBaglanti.service.js";
 import { sifreCoz } from "../utils/kripto.utils.js";
@@ -301,9 +301,9 @@ export class MerkezGirisService {
     }
     /** Şifre kuralına uymuyorsa 400. */
     static sifreKuraliniDenetle(sifre) {
-        const hata = sifreKuralHatasi(sifre);
-        if (hata)
-            throw ApiError.badRequest(hata);
+        if (!sifre || typeof sifre !== "string" || !sifre.trim()) {
+            throw ApiError.badRequest("Şifre boş olamaz.");
+        }
     }
     /**
      * Merkezdeki şifreyi yazar. Firma veritabanındaki TODVZ_KULLANICI.SIFRE alanı da (uygulamanın mevcut

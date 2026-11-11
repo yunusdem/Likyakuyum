@@ -11,9 +11,10 @@ export class CariService {
   }
 
   public static async listCariKartlar(
-    dbContext?: { dbServer?: string; dbName?: string }
+    dbContext?: { dbServer?: string; dbName?: string },
+    filter?: { userId?: number; cariSinirlamaTipi?: number; isSysAdmin?: boolean }
   ): Promise<CariKartModel[]> {
-    return CariSqlRepository.findAll(dbContext);
+    return CariSqlRepository.findAll(dbContext, filter);
   }
 
   public static async getCariKartById(

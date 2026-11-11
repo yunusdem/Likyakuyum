@@ -84,6 +84,10 @@ export const createUserSchema = z.object({
     hasSlipAmountChangePerm: z.boolean().optional().default(false),
     isSuspiciousTransAuth: z.boolean().optional().default(false),
     noCrossRateCheck: z.boolean().optional().default(false),
+    hasVezneLastTransactionsPerm: z.boolean().optional().default(false),
+    hasOnlyOwnRecordsPerm: z.boolean().optional().default(false),
+    cariSinirlamaTipi: flexNumber(0),
+    atananCariIdler: z.array(z.number()).optional().default([]),
 
     // Hardware & Zoom
     printerId: z.union([z.string(), z.number()]).optional().default("1").transform((v) => String(v)),
@@ -146,6 +150,10 @@ export const updateUserSchema = z.object({
     hasSlipAmountChangePerm: z.boolean().optional(),
     isSuspiciousTransAuth: z.boolean().optional(),
     noCrossRateCheck: z.boolean().optional(),
+    hasVezneLastTransactionsPerm: z.boolean().optional(),
+    hasOnlyOwnRecordsPerm: z.boolean().optional(),
+    cariSinirlamaTipi: flexNumber(0).optional(),
+    atananCariIdler: z.array(z.number()).optional(),
 
     printerId: z.union([z.string(), z.number()]).optional().transform((v) => (v !== undefined ? String(v) : undefined)),
     horizontalZoom: flexNumber(0),

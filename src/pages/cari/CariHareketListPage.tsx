@@ -34,9 +34,16 @@ import { CariService, CariKartItem } from "../../services/cariService";
 import { apiClient } from "../../services/apiClient";
 import { printReportTable } from "../../utils/printReport";
 import { useUrunOzellikleri } from "../../hooks/useUrunOzellikleri";
+import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { useAuth } from "../../context/AuthContext";
+import { gosterimBaslangici, gosterimIcinde } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 
 export const CariHareketListPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const kYetki = useKullaniciYetkisi();
+  const gosterimSinirTarihi = useMemo(() => gosterimBaslangici(kYetki), [kYetki]);
+  const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
 
   const [hareketList, setHareketList] = useState<CariHareketItem[]>([]);
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
@@ -45,17 +52,45 @@ export const CariHareketListPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters - default to empty to show all existing records
+  // Filters - default to empty or displayDays restriction
   const today = new Date().toISOString().split("T")[0];
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
   const [selectedCariId, setSelectedCariId] = useState<string>("all");
+
+  // Seçilen carinin kendi işlem gösterme gün sınırı
+  const selectedCariObj = useMemo(() => {
+    if (selectedCariId === "all") return null;
+    return cariList.find((c) => c.id === Number(selectedCariId)) || null;
+  }, [selectedCariId, cariList]);
+
+  const cariSinirTarihi = useMemo(() => {
+    const gun = selectedCariObj?.islemGostermeGunSayisi;
+    if (gun && gun > 0) {
+      return gosterimBaslangici({ yonetici: false, gosterimGunu: gun } as any);
+    }
+    return null;
+  }, [selectedCariObj]);
+
+  const efektifSinirTarihi = useMemo(() => {
+    if (gosterimSinirTarihi && cariSinirTarihi) {
+      return gosterimSinirTarihi > cariSinirTarihi ? gosterimSinirTarihi : cariSinirTarihi;
+    }
+    return gosterimSinirTarihi || cariSinirTarihi || null;
+  }, [gosterimSinirTarihi, cariSinirTarihi]);
+
+  const [startDate, setStartDate] = useState<string>(efektifSinirTarihi || "");
+  const [endDate, setEndDate] = useState<string>("");
   const [selectedVezneId, setSelectedVezneId] = useState<string>("all");
   const [selectedTip, setSelectedTip] = useState<string>("all"); // all, 0: Borç, 1: Alacak
   const [selectedHareketTipi, setSelectedHareketTipi] = useState<string>("all");
   // Lisansta olmayan fiş türlerinin süzgeç seçenekleri gösterilmez
   const ozellik = useUrunOzellikleri();
   const [searchTerm, setSearchTerm] = useState<string>("");
+
+  useEffect(() => {
+    if (efektifSinirTarihi && (!startDate || startDate < efektifSinirTarihi)) {
+      setStartDate(efektifSinirTarihi);
+    }
+  }, [efektifSinirTarihi]);
 
   // Expandable row IDs
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -69,9 +104,13 @@ export const CariHareketListPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
+      const effectiveStartDate = (efektifSinirTarihi && (!startDate || startDate < efektifSinirTarihi))
+        ? efektifSinirTarihi
+        : (startDate || undefined);
+
       const [items, cariler, vezneler] = await Promise.all([
         CariHareketService.list({
-          startDate: startDate || undefined,
+          startDate: effectiveStartDate,
           endDate: endDate || undefined,
           cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
           vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
@@ -83,7 +122,19 @@ export const CariHareketListPage: React.FC = () => {
         apiClient.get<any[]>("/vezne").catch(() => ({ data: [] })),
       ]);
 
-      setHareketList(items || []);
+      const userId = Number(user?.id) || 1;
+      const userVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const filteredItems = (items || []).filter((h) => {
+        if (efektifSinirTarihi && h.tarih && h.tarih.slice(0, 10) < efektifSinirTarihi) return false;
+        if (!hasOnlyOwn) return true;
+        const eId = Number(h.ekleyenId || 0);
+        const gId = Number(h.guncelleyenId || 0);
+        const vId = Number(h.vezneId || 0);
+        return eId === userId || gId === userId || (userVezneId > 0 && vId === userVezneId);
+      });
+
+      setHareketList(filteredItems);
       setCariList(cariler || []);
       setVezneList(vezneler.data || []);
     } catch (err: any) {
@@ -95,21 +146,23 @@ export const CariHareketListPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [efektifSinirTarihi]);
 
   const handleApplyFilter = () => {
     loadData();
   };
 
   const handleResetFilter = () => {
-    setStartDate("");
+    setStartDate(efektifSinirTarihi || "");
     setEndDate("");
     setSelectedCariId("all");
     setSelectedVezneId("all");
     setSelectedTip("all");
     setSelectedHareketTipi("all");
     setSearchTerm("");
-    CariHareketService.list().then((items) => setHareketList(items || []));
+    CariHareketService.list(
+      efektifSinirTarihi ? { startDate: efektifSinirTarihi } : undefined
+    ).then((items) => setHareketList(items || []));
   };
 
   const toggleRowExpand = (id: number) => {
@@ -126,6 +179,15 @@ export const CariHareketListPage: React.FC = () => {
 
   const handleDeleteClick = (item: CariHareketItem, e: React.MouseEvent) => {
     e.stopPropagation();
+    const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+    if (hasOnlyOwn) {
+      setError("Yetkiniz doğrultusunda cari hareket kaydı silme yetkiniz bulunmamaktadır.");
+      return;
+    }
+    if (!gosterimIcinde(kYetki, item.tarih)) {
+      setError(`Bu kayıt işlem gösterme sınırınızın (son ${kYetki.gosterimGunu} gün) dışında; silinemez.`);
+      return;
+    }
     // Sarraf / döviz / perakende fişinden gelen satırın numarası fişin numarasıdır; cari hareket silme ucu aynı numaralı başka bir cari hareketi siler
     if (item.hareketTipi === 10 || item.hareketTipi === 11 || item.hareketTipi === 12) {
       const belge = item.hareketTipi === 10 ? "sarraf fişinden" : item.hareketTipi === 11 ? "döviz fişinden" : "perakende fişinden";
@@ -292,6 +354,7 @@ export const CariHareketListPage: React.FC = () => {
                 type="date"
                 size="sm"
                 value={startDate}
+                min={efektifSinirTarihi || undefined}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </Col>
@@ -442,9 +505,10 @@ export const CariHareketListPage: React.FC = () => {
                 size="sm"
                 className="py-0.5 px-2 small text-dark"
                 onClick={() => {
+                  const effectiveStart = (gosterimSinirTarihi && (!startDate || startDate < gosterimSinirTarihi)) ? gosterimSinirTarihi : (startDate || undefined);
                   setSelectedHareketTipi("10");
                   CariHareketService.list({
-                    startDate: startDate || undefined,
+                    startDate: effectiveStart,
                     endDate: endDate || undefined,
                     cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
                     vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
@@ -461,9 +525,10 @@ export const CariHareketListPage: React.FC = () => {
                 size="sm"
                 className="py-0.5 px-2 small text-dark"
                 onClick={() => {
+                  const effectiveStart = (gosterimSinirTarihi && (!startDate || startDate < gosterimSinirTarihi)) ? gosterimSinirTarihi : (startDate || undefined);
                   setSelectedHareketTipi("11");
                   CariHareketService.list({
-                    startDate: startDate || undefined,
+                    startDate: effectiveStart,
                     endDate: endDate || undefined,
                     cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
                     vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
@@ -480,9 +545,10 @@ export const CariHareketListPage: React.FC = () => {
                 size="sm"
                 className="py-0.5 px-2 small"
                 onClick={() => {
+                  const effectiveStart = (gosterimSinirTarihi && (!startDate || startDate < gosterimSinirTarihi)) ? gosterimSinirTarihi : (startDate || undefined);
                   setSelectedHareketTipi("12");
                   CariHareketService.list({
-                    startDate: startDate || undefined,
+                    startDate: effectiveStart,
                     endDate: endDate || undefined,
                     cariKartId: selectedCariId !== "all" ? Number(selectedCariId) : undefined,
                     vezneId: selectedVezneId !== "all" ? Number(selectedVezneId) : undefined,
@@ -628,8 +694,9 @@ export const CariHareketListPage: React.FC = () => {
                                 size="sm"
                                 variant="outline-danger"
                                 className="py-0.5 px-1.5"
+                                disabled={hasOnlyOwn || !gosterimIcinde(kYetki, item.tarih)}
                                 onClick={(e) => handleDeleteClick(item, e)}
-                                title="Sil"
+                                title={hasOnlyOwn ? "Yetkiniz doğrultusunda kayıt silme yetkiniz bulunmamaktadır" : !gosterimIcinde(kYetki, item.tarih) ? `İşlem gösterme sınırınızın (son ${kYetki.gosterimGunu} gün) dışındaki kayıtlar silinemez` : "Sil"}
                               >
                                 <IconTrash size={14} />
                               </Button>

@@ -7,7 +7,7 @@ import { ApiError } from "../utils/ApiError.js";
 
 export class DovizFisService {
   public static async getFisList(
-    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; isArbitraj?: boolean },
+    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; isArbitraj?: boolean; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number },
     dbContext?: { dbServer?: string; dbName?: string }
   ) {
     return DovizFisSqlRepository.findAll(filter, dbContext);

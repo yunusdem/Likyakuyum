@@ -1,6 +1,6 @@
 import { ApiError } from "../../utils/ApiError.js";
 import { kullaniciYetkisi } from "./kullaniciYetkisi.js";
-import { RAPOR_YETKI_KUTULARI, YETKI_KUTUSU_ADI, menuMaddesiAcik } from "./kullaniciYetkiKural.js";
+import { RAPOR_YETKI_KUTULARI, YETKI_KUTUSU_ADI, anaMenuAcik, menuMaddesiAcik } from "./kullaniciYetkiKural.js";
 /** Rapor kodu → raporun menüdeki maddeleri (menüde olmayan kod kısıtlanmaz) */
 export const RAPOR_MADDELERI = {
     VEZHAR1: [["vezne", "I"]],
@@ -16,8 +16,8 @@ export const RAPOR_MADDELERI = {
     HESBAK1: [["kasa", "H"]],
     CAREKS1: [["cari", "J"]],
     CARBAK1: [["cari", "K"]],
-    POSEKS1: [["cari", "L"]],
-    VADISL1: [["cari", "N"]],
+    // Cari menüsü: L- Vadeli İşlem Listesi (POS Ekstresi menüden kalktı; menüde olmayan kod kısıtlanmaz) — Y12
+    VADISL1: [["cari", "L"]],
     CARHAR1: [["cari", "G"]],
     CARKRT1: [["cari", "H"]],
     FIRSON1: [["yonetici", "J"]],
@@ -33,13 +33,14 @@ export const RAPOR_MADDELERI = {
     PERDEG1: [["raporlar", "G"]],
     VERNUM1: [["raporlar", "H"]],
     VERKOM1: [["raporlar", "I"]],
-    KNSKLOG1: [["raporlar", "J"]],
-    MSKMES1: [["raporlar", "J"]],
-    MSKSEK1: [["raporlar", "J"]],
-    MSKSUP1: [["raporlar", "J"]],
-    MSKKON1: [["raporlar", "J"]],
-    MSKYAS1: [["raporlar", "J"]],
-    MSKYUK1: [["raporlar", "J"]],
+    // MASAK grubu Raporlar menüsünde K (önüne rapor eklendi; menüyle aynı olmalı) — Y12
+    KNSKLOG1: [["raporlar", "K"]],
+    MSKMES1: [["raporlar", "K"]],
+    MSKSEK1: [["raporlar", "K"]],
+    MSKSUP1: [["raporlar", "K"]],
+    MSKKON1: [["raporlar", "K"]],
+    MSKYAS1: [["raporlar", "K"]],
+    MSKYUK1: [["raporlar", "K"]],
     BALURE1: [["etiket", null]],
     BALSAT1: [["etiket", null]],
     BALSTK1: [["etiket", null]],
@@ -103,3 +104,17 @@ export async function kayitDuzeltmeYetkisi(req, tur) {
 }
 /** İstekte pozitif bir kimlik var mı (gövde alanı ya da :id) */
 export const kimlikVar = (...alanlar) => (req) => Number(req.params?.id) > 0 || alanlar.some((a) => Number((req.body || {})[a]) > 0);
+/**
+ * Okuma uçları için menü kapısı (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y8): ana ekran panellerinin verisi. Ekranla aynı
+ * kural: Vezne İzleme (Vezne Ö → M) ve e-Banka Hesaplar (Banka ana menüsü). maddeler: herhangi biri açıksa geçer.
+ */
+export const OKUMA_MADDELERI = {
+    vezneIzleme: [["vezne", "Ö"]],
+    ebankaOzet: [["banka", null]],
+};
+export const okumaAcik = (y, tur) => y.yonetici || OKUMA_MADDELERI[tur].some(([a, h]) => (h ? menuMaddesiAcik(y, a, h) : anaMenuAcik(y, a)));
+export const okumaYetkisi = (tur) => (req, _res, next) => {
+    kullaniciYetkisi(req)
+        .then((y) => next(okumaAcik(y, tur) ? undefined : ApiError.forbidden("Bu bilgiyi görme yetkiniz yok.")))
+        .catch(next);
+};

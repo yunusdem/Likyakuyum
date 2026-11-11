@@ -30,9 +30,46 @@ export interface VezneIzlemeDataResponse {
   rows: VezneIzlemeRow[];
 }
 
+export interface VezneSonIslemItem {
+  id: string;
+  belgeTipi: number;
+  belgeTipiAdi: string;
+  belgeId: number;
+  satirNo: number;
+  ayak: number;
+  vezneId: number;
+  vezneKod: string;
+  vezneAd: string;
+  tarih: string;
+  saat: string;
+  paraId: number;
+  paraKod: string;
+  paraAdi: string;
+  giris: number;
+  cikis: number;
+  miktar: number;
+  yon: "GIRIS" | "CIKIS";
+  kur: number;
+  tutar: number;
+  belgeNo: string;
+  unvan: string;
+  aciklama: string;
+  fisTip: number | null;
+}
+
 export class VezneIzlemeService {
   public static async getIzlemeData(): Promise<VezneIzlemeDataResponse> {
     const res = await apiClient.request<VezneIzlemeDataResponse>("/vezne/izleme", {
+      method: "GET",
+    });
+    return res.data;
+  }
+
+  public static async getSonIslemler(limit = 100, vezneId?: number): Promise<VezneSonIslemItem[]> {
+    const query = new URLSearchParams();
+    if (limit) query.set("limit", String(limit));
+    if (vezneId) query.set("vezneId", String(vezneId));
+    const res = await apiClient.request<VezneSonIslemItem[]>(`/vezne/izleme/son-islemler?${query.toString()}`, {
       method: "GET",
     });
     return res.data;

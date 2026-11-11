@@ -90,9 +90,14 @@ export interface DovizFisModel {
   kimlikKaynagi?: string;
   kimlikGecerlilikTarihi?: string | null;
   kimlikBelgeTuru?: number;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   toplamTutar: number;
   yuvarlama: number;
   odemeTutari: number;
+  bankaAciklama?: string | null;
   bsmvTutar: number;
   iptal: boolean;
   /** GİB'e gönderilmiş fiş: silinemez */
@@ -162,6 +167,7 @@ export interface SaveDovizFisPayload {
   toplamTutar?: number;
   yuvarlama?: number;
   odemeTutari?: number;
+  bankaAciklama?: string | null;
   bankaHesabiId?: number | null;
   kmvUygulamaSekli?: number;
   eposta?: string;
@@ -187,6 +193,11 @@ export interface SaveDovizFisPayload {
   yetkiliKisi?: string;
   yetkiliKisiId?: number | null;
   kimlikKaynagi?: string;
+  kimlikBelgeTuru?: number;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   masakListesindeVar?: boolean;
   kullaniciId?: number;
   arbitrajSatirlar?: any[];

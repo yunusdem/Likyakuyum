@@ -5,6 +5,8 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { kopyaKaydet, zamanDamgasi } from "../services/firmaKlasoru.js";
 import { oturumModulleri } from "../middlewares/modul.middleware.js";
+import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
+import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 const tarih = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-AA-GG olmalı").optional();
 const saat = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Saat SS:DD olmalı").transform(s => (s.length === 5 ? s + ":00" : s)).optional();
 const idOpt = z.preprocess(v => (v === "" || v === undefined || v === null ? undefined : v), z.coerce.number().int().positive().optional());
@@ -60,7 +62,28 @@ export class RaporController {
             if (typeof v === "string" && v.trim() !== "")
                 ek[ad] = v.trim().slice(0, 100);
         }
-        return { ...p, ek, acikModuller: await oturumModulleri(req) };
+        const kod = RaporController.kod(req);
+        const result = { ...p, ek, acikModuller: await oturumModulleri(req) };
+        // Kullanıcının kendi kayıtları / vezne yetkisi:
+        // Sınırsız yetkili (sistem yöneticisi) olmayan kullanıcılar vezne raporlarında yalnız kendi veznesini görebilir
+        const yetkiler = await kullaniciYetkisi(req);
+        if (!yetkiler.yonetici || yetkiler.kendiKayitlari) {
+            const u = req.user;
+            const userId = u?.userId || u?.id || 1;
+            const dbContext = RaporController.getDbContext(req);
+            const userVezneId = await fisVeznesi(userId, dbContext);
+            result.kendiKayitlari = true;
+            result.userId = userId;
+            result.userVezneId = userVezneId;
+            if (["VEZHAR1", "VEZHAS1", "VEZALT1", "VEZBAK1"].includes(kod)) {
+                result.vezneId = userVezneId ? Number(userVezneId) : -999999;
+                delete result.vezneBaslangic;
+                delete result.vezneBitis;
+                delete result.vezneIdler;
+                delete result.vezneSonId;
+            }
+        }
+        return result;
     }
     static parametreleriDogrula(req) {
         const p = parametreSema.safeParse(req.query);

@@ -6,7 +6,6 @@ import {
   IconX,
   IconBinoculars,
   IconPlus,
-  IconTrash,
   IconDeviceFloppy,
   IconSearch,
   IconScale,
@@ -20,6 +19,7 @@ import { StatisticItem, StatisticService } from "../../services/statisticService
 import { TodvzTanimDto } from "../../services/companyService";
 import { DovizFisService, DovizFisListItem } from "../../services/dovizFisService";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import { KimlikDegistirmeNedeniBelgeSection } from "../../components/cari/KimlikDegistirmeNedeniBelgeSection";
 
 export interface ArbitrajCurrencyItem {
   id: number;
@@ -46,6 +46,11 @@ export interface ArbitrajDetayModel {
   dogumYeri?: string;
   kimlikKaynagi?: string;
   kimlikSeriNo?: string;
+  kimlikBelgeTuru?: number;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   babaAdi?: string;
   anneAdi?: string;
   vergiDairesi?: string;
@@ -207,6 +212,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const [detayGecerlilikTarihi, setDetayGecerlilikTarihi] = useState<string>(initialDetay?.gecerlilikTarihi || "");
   const [detayDogumTarihi, setDetayDogumTarihi] = useState<string>(initialDetay?.dogumTarihi || "");
   const [detayDogumYeri, setDetayDogumYeri] = useState<string>(initialDetay?.dogumYeri || "");
+  const [detayKimlikBelgeTuru, setDetayKimlikBelgeTuru] = useState<number>((initialDetay as any)?.kimlikBelgeTuru ?? 0);
+  const [detayKimlikDegistirmeNedeni, setDetayKimlikDegistirmeNedeni] = useState<string>((initialDetay as any)?.kimlikDegistirmeNedeni ?? "");
+  const [detayKimlikBelgeData, setDetayKimlikBelgeData] = useState<string | null>((initialDetay as any)?.kimlikBelgeData ?? null);
+  const [detayKimlikBelgeMime, setDetayKimlikBelgeMime] = useState<string | null>((initialDetay as any)?.kimlikBelgeMime ?? null);
+  const [detayKimlikBelgeDosyaAdi, setDetayKimlikBelgeDosyaAdi] = useState<string | null>((initialDetay as any)?.kimlikBelgeDosyaAdi ?? null);
   const [detayKimlikKaynagi, setDetayKimlikKaynagi] = useState<string>(initialDetay?.kimlikKaynagi || "");
   const [detayKimlikSeriNo, setDetayKimlikSeriNo] = useState<string>(initialDetay?.kimlikSeriNo || "");
   const [detayBabaAdi, setDetayBabaAdi] = useState<string>(initialDetay?.babaAdi || "");
@@ -409,10 +419,10 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     tryFocus();
   }, []);
 
-  // Yeni boş satır ekle
+  // Arbitrajda tek satır olur, 2. satır eklenemez
   const handleAddBlankLine = useCallback(() => {
-    setLines((prev) => [...prev, createBlankLine(prev.length + 1)]);
-  }, [createBlankLine]);
+    return;
+  }, []);
 
   // Sync / Load lists
   useEffect(() => {
@@ -710,7 +720,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
             ettn: l.ettn || "",
           };
         });
-        setLines(sourceLines.length > 0 ? sourceLines : [createBlankLine(1)]);
+        setLines(sourceLines.length > 0 ? [sourceLines[0]] : [createBlankLine(1)]);
         if (savedArbitraj.islemYonu) {
           setIslemYonu(savedArbitraj.islemYonu);
           const rawGn = String((savedArbitraj as any).gelisNedeni || initialGelisNedeni || "").trim();
@@ -878,7 +888,19 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         if (l.id !== lineId) return l;
 
         if (field === "kod") {
-          const found = currencyList.find((c) => c.kod.toUpperCase() === value.trim().toUpperCase());
+          const upperVal = value.trim().toUpperCase();
+          if (upperVal === "TL" || upperVal === "TRY") {
+            setSaveMessage({ type: "danger", text: "Arbitraj işleminde TL seçilemez. Lütfen geçerli bir döviz veya maden seçiniz." });
+            return {
+              ...l,
+              kod: "",
+              ad: "",
+              miktar: "",
+              kur: "",
+              tutar: "",
+            };
+          }
+          const found = currencyList.find((c) => c.kod.toUpperCase() === upperVal);
           if (found) {
             const rate = getRateForItem(found, islemYonu, kurTuru);
             const targetTl = Number(hedefTlTutar) > 0 ? Number(hedefTlTutar) : parseNum(l.tutar);
@@ -969,6 +991,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
   // Select currency from lookup for a line
   const handleSelectCurrencyForLine = (lineId: string, item: ArbitrajCurrencyItem) => {
+    const itemKod = (item.kod || "").toUpperCase().trim();
+    if (itemKod === "TL" || itemKod === "TRY") {
+      setSaveMessage({ type: "danger", text: "Arbitraj işleminde TL seçilemez. Lütfen geçerli bir döviz veya maden seçiniz." });
+      return;
+    }
     const rate = getRateForItem(item, islemYonu, kurTuru);
     const targetTl = Number(hedefTlTutar) > 0 ? Number(hedefTlTutar) : 0;
     const stat = activeStat;
@@ -1076,15 +1103,9 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     setLookupType("currency");
   };
 
-  // Remove line
-  const handleRemoveLine = (lineId: string) => {
-    setLines((prev) => {
-      const filtered = prev.filter((l) => l.id !== lineId);
-      if (filtered.length === 0) {
-        return [createBlankLine(1)];
-      }
-      return filtered.map((l, idx) => ({ ...l, satirNo: idx + 1 }));
-    });
+  // Remove line - Arbitrajda tek satır olur, silindiğinde satır içeriği sıfırlanır
+  const handleRemoveLine = (_lineId: string) => {
+    setLines([createBlankLine(1)]);
   };
 
   // Calculations for summary boxes:
@@ -1237,6 +1258,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     }
 
     const firstLine = validLines[0];
+    const upperFirstKod = (firstLine.kod || "").trim().toUpperCase();
+    if (upperFirstKod === "TL" || upperFirstKod === "TRY") {
+      setSaveMessage({ type: "danger", text: "Arbitraj işleminde TL seçilemez. Lütfen geçerli bir döviz veya maden seçiniz." });
+      return;
+    }
     const selectedItem = currencyList.find((c) => c.kod.toUpperCase() === firstLine.kod.toUpperCase()) || {
       id: firstLine.paraId,
       kod: firstLine.kod,
@@ -1279,6 +1305,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         gecerlilikTarihi: detayGecerlilikTarihi,
         dogumTarihi: detayDogumTarihi,
         dogumYeri: detayDogumYeri,
+        kimlikBelgeTuru: detayKimlikBelgeTuru,
+        kimlikDegistirmeNedeni: detayKimlikDegistirmeNedeni,
+        kimlikBelgeData: detayKimlikBelgeData,
+        kimlikBelgeMime: detayKimlikBelgeMime,
+        kimlikBelgeDosyaAdi: detayKimlikBelgeDosyaAdi,
         kimlikKaynagi: detayKimlikKaynagi,
         kimlikSeriNo: detayKimlikSeriNo,
         babaAdi: detayBabaAdi,
@@ -1342,6 +1373,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
     }
 
     const firstLine = validLines[0];
+    const upperFirstKod = (firstLine.kod || "").trim().toUpperCase();
+    if (upperFirstKod === "TL" || upperFirstKod === "TRY") {
+      setSaveMessage({ type: "danger", text: "Arbitraj işleminde TL seçilemez. Lütfen geçerli bir döviz veya maden seçiniz." });
+      return;
+    }
     const selectedItem = currencyList.find((c) => c.kod.toUpperCase() === firstLine.kod.toUpperCase()) || {
       id: firstLine.paraId,
       kod: firstLine.kod,
@@ -1384,6 +1420,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         gecerlilikTarihi: detayGecerlilikTarihi,
         dogumTarihi: detayDogumTarihi,
         dogumYeri: detayDogumYeri,
+        kimlikBelgeTuru: detayKimlikBelgeTuru,
+        kimlikDegistirmeNedeni: detayKimlikDegistirmeNedeni,
+        kimlikBelgeData: detayKimlikBelgeData,
+        kimlikBelgeMime: detayKimlikBelgeMime,
+        kimlikBelgeDosyaAdi: detayKimlikBelgeDosyaAdi,
         kimlikKaynagi: detayKimlikKaynagi,
         kimlikSeriNo: detayKimlikSeriNo,
         babaAdi: detayBabaAdi,
@@ -1470,18 +1511,35 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
   const currencyColumns: LookupColumn<ArbitrajCurrencyItem>[] = useMemo(() => [
     {
       header: "Kod",
-      width: "90px",
-      render: (p) => <span className="font-monospace fw-bold text-primary">{p.kod}</span>,
+      width: "110px",
+      render: (p) => {
+        const isTl = (p.kod || "").toUpperCase().trim() === "TL" || (p.kod || "").toUpperCase().trim() === "TRY";
+        return (
+          <span className={`font-monospace fw-bold d-inline-flex align-items-center ${isTl ? "text-muted text-decoration-line-through" : "text-primary"}`}>
+            {p.kod}
+            {isTl && <Badge bg="secondary" className="ms-1.5 px-1.5 py-0.5 fw-normal" style={{ fontSize: "10px" }}>Pasif</Badge>}
+          </span>
+        );
+      },
     },
     {
       header: "Para / Döviz Adı",
-      render: (p) => <span className="fw-medium">{p.ad}</span>,
+      render: (p) => {
+        const isTl = (p.kod || "").toUpperCase().trim() === "TL" || (p.kod || "").toUpperCase().trim() === "TRY";
+        return (
+          <span className={isTl ? "text-muted" : "fw-medium"}>
+            {p.ad} {isTl ? <span className="text-secondary small fst-italic ms-1">(Arbitrajda seçilemez)</span> : null}
+          </span>
+        );
+      },
     },
     {
       header: islemYonu === "satis" ? "Satış Kuru" : "Alış Kuru",
       align: "right",
       width: "120px",
       render: (p) => {
+        const isTl = (p.kod || "").toUpperCase().trim() === "TL" || (p.kod || "").toUpperCase().trim() === "TRY";
+        if (isTl) return <span className="text-muted">-</span>;
         const rate = islemYonu === "satis"
           ? Number(p.efektifSatis || p.dovizSatis || 0)
           : Number(p.efektifAlis || p.dovizAlis || 0);
@@ -2055,10 +2113,10 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
             >
               <div className="d-flex align-items-center gap-2">
                 <span className="fw-bold small" style={{ color: activeFisThemeText }}>
-                  {isSatis ? "Satılan Kalemler (Çıkış Bacağı)" : "Alınan Kalemler (Giriş Bacağı)"}
+                  {isSatis ? "Satılan Kalem (Çıkış Bacağı)" : "Alınan Kalem (Giriş Bacağı)"}
                 </span>
                 <Badge bg={isSatis ? "danger" : "success"} className="px-2 py-0.5">
-                  {lines.length} Satır
+                  Tek Satır
                 </Badge>
               </div>
             </Card.Header>
@@ -2078,13 +2136,12 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                     <th style={{ width: "90px" }}>BMV</th>
                     <th style={{ width: "65px" }}>KMV %</th>
                     <th style={{ width: "90px" }}>KMV</th>
-                    <th style={{ width: "40px" }}>İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lines.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="text-center py-3 text-muted">
+                      <td colSpan={12} className="text-center py-3 text-muted">
                         Arbitraj tablosu boştur.
                       </td>
                     </tr>
@@ -2109,12 +2166,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
                                   e.preventDefault();
-                                  if (idx >= lines.length - 1) {
-                                    handleAddBlankLine();
-                                    focusArbCell(idx + 1, "kod");
-                                  } else {
-                                    focusArbCell(idx + 1, "kod");
-                                  }
+                                  focusArbCell(idx, "miktar");
                                   return;
                                 }
                                 if (e.key === "Enter") {
@@ -2124,8 +2176,15 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                                     focusArbCell(idx, "miktar");
                                     return;
                                   }
+                                  if (typed === "TL" || typed === "TRY") {
+                                    setSaveMessage({ type: "danger", text: "Arbitraj işleminde TL seçilemez. Lütfen geçerli bir döviz veya maden seçiniz." });
+                                    return;
+                                  }
                                   const matched = currencyList.filter(
-                                    (c) => (c.kod || "").toUpperCase().includes(typed)
+                                    (c) => {
+                                      const cKod = (c.kod || "").toUpperCase();
+                                      return cKod !== "TL" && cKod !== "TRY" && cKod.includes(typed);
+                                    }
                                   );
                                   if (matched.length === 1) {
                                     handleSelectCurrencyForLine(l.id, matched[0]);
@@ -2185,12 +2244,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
                                 e.preventDefault();
-                                if (idx >= lines.length - 1) {
-                                  handleAddBlankLine();
-                                  focusArbCell(idx + 1, "kod");
-                                } else {
-                                  focusArbCell(idx + 1, "kod");
-                                }
+                                focusArbCell(idx, "kur");
                                 return;
                               }
                               if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
@@ -2226,12 +2280,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
                                 e.preventDefault();
-                                if (idx >= lines.length - 1) {
-                                  handleAddBlankLine();
-                                  focusArbCell(idx + 1, "kod");
-                                } else {
-                                  focusArbCell(idx + 1, "kod");
-                                }
+                                focusArbCell(idx, "kur");
                                 return;
                               }
                               if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
@@ -2267,12 +2316,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
                                 e.preventDefault();
-                                if (idx >= lines.length - 1) {
-                                  handleAddBlankLine();
-                                  focusArbCell(idx + 1, "kod");
-                                } else {
-                                  focusArbCell(idx + 1, "kod");
-                                }
+                                focusArbCell(idx, "kur");
                                 return;
                               }
                               if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
@@ -2390,12 +2434,8 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
                                 e.preventDefault();
-                                if (idx >= lines.length - 1) {
-                                  handleAddBlankLine();
-                                  focusArbCell(idx + 1, "kod");
-                                } else {
-                                  focusArbCell(idx + 1, "kod");
-                                }
+                                // Arbitrajda tek satır olur, 2. satır eklenmez
+                                return;
                               } else if (e.key === "ArrowLeft") {
                                 const el = e.currentTarget;
                                 if (el.selectionStart === 0 && el.selectionEnd === 0) {
@@ -2415,17 +2455,6 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                             style={{ fontSize: "12px", height: "26px" }}
                             value={l.kmv || ""}
                           />
-                        </td>
-                        <td className="text-center">
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            className="p-0.5 border-0"
-                            onClick={() => handleRemoveLine(l.id)}
-                            title="Satırı Sil"
-                          >
-                            <IconTrash size={14} />
-                          </Button>
                         </td>
                       </tr>
                     ))
@@ -2650,6 +2679,22 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           <Row className="g-3">
             {/* Sol Sütun */}
             <Col md={6}>
+              <div className="d-flex align-items-center mb-2">
+                <span className="text-secondary small text-nowrap" style={{ width: "115px" }}>
+                  Belge türü
+                </span>
+                <Form.Select
+                  size="sm"
+                  value={detayKimlikBelgeTuru}
+                  onChange={(e) => setDetayKimlikBelgeTuru(Number(e.target.value))}
+                >
+                  <option value={0}>T.C. Kimlik</option>
+                  <option value={1}>Pasaport</option>
+                  <option value={2}>Ehliyet</option>
+                  <option value={3}>Vergi Levhası</option>
+                </Form.Select>
+              </div>
+
               <div className="d-flex align-items-center mb-2">
                 <span className="text-secondary small text-nowrap" style={{ width: "115px" }}>
                   Cari tipi
@@ -2949,6 +2994,24 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
               )}
             </Row>
           </div>
+
+          {/* Kimlik Değiştirme Nedeni ve Doğrudan SQL'de Saklanan Belge / Fotoğraf (En altta ve sayfa düzenini bozmayacak tam genişlikte) */}
+          <div className="border-top pt-2 mt-2 w-100">
+            <KimlikDegistirmeNedeniBelgeSection
+              neden={detayKimlikDegistirmeNedeni}
+              onNedenChange={(val) => setDetayKimlikDegistirmeNedeni(val)}
+              belgeData={detayKimlikBelgeData}
+              belgeMime={detayKimlikBelgeMime}
+              belgeDosyaAdi={detayKimlikBelgeDosyaAdi}
+              onBelgeChange={(p) => {
+                setDetayKimlikBelgeData(p.belgeData);
+                setDetayKimlikBelgeMime(p.belgeMime);
+                setDetayKimlikBelgeDosyaAdi(p.belgeDosyaAdi);
+              }}
+              layout="horizontal"
+              labelWidth="115px"
+            />
+          </div>
         </Modal.Body>
         <Modal.Footer className="py-2 px-3 bg-light border-top d-flex justify-content-between">
           <Button variant="secondary" size="sm" onClick={() => setShowDetayModal(false)}>
@@ -2982,6 +3045,14 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
         items={currencyList}
         columns={currencyColumns}
         initialSearchTerm={lookupSearchTerm}
+        isItemDisabled={(item) => {
+          const kod = (item.kod || "").toUpperCase().trim();
+          return kod === "TL" || kod === "TRY";
+        }}
+        getRowClassName={(item) => {
+          const kod = (item.kod || "").toUpperCase().trim();
+          return (kod === "TL" || kod === "TRY") ? "lookup-danger-row text-muted opacity-50" : "";
+        }}
         filterFn={(item, term) => {
           const t = term.toLowerCase().trim();
           if (!t) return true;
@@ -2991,6 +3062,11 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
           );
         }}
         onSelect={(item) => {
+          const kod = (item.kod || "").toUpperCase().trim();
+          if (kod === "TL" || kod === "TRY") {
+            setSaveMessage({ type: "danger", text: "Arbitraj işleminde TL seçilemez. Lütfen geçerli bir döviz veya maden seçiniz." });
+            return;
+          }
           const lineId = activeLookupLineId;
           let rIdx = activeLookupLineIndexRef.current;
           if (rIdx === null || rIdx === undefined) {

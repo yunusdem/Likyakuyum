@@ -2,6 +2,7 @@ import {
   VezneIzlemeSqlRepository,
   VezneIzlemeSettings,
   VezneIzlemeDataResponse,
+  VezneSonIslemItem,
 } from "../models/vezneIzlemeSql.repository.js";
 
 export class VezneIzlemeService {
@@ -10,6 +11,14 @@ export class VezneIzlemeService {
     dbName?: string;
   }): Promise<VezneIzlemeDataResponse> {
     return await VezneIzlemeSqlRepository.getIzlemeData(dbContext);
+  }
+
+  public static async getSonIslemler(
+    dbContext?: { dbServer?: string; dbName?: string },
+    limit = 100,
+    vezneId?: number
+  ): Promise<VezneSonIslemItem[]> {
+    return await VezneIzlemeSqlRepository.getSonIslemler(dbContext, limit, vezneId);
   }
 
   public static async saveSettings(

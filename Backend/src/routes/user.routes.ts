@@ -31,6 +31,9 @@ router.post(
 // Cashiers definition list
 router.get("/cashiers", UserController.getCashiers);
 
+// Şifre doğrulama (Kullanıcı Tanımları güncelleme kontrolü)
+router.post("/verify-password", UserController.verifyPassword);
+
 // Direct Appearance Update for Authenticated User
 router.put("/appearance", UserController.updateMyAppearance);
 router.patch("/appearance", UserController.updateMyAppearance);

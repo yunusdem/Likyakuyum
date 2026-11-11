@@ -104,6 +104,8 @@ export class DovizFisSqlRepository {
             ALTER TABLE [dbo].[TODVZ_FIS] ADD [IS_ARBITRAJ] BIT NOT NULL CONSTRAINT DF_TODVZ_FIS_IS_ARBITRAJ DEFAULT(0);
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'ARBITRAJ_ID')
             ALTER TABLE [dbo].[TODVZ_FIS] ADD [ARBITRAJ_ID] INT NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'BANKA_ACIKLAMA')
+            ALTER TABLE [dbo].[TODVZ_FIS] ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
         END
       `);
             // 2. Table: TODVZ_FIS_SATIRI
@@ -1402,6 +1404,7 @@ export class DovizFisSqlRepository {
             procReq.input("IS_ARBITRAJ", sql.Bit, dto.isArbitraj || (dto.gelisNedeni && dto.gelisNedeni.toLowerCase().includes("arbitraj")) ? 1 : 0);
             procReq.input("TELEFON_NO", sql.VarChar(30), cleanTel);
             procReq.input("MESLEK_ID", sql.Int, toValidId(dto.meslekId));
+            procReq.input("CLEAN_BANKA_ACIKLAMA", sql.VarChar(250), dto.bankaAciklama ? dto.bankaAciklama.trim().slice(0, 250) : null);
             procReq.input("DOGUM_TARIHI", sql.DateTime, safeDate(dto.dogumTarihi));
             procReq.input("DOGUM_YERI", sql.VarChar(100), cleanDogumYeri);
             procReq.input("KIMLIK_SERI_NO", sql.VarChar(30), cleanKimlikSeriNo);
@@ -1431,6 +1434,20 @@ export class DovizFisSqlRepository {
             procReq.input("IN_GUID", sql.UniqueIdentifier, guid);
             procReq.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, dto.degisiklikTakipVar ? 1 : 0);
             procReq.input("ROW_COUNT", sql.Int, items.length > 0 ? items.length : 1);
+            let belgeBuffer = null;
+            if (dto.kimlikBelgeData) {
+                const m = dto.kimlikBelgeData.match(/^data:([^;]+);base64,(.+)$/);
+                if (m) {
+                    belgeBuffer = Buffer.from(m[2], "base64");
+                }
+                else {
+                    belgeBuffer = Buffer.from(dto.kimlikBelgeData, "base64");
+                }
+            }
+            procReq.input("KIMLIK_DEGISTIRME_NEDENI", sql.NVarChar(100), dto.kimlikDegistirmeNedeni || null);
+            procReq.input("KIMLIK_BELGE_DATA", sql.VarBinary(sql.MAX), belgeBuffer);
+            procReq.input("KIMLIK_BELGE_MIME", sql.VarChar(100), dto.kimlikBelgeMime || null);
+            procReq.input("KIMLIK_BELGE_DOSYA_ADI", sql.NVarChar(255), dto.kimlikBelgeDosyaAdi || null);
             // Row Parameter definitions
             const rowValuesSql = [];
             items.forEach((item, idx) => {
@@ -2168,6 +2185,7 @@ export class DovizFisSqlRepository {
             POSTA_KODU = COALESCE(@CLEAN_POSTA_KODU, POSTA_KODU),
             ILCE = COALESCE(@CLEAN_ILCE, ILCE),
             IL = COALESCE(@CLEAN_IL, IL),
+            BANKA_ACIKLAMA = COALESCE(@CLEAN_BANKA_ACIKLAMA, BANKA_ACIKLAMA),
             GM_BEYANNAME_NO = @GM_BEYANNAME_NO,
             GM_BEYANNAME_TARIH = @GM_BEYANNAME_TARIH,
             GM_DOVIZ_SAYI = @GM_DOVIZ_SAYI,
@@ -2178,6 +2196,10 @@ export class DovizFisSqlRepository {
             TIP = @TIP,
             ARBITRAJ_ID = COALESCE(@EFF_ARBITRAJ_ID, ARBITRAJ_ID),
             IS_ARBITRAJ = CASE WHEN @IS_ARBITRAJ = 1 OR @USER_RAW_GELIS_NEDENI LIKE '%Arbitraj%' THEN 1 ELSE IS_ARBITRAJ END,
+            KIMLIK_DEGISTIRME_NEDENI = @KIMLIK_DEGISTIRME_NEDENI,
+            KIMLIK_BELGE_DATA = @KIMLIK_BELGE_DATA,
+            KIMLIK_BELGE_MIME = @KIMLIK_BELGE_MIME,
+            KIMLIK_BELGE_DOSYA_ADI = @KIMLIK_BELGE_DOSYA_ADI,
             GUNCELLEME_ZAMANI = GETDATE()
           WHERE FIS_ID = @P_FIS_ID;
 
@@ -2679,14 +2701,24 @@ export class DovizFisSqlRepository {
             kimlikKaynagi: row.KIMLIK_KAYNAGI || "",
             kimlikGecerlilikTarihi: formatDbDate(row.KIMLIK_GECERLILIK_TARIHI),
             kimlikBelgeTuru: row.KIMLIK_BELGE_TURU ?? 0,
+            kimlikDegistirmeNedeni: row.KIMLIK_DEGISTIRME_NEDENI || null,
+            kimlikBelgeData: row.KIMLIK_BELGE_DATA
+                ? `data:${row.KIMLIK_BELGE_MIME || "application/octet-stream"};base64,${Buffer.isBuffer(row.KIMLIK_BELGE_DATA)
+                    ? row.KIMLIK_BELGE_DATA.toString("base64")
+                    : Buffer.from(row.KIMLIK_BELGE_DATA).toString("base64")}`
+                : null,
+            kimlikBelgeMime: row.KIMLIK_BELGE_MIME || null,
+            kimlikBelgeDosyaAdi: row.KIMLIK_BELGE_DOSYA_ADI || null,
             toplamTutar: Number(row.TOPLAM_TUTAR) || 0,
             yuvarlama: Number(row.YUVARLAMA) || 0,
             odemeTutari: Number(row.ODEME_TUTARI) || 0,
+            bankaAciklama: row.BANKA_ACIKLAMA ? String(row.BANKA_ACIKLAMA).trim() : null,
             bsmvTutar: bsmvSum,
             iptal: Boolean(row.IPTAL),
             gibeGonderildi: await DovizFisSqlRepository.gibeGonderildiMi(pool, id),
             iptalTarihi: row.IPTAL_TARIHI ? new Date(row.IPTAL_TARIHI).toISOString() : null,
-            ekleyenId: Number(row.EKLEYEN_ID) || 1,
+            kullaniciId: Number(row.KULLANICI_ID || row.EKLEYEN_ID || 0),
+            ekleyenId: Number(row.EKLEYEN_ID || row.KULLANICI_ID || 1),
             eklemeZamani: row.EKLEME_ZAMANI ? new Date(row.EKLEME_ZAMANI).toISOString() : "",
             guncelleyenId: Number(row.GUNCELLEYEN_ID) || 1,
             guncellemeZamani: row.GUNCELLEME_ZAMANI ? new Date(row.GUNCELLEME_ZAMANI).toISOString() : "",
@@ -2720,6 +2752,8 @@ export class DovizFisSqlRepository {
         F.ARBITRAJ_ID AS arbitrajId,
         CASE WHEN F.IS_ARBITRAJ = 1 OR F.GELIS_NEDENI LIKE '%Arbitraj%' OR (F.ARBITRAJ_ID IS NOT NULL AND F.ARBITRAJ_ID > 0) OR EXISTS (SELECT 1 FROM [dbo].[TODVZ_FIS_ARBITRAJ] A WHERE A.FIS_ID = F.FIS_ID) THEN 1 ELSE 0 END AS isArbitraj,
         F.GELIS_NEDENI AS gelisNedeni,
+        ISNULL(F.EKLEYEN_ID, 0) AS kullaniciId,
+        ISNULL(F.EKLEYEN_ID, 0) AS ekleyenId,
         (SELECT COUNT(*) FROM [dbo].[TODVZ_FIS_SATIRI] S WHERE S.FIS_ID = F.FIS_ID) AS satirSayisi,
         COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) AS siralama
       FROM [dbo].[TODVZ_FIS] F
@@ -2749,6 +2783,11 @@ export class DovizFisSqlRepository {
         if (filter?.baslangic) {
             query += ` AND F.TARIH >= CAST(@BAS AS date)`;
             req.input("BAS", sql.VarChar(10), filter.baslangic);
+        }
+        if (filter?.onlyOwnRecords && filter?.userId) {
+            query += ` AND (F.EKLEYEN_ID = @userId OR (@userVezneId > 0 AND F.VEZNE_ID = @userVezneId))`;
+            req.input("userId", sql.Int, filter.userId);
+            req.input("userVezneId", sql.Int, filter.userVezneId || 0);
         }
         // En yeni N fiş, ekrandaki ileri/geri sırası için eskiden yeniye (önceden TOP + ASC en ESKİ N fişi getiriyordu;
         // çok fişli firmada son fişler düzeltme listesinde görünmüyordu)

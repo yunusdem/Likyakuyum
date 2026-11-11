@@ -43,6 +43,7 @@ import { IskontoDefinitionsPage } from "../settings/IskontoDefinitionsPage";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { NumeratorService, NumeratorItem } from "../../services/numeratorService";
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
+import { BankaTlHesabiModal, BankaTlHesabiApplyPayload } from "./BankaTlHesabiModal";
 import SarrafFisiPrintModal from "./SarrafFisiPrintModal";
 import { DovizTeklifTaniModal } from "./DovizTeklifTaniModal";
 import { PrinterService, YaziciItem } from "../../services/printerService";
@@ -58,6 +59,7 @@ import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
 import { FastLookupCache } from "../../services/fastLookupCache";
 import { isCtrlNEvent, isCtrlKEvent } from "../../utils/keyboardShortcuts";
 import { apiClient } from "../../services/apiClient";
+import { KimlikDegistirmeNedeniBelgeSection } from "../../components/cari/KimlikDegistirmeNedeniBelgeSection";
 import { ParaItem } from "./DovizFisiPage";
 import KuyumKodDurbun from "../../components/common/KuyumKodDurbun";
 import { ALTIN_KODU, kuyumKoduBul } from "../../../Backend/src/services/kuyumKodlari";
@@ -353,7 +355,7 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
   const isKurFixed = isTL || isKart || isIskonto;
   const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
   const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi });
-  const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
+  const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (dovizZiynetGirisSekli === 0 && Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
   const isZiynet = (effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi })) && !hasMilyemOrHas;
   const isPara = isDoviz || isTL || isIskonto || isKart;
   const isParaOrZiynet = isPara || isZiynet;
@@ -533,7 +535,7 @@ const sabitTutariKoru = (r: GridRow, kur: number | string, hesaplanan: number | 
 const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false, dovizZiynetGirisSekli: number = 0): GridRow => {
   const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
   const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.urunKodu, ad: r.urunAdi });
-  const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
+  const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (dovizZiynetGirisSekli === 0 && Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
   const isZiynet = (effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi })) && !hasMilyemOrHas;
   const isParaOrZiynet = isDoviz || isZiynet;
 
@@ -994,6 +996,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const isDuzeltmeMode = Boolean(isDuzeltme || location.pathname.includes("duzeltme"));
 
   const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning" | "info"; message: string } | null>(null);
+  const [isRecordLockedByUser, setIsRecordLockedByUser] = useState<boolean>(false);
   const notifTimerRef = useRef<any>(null);
   const showNotif = useCallback((type: "success" | "danger" | "warning" | "info", msg: string) => {
     if (notifTimerRef.current) {
@@ -1321,6 +1324,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [detayKimlikSeriNo, setDetayKimlikSeriNo] = useState("");
   const [detayPasaportNo, setDetayPasaportNo] = useState("");
   const [detayKimlikBelgeTuru, setDetayKimlikBelgeTuru] = useState(0);
+  const [detayKimlikDegistirmeNedeni, setDetayKimlikDegistirmeNedeni] = useState<string>("");
+  const [detayKimlikBelgeData, setDetayKimlikBelgeData] = useState<string | null>(null);
+  const [detayKimlikBelgeMime, setDetayKimlikBelgeMime] = useState<string | null>(null);
+  const [detayKimlikBelgeDosyaAdi, setDetayKimlikBelgeDosyaAdi] = useState<string | null>(null);
   const [detayKimlikGecerlilikTarihi, setDetayKimlikGecerlilikTarihi] = useState("");
   const [detayVekilAdi, setDetayVekilAdi] = useState("");
   const [detayVekilKimlikNo, setDetayVekilKimlikNo] = useState("");
@@ -1574,6 +1581,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [isUrunLoading, setIsUrunLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDetayModal, setShowDetayModal] = useState(false);
+  const [showBankaTlHesabiModal, setShowBankaTlHesabiModal] = useState(false);
+  const [bankaAciklama, setBankaAciklama] = useState<string>("");
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showTeklifTaniModal, setShowTeklifTaniModal] = useState(false);
   const [printSnapshot, setPrintSnapshot] = useState<any>(null);
@@ -2369,6 +2378,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     try {
       const data = await SarrafFisService.getFisById(id);
       if (!data) return;
+
+      // Kendi kayıtları yetkisi denetimi: Sınırsız yetkili olmayan kullanıcılar fiş düzeltme ekranında vezne kayıtlarını pasif olarak görür, düzenleyemez
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const isOwner = !hasOnlyOwn;
+      setIsRecordLockedByUser(!isOwner);
+
       setFisId(data.sarrafFisiId);
       // e-Banka hareketine eşli fiş (M32): listeden açılsa da e-Banka'dan Düzenle ile açılmış gibi toplam banka tutarında
       const ebBagi = (data as any).ebanka && Number((data as any).ebanka.vomsisId) > 0 ? (data as any).ebanka : null;
@@ -2462,9 +2477,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       setDetayKimlikSeriNo((data as any).kimlikSeriNo || "");
       setDetayPasaportNo((data as any).pasaportNo || "");
       setDetayKimlikBelgeTuru((data as any).kimlikBelgeTuru || 0);
+      setDetayKimlikDegistirmeNedeni((data as any).kimlikDegistirmeNedeni || "");
+      setDetayKimlikBelgeData((data as any).kimlikBelgeData || null);
+      setDetayKimlikBelgeMime((data as any).kimlikBelgeMime || null);
+      setDetayKimlikBelgeDosyaAdi((data as any).kimlikBelgeDosyaAdi || null);
       setDetayKimlikGecerlilikTarihi((data as any).kimlikGecerlilikTarihi || "");
       setDetayVekilAdi((data as any).vekilAdi || "");
       setDetayVekilKimlikNo((data as any).vekilKimlikNo || "");
+      setBankaAciklama(data.bankaAciklama || "");
 
       const curAltinHasKuru = Number(data.altinHasKuru) || 0;
       const curGumusHasKuru = Number(data.gumusHasKuru) || 0;
@@ -2702,6 +2722,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
   // Reset form (keeps cashier's vezne intact, clears all inputs)
   const resetForm = useCallback(() => {
+    setIsRecordLockedByUser(false);
     setFisId(null);
     setFisNo("");
     setSeriNo("");
@@ -2713,6 +2734,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setBelgeTuru(0);
     setUnvan(DEFAULT_CUSTOMER_NAME);
     setCariKartId(null);
+    setBankaAciklama("");
 
     // Varsayılan HAS Altın ve Gümüş kurları
     let defaultHas: number | string = "";
@@ -2750,6 +2772,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setDetayKimlikSeriNo("");
     setDetayPasaportNo("");
     setDetayKimlikBelgeTuru(0);
+    setDetayKimlikDegistirmeNedeni("");
+    setDetayKimlikBelgeData(null);
+    setDetayKimlikBelgeMime(null);
+    setDetayKimlikBelgeDosyaAdi(null);
     setDetayKimlikGecerlilikTarihi("");
     setDetayVekilAdi("");
     setDetayVekilKimlikNo("");
@@ -2817,7 +2843,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
       setVezneList(vezneler as VezneItem[]);
       setUrunList(urunler);
-      const sortedFisler = [...(fisler || [])].sort((a, b) => (Number(a.sarrafFisiId) || 0) - (Number(b.sarrafFisiId) || 0));
+      const curUserId = Number(user?.id) || 1;
+      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const allowedFisler = (fisler || []).filter((f: any) => {
+        if (!hasOnlyOwn) return true;
+        const kId = Number(f.kullaniciId || f.ekleyenId || 0);
+        const vId = Number(f.vezneId || 0);
+        return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+      });
+      const sortedFisler = [...allowedFisler].sort((a, b) => (Number(a.sarrafFisiId) || 0) - (Number(b.sarrafFisiId) || 0));
       setFisList(sortedFisler);
       setCariList(cariler as CariKartItem[]);
       setKayitsizMusteriList(kayitsizlar as KayitsizMusteriItem[]);
@@ -2907,6 +2942,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           initialLoadDoneRef.current = true;
           if (isDuzeltmeMode) {
             resetForm();
+            setCurrentIndex(-1);
           } else {
             if (defaultHas) setAltinHasKuru(defaultHas);
             if (defaultGumus) setGumusHasKuru(defaultGumus);
@@ -2975,16 +3011,25 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // Navigation handlers (Düzeltme sayfaları için)
   const handleOpenFisModal = useCallback(async () => {
     try {
+      const curUserId = Number(user?.id) || 1;
+      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
       const list = await SarrafFisService.getFisList({ limit: 500 }).catch(() => []);
       if (list && list.length > 0) {
-        const sorted = [...list].sort((a, b) => (Number(a.sarrafFisiId) || 0) - (Number(b.sarrafFisiId) || 0));
+        const allowed = list.filter((f: any) => {
+          if (!hasOnlyOwn) return true;
+          const kId = Number(f.kullaniciId || f.ekleyenId || 0);
+          const vId = Number(f.vezneId || 0);
+          return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+        });
+        const sorted = [...allowed].sort((a, b) => (Number(a.sarrafFisiId) || 0) - (Number(b.sarrafFisiId) || 0));
         setFisList(sorted);
       }
     } catch (e) {
       console.error(e);
     }
     setShowFisModal(true);
-  }, []);
+  }, [user?.id, user?.vezneId, user?.isSysAdmin, user?.hasOnlyOwnRecordsPerm, kYetki.kendiKayitlari]);
 
   const handleFirst = useCallback(async () => {
     try {
@@ -3137,6 +3182,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     targetCopies?: number,
     overrideOdemeRows?: OdemeRow[]
   ) => {
+    if (isDuzeltmeMode && isRecordLockedByUser) {
+      showNotif("danger", "Bu kayıt başka bir kullanıcıya aittir; yalnızca kendi kayıtlarınızı görüntüleyebilir veya düzeltebilirsiniz.");
+      return;
+    }
+
     // MASAK Malvarlığı Dondurulanlar Listesinde ise kesinlikle kayıt yapılamaz
     if (isMasakKontroluVar && isMasakBlocked) {
       showNotif("danger", `🚨 İŞLEM ENGELLENDİ: Bu müşteri MASAK Malvarlığı Dondurulanlar / Yaptırım Listesindedir. Kesinlikle fiş ve işlem kaydı yapılamaz!`);
@@ -3438,7 +3488,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         kimlikSeriNo: detayKimlikSeriNo || null,
         pasaportNo: detayPasaportNo || null,
         kimlikBelgeTuru: detayKimlikBelgeTuru || null,
+        kimlikDegistirmeNedeni: detayKimlikDegistirmeNedeni.trim() || null,
+        kimlikBelgeData: detayKimlikBelgeData || null,
+        kimlikBelgeMime: detayKimlikBelgeMime || null,
+        kimlikBelgeDosyaAdi: detayKimlikBelgeDosyaAdi || null,
         kimlikGecerlilikTarihi: detayKimlikGecerlilikTarihi || null,
+        bankaAciklama: bankaAciklama.trim() || null,
         vekilAdi: detayVekilAdi || null,
         vekilKimlikNo: detayVekilKimlikNo || null,
         masakListesindeVar: (masakResult.matches && masakResult.matches.length > 0) ? true : false,
@@ -3889,6 +3944,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // Delete
   const handleDelete = useCallback(async () => {
     if (!fisId) return;
+    if (isRecordLockedByUser) {
+      showNotif("danger", "Bu kayıt başka bir kullanıcıya aittir; silinemez.");
+      setShowDeleteConfirm(false);
+      return;
+    }
     try {
       await SarrafFisService.deleteFis(fisId, Number(user?.id) || 1);
       showNotif("success", "Fiş silindi");
@@ -3996,6 +4056,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (raw.pasaportNo) setDetayPasaportNo(raw.pasaportNo);
       if (raw.kimlikBelgeTuru !== undefined && raw.kimlikBelgeTuru !== null) {
         setDetayKimlikBelgeTuru(Number(raw.kimlikBelgeTuru));
+      }
+      if (raw.kimlikDegistirmeNedeni) setDetayKimlikDegistirmeNedeni(raw.kimlikDegistirmeNedeni);
+      if (raw.kimlikBelgeData) {
+        setDetayKimlikBelgeData(raw.kimlikBelgeData);
+        setDetayKimlikBelgeMime(raw.kimlikBelgeMime || null);
+        setDetayKimlikBelgeDosyaAdi(raw.kimlikBelgeDosyaAdi || null);
       }
       if (raw.kimlikGecerlilikTarihi) {
         setDetayKimlikGecerlilikTarihi(String(raw.kimlikGecerlilikTarihi).split("T")[0]);
@@ -4298,7 +4364,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         kimlikSeriNo: detayKimlikSeriNo || null,
         pasaportNo: detayPasaportNo || null,
         kimlikBelgeTuru: detayKimlikBelgeTuru || null,
+        kimlikDegistirmeNedeni: detayKimlikDegistirmeNedeni.trim() || null,
+        kimlikBelgeData: detayKimlikBelgeData || null,
+        kimlikBelgeMime: detayKimlikBelgeMime || null,
+        kimlikBelgeDosyaAdi: detayKimlikBelgeDosyaAdi || null,
         kimlikGecerlilikTarihi: detayKimlikGecerlilikTarihi || null,
+        bankaAciklama: bankaAciklama.trim() || null,
         vekilAdi: detayVekilAdi || null,
         vekilKimlikNo: detayVekilKimlikNo || null,
         kullaniciId: Number(user?.id) || 1,
@@ -5089,7 +5160,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           kod: r.paraKodu,
           ad: r.paraAdi || foundUrun?.ad,
         });
-        const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
+        const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (userDovizZiynetGirisSekli === 0 && Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
         const isZiynet = (effTipi === 3 || isZiynetProduct({ urunTipi: effTipi, kod: r.paraKodu, ad: r.paraAdi })) && !hasMilyemOrHas;
         const isGumus = effTipi === 2 || pk.includes("GUMUS") || pk.includes("GÜMÜŞ");
         const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi });
@@ -6581,8 +6652,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         if (col === pzQuantityPassiveCol || col === "milyem" || col === "iscilikHesaplamaSekli" || col === "iscilikiMiktari" || col === "iscilikTutari" || col === "iscilikKdvOrani" || col === "iscilikKdvTutari" || col === "iscilikToplam") {
           return true;
         }
-      } else {
-        if (col === "adet") return true;
       }
       if ((col === "iscilikKdvOrani" || col === "iscilikKdvTutari") && isKdvDisabled) {
         return true;
@@ -6653,7 +6722,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           applyProductToRow(rowId, matches[0]);
           const effT = resolveEffectiveUrunTipi({ urunTipi: matches[0].urunTipi, kod: matches[0].kod, ad: matches[0].ad });
           const isPZ = effT === 0 || isZiynetProduct(matches[0]);
-          const targetCol = isPZ ? (userDovizZiynetGirisSekli === 1 ? "miktar" : "adet") : "miktar";
+          const targetCol = isPZ ? (userDovizZiynetGirisSekli === 1 ? "miktar" : "adet") : "adet";
           requestAnimationFrame(() => focusGridCell(rowId, targetCol, "select"));
           return;
         } else {
@@ -6934,10 +7003,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         return isOdemeKurDisabled;
       }
 
-      // Altın / Gümüş (metal) satırlarında sadece adet pasiftir, miktar (gramaj) aktiftir
+      // Altın / Gümüş (metal) satırlarında hem adet hem miktar çalışır
       const isRowAltinOrGumus = !isIsk && !isParaOrZiynet;
       if (col === "adet") {
-        if (isRowAltinOrGumus) return true;
+        if (isRowAltinOrGumus) return false;
         if (isParaOrZiynet && userDovizZiynetGirisSekli === 1) return true;
         return false;
       }
@@ -7525,6 +7594,77 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowPrintModal(true);
   }, [fisId, fisNo, seriNo, tip, tarih, saat, unvan, detayUnvan, detayVergiKimlikNo, detayAdres, detayTelefonNo, detayPasaportNo, vezneKod, user, lines, odemeRows, totalTutar, alisHas, totalOdemeTutar, farkTL, kdvOrani, istisnaKodu]);
 
+  const initialBankaSatirlari = useMemo(() => {
+    return odemeRows
+      .filter((r) => r.odemeAraciTuru === 3 && r.bankaId)
+      .map((r) => ({
+        bankaId: r.bankaId!,
+        bankaAdi: r.cariUnvan,
+        tutar: parseDecimal(r.adet) || parseDecimal(r.tutar) || 0,
+        aciklama: r.aciklama,
+      }));
+  }, [odemeRows]);
+
+  const initialVezneTutari = useMemo(() => {
+    const nakit = odemeRows.filter((r) => r.odemeAraciTuru === 0);
+    return nakit.reduce((sum, r) => sum + (parseDecimal(r.adet) || parseDecimal(r.tutar) || 0), 0);
+  }, [odemeRows]);
+
+  const handleApplyBankaTlHesabi = useCallback((data: BankaTlHesabiApplyPayload) => {
+    setBankaAciklama(data.bankaAciklama);
+
+    const newRows: OdemeRow[] = [];
+    let sNo = 1;
+
+    data.bankaSatirlari.forEach((b) => {
+      const hesap = bankaList.find((x) => x.bankaId === b.bankaId);
+      const hesapAdi = b.bankaAdi || (hesap?.hesapAdi ? `${hesap.bankaAdi ? hesap.bankaAdi + " - " : ""}${hesap.hesapAdi}` : (hesap?.bankaAdi || "BANKA HAVALE / EFT"));
+      const r: OdemeRow = {
+        ...createEmptyOdemeRow(sNo++),
+        odemeAraciTuru: 3, // Banka/Hesap
+        bankaId: b.bankaId,
+        cariKod: b.hesapNo || hesap?.hesapNo || "",
+        cariUnvan: hesapAdi,
+        aciklama: b.aciklama || data.bankaAciklama || hesapAdi,
+        paraKodu: "TL",
+        paraAdi: "TÜRK LİRASI",
+        adet: formatMiktar(b.tutar),
+        miktar: formatMiktar(b.tutar),
+        tutar: b.tutar,
+        kur: 1,
+        urunTipi: 0,
+      };
+      newRows.push(recomputeOdemeRow(r, Number(altinHasKuru) || 0, undefined, userDovizZiynetGirisSekli));
+    });
+
+    if (data.vezneTutari > 0) {
+      const nakitRow: OdemeRow = {
+        ...createEmptyOdemeRow(sNo++),
+        odemeAraciTuru: 0, // Nakit
+        paraKodu: "TL",
+        paraAdi: "TÜRK LİRASI",
+        adet: formatMiktar(data.vezneTutari),
+        miktar: formatMiktar(data.vezneTutari),
+        tutar: data.vezneTutari,
+        kur: 1,
+        aciklama: data.vezneAdi ? `Vezne Nakit (${data.vezneAdi})` : "Vezne Nakit",
+        urunTipi: 0,
+      };
+      newRows.push(recomputeOdemeRow(nakitRow, Number(altinHasKuru) || 0, undefined, userDovizZiynetGirisSekli));
+    }
+
+    if (data.vezneId) {
+      setVezneId(data.vezneId);
+      if (data.vezneKodu) setVezneKod(data.vezneKodu);
+    }
+
+    if (newRows.length > 0) {
+      setOdemeRows(newRows);
+    } else {
+      setOdemeRows([createEmptyOdemeRow(1)]);
+    }
+  }, [bankaList, altinHasKuru, userDovizZiynetGirisSekli]);
+
   const closeAllModals = useCallback(() => {
     setShowCariModal(false);
     setShowOdemeCariModal(false);
@@ -7541,6 +7681,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setShowDeleteConfirm(false);
     setShowDetayModal(false);
     setShowPrintModal(false);
+    setShowBankaTlHesabiModal(false);
     setShowTeklifTaniModal(false);
     setShowIstatistikModal(false);
     setShowFarkConfirmModal({ show: false, andPrint: false });
@@ -7701,8 +7842,31 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         return;
       }
 
-      // Eğer ekranda açık bir modal varsa kısayolları çalıştırma (Shift+F10 hariç)
+      // Shift+F5: Banka TL Hesabı Modalı
+      const isShiftF5 = (e.key === "F5" || e.code === "F5" || e.keyCode === 116 || e.which === 116) && e.shiftKey;
+      if (isShiftF5) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowBankaTlHesabiModal(true);
+        return;
+      }
+
+      // Escape: Banka TL Hesabı Modalı kapat
+      if (e.key === "Escape" && showBankaTlHesabiModal) {
+        e.preventDefault();
+        setShowBankaTlHesabiModal(false);
+        return;
+      }
+
+      // Eğer ekranda açık bir modal varsa kısayolları çalıştırma (Shift+F10 ve Shift+F5 hariç)
       if (document.querySelector(".modal.show")) {
+        if (e.key === "F5" && e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeAllModals();
+          setShowBankaTlHesabiModal(true);
+          return;
+        }
         if (e.key === "F10" && e.shiftKey) {
           e.preventDefault();
           e.stopPropagation();
@@ -7724,12 +7888,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
 
       if (["INPUT", "TEXTAREA", "SELECT"].includes(activeEl?.tagName || "") &&
-        !["F1", "F3", "F4", "F8", "F9", "F10", "F12"].includes(e.key)) {
+        !["F1", "F3", "F4", "F5", "F8", "F9", "F10", "F12"].includes(e.key)) {
         return;
       }
       if (e.key === "F1") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleSave(false, false); }
       else if (e.key === "F3") { e.preventDefault(); e.stopPropagation(); closeAllModals(); setShowIstatistikModal(true); }
       else if (e.key === "F4") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleNew(); }
+      else if (e.key === "F5" && e.shiftKey) { e.preventDefault(); e.stopPropagation(); closeAllModals(); setShowBankaTlHesabiModal(true); }
       else if (e.key === "F8") { e.preventDefault(); e.stopPropagation(); closeAllModals(); openDetayModal(); }
       else if (e.key === "F9") {
         e.preventDefault();
@@ -7750,7 +7915,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     };
     window.addEventListener("keydown", h, true);
     return () => window.removeEventListener("keydown", h, true);
-  }, [handleSave, handleNew, openDetayModal, openPrintPreview, closeAllModals, handleTriggerF10, setShowTeklifTaniModal, triggerKalaniKapat]);
+  }, [handleSave, handleNew, openDetayModal, openPrintPreview, closeAllModals, handleTriggerF10, setShowTeklifTaniModal, triggerKalaniKapat, showBankaTlHesabiModal]);
 
   // LookupModal columns
   const fisColumns: LookupColumn<SarrafFisListItem>[] = [
@@ -8032,18 +8197,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           {ebBag.bankaAdi ? ` (${ebankaHareketHesabi(ebBag)})` : ""}. Toplam Tutar kayıttaki tutarda kalır; işçilik değişince gram dengelenir.
         </div>
       )}
+      {isDuzeltmeMode && isRecordLockedByUser && (
+        <Alert variant="warning" className="d-flex align-items-center mb-2 mx-1 py-1.5 px-3">
+          <div>
+            <strong>Kayıt Kilitli (Pasif Mod):</strong> Yetkiniz doğrultusunda vezne kayıtlarını yalnızca pasif olarak görüntüleyebilirsiniz; düzenleme ve silme yetkiniz bulunmamaktadır.
+          </div>
+        </Alert>
+      )}
       {pos.pencere}
       <ERPToolbar
         disableShortcuts
         pageTitle={displayTitle}
         onNew={isDuzeltmeMode ? undefined : handleNew}
         hideNew={isDuzeltmeMode}
-        onSave={() => handleSave(false, false)}
+        onSave={isRecordLockedByUser ? undefined : () => handleSave(false, false)}
+        hideSave={isRecordLockedByUser}
         onSearch={isDuzeltmeMode ? handleOpenFisModal : undefined}
         onDetailSearch={openDetayModal}
-        onDelete={isDuzeltmeMode && fisId ? () => setShowDeleteConfirm(true) : undefined}
+        onDelete={isDuzeltmeMode && fisId && !isRecordLockedByUser ? () => setShowDeleteConfirm(true) : undefined}
         hideSearch={!isDuzeltmeMode}
-        hideDelete={!isDuzeltmeMode || !fisId}
+        hideDelete={!isDuzeltmeMode || !fisId || isRecordLockedByUser}
         hideNavigation={!isDuzeltmeMode}
         onFirst={isDuzeltmeMode ? handleFirst : undefined}
         onPrev={isDuzeltmeMode ? handlePrev : undefined}
@@ -8078,6 +8251,19 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               {tip === 0 ? "ALIŞ" : "SATIŞ"}
             </div>
 
+            {!isDuzeltmeMode && (
+              <Button
+                variant="outline-primary"
+                size="sm"
+                className="py-0 px-2 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs"
+                style={{ fontSize: "11.5px", height: "26px" }}
+                onClick={() => setShowBankaTlHesabiModal(true)}
+                title="Banka TL Hesabı ve Dağıtımı (Shift+F5)"
+              >
+                <IconBuildingBank size={14} />
+                <span>Banka TL (Shift+F5)</span>
+              </Button>
+            )}
           </div>
         }
         rightContent={
@@ -8094,14 +8280,47 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               <span>EUR: <strong className="text-dark">{fmtBakiye("EUR")}</strong></span>
             </div>
 
-            {/* Vezne */}
-            <div
-              className="d-flex align-items-center gap-1 px-2 py-0.5 rounded border bg-white shadow-2xs font-monospace"
-              style={{ fontSize: "11px" }}
-            >
-              <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
-              <strong className="text-dark" style={{ fontSize: "11px" }}>{vezneKod || "01"}</strong>
-            </div>
+            {/* Vezne: Sınırsız yetkili yönetici vezne seçebilir; sınırsız yetkili olmayan kullanıcılar kendi veznesini pasif görür */}
+            {user?.isSysAdmin ? (
+              <div
+                className="d-flex align-items-center gap-1 px-2 py-0.5 rounded border bg-white shadow-2xs font-monospace"
+                style={{ fontSize: "11px", height: "28px" }}
+              >
+                <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
+                <select
+                  className="form-select form-select-sm border-0 p-0 fw-bold text-dark bg-transparent font-monospace"
+                  style={{ fontSize: "11px", height: "22px", width: "auto", minWidth: "55px", cursor: "pointer" }}
+                  value={vezneId}
+                  onChange={async (e) => {
+                    const vId = Number(e.target.value);
+                    setVezneId(vId);
+                    const vz = vezneList.find((v) => v.id === vId);
+                    if (vz) {
+                      setVezneKod(vz.kod);
+                      setVezneAd(vz.ad);
+                    }
+                    const bak = await SarrafFisService.getVezneBakiye(vId).catch(() => []);
+                    setBakiyeler(bak);
+                  }}
+                  title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
+                >
+                  {vezneList.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.kod} - {v.ad}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div
+                className="d-flex align-items-center gap-1 px-2 py-0.5 rounded border bg-white shadow-2xs font-monospace opacity-75"
+                style={{ fontSize: "11px", height: "28px", cursor: "not-allowed" }}
+                title="Kullanıcı kartınıza ait vezne (Değiştirilemez)"
+              >
+                <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
+                <strong className="text-dark" style={{ fontSize: "11px" }}>{vezneKod || "01"}</strong>
+              </div>
+            )}
 
             {/* Zaman: Fiş Düzeltme modunda düzenlenebilir, Kayıt modunda sadece gösterilir ve değiştirilemez */}
             {isDuzeltmeMode ? (
@@ -8177,6 +8396,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         </Alert>
       )}
 
+      <fieldset disabled={isDuzeltmeMode && isRecordLockedByUser} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, ...(isDuzeltmeMode && isRecordLockedByUser ? { opacity: 0.95 } : {}) }}>
       <Card
         className={`shadow-sm mb-2 fis-theme-card ${isMasakBlocked ? "border-2 border-danger" : ""}`}
         data-fis-theme="active"
@@ -9031,8 +9251,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   const isParaOrZiynet = isPara || isZiynet;
                   const isPZAdetActive = isParaOrZiynet && userDovizZiynetGirisSekli === 0;
                   const isPZMiktarActive = isParaOrZiynet && userDovizZiynetGirisSekli === 1;
-                  const isAdetMissing = hasProduct && isPZAdetActive && (!row.adet || String(row.adet).trim() === "" || parseDecimal(row.adet) <= 0);
-                  const isMiktarMissing = hasProduct && (!isParaOrZiynet || isPZMiktarActive) && (!row.miktar || String(row.miktar).trim() === "" || parseDecimal(row.miktar) <= 0);
+                  const isKalemAdetPassive = isParaOrZiynet && userDovizZiynetGirisSekli === 1;
+                  const isKalemMiktarPassive = isParaOrZiynet && userDovizZiynetGirisSekli === 0;
+                  const isMiktarFilled = Boolean(
+                    (row.miktar && String(row.miktar).trim() !== "" && parseDecimal(row.miktar) > 0) ||
+                    (row.adet && String(row.adet).trim() !== "" && parseDecimal(row.adet) > 0)
+                  );
+                  const isAdetMissing = hasProduct && isPZAdetActive && !isMiktarFilled;
+                  const isMiktarMissing = hasProduct && (!isParaOrZiynet || isPZMiktarActive) && (!isParaOrZiynet ? (!row.miktar || String(row.miktar).trim() === "" || parseDecimal(row.miktar) <= 0) : !isMiktarFilled);
                   const isKurMissing = !row.kur || parseDecimal(row.kur) <= 0;
 
                   const handleKalemRowFocus = () => {
@@ -9163,18 +9389,19 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             inputMode={isPara ? "decimal" : "numeric"}
                             data-decimal={isPara ? "true" : undefined}
                             size="sm"
-                            readOnly={!isParaOrZiynet || userDovizZiynetGirisSekli === 1}
-                            tabIndex={(!isParaOrZiynet || userDovizZiynetGirisSekli === 1) ? -1 : undefined}
-                            className={`text-end font-monospace ${isAdetMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""} ${(!isParaOrZiynet || userDovizZiynetGirisSekli === 1) ? "text-muted" : ""}`}
-                            value={(!isParaOrZiynet || userDovizZiynetGirisSekli === 1) ? "" : (row.adet ?? "")}
+                            readOnly={isKalemAdetPassive}
+                            tabIndex={isKalemAdetPassive ? -1 : undefined}
+                            className={`text-end font-monospace ${isAdetMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""} ${isKalemAdetPassive ? "text-muted" : ""}`}
+                            value={isKalemAdetPassive ? "" : (row.adet ?? "")}
+                            placeholder={isKalemAdetPassive ? "-" : undefined}
                             onChange={(e) => {
-                              if (isParaOrZiynet && userDovizZiynetGirisSekli === 0) {
+                              if (!isKalemAdetPassive) {
                                 const input = e.currentTarget as HTMLInputElement;
                                 handleNumericFormattedChange(input, (val) => updateRow(row.id, "adet", val));
                               }
                             }}
                             onKeyDown={(e) => {
-                              if (isPara && userDovizZiynetGirisSekli === 0) {
+                              if (!isKalemAdetPassive && isPara) {
                                 handleNumericDotKeyDown(e, (val) => updateRow(row.id, "adet", val));
                               }
                               if (!e.defaultPrevented) {
@@ -9182,8 +9409,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                               }
                             }}
                             onBlur={() => {
-                              if (isParaOrZiynet && userDovizZiynetGirisSekli === 0) {
-                                normalizeRowOnBlur(row.id, "adet");
+                              if (!isKalemAdetPassive) {
+                                if (isPara) {
+                                  normalizeRowOnBlur(row.id, "adet");
+                                }
                                 setInvalidRowIds((prev) => ({ ...prev, [row.id]: true }));
                               }
                             }}
@@ -9191,52 +9420,53 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             style={{
                               fontSize: "11px",
                               padding: "1px 4px",
-                              backgroundColor: (!isParaOrZiynet || userDovizZiynetGirisSekli === 1) ? "#e9ecef" : (isAdetMissing ? "#fee2e2" : undefined),
+                              backgroundColor: isKalemAdetPassive ? "#e9ecef" : (isAdetMissing ? "#fee2e2" : undefined),
                               border: isAdetMissing ? "2px solid #dc2626" : undefined,
                               boxShadow: isAdetMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
-                              cursor: (!isParaOrZiynet || userDovizZiynetGirisSekli === 1) ? "not-allowed" : undefined,
+                              cursor: isKalemAdetPassive ? "not-allowed" : undefined,
                             }}
-                            title={(!isParaOrZiynet || userDovizZiynetGirisSekli === 1) ? "Adet pasiftir" : (isAdetMissing ? "Lütfen adet giriniz" : undefined)}
+                            title={isKalemAdetPassive ? "Adet pasiftir, miktar giriniz" : (isAdetMissing ? "Lütfen adet giriniz" : undefined)}
                           />
                         </td>
                       )}
 
                       {/* Miktar */}
                       {colVisibility.miktar && (
-                        <td style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, backgroundColor: isMiktarMissing ? "#fee2e2" : ((isParaOrZiynet && userDovizZiynetGirisSekli === 0) ? "#e9ecef" : undefined) }}>
+                        <td style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, backgroundColor: isMiktarMissing ? "#fee2e2" : (isKalemMiktarPassive ? "#e9ecef" : undefined) }}>
                           <Form.Control
                             ref={(el) => { rowInputRefs.current[`${row.id}_miktar`] = el; }}
                             inputMode="decimal"
                             size="sm"
-                            readOnly={isParaOrZiynet && userDovizZiynetGirisSekli === 0}
-                            tabIndex={(isParaOrZiynet && userDovizZiynetGirisSekli === 0) ? -1 : undefined}
-                            className={`text-end font-monospace ${isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""} ${(isParaOrZiynet && userDovizZiynetGirisSekli === 0) ? "text-muted" : ""}`}
-                            value={(isParaOrZiynet && userDovizZiynetGirisSekli === 0) ? "" : (row.miktar ?? "")}
+                            readOnly={isKalemMiktarPassive}
+                            tabIndex={isKalemMiktarPassive ? -1 : undefined}
+                            className={`text-end font-monospace ${isMiktarMissing ? "is-invalid border-danger border-2 text-danger fw-bold" : ""} ${isKalemMiktarPassive ? "text-muted" : ""}`}
+                            value={isKalemMiktarPassive ? "" : (row.miktar ?? "")}
+                            placeholder={isKalemMiktarPassive ? "-" : undefined}
                             onChange={(e) => {
-                              if (!(isParaOrZiynet && userDovizZiynetGirisSekli === 0)) {
+                              if (!isKalemMiktarPassive) {
                                 const input = e.currentTarget as HTMLInputElement;
                                 handleNumericFormattedChange(input, (val) => updateRow(row.id, "miktar", val));
                               }
                             }}
                             onKeyDown={(e) => {
-                              if (!(isParaOrZiynet && userDovizZiynetGirisSekli === 0)) {
+                              if (!isKalemMiktarPassive) {
                                 handleNumericDotKeyDown(e, (val) => updateRow(row.id, "miktar", val));
                               }
                               if (!e.defaultPrevented) {
                                 handleGridKeyDown(e, rowIndex, "miktar", row.id);
                               }
                             }}
-                            onBlur={() => normalizeRowOnBlur(row.id, "miktar")}
+                            onBlur={() => !isKalemMiktarPassive && normalizeRowOnBlur(row.id, "miktar")}
                             onFocus={handleKalemRowFocus}
                             style={{
                               fontSize: "11px",
                               padding: "1px 4px",
-                              backgroundColor: (isParaOrZiynet && userDovizZiynetGirisSekli === 0) ? "#e9ecef" : (isMiktarMissing ? "#fee2e2" : undefined),
+                              backgroundColor: isKalemMiktarPassive ? "#e9ecef" : (isMiktarMissing ? "#fee2e2" : undefined),
                               border: isMiktarMissing ? "2px solid #dc2626" : undefined,
                               boxShadow: isMiktarMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined,
-                              cursor: (isParaOrZiynet && userDovizZiynetGirisSekli === 0) ? "not-allowed" : undefined,
+                              cursor: isKalemMiktarPassive ? "not-allowed" : undefined,
                             }}
-                            title={(isParaOrZiynet && userDovizZiynetGirisSekli === 0) ? "Miktar pasiftir, adet giriniz" : isMiktarMissing ? "Lütfen miktar giriniz" : undefined}
+                            title={isKalemMiktarPassive ? "Miktar pasiftir, adet giriniz" : isMiktarMissing ? "Lütfen miktar giriniz" : undefined}
                           />
                         </td>
                       )}
@@ -10205,9 +10435,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                               </InputGroup>
                             </td>
 
-                            {/* Adet - Altın ve gümüşlerde pasif, döviz/ziynette kullanıcı seçimine bağlı */}
+                            {/* Adet - Altın ve gümüşlerde serbest, döviz/ziynette kullanıcı seçimine bağlı */}
                             {(() => {
-                              const isOdemeAdetPassive = isOdemeAltinOrGumus || (isOdemeParaOrZiynet && userDovizZiynetGirisSekli === 1);
+                              const isOdemeAdetPassive = isOdemeParaOrZiynet && userDovizZiynetGirisSekli === 1;
                               return (
                                 <td style={{ width: odemeAdetColWidth, minWidth: odemeAdetColWidth, backgroundColor: isOdemeAdetPassive ? "#e9ecef" : undefined }}>
                                   <Form.Control
@@ -10244,7 +10474,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                       boxShadow: isInvalidRow ? "0 0 0 1px rgba(220, 38, 38, 0.3)" : (isOdemeAdetMissing ? "0 0 0 2px rgba(220, 38, 38, 0.4)" : undefined),
                                       cursor: isOdemeAdetPassive ? "not-allowed" : undefined,
                                     }}
-                                    title={isOdemeAltinOrGumus ? "Altın ve gümüşlerde adet pasiftir, miktar (gram) giriniz" : isOdemeAdetPassive ? "Adet pasiftir, miktar giriniz" : isOdemeAdetMissing ? "Lütfen adet giriniz" : undefined}
+                                    title={isOdemeAdetPassive ? "Adet pasiftir, miktar giriniz" : (isOdemeAdetMissing ? "Lütfen adet giriniz" : undefined)}
                                   />
                                 </td>
                               );
@@ -10652,6 +10882,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </div>
         </Card.Body>
       </Card>
+      </fieldset>
 
       {/* ─── MODALS ───────────────────────────────────────────────────────────── */}
 
@@ -12094,6 +12325,28 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </div>
         </Modal.Footer>
       </Modal>
+            <BankaTlHesabiModal
+        show={showBankaTlHesabiModal}
+        onClose={() => setShowBankaTlHesabiModal(false)}
+        toplamTutar={totalTutar}
+        islemTipi={tip === 0 ? "odeme" : "tahsilat"}
+        initialBankaSatirlari={odemeRows
+          .filter((o) => o.odemeAraciTuru === 3)
+          .map((o) => ({
+            bankaId: o.bankaId || 0,
+            bankaAdi: o.paraAdi || "",
+            hesapNo: o.paraKodu || "",
+            tutar: parseDecimal(o.tutar) || 0,
+            aciklama: o.aciklama || "",
+          }))}
+        initialVezneTutari={initialVezneTutari}
+        initialVezneId={vezneId || (user?.vezneId ? Number(user.vezneId) : undefined)}
+        currentVezneId={vezneId || (user?.vezneId ? Number(user.vezneId) : undefined)}
+        currentVezneKod={vezneKod}
+        currentVezneAd={vezneList.find((v) => v.id === vezneId)?.ad}
+        initialBankaAciklama={bankaAciklama}
+        onApply={handleApplyBankaTlHesabi}
+      />
       <SayfaCikisUyarisiModal
         acik={cikisUyarisi.acik}
         vazgec={cikisUyarisi.vazgec}

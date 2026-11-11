@@ -6,8 +6,8 @@ export class CariService {
     static async getLookups(dbContext) {
         return CariSqlRepository.getLookups(dbContext);
     }
-    static async listCariKartlar(dbContext) {
-        return CariSqlRepository.findAll(dbContext);
+    static async listCariKartlar(dbContext, filter) {
+        return CariSqlRepository.findAll(dbContext, filter);
     }
     static async getCariKartById(id, dbContext) {
         const item = await CariSqlRepository.findById(id, dbContext);

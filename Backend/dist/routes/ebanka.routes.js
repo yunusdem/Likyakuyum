@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { EBankaController } from "../controllers/ebanka.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
+import { okumaYetkisi } from "../services/yetki/menuYetkiKatalogu.js";
 // F- e-Banka (Vomsis) — docs/EBANKA_VOMSIS_YOL_HARITASI.md
 const router = Router();
 router.use(authenticate);
@@ -25,7 +26,7 @@ router.post("/mutabakat/belge/bag-kaldir", EBankaController.belgeBagKaldir);
 // Eşitleme (yalnızca elle)
 router.post("/esitle", EBankaController.esitle);
 // Özet / Hesaplar / Hareketler
-router.get("/ozet", EBankaController.ozet);
+router.get("/ozet", okumaYetkisi("ebankaOzet"), EBankaController.ozet);
 router.get("/hesaplar", EBankaController.hesaplariListele);
 router.put("/hesaplar/:id/esle", EBankaController.hesapEsle);
 router.get("/hareket-tipleri", EBankaController.hareketTipleri);

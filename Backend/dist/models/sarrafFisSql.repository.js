@@ -87,7 +87,9 @@ export class SarrafFisSqlRepository {
           CASE SF.TIP WHEN 0 THEN N'Alış' ELSE N'Satış' END AS tipLabel,
           ISNULL(SF.UNVAN,N'İsim beyan edilmemiştir') AS unvan,
           SF.ALTIN_HAS_KURU AS altinHasKuru, SF.VEZNE_ID AS vezneId,
-          ISNULL(RTRIM(V.KOD),'') AS vezneKod, SF.EKLEME_ZAMANI AS eklemeZamani
+          ISNULL(RTRIM(V.KOD),'') AS vezneKod, SF.EKLEME_ZAMANI AS eklemeZamani,
+          ISNULL(SF.EKLEYEN_ID, 0) AS kullaniciId,
+          ISNULL(SF.EKLEYEN_ID, 0) AS ekleyenId
         FROM [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK)
           LEFT JOIN [dbo].[TODVZ_VEZNE] V WITH (NOLOCK) ON V.VEZNE_ID = SF.VEZNE_ID
         WHERE 1=1`;
@@ -109,6 +111,11 @@ export class SarrafFisSqlRepository {
                 query += " AND SF.TARIH >= CAST(@bas AS date)";
                 req.input("bas", sql.VarChar(10), filters.baslangic);
             }
+            if (filters.onlyOwnRecords && filters.userId) {
+                query += " AND (SF.EKLEYEN_ID = @userId OR (@userVezneId > 0 AND SF.VEZNE_ID = @userVezneId))";
+                req.input("userId", sql.Int, filters.userId);
+                req.input("userVezneId", sql.Int, filters.userVezneId || 0);
+            }
             query += " ORDER BY SF.TARIH DESC, SF.SARRAF_FISI_ID DESC";
             const result = await req.query(query);
             return (result.recordset || []).map((r) => ({
@@ -116,6 +123,8 @@ export class SarrafFisSqlRepository {
                 tip: r.tip, tipLabel: r.tipLabel || "", unvan: r.unvan || "",
                 altinHasKuru: Number(r.altinHasKuru) || 0, vezneId: r.vezneId,
                 vezneKod: (r.vezneKod || "").trim(), eklemeZamani: r.eklemeZamani ? String(r.eklemeZamani) : undefined,
+                kullaniciId: Number(r.kullaniciId) || 0,
+                ekleyenId: Number(r.ekleyenId) || 0,
             }));
         }
         catch (err) {
@@ -127,9 +136,12 @@ export class SarrafFisSqlRepository {
         try {
             await pool.request().query(`
         IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [ISTATISTIK_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
         IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI', 'ISCILIK_TUTARI') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI_SATIRI ADD [ISCILIK_TUTARI] FLOAT NOT NULL CONSTRAINT DF_TODVZ_SARRAF_FISI_SATIRI_ISCILIK_TUTARI DEFAULT 0;
         IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'E_BELGE_ISTISNA_KODU') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [E_BELGE_ISTISNA_KODU] VARCHAR(10) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ISKONTO_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ISKONTO_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ACIKLAMA') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ACIKLAMA] VARCHAR(250) NULL;
+        IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
       `).catch(() => { });
@@ -186,6 +198,8 @@ export class SarrafFisSqlRepository {
             });
             return {
                 sarrafFisiId: h.SARRAF_FISI_ID,
+                kullaniciId: Number(h.KULLANICI_ID || h.EKLEYEN_ID || 0),
+                ekleyenId: Number(h.EKLEYEN_ID || h.KULLANICI_ID || 0),
                 ebanka,
                 fisNo: rawFisNo,
                 seriNo: seriNo,
@@ -217,10 +231,20 @@ export class SarrafFisSqlRepository {
                 dogumTarihi: h.DOGUM_TARIHI ? h.DOGUM_TARIHI.toISOString().split("T")[0] : null,
                 dogumYeri: h.DOGUM_YERI || null, kimlikSeriNo: h.KIMLIK_SERI_NO ? h.KIMLIK_SERI_NO.trim() : null,
                 anneAdi: h.ANNE_ADI || null, sirketTuru: h.SIRKET_TURU ?? null,
-                kimlikBelgeTuru: h.KIMLIK_BELGE_TURU ?? null, dernekAmaci: h.DERNEK_AMACI || null,
+                kimlikBelgeTuru: h.KIMLIK_BELGE_TURU ?? null,
+                kimlikDegistirmeNedeni: h.KIMLIK_DEGISTIRME_NEDENI || null,
+                kimlikBelgeData: h.KIMLIK_BELGE_DATA
+                    ? `data:${h.KIMLIK_BELGE_MIME || "application/octet-stream"};base64,${Buffer.isBuffer(h.KIMLIK_BELGE_DATA)
+                        ? h.KIMLIK_BELGE_DATA.toString("base64")
+                        : Buffer.from(h.KIMLIK_BELGE_DATA).toString("base64")}`
+                    : null,
+                kimlikBelgeMime: h.KIMLIK_BELGE_MIME || null,
+                kimlikBelgeDosyaAdi: h.KIMLIK_BELGE_DOSYA_ADI || null,
+                dernekAmaci: h.DERNEK_AMACI || null,
                 yetkiliKisiId: h.YETKILI_KISI_ID ?? null,
                 kimlikGecerlilikTarihi: h.KIMLIK_GECERLILIK_TARIHI ? h.KIMLIK_GECERLILIK_TARIHI.toISOString().split("T")[0] : null,
                 masakListesindeVar: h.MASAK_LISTESINDE_VAR === true || h.MASAK_LISTESINDE_VAR === 1,
+                bankaAciklama: (h.BANKA_ACIKLAMA || "").trim() || null,
                 satirlar: satirlar.map((r) => {
                     const mVal = (r.MILYEM !== null && r.MILYEM !== undefined && Number(r.MILYEM) !== 0)
                         ? Number(r.MILYEM)
@@ -286,6 +310,7 @@ export class SarrafFisSqlRepository {
                         adet: Number(r.ADET) || 0,
                         miktar: Number(r.MIKTAR) || 0, milyem: mVal, hasGram: Number(r.HAS_GRAM) || 0,
                         kur: Number(r.KUR) || 0, tutar: Number(r.TUTAR) || 0,
+                        aciklama: r.ACIKLAMA || null,
                     };
                 }),
             };
@@ -312,8 +337,11 @@ export class SarrafFisSqlRepository {
         }
         await pool.request().query(`
       IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'ISTATISTIK_ID') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [ISTATISTIK_ID] INT NULL;
-        IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'E_BELGE_ISTISNA_KODU') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [E_BELGE_ISTISNA_KODU] VARCHAR(10) NULL;
+      IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
+      IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'E_BELGE_ISTISNA_KODU') IS NULL ALTER TABLE dbo.TODVZ_SARRAF_FISI ADD [E_BELGE_ISTISNA_KODU] VARCHAR(10) NULL;
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ISKONTO_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ISKONTO_ID] INT NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ACIKLAMA') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ACIKLAMA] VARCHAR(250) NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
     `).catch(() => { });
@@ -464,6 +492,21 @@ export class SarrafFisSqlRepository {
         req.input("IN_YAZDIRILAN_BELGE_TIPI", sql.TinyInt, dto.yazdirilanBelgeTipi !== undefined && dto.yazdirilanBelgeTipi !== null ? parseNum(dto.yazdirilanBelgeTipi) : 0);
         req.input("IN_ISTATISTIK_ID", sql.Int, dto.istatistikId ? Number(dto.istatistikId) : null);
         req.input("IN_ISTATISTIK_KODU", sql.VarChar(50), dto.istatistikKodu ? dto.istatistikKodu.trim() : null);
+        req.input("IN_BANKA_ACIKLAMA", sql.VarChar(250), dto.bankaAciklama ? dto.bankaAciklama.trim().slice(0, 250) : null);
+        let belgeBuffer = null;
+        if (dto.kimlikBelgeData) {
+            const m = dto.kimlikBelgeData.match(/^data:([^;]+);base64,(.+)$/);
+            if (m) {
+                belgeBuffer = Buffer.from(m[2], "base64");
+            }
+            else {
+                belgeBuffer = Buffer.from(dto.kimlikBelgeData, "base64");
+            }
+        }
+        req.input("IN_KIMLIK_DEGISTIRME_NEDENI", sql.NVarChar(100), dto.kimlikDegistirmeNedeni || null);
+        req.input("IN_KIMLIK_BELGE_DATA", sql.VarBinary(sql.MAX), belgeBuffer);
+        req.input("IN_KIMLIK_BELGE_MIME", sql.VarChar(100), dto.kimlikBelgeMime || null);
+        req.input("IN_KIMLIK_BELGE_DOSYA_ADI", sql.NVarChar(255), dto.kimlikBelgeDosyaAdi || null);
         const validLines = (dto.satirlar || []).filter((s) => s.urunId && Number(s.urunId) > 0);
         const lineValuesSql = validLines.map((s, idx) => {
             const p = `s_${idx}`;
@@ -547,6 +590,7 @@ export class SarrafFisSqlRepository {
             req.input(`${p}_hg`, sql.Float, parseNum(o.hasGram));
             req.input(`${p}_kur`, sql.Float, kur);
             req.input(`${p}_tut`, sql.Float, tut);
+            req.input(`${p}_ack`, sql.VarChar(250), o.aciklama ? o.aciklama.trim().slice(0, 250) : null);
             req.input(`${p}_dg`, sql.Bit, o.degistirildi ? 1 : 0);
             const paraIdExpr = isPos
                 ? `NULL`
@@ -965,7 +1009,12 @@ export class SarrafFisSqlRepository {
             KIMLIK_SERI_NO = @IN_KIMLIK_SERI_NO,
             PASAPORT_NO = @IN_PASAPORT_NO,
             KIMLIK_BELGE_TURU = @IN_KIMLIK_BELGE_TURU,
+            KIMLIK_DEGISTIRME_NEDENI = @IN_KIMLIK_DEGISTIRME_NEDENI,
+            KIMLIK_BELGE_DATA = @IN_KIMLIK_BELGE_DATA,
+            KIMLIK_BELGE_MIME = @IN_KIMLIK_BELGE_MIME,
+            KIMLIK_BELGE_DOSYA_ADI = @IN_KIMLIK_BELGE_DOSYA_ADI,
             KIMLIK_GECERLILIK_TARIHI = @IN_KIMLIK_GECERLILIK_TARIHI,
+            BANKA_ACIKLAMA = @IN_BANKA_ACIKLAMA,
             VEKIL_ADI = @IN_VEKIL_ADI,
             VEKIL_KIMLIK_NO = @IN_VEKIL_KIMLIK_NO,
             KISILIK_TIPI = @IN_KISILIK_TIPI${istisnaKoduKolonu ? ", E_BELGE_ISTISNA_KODU = @IN_E_BELGE_ISTISNA_KODU" : ""}
@@ -978,6 +1027,7 @@ export class SarrafFisSqlRepository {
             PARA_ADI = NULLIF(@o_${idx}_pad, ''),
             ADET = @o_${idx}_ad,
             BANKA_ID = @o_${idx}_bankaId,
+            ACIKLAMA = @o_${idx}_ack,
             MIKTAR = @o_${idx}_mik,
             TUTAR = @o_${idx}_tut
         WHERE SARRAF_FISI_ID = @OUT_SARRAF_FISI_ID AND SATIR_NO = @o_${idx}_sNo;

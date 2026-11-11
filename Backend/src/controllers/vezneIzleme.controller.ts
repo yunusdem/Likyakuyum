@@ -4,6 +4,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { vezneEvents, notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
+import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
+import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 
 export class VezneIzlemeController {
   private static getDbContext(req: Request) {
@@ -29,6 +31,30 @@ export class VezneIzlemeController {
     const dbContext = VezneIzlemeController.getDbContext(req);
     const data = await VezneIzlemeService.getIzlemeData(dbContext);
     return ApiResponse.ok(res, "Vezne izleme verileri getirildi.", data);
+  });
+
+  /**
+   * GET /api/v1/vezne/izleme/son-islemler
+   * Retrieves the last transactions (Son 100 İşlem) - Gated by VEZNE_SON_ISLEMLER_YETKISI or sysAdmin
+   */
+  public static getSonIslemler = asyncHandler(async (req: Request, res: Response) => {
+    const yetki = await kullaniciYetkisi(req);
+    if (!yetki.yonetici && !yetki.vezneSonIslemler) {
+      throw ApiError.forbidden("Bu işlem için yetkiniz bulunmamaktadır (Vezne son işlemler yetkisi gereklidir).");
+    }
+
+    const dbContext = VezneIzlemeController.getDbContext(req);
+    const limit = req.query.limit ? Number(req.query.limit) : 100;
+    let vezneId = req.query.vezneId ? Number(req.query.vezneId) : undefined;
+
+    if (yetki.kendiKayitlari) {
+      const u = req.user as any;
+      const userId = u?.userId || u?.id || 1;
+      vezneId = (await fisVeznesi(userId, dbContext)) ?? undefined;
+    }
+
+    const data = await VezneIzlemeService.getSonIslemler(dbContext, limit, vezneId);
+    return ApiResponse.ok(res, "Son işlemler getirildi.", data);
   });
 
   /**

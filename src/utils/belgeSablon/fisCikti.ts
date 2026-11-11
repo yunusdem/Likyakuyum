@@ -18,7 +18,9 @@ async function ciz(c: FisCiktisi, baslik: string): Promise<FisHtml> {
 export async function dovizFisHtml(girdi: Record<string, any>): Promise<FisHtml> {
   const c = await BelgeService.dovizCikti(girdi);
   const no = c.veri?.belgeNo || girdi.seriNo || girdi.belgeNo || girdi.fisId || "";
-  return ciz(c, `e-Döviz Fişi${no ? ` - ${no}` : ""}`);
+  const tipAdi = c.veri?.tipAdi === "SATIM" ? "Satış" : "Alış";
+  const baslikEk = c.veri?.isArbitraj ? `Arbitraj ${tipAdi}` : `Döviz ${tipAdi}`;
+  return ciz(c, `${baslikEk}${no ? ` - ${no}` : ""}`);
 }
 
 /**
@@ -52,10 +54,42 @@ export function incrementDocNo(docNo: string, offset: number): string {
  * Çoklu ürün/satır olduğunda her bir ürün ayrı bir fişte çıkar.
  */
 export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisHtml[]> {
-  const lines = Array.isArray(girdi.lines) ? girdi.lines : [];
-  if (lines.length === 0) {
+  const rawLines = Array.isArray(girdi.lines) ? girdi.lines : [];
+  if (rawLines.length === 0) {
     const tek = await dovizFisHtml(girdi);
     return [tek];
+  }
+
+  // Yalnızca geçerli (para kodu ve miktar/tutar > 0 olan) satırları dikkate al
+  const validLines = rawLines.filter((l: any) => {
+    const hasKod = (l.paraKodu || l.kod) && String(l.paraKodu || l.kod).trim() !== "";
+    const m = parseDecimal(l.miktar);
+    const t = parseDecimal(l.tutar);
+    return hasKod && (m > 0 || t > 0);
+  });
+
+  const sourceLines = validLines.length > 0 ? validLines : rawLines;
+
+  // Arbitraj işleminde en fazla 1 Döviz fişi satırı (isArbitraj: false) ve en fazla 1 Arbitraj fişi satırı (isArbitraj: true) basılır
+  let lines: any[] = sourceLines;
+  if (girdi.isArbitraj && sourceLines.length > 0) {
+    const nonArbLines = sourceLines.filter((l: any) => l.isArbitraj === false);
+    const arbLines = sourceLines.filter((l: any) => l.isArbitraj === true);
+
+    const finalArbLines: any[] = [];
+    if (nonArbLines.length > 0) {
+      finalArbLines.push({ ...nonArbLines[0], isArbitraj: false });
+    }
+    if (arbLines.length > 0) {
+      finalArbLines.push({ ...arbLines[0], isArbitraj: true });
+    } else if (finalArbLines.length === 1 && sourceLines.length > 1) {
+      // 2. satır arbitraj bacağı
+      finalArbLines.push({ ...sourceLines[1], isArbitraj: true });
+    } else if (finalArbLines.length === 0) {
+      // Yalnızca tek satır var ise ve arbitraj ise tek arbitraj satırı
+      finalArbLines.push({ ...sourceLines[0], isArbitraj: true });
+    }
+    lines = finalArbLines;
   }
 
   const baseSeri = String(girdi.seriNo || "");
@@ -76,21 +110,38 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
     const satirBelgeNo = (line.belgeNo && line.belgeNo !== baseBelge) ? line.belgeNo : (baseBelge ? incrementDocNo(baseBelge, idx) : "");
     const satirGuid = line.ettn || line.guid || girdi.guid;
 
+    let satirTip = Number(girdi.tip ?? 0);
+    if (line.tip !== undefined && line.tip !== null) {
+      satirTip = Number(line.tip);
+    } else if (line.islemYonu) {
+      satirTip = (String(line.islemYonu).toLowerCase() === "satis" || Number(line.islemYonu) === 1) ? 1 : 0;
+    } else if (girdi.isArbitraj) {
+      // Arbitraj işleminde satır yönü belirtilmemişse: 1. bacak ana fiş yönü, 2. bacak ters yön
+      satirTip = idx === 0 ? Number(girdi.tip ?? 0) : (Number(girdi.tip ?? 0) === 0 ? 1 : 0);
+    }
+
+    const isLineArbitraj = line.isArbitraj !== undefined
+      ? Boolean(line.isArbitraj)
+      : Boolean(girdi.isArbitraj && idx > 0);
+
     const tekilGirdi = {
       ...girdi,
+      fisId: girdi.fisId,
+      tip: satirTip,
+      isArbitraj: isLineArbitraj,
       seriNo: satirSeriNo,
       belgeNo: satirBelgeNo,
       guid: satirGuid,
       ettn: satirGuid,
-      lines: [{ ...line, miktar, kur, tutar, seriNo: satirSeriNo, belgeNo: satirBelgeNo }],
+      lines: [{ ...line, tip: satirTip, islemYonu: satirTip === 1 ? "satis" : "alis", isArbitraj: isLineArbitraj, miktar, kur, tutar, seriNo: satirSeriNo, belgeNo: satirBelgeNo }],
       toplamTutar: tutar,
       // Masraf ve son toplamı sunucu kurar: KMV firma ayarına göre (kurdan hariç) eklenir ya da (kura dahil) eklenmez.
       totalMasraf: undefined,
       sonToplam: undefined,
       odemeTutari: undefined,
-      bsmvTutari: bmv,
-      kmvTutari: kmv,
-      komisyonTutari: komisyon,
+      bsmvTutari: satirTip === 1 ? (bmv || undefined) : 0,
+      kmvTutari: satirTip === 1 ? (kmv || undefined) : 0,
+      komisyonTutari: komisyon || undefined,
     };
 
     const tek = await dovizFisHtml(tekilGirdi);

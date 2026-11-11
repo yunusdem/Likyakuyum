@@ -148,6 +148,19 @@ export class CariHareketSqlRepository {
           CONSTRAINT [PK_TODVZ_CARI_HAREKET_SATIRI] PRIMARY KEY CLUSTERED ([CARI_HAREKET_ID] ASC, [SATIR_NO] ASC)
         );
       END
+
+      -- Ensure columns on TODVZ_CARI_HAREKET
+      IF COL_LENGTH('dbo.TODVZ_CARI_HAREKET', 'ACIKLAMA') IS NULL ALTER TABLE [dbo].[TODVZ_CARI_HAREKET] ADD [ACIKLAMA] VARCHAR(250) NULL;
+      IF COL_LENGTH('dbo.TODVZ_CARI_HAREKET', 'VEZNE_ID') IS NULL ALTER TABLE [dbo].[TODVZ_CARI_HAREKET] ADD [VEZNE_ID] INT NOT NULL DEFAULT 1;
+      IF COL_LENGTH('dbo.TODVZ_CARI_HAREKET', 'POS_CIHAZI_ID') IS NULL ALTER TABLE [dbo].[TODVZ_CARI_HAREKET] ADD [POS_CIHAZI_ID] INT NULL;
+
+      -- Ensure BANKA_ACIKLAMA & ACIKLAMA columns on other tables
+      IF COL_LENGTH('dbo.TODVZ_FIS', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE [dbo].[TODVZ_FIS] ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
+      IF COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE [dbo].[TODVZ_SARRAF_FISI] ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
+      IF COL_LENGTH('dbo.TODVZ_FATURA', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE [dbo].[TODVZ_FATURA] ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
+      IF COL_LENGTH('dbo.TODVZ_FATURA', 'ACIKLAMA') IS NULL ALTER TABLE [dbo].[TODVZ_FATURA] ADD [ACIKLAMA] VARCHAR(250) NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ACIKLAMA') IS NULL ALTER TABLE [dbo].[TODVZ_ODEME_SATIRI] ADD [ACIKLAMA] VARCHAR(250) NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE [dbo].[TODVZ_ODEME_SATIRI] ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
     `;
     try {
       await pool.request().query(checkQuery);
@@ -176,6 +189,10 @@ export class CariHareketSqlRepository {
       search?: string;
       onlyCariHareket?: boolean;
       kaynak?: string;
+      onlyOwnRecords?: boolean;
+      userId?: number;
+      userVezneId?: number;
+      cariSinirlamaTipi?: number;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<CariHareketModel[]> {
@@ -211,6 +228,13 @@ export class CariHareketSqlRepository {
       if (filters?.search && filters.search.trim()) {
         request.input("search", sql.VarChar(100), `%${filters.search.trim()}%`);
       }
+      if (filters?.onlyOwnRecords && filters?.userId) {
+        request.input("ownUserId", sql.Int, Number(filters.userId));
+        request.input("ownVezneId", sql.Int, Number(filters.userVezneId || 0));
+      }
+      if (filters?.cariSinirlamaTipi && filters?.userId) {
+        request.input("cariLimitUserId", sql.Int, Number(filters.userId));
+      }
 
       const onlyCariHareket = filters?.onlyCariHareket === true || String(filters?.onlyCariHareket) === "true" || filters?.kaynak === "CARI_HAREKET";
 
@@ -227,6 +251,16 @@ export class CariHareketSqlRepository {
       if (filters?.hareketTipi !== undefined && filters?.hareketTipi !== null && String(filters?.hareketTipi) !== "-1") chWhere.push("H.[HAREKET_TIPI] = @hareketTipi");
       if (filters?.search && filters.search.trim()) {
         chWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR H.[ACIKLAMA] LIKE @search OR V.[KOD] LIKE @search OR V.[AD] LIKE @search)");
+      }
+      if (filters?.onlyOwnRecords && filters?.userId) {
+        chWhere.push("(H.[EKLEYEN_ID] = @ownUserId OR H.[GUNCELLEYEN_ID] = @ownUserId OR (@ownVezneId > 0 AND H.[VEZNE_ID] = @ownVezneId))");
+      }
+      if (filters?.cariSinirlamaTipi && filters?.userId) {
+        if (filters.cariSinirlamaTipi === 1) {
+          chWhere.push("H.[CARI_KART_ID] IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @cariLimitUserId)");
+        } else if (filters.cariSinirlamaTipi === 2) {
+          chWhere.push("H.[CARI_KART_ID] NOT IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @cariLimitUserId)");
+        }
       }
 
       queries.push(`
@@ -272,6 +306,16 @@ export class CariHareketSqlRepository {
       if (filters?.search && filters.search.trim()) {
         sfWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR SF.[UNVAN] LIKE @search OR SF.[FIS_NO] LIKE @search)");
       }
+      if (filters?.onlyOwnRecords && filters?.userId) {
+        sfWhere.push("(SF.[KULLANICI_ID] = @ownUserId OR (@ownVezneId > 0 AND SF.[VEZNE_ID] = @ownVezneId))");
+      }
+      if (filters?.cariSinirlamaTipi && filters?.userId) {
+        if (filters.cariSinirlamaTipi === 1) {
+          sfWhere.push("COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @cariLimitUserId)");
+        } else if (filters.cariSinirlamaTipi === 2) {
+          sfWhere.push("COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) NOT IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @cariLimitUserId)");
+        }
+      }
 
       queries.push(`
         SELECT DISTINCT
@@ -280,7 +324,12 @@ export class CariHareketSqlRepository {
           COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
           SF.[TARIH],
           10 AS [HAREKET_TIPI],
-          CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
+          CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END +
+          CASE 
+            WHEN NULLIF(LTRIM(RTRIM(SF.[BANKA_ACIKLAMA])), '') IS NOT NULL THEN ' - ' + LTRIM(RTRIM(SF.[BANKA_ACIKLAMA]))
+            WHEN NULLIF(LTRIM(RTRIM(OS.[ACIKLAMA])), '') IS NOT NULL THEN ' - ' + LTRIM(RTRIM(OS.[ACIKLAMA]))
+            ELSE ''
+          END AS [ACIKLAMA],
           CASE WHEN SF.[TIP] = 1 THEN 0 ELSE 1 END AS [TIP],
           1 AS [EKLEYEN_ID],
           ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
@@ -315,6 +364,16 @@ export class CariHareketSqlRepository {
       if (filters?.search && filters.search.trim()) {
         dfWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR F.[UNVAN] LIKE @search OR F.[BELGE_NO] LIKE @search)");
       }
+      if (filters?.onlyOwnRecords && filters?.userId) {
+        dfWhere.push("(F.[KULLANICI_ID] = @ownUserId OR (@ownVezneId > 0 AND F.[VEZNE_ID] = @ownVezneId))");
+      }
+      if (filters?.cariSinirlamaTipi && filters?.userId) {
+        if (filters.cariSinirlamaTipi === 1) {
+          dfWhere.push("F.[CARI_KART_ID] IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @cariLimitUserId)");
+        } else if (filters.cariSinirlamaTipi === 2) {
+          dfWhere.push("F.[CARI_KART_ID] NOT IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @cariLimitUserId)");
+        }
+      }
 
       queries.push(`
         SELECT 
@@ -327,6 +386,10 @@ export class CariHareketSqlRepository {
             WHEN F.[TIP] = 0 THEN 'Döviz Alış Fişi #' + ISNULL(F.[BELGE_NO], CAST(F.[FIS_ID] AS VARCHAR))
             WHEN F.[TIP] = 1 THEN 'Döviz Satış Fişi #' + ISNULL(F.[BELGE_NO], CAST(F.[FIS_ID] AS VARCHAR))
             ELSE 'Döviz Arbitraj Fişi #' + ISNULL(F.[BELGE_NO], CAST(F.[FIS_ID] AS VARCHAR))
+          END +
+          CASE 
+            WHEN NULLIF(LTRIM(RTRIM(F.[BANKA_ACIKLAMA])), '') IS NOT NULL THEN ' - ' + LTRIM(RTRIM(F.[BANKA_ACIKLAMA]))
+            ELSE ''
           END AS [ACIKLAMA],
           CASE WHEN F.[TIP] = 0 THEN 1 ELSE 0 END AS [TIP],
           ISNULL(F.[EKLEYEN_ID], 1) AS [EKLEYEN_ID],
@@ -361,6 +424,16 @@ export class CariHareketSqlRepository {
       if (filters?.search && filters.search.trim()) {
         fatWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR FAT.[ALICI_UNVAN] LIKE @search OR FAT.[FATURA_NO] LIKE @search)");
       }
+      if (filters?.onlyOwnRecords && filters?.userId) {
+        fatWhere.push("(FAT.[EKLEYEN_ID] = @ownUserId OR (@ownVezneId > 0 AND FAT.[VEZNE_ID] = @ownVezneId))");
+      }
+      if (filters?.cariSinirlamaTipi && filters?.userId) {
+        if (filters.cariSinirlamaTipi === 1) {
+          fatWhere.push("COALESCE(NULLIF(FO.[CARI_KART_ID], 0), NULLIF(FAT.[CARI_KART_ID], 0)) IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @cariLimitUserId)");
+        } else if (filters.cariSinirlamaTipi === 2) {
+          fatWhere.push("COALESCE(NULLIF(FO.[CARI_KART_ID], 0), NULLIF(FAT.[CARI_KART_ID], 0)) NOT IN (SELECT CARI_KART_ID FROM [dbo].[TODVZ_KULLANICI_CARI] WITH (NOLOCK) WHERE KULLANICI_ID = @cariLimitUserId)");
+        }
+      }
 
       queries.push(`
         SELECT 
@@ -369,7 +442,11 @@ export class CariHareketSqlRepository {
           COALESCE(NULLIF(FO.[CARI_KART_ID], 0), NULLIF(FAT.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
           FAT.[TARIH],
           12 AS [HAREKET_TIPI],
-          CASE WHEN FAT.[FATURA_TIPI] = 2 THEN 'Perakende İade Faturası #' + ISNULL(FAT.[FATURA_NO], CAST(FAT.[FATURA_ID] AS VARCHAR)) ELSE 'Perakende Satış Faturası #' + ISNULL(FAT.[FATURA_NO], CAST(FAT.[FATURA_ID] AS VARCHAR)) END AS [ACIKLAMA],
+          CASE WHEN FAT.[FATURA_TIPI] = 2 THEN 'Perakende İade Faturası #' + ISNULL(FAT.[FATURA_NO], CAST(FAT.[FATURA_ID] AS VARCHAR)) ELSE 'Perakende Satış Faturası #' + ISNULL(FAT.[FATURA_NO], CAST(FAT.[FATURA_ID] AS VARCHAR)) END +
+          CASE 
+            WHEN NULLIF(LTRIM(RTRIM(FAT.[BANKA_ACIKLAMA])), '') IS NOT NULL THEN ' - ' + LTRIM(RTRIM(FAT.[BANKA_ACIKLAMA]))
+            ELSE ''
+          END AS [ACIKLAMA],
           CASE WHEN FAT.[FATURA_TIPI] = 2 THEN 1 ELSE 0 END AS [TIP],
           1 AS [EKLEYEN_ID],
           FAT.[TARIH] AS [EKLEME_ZAMANI],
@@ -660,7 +737,12 @@ export class CariHareketSqlRepository {
             COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
             SF.[TARIH],
             10 AS [HAREKET_TIPI],
-            CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END AS [ACIKLAMA],
+            CASE WHEN SF.[TIP] = 0 THEN 'Sarraf Alış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) ELSE 'Sarraf Satış Fişi #' + ISNULL(SF.[FIS_NO], CAST(SF.[SARRAF_FISI_ID] AS VARCHAR)) END +
+            CASE 
+              WHEN NULLIF(LTRIM(RTRIM(SF.[BANKA_ACIKLAMA])), '') IS NOT NULL THEN ' - ' + LTRIM(RTRIM(SF.[BANKA_ACIKLAMA]))
+              WHEN NULLIF(LTRIM(RTRIM(OS.[ACIKLAMA])), '') IS NOT NULL THEN ' - ' + LTRIM(RTRIM(OS.[ACIKLAMA]))
+              ELSE ''
+            END AS [ACIKLAMA],
             CASE WHEN SF.[TIP] = 1 THEN 0 ELSE 1 END AS [TIP],
             1 AS [EKLEYEN_ID],
             ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI],
@@ -1238,33 +1320,51 @@ export class CariHareketSqlRepository {
   public static async getNavigationIds(
     currentId?: number | string,
     dbContext?: { dbServer?: string; dbName?: string },
-    baslangic?: string | null
+    baslangic?: string | null,
+    userFilter?: { userId: number; userVezneId?: number }
   ) {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       await CariHareketSqlRepository.ensureTablesExist(pool);
 
       // baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+      const ownFilter = userFilter ? "AND ([EKLEYEN_ID] = @uId OR [GUNCELLEYEN_ID] = @uId OR (@vId > 0 AND [VEZNE_ID] = @vId))" : "";
+
       const query = `
-        WITH AllIds AS (
-          SELECT [CARI_HAREKET_ID] AS [ID], [TARIH]
-          FROM [dbo].[TODVZ_CARI_HAREKET] WITH (NOLOCK)
-          WHERE 1=1 ${baslangic ? "AND [TARIH] >= CAST(@BAS AS date)" : ""}
-          UNION
-          SELECT SF.[SARRAF_FISI_ID] AS [ID], SF.[TARIH]
+        WITH AllMovements AS (
+          SELECT H.[CARI_HAREKET_ID] AS [ID], H.[TARIH], H.[EKLEYEN_ID], H.[GUNCELLEYEN_ID], H.[VEZNE_ID]
+          FROM [dbo].[TODVZ_CARI_HAREKET] H WITH (NOLOCK)
+          WHERE H.[CARI_KART_ID] IS NOT NULL
+          UNION ALL
+          SELECT SF.[SARRAF_FISI_ID] AS [ID], SF.[TARIH], ISNULL(SF.[EKLEYEN_ID], 1) AS [EKLEYEN_ID], ISNULL(SF.[GUNCELLEYEN_ID], ISNULL(SF.[EKLEYEN_ID], 1)) AS [GUNCELLEYEN_ID], SF.[VEZNE_ID]
           FROM [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK)
-          INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
-          WHERE OS.[ODEME_ARACI_TURU] = 1 AND (COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) IS NOT NULL)
-          ${baslangic ? "AND SF.[TARIH] >= CAST(@BAS AS date)" : ""}
+          INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID] AND OS.[ODEME_ARACI_TURU] = 1
+          WHERE (COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) IS NOT NULL)
+          UNION ALL
+          SELECT F.[FIS_ID] AS [ID], F.[TARIH], ISNULL(F.[EKLEYEN_ID], 1) AS [EKLEYEN_ID], ISNULL(F.[GUNCELLEYEN_ID], 1) AS [GUNCELLEYEN_ID], F.[VEZNE_ID]
+          FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
+          WHERE F.[CARI_KART_ID] IS NOT NULL AND F.[CARI_KART_ID] > 0 AND ISNULL(F.[IPTAL], 0) = 0
+          UNION ALL
+          SELECT FAT.[FATURA_ID] AS [ID], FAT.[TARIH], ISNULL(FAT.[EKLEYEN_ID], 1) AS [EKLEYEN_ID], 1 AS [GUNCELLEYEN_ID], FAT.[VEZNE_ID]
+          FROM [dbo].[TODVZ_FATURA] FAT WITH (NOLOCK)
+          LEFT JOIN [dbo].[TODVZ_FATURA_ODEME] FO WITH (NOLOCK) ON FO.[FATURA_ID] = FAT.[FATURA_ID] AND (FO.[ODEME_ARACI_TURU] = 1 OR FO.[CARI_KART_ID] IS NOT NULL)
+          WHERE (COALESCE(NULLIF(FO.[CARI_KART_ID], 0), NULLIF(FAT.[CARI_KART_ID], 0)) IS NOT NULL)
         )
-        SELECT [ID] AS [CARI_HAREKET_ID]
-        FROM AllIds
-        ORDER BY [TARIH] ASC, [ID] ASC;
+        SELECT DISTINCT [ID] AS [CARI_HAREKET_ID], [TARIH]
+        FROM AllMovements
+        WHERE 1=1 ${baslangic ? "AND [TARIH] >= CAST(@BAS AS date)" : ""} ${ownFilter}
+        ORDER BY [TARIH] ASC, [CARI_HAREKET_ID] ASC;
       `;
       const navReq = pool.request();
       if (baslangic) navReq.input("BAS", sql.VarChar(10), baslangic);
+      if (userFilter) {
+        navReq.input("uId", sql.Int, userFilter.userId);
+        navReq.input("vId", sql.Int, userFilter.userVezneId || 0);
+      }
       const res = await navReq.query<{ CARI_HAREKET_ID: number }>(query);
-      const ids = (res.recordset || []).map((r) => r.CARI_HAREKET_ID);
+      const rawIds = (res.recordset || []).map((r) => r.CARI_HAREKET_ID);
+      // Tekil ve sıralı ID listesi
+      const ids = Array.from(new Set(rawIds));
 
       if (ids.length === 0) {
         return { firstId: null, prevId: null, nextId: null, lastId: null, currentIndex: -1, total: 0 };

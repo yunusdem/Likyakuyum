@@ -73,6 +73,8 @@ export interface UserModel {
   hasSlipAmountChangePerm: boolean;
   isSuspiciousTransAuth: boolean;
   noCrossRateCheck: boolean;
+  hasVezneLastTransactionsPerm?: boolean;
+  hasOnlyOwnRecordsPerm?: boolean;
 
   printerId: string;
   horizontalZoom: number | string;
@@ -85,6 +87,8 @@ export interface UserModel {
   milyemPermValue?: number | string;
   iscilikGirisSekli?: number;
   dovizZiynetGirisSekli?: number;
+  cariSinirlamaTipi?: number;
+  atananCariIdler?: number[];
 
   menuPerms: UserMenuPermissions;
 
@@ -189,5 +193,8 @@ export interface TodvzKullaniciEntity {
   SIDEBAR_GORUNUM?: string | null;
   ISCILIK_GIRIS_SEKLI?: number | null;
   DOVIZ_ZIYNET_GIRIS_SEKLI?: number | null;
+  VEZNE_SON_ISLEMLER_YETKISI?: number | boolean | null;
+  KENDI_KAYITLARI_YETKISI?: number | boolean | null;
+  CARI_SINIRLAMA_TIPI?: number | null;
 }
 

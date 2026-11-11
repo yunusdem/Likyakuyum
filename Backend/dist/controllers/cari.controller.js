@@ -1,6 +1,7 @@
 import { CariService } from "../services/cari.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
 export class CariController {
     static getDbContext(req) {
@@ -22,9 +23,16 @@ export class CariController {
      */
     static listCariKartlar = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
-        const list = await CariService.listCariKartlar(dbContext);
+        const yetki = await kullaniciYetkisi(req);
+        const isSysAdmin = !!(req.user?.role === "admin" || req.user?.isSysAdmin || yetki.yonetici);
+        const filter = {
+            userId: req.user?.userId ? Number(req.user.userId) : undefined,
+            cariSinirlamaTipi: yetki.cariSinirlamaTipi,
+            isSysAdmin,
+        };
+        const list = await CariService.listCariKartlar(dbContext, filter);
         // "Cari bakiye görebilir" yetkisi yoksa bakiye alanları gönderilmez (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
-        if (!(await kullaniciYetkisi(req)).cariBakiye) {
+        if (!yetki.cariBakiye) {
             const gizli = list.map(({ borcBakiye, alacakBakiye, netBakiye, bakiyeYon, hasBakiye, hasYon, bakiyeOzet, ...k }) => k);
             return ApiResponse.ok(res, "Cari kartlar başarıyla listelendi.", gizli);
         }
@@ -35,6 +43,20 @@ export class CariController {
      */
     static getCariKartById = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
+        const yetki = await kullaniciYetkisi(req);
+        const isSysAdmin = !!(req.user?.role === "admin" || req.user?.isSysAdmin || yetki.yonetici);
+        const cariId = Number(req.params.id);
+        // Cari sınırlama kontrolü
+        if (!isSysAdmin && yetki.cariSinirlamaTipi && yetki.cariSinirlamaTipi > 0) {
+            const atananlar = yetki.atananCariIdler || [];
+            const iceriyor = atananlar.includes(cariId);
+            if (yetki.cariSinirlamaTipi === 1 && !iceriyor) {
+                throw ApiError.forbidden("Bu cari kartı görme yetkiniz bulunmamaktadır (İzin verilen cariler sınırlaması).");
+            }
+            if (yetki.cariSinirlamaTipi === 2 && iceriyor) {
+                throw ApiError.forbidden("Bu cari kartı görme yetkiniz bulunmamaktadır (Yasaklanan cariler sınırlaması).");
+            }
+        }
         const item = await CariService.getCariKartById(req.params.id, dbContext);
         return ApiResponse.ok(res, "Cari kart detayı getirildi.", item);
     });

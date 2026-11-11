@@ -95,6 +95,20 @@ export class UserController {
     const yonetici = await kartYoneticisiMi(req, merkez);
     if (!yonetici && !kendisiMi(req, req.params.id)) throw ApiError.forbidden(YONETICI_GEREKLI);
     const girdi = yonetici ? req.body : kendiAlanlari(req.body || {});
+
+    // Kullanıcı güncellemesinde şifre doğrulama istenmişse kontrol et
+    if (girdi.verifyPassword) {
+      const isMatched = await UserService.verifyUserPassword(
+        req.params.id,
+        String(girdi.password || ""),
+        dbContext,
+        req.user?.firmaId
+      );
+      if (!isMatched) {
+        throw ApiError.badRequest("Girilen şifre kullanıcı adı ile uyuşmuyor.");
+      }
+    }
+
     // Kurulumda kart üzerinden şifre değişiminde de şifre kuralı (yeni kullanıcıda uygulanıyordu, kartta tek harf yazılabiliyordu)
     if (env.KURULUM_MODU && String((girdi as any).password || "") !== "") MerkezGirisService.sifreKuraliniDenetle(String((girdi as any).password));
     const eskiKullaniciAdi = merkez ? (await UserService.getUserById(req.params.id, dbContext)).username : "";
@@ -146,6 +160,21 @@ export class UserController {
     const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
     const cashiers = await UserService.getCashiers(dbContext);
     return ApiResponse.ok(res, "Vezneler başarıyla getirildi", cashiers);
+  });
+
+  public static verifyPassword = asyncHandler(async (req: Request, res: Response) => {
+    const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
+    const { username, userId, password } = req.body || {};
+    if (!password) {
+      return ApiResponse.ok(res, "Şifre belirtilmedi.", { matched: false });
+    }
+    const matched = await UserService.verifyUserPassword(
+      userId || username,
+      String(password),
+      dbContext,
+      req.user?.firmaId
+    );
+    return ApiResponse.ok(res, matched ? "Şifre doğrulandı." : "Şifre uyuşmuyor.", { matched });
   });
 
   public static updateMyAppearance = asyncHandler(async (req: Request, res: Response) => {

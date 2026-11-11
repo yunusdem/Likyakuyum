@@ -1,6 +1,10 @@
 import { UserSqlRepository } from "../models/userSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
-import { hashPassword } from "../utils/password.utils.js";
+import { hashPassword, comparePassword } from "../utils/password.utils.js";
+import { sifreDogrula } from "../utils/sifre.utils.js";
+import { KullaniciSqlRepository } from "../models/admin/kullaniciSql.repository.js";
+import { getDbPool } from "../config/mssql.config.js";
+import sql from "mssql";
 import { CreateUserInput, UpdateUserInput, ListUsersQuery } from "../schemas/user.schema.js";
 import { UserResponseDto, UserModel } from "../types/user.types.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
@@ -106,6 +110,12 @@ export class UserService {
       ratePermValue: input.ratePermValue ?? 0,
       milyemPermType: input.milyemPermType ?? "Var",
       milyemPermValue: input.milyemPermValue ?? 0,
+      iscilikGirisSekli: input.iscilikGirisSekli ?? 0,
+      dovizZiynetGirisSekli: input.dovizZiynetGirisSekli ?? 0,
+      hasVezneLastTransactionsPerm: input.hasVezneLastTransactionsPerm ?? false,
+      hasOnlyOwnRecordsPerm: input.hasOnlyOwnRecordsPerm ?? false,
+      cariSinirlamaTipi: input.cariSinirlamaTipi ?? 0,
+      atananCariIdler: input.atananCariIdler ?? [],
 
       menuPerms: input.menuPerms ? {
         mainMenu: input.menuPerms.mainMenu || "Tam Yetki",
@@ -292,6 +302,56 @@ export class UserService {
       throw ApiError.notFound(ResponseMessages.USER_NOT_FOUND);
     }
     return UserSqlRepository.toDto(updated);
+  }
+
+  public static async verifyUserPassword(
+    userIdOrUsername: string | number,
+    inputPassword: string,
+    dbContext?: { dbServer?: string; dbName?: string },
+    firmaId?: number
+  ): Promise<boolean> {
+    if (!inputPassword || !userIdOrUsername) return false;
+    try {
+      const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+      const isNum = !isNaN(Number(userIdOrUsername)) && Number(userIdOrUsername) > 0;
+
+      // 1. TODVZ_KULLANICI kontrolü
+      const req = pool.request();
+      let query = "";
+      if (isNum) {
+        req.input("uid", sql.Int, Number(userIdOrUsername));
+        query = "SELECT KULLANICI_ID, AD, SIFRE FROM TODVZ_KULLANICI WHERE KULLANICI_ID = @uid";
+      } else {
+        req.input("uName", sql.VarChar(50), String(userIdOrUsername).trim());
+        query = "SELECT KULLANICI_ID, AD, SIFRE FROM TODVZ_KULLANICI WHERE LOWER(LTRIM(RTRIM(AD))) = LOWER(LTRIM(RTRIM(@uName)))";
+      }
+      const res = await req.query(query);
+      const todvzUser = res.recordset?.[0];
+      if (todvzUser) {
+        const stored = String(todvzUser.SIFRE || "").trim();
+        if (stored && (stored === inputPassword.trim() || await comparePassword(inputPassword, stored))) {
+          return true;
+        }
+      }
+
+      // 2. ADM_KULLANICI (merkez / central auth) kontrolü
+      if (firmaId) {
+        const username = todvzUser ? todvzUser.AD : String(userIdOrUsername).trim();
+        const adminUser = await KullaniciSqlRepository.adIleBul(firmaId, username);
+        if (adminUser && adminUser.sifreHash) {
+          if (adminUser.sifreHash !== "ESKI") {
+            if (await sifreDogrula(inputPassword, adminUser.sifreHash) || inputPassword === adminUser.sifreHash) {
+              return true;
+            }
+          }
+        }
+      }
+
+      return false;
+    } catch (err) {
+      logger.error("verifyUserPassword error:", err);
+      return false;
+    }
   }
 }
 

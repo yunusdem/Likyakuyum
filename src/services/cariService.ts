@@ -52,6 +52,11 @@ export interface CariKartItem {
   whatsappAdi: string | null;
   eFaturaPostaKutusu: string | null;
   eIrsaliyePostaKutusu: string | null;
+  islemGostermeGunSayisi?: number | null;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   fotografId?: number | null;
   fotograf?: CariFotografItem | null;
   borcBakiye?: number;
@@ -126,6 +131,11 @@ export interface CariKartFormData {
   whatsappAdi: string | null;
   eFaturaPostaKutusu: string | null;
   eIrsaliyePostaKutusu: string | null;
+  islemGostermeGunSayisi?: number | null;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   fotografId?: number | null;
   fotograf?: CariFotografItem | null;
   fotografData?: {

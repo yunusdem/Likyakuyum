@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
+import { gosterimBaslangici, gosterimIcinde } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { fisGunu } from "../../utils/fisTarihi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -83,6 +84,12 @@ export const CariHareketPage: React.FC = () => {
   const tarihYetkisi = kYetki.tarihDegistirme;
   // "Cari bakiye görebilir" yetkisi yoksa sağdaki bakiye paneli çizilmez, bakiye sorulmaz
   const cariBakiyeYetkisi = kYetki.cariBakiye;
+  const gosterimSinirTarihi = useMemo(() => gosterimBaslangici(kYetki), [kYetki]);
+  const [cariKartId, setCariKartId] = useState<number | null>(null);
+
+  const [isRecordLockedByDate, setIsRecordLockedByDate] = useState<boolean>(false);
+  const [isRecordLockedByUser, setIsRecordLockedByUser] = useState<boolean>(false);
+  const isRecordLocked = isRecordLockedByDate || isRecordLockedByUser;
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -92,6 +99,28 @@ export const CariHareketPage: React.FC = () => {
 
   // General lookups
   const [cariList, setCariList] = useState<CariKartItem[]>([]);
+
+  // Cari kartın kendi işlem gösterme gün sayısı
+  const selectedCariObj = useMemo(() => {
+    if (!cariKartId) return null;
+    return cariList.find((c) => c.id === Number(cariKartId)) || null;
+  }, [cariKartId, cariList]);
+
+  const cariSinirTarihi = useMemo(() => {
+    const gun = selectedCariObj?.islemGostermeGunSayisi;
+    if (gun && gun > 0) {
+      return gosterimBaslangici({ yonetici: false, gosterimGunu: gun } as any);
+    }
+    return null;
+  }, [selectedCariObj]);
+
+  const efektifSinirTarihi = useMemo(() => {
+    if (gosterimSinirTarihi && cariSinirTarihi) {
+      return gosterimSinirTarihi > cariSinirTarihi ? gosterimSinirTarihi : cariSinirTarihi;
+    }
+    return gosterimSinirTarihi || cariSinirTarihi || null;
+  }, [gosterimSinirTarihi, cariSinirTarihi]);
+
   const [vezneList, setVezneList] = useState<VezneItem[]>([]);
   const [paraList, setParaList] = useState<ParaItem[]>([]);
   const [isLoadingLookups, setIsLoadingLookups] = useState<boolean>(true);
@@ -112,7 +141,6 @@ export const CariHareketPage: React.FC = () => {
   const [vezneKod, setVezneKod] = useState<string>("");
   const [vezneAd, setVezneAd] = useState<string>("");
 
-  const [cariKartId, setCariKartId] = useState<number | null>(null);
   const [cariKod, setCariKod] = useState<string>("");
   const [cariAd, setCariAd] = useState<string>("");
 
@@ -524,6 +552,35 @@ export const CariHareketPage: React.FC = () => {
         // Fetch navigation info
         const nav = await CariHareketService.getNavigation(item.id);
         setNavInfo(nav);
+
+        // Kullanıcı yetkisine ve cari kartına göre işlem gösterme gün sınırı kontrolü
+        const kayitTarihi = item.tarih ? item.tarih.split("T")[0] : "";
+        let lockedByDate = !gosterimIcinde(kYetki, kayitTarihi);
+        let dateLockMessage = `Bu kayıt işlem gösterme sınırınızın (son ${kYetki.gosterimGunu} gün) dışında; açılamaz, düzeltilemez, silinemez.`;
+        if (!lockedByDate) {
+          const matchedCari = cariList.find((c) => c.id === Number(item.cariKartId));
+          const cariGun = matchedCari?.islemGostermeGunSayisi;
+          if (cariGun && cariGun > 0) {
+            const cBas = gosterimBaslangici({ yonetici: false, gosterimGunu: cariGun } as any);
+            if (cBas && kayitTarihi < cBas) {
+              lockedByDate = true;
+              dateLockMessage = `Bu kayıt cari kartın işlem gösterme sınırının (son ${cariGun} gün) dışında; açılamaz, düzeltilemez, silinemez.`;
+            }
+          }
+        }
+        setIsRecordLockedByDate(lockedByDate);
+
+        // Kendi kayıtları yetkisi kontrolü: Sınırsız yetkili olmayan kullanıcılar cari hareket düzeltme ekranında vezne kayıtlarını pasif olarak görür, düzenleyemez
+        const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+        const isOwner = !hasOnlyOwn;
+        const lockedByUser = !isOwner;
+        setIsRecordLockedByUser(lockedByUser);
+
+        if (lockedByUser) {
+          setError("Kayıt Kilitli (Pasif Mod): Yetkiniz doğrultusunda bu kaydı yalnızca pasif olarak görüntüleyebilirsiniz; düzenleme ve silme yetkiniz bulunmamaktadır.");
+        } else if (lockedByDate) {
+          setError(dateLockMessage);
+        }
       }
     } catch (err: any) {
       setError(err.message || "Kayıt yüklenirken hata oluştu.");
@@ -543,6 +600,8 @@ export const CariHareketPage: React.FC = () => {
 
   // Reset form to brand new record (F4)
   const handleNewRecord = () => {
+    setIsRecordLockedByDate(false);
+    setIsRecordLockedByUser(false);
     setCurrentHareketId(null);
     applyUserVezne(vezneList);
     setCariKartId(null);
@@ -593,6 +652,15 @@ export const CariHareketPage: React.FC = () => {
       setError(null);
       setSuccessMsg(null);
 
+      if (isRecordLockedByUser) {
+        setError("Bu kayıt başka bir kullanıcıya aittir; düzeltilemez.");
+        return;
+      }
+      if (isRecordLockedByDate) {
+        setError(`Bu kayıt işlem gösterme sınırınızın (son ${kYetki.gosterimGunu} gün) dışında; düzeltilemez.`);
+        return;
+      }
+
       if (!cariKartId) {
         setError("Lütfen bir Cari Kart seçiniz.");
         return;
@@ -605,6 +673,12 @@ export const CariHareketPage: React.FC = () => {
 
       if (cariTipi === null) {
         setError("Lütfen işlem türünü (Borç veya Alacak) seçiniz.");
+        return;
+      }
+
+      const hedefTarih = fisGunu(tarih, !currentHareketId, tarihYetkisi);
+      if (efektifSinirTarihi && hedefTarih < efektifSinirTarihi) {
+        setError(`Seçilen tarih işlem gösterme sınırının dışındadır. En erken ${efektifSinirTarihi} tarihi seçilebilir.`);
         return;
       }
 
@@ -633,7 +707,7 @@ export const CariHareketPage: React.FC = () => {
         cariKartId,
         cariKod: cariKod?.trim() || undefined,
         vezneId,
-        tarih: fisGunu(tarih, !currentHareketId, tarihYetkisi),
+        tarih: hedefTarih,
         hareketTipi,
         aciklama,
         tip: cariTipi,
@@ -677,6 +751,14 @@ export const CariHareketPage: React.FC = () => {
   // Delete Record
   const handleDeleteConfirm = async () => {
     if (!currentHareketId) return;
+    if (isRecordLockedByUser) {
+      setError("Bu kayıt başka bir kullanıcıya aittir; silinemez.");
+      return;
+    }
+    if (isRecordLockedByDate || (tarih && efektifSinirTarihi && tarih < efektifSinirTarihi)) {
+      setError("Bu kayıt işlem gösterme sınırının dışında; silinemez.");
+      return;
+    }
     try {
       setIsSaving(true);
       await CariHareketService.delete(currentHareketId);
@@ -707,20 +789,44 @@ export const CariHareketPage: React.FC = () => {
   const handleNavLast = () => navInfo.lastId && loadRecordById(navInfo.lastId);
 
   // Open Search Modal (F3)
-  const handleOpenSearchModal = async () => {
+  const handleOpenSearchModal = useCallback(async () => {
     setShowSearchModal(true);
     try {
       setIsLoadingSearch(true);
       const list = await CariHareketService.list();
-      setAllHareketler(list || []);
+      const userId = Number(user?.id) || 1;
+      const userVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+      const filteredList = (list || []).filter((h) => {
+        if (!hasOnlyOwn) return true;
+        const eId = Number(h.ekleyenId || 0);
+        const gId = Number(h.guncelleyenId || 0);
+        const vId = Number(h.vezneId || 0);
+        return eId === userId || gId === userId || (userVezneId > 0 && vId === userVezneId);
+      });
+      setAllHareketler(filteredList);
     } catch (err) {
       console.error("Hareket listesi arama hatası:", err);
     } finally {
       setIsLoadingSearch(false);
     }
-  };
+  }, [user, kYetki]);
+
+  // Global F3 shortcut listener
+  useEffect(() => {
+    const handleGlobalF3 = (e: KeyboardEvent) => {
+      if (e.key === "F3") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleOpenSearchModal();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalF3, { capture: true });
+    return () => window.removeEventListener("keydown", handleGlobalF3, { capture: true });
+  }, [handleOpenSearchModal]);
 
   const handleRemoveLine = (index: number) => {
+    if (isRecordLocked) return;
     if (lines.length <= 1) {
       // Clear line instead of removing if it's the only one
       setLines([{ id: `line-${Date.now()}`, paraId: 0, paraKodu: "", meblag: "" }]);
@@ -815,7 +921,7 @@ export const CariHareketPage: React.FC = () => {
         setCariAd(exactMatch.ad);
         loadCariBakiye(exactMatch.id);
         if (isEditMode) {
-          CariHareketService.list({ cariKartId: exactMatch.id, onlyCariHareket: true }).then((cariHareketler) => {
+          CariHareketService.list({ cariKartId: exactMatch.id }).then((cariHareketler) => {
             if (cariHareketler && cariHareketler.length > 0) {
               loadRecordById(cariHareketler[0].id);
             }
@@ -857,7 +963,7 @@ export const CariHareketPage: React.FC = () => {
 
     if (isEditMode) {
       try {
-        const cariHareketler = await CariHareketService.list({ cariKartId: c.id, onlyCariHareket: true });
+        const cariHareketler = await CariHareketService.list({ cariKartId: c.id });
         if (cariHareketler && cariHareketler.length > 0) {
           await loadRecordById(cariHareketler[0].id);
         }
@@ -955,7 +1061,7 @@ export const CariHareketPage: React.FC = () => {
         setCariKod(exactMatch.kod);
         loadCariBakiye(exactMatch.id);
         if (isEditMode) {
-          CariHareketService.list({ cariKartId: exactMatch.id, onlyCariHareket: true }).then((cariHareketler) => {
+          CariHareketService.list({ cariKartId: exactMatch.id }).then((cariHareketler) => {
             if (cariHareketler && cariHareketler.length > 0) {
               loadRecordById(cariHareketler[0].id);
             }
@@ -1050,7 +1156,7 @@ export const CariHareketPage: React.FC = () => {
 
     if (isEditMode) {
       try {
-        const cariHareketler = await CariHareketService.list({ cariKartId: c.id, onlyCariHareket: true });
+        const cariHareketler = await CariHareketService.list({ cariKartId: c.id });
         if (cariHareketler && cariHareketler.length > 0) {
           await loadRecordById(cariHareketler[0].id);
         }
@@ -1395,11 +1501,12 @@ export const CariHareketPage: React.FC = () => {
         pageTitle={pageTitle}
         onNew={isEditMode ? undefined : handleNewRecord}
         hideNew={isEditMode}
-        onSave={handleSave}
-        onSearch={isEditMode ? handleOpenSearchModal : undefined}
-        onDelete={isEditMode && currentHareketId ? () => setShowDeleteModal(true) : undefined}
-        hideSearch={!isEditMode}
-        hideDelete={!isEditMode}
+        onSave={isRecordLocked ? undefined : handleSave}
+        hideSave={isRecordLocked}
+        onSearch={handleOpenSearchModal}
+        onDelete={isEditMode && currentHareketId && !isRecordLocked ? () => setShowDeleteModal(true) : undefined}
+        hideSearch={false}
+        hideDelete={!isEditMode || isRecordLocked}
         hideNavigation={!isEditMode}
         onFirst={navInfo.firstId ? handleNavFirst : undefined}
         onPrev={navInfo.prevId ? handleNavPrev : undefined}
@@ -1410,6 +1517,26 @@ export const CariHareketPage: React.FC = () => {
         onClear={handleNewRecord}
         disabled={isSaving}
       />
+
+      {/* Kayıt başka bir kullanıcıya aitse kilitli uyarı bandı */}
+      {isRecordLockedByUser && (
+        <Alert variant="warning" className="d-flex align-items-center mb-3">
+          <IconAlertCircle className="me-2 flex-shrink-0" size={20} />
+          <div>
+            <strong>Kayıt Kilitli (Pasif Mod):</strong> Yetkiniz doğrultusunda bu kaydı yalnızca pasif olarak görüntüleyebilirsiniz; düzenleme ve silme yetkiniz bulunmamaktadır.
+          </div>
+        </Alert>
+      )}
+
+      {/* Kayıt işlem gösterme gün sınırının dışındaysa üst uyarı bandı */}
+      {isRecordLockedByDate && (
+        <Alert variant="warning" className="d-flex align-items-center mb-3">
+          <IconAlertCircle className="me-2 flex-shrink-0" size={20} />
+          <div>
+            <strong>Kayıt Kilitli:</strong> Bu kayıt işlem gösterme sınırının dışında olduğu için açılamaz, düzeltilemez ve silinemez.
+          </div>
+        </Alert>
+      )}
 
       {/* 2. Feedback Alerts (Sağ altta beliren ve otomatik kaybolan toast) */}
       {(error || successMsg) && (
@@ -1446,25 +1573,53 @@ export const CariHareketPage: React.FC = () => {
                   Vezne
                 </Form.Label>
                 <Col>
-                  <div className="d-flex gap-1" style={{ maxWidth: "280px" }}>
-                    <div style={{ width: "90px", flexShrink: 0 }}>
+                  {user?.isSysAdmin ? (
+                    <Form.Select
+                      size="sm"
+                      value={vezneId}
+                      disabled={isRecordLocked}
+                      onChange={(e) => {
+                        const vId = Number(e.target.value);
+                        setVezneId(vId);
+                        const vz = vezneList.find((v) => v.id === vId);
+                        if (vz) {
+                          setVezneKod(vz.kod);
+                          setVezneAd(vz.ad);
+                        }
+                      }}
+                      style={{ maxWidth: "280px" }}
+                      className="fw-bold"
+                      title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
+                    >
+                      {vezneList.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.kod} - {v.ad}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  ) : (
+                    <div className="d-flex gap-1" style={{ maxWidth: "280px" }}>
+                      <div style={{ width: "90px", flexShrink: 0 }}>
+                        <Form.Control
+                          type="text"
+                          readOnly
+                          disabled
+                          value={vezneKod}
+                          title="Vezne giriş yapan kullanıcıya aittir ve değiştirilemez."
+                          className="bg-light text-secondary fw-semibold font-monospace small"
+                          style={{ cursor: "not-allowed" }}
+                        />
+                      </div>
                       <Form.Control
                         type="text"
                         readOnly
                         disabled
-                        value={vezneKod}
-                        title="Vezne otomatik olarak atanır ve değiştirilemez."
-                        className="bg-light text-secondary fw-semibold font-monospace small"
+                        value={vezneAd}
+                        className="bg-light text-muted small"
+                        style={{ cursor: "not-allowed" }}
                       />
                     </div>
-                    <Form.Control
-                      type="text"
-                      readOnly
-                      disabled
-                      value={vezneAd}
-                      className="bg-light text-muted small"
-                    />
-                  </div>
+                  )}
                 </Col>
               </Form.Group>
 
@@ -1478,6 +1633,8 @@ export const CariHareketPage: React.FC = () => {
                     <CodeLookupInput
                       id="cariKodInput"
                       value={cariKod}
+                      disabled={isRecordLocked}
+                      canLookup={!isRecordLocked}
                       onChange={(e) => handleCariKodChange(e.target.value)}
                       onFocus={() => {
                         initialCariKodRef.current = (cariKod || "").trim().toLowerCase();
@@ -1585,6 +1742,7 @@ export const CariHareketPage: React.FC = () => {
                       <Form.Control
                         ref={cariAdInputRef}
                         type="text"
+                        disabled={isRecordLocked}
                         value={cariAd}
                         onChange={(e) => handleCariAdChange(e.target.value)}
                         onFocus={() => {
@@ -1616,6 +1774,7 @@ export const CariHareketPage: React.FC = () => {
                       <Button
                         variant="outline-secondary"
                         type="button"
+                        disabled={isRecordLocked}
                         onClick={() => {
                           setCariSearchTerm(cariAd.trim());
                           setShowCariModal(true);
@@ -1642,9 +1801,10 @@ export const CariHareketPage: React.FC = () => {
                       id="tarihInput"
                       type="date"
                       value={tarih}
+                      min={efektifSinirTarihi || undefined}
                       onChange={(e) => setTarih(e.target.value)}
-                      disabled={!tarihYetkisi}
-                      title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
+                      disabled={!tarihYetkisi || isRecordLocked}
+                      title={!tarihYetkisi ? "Tarih değiştirme yetkiniz yok" : isRecordLocked ? "Kayıt kilitlidir" : undefined}
                       className="small"
                       data-custom-enter="true"
                       onKeyDown={(e) => {
@@ -1671,6 +1831,7 @@ export const CariHareketPage: React.FC = () => {
                     <Form.Select
                       ref={hareketTipiRef}
                       value={hareketTipi}
+                      disabled={isRecordLocked}
                       onChange={(e) => setHareketTipi(Number(e.target.value))}
                       className="small"
                       data-custom-enter="true"
@@ -1705,6 +1866,7 @@ export const CariHareketPage: React.FC = () => {
                     <Form.Control
                       ref={aciklamaRef}
                       type="text"
+                      disabled={isRecordLocked}
                       value={aciklama}
                       onChange={(e) => setAciklama(e.target.value)}
                       maxLength={100}
@@ -1790,13 +1952,14 @@ export const CariHareketPage: React.FC = () => {
                           return (
                             <tr
                               key={line.id}
-                              draggable={true}
+                              draggable={!isRecordLocked}
                               onClick={() => setActiveGridRowIdx(idx)}
-                              onDragStart={(e) => handleDragStart(e, idx)}
-                              onDragOver={(e) => handleDragOver(e, idx)}
+                              onDragStart={(e) => !isRecordLocked && handleDragStart(e, idx)}
+                              onDragOver={(e) => !isRecordLocked && handleDragOver(e, idx)}
                               onDragEnd={handleDragEnd}
-                              onDrop={(e) => handleDrop(e, idx)}
+                              onDrop={(e) => !isRecordLocked && handleDrop(e, idx)}
                               onContextMenu={(e) => {
+                                if (isRecordLocked) return;
                                 if (lines.length > 1) {
                                   e.preventDefault();
                                   handleRemoveLine(idx);
@@ -1806,9 +1969,9 @@ export const CariHareketPage: React.FC = () => {
                                 opacity: isDragged ? 0.35 : 1,
                                 backgroundColor: rowBgColor,
                                 borderTop: isDragOver ? "2px solid #2563eb" : undefined,
-                                cursor: "grab",
+                                cursor: isRecordLocked ? "default" : "grab",
                               }}
-                              title="Sürükleyerek sırasını değiştirebilirsiniz (Sağ tık: Satırı sil)"
+                              title={isRecordLocked ? undefined : "Sürükleyerek sırasını değiştirebilirsiniz (Sağ tık: Satırı sil)"}
                             >
                               {/* SMB Sütunu */}
                               <td
@@ -1834,6 +1997,7 @@ export const CariHareketPage: React.FC = () => {
                                       smbInputRefs.current[idx] = el;
                                     }}
                                     type="text"
+                                    disabled={isRecordLocked}
                                     data-custom-enter="true"
                                     value={line.paraKodu}
                                     onFocus={() => {
@@ -1879,14 +2043,16 @@ export const CariHareketPage: React.FC = () => {
                                   <button
                                     type="button"
                                     tabIndex={-1}
+                                    disabled={isRecordLocked}
                                     onClick={(e) => {
+                                      if (isRecordLocked) return;
                                       e.preventDefault();
                                       e.stopPropagation();
                                       setActiveGridRowIdx(idx);
                                       setActiveParaLineIndex(idx);
                                       setShowParaModal(true);
                                     }}
-                                    title="Para Birimi Seç"
+                                    title={isRecordLocked ? undefined : "Para Birimi Seç"}
                                     style={{
                                       width: "22px",
                                       height: "22px",
@@ -2013,6 +2179,7 @@ export const CariHareketPage: React.FC = () => {
                                   }}
                                   type="text"
                                   inputMode="decimal"
+                                  disabled={isRecordLocked}
                                   autoComplete="off"
                                   data-custom-enter="true"
                                   value={line.meblag}
@@ -2077,9 +2244,11 @@ export const CariHareketPage: React.FC = () => {
                     <Button
                       ref={cariTipiBorcRef}
                       type="button"
+                      disabled={isRecordLocked}
                       variant={cariTipi === 0 ? "danger" : "outline-secondary"}
-                      onClick={() => setCariTipi(0)}
+                      onClick={() => !isRecordLocked && setCariTipi(0)}
                       onKeyDown={(e) => {
+                        if (isRecordLocked) return;
                         if (e.key === "ArrowRight") {
                           e.preventDefault();
                           setCariTipi(1);
@@ -2101,9 +2270,11 @@ export const CariHareketPage: React.FC = () => {
                     <Button
                       ref={cariTipiAlacakRef}
                       type="button"
+                      disabled={isRecordLocked}
                       variant={cariTipi === 1 ? "success" : "outline-secondary"}
-                      onClick={() => setCariTipi(1)}
+                      onClick={() => !isRecordLocked && setCariTipi(1)}
                       onKeyDown={(e) => {
+                        if (isRecordLocked) return;
                         if (e.key === "ArrowLeft") {
                           e.preventDefault();
                           setCariTipi(0);
@@ -2341,11 +2512,20 @@ export const CariHareketPage: React.FC = () => {
           },
           { header: "Fiş No", width: "80px", render: (h) => <span className="font-monospace fw-bold">#{h.id}</span> },
           {
+            header: "Tür",
+            width: "110px",
+            render: (h) => (
+              <Badge bg="secondary" className="fw-normal">
+                {h.hareketTipiLabel || "Diğer"}
+              </Badge>
+            ),
+          },
+          {
             header: "Cari",
             render: (h) => (
               <div>
-                <div className="fw-semibold">{h.cariAd}</div>
-                <div className="small text-muted font-monospace">{h.cariKod}</div>
+                <div className="fw-semibold">{h.cariAd || "-"}</div>
+                <div className="small text-muted font-monospace">{h.cariKod || ""}</div>
               </div>
             ),
           },
@@ -2368,15 +2548,21 @@ export const CariHareketPage: React.FC = () => {
           const t = term.toLowerCase();
           return (
             String(h.id).includes(t) ||
-            h.cariKod.toLowerCase().includes(t) ||
-            h.cariAd.toLowerCase().includes(t) ||
-            h.aciklama.toLowerCase().includes(t) ||
-            h.vezneKod.toLowerCase().includes(t) ||
+            (h.cariKod || "").toLowerCase().includes(t) ||
+            (h.cariAd || "").toLowerCase().includes(t) ||
+            (h.aciklama || "").toLowerCase().includes(t) ||
+            (h.vezneKod || "").toLowerCase().includes(t) ||
+            (h.hareketTipiLabel || "").toLowerCase().includes(t) ||
             (h.satirlarOzet && h.satirlarOzet.toLowerCase().includes(t))
           );
         }}
         onSelect={(h) => {
-          loadRecordById(h.id);
+          setShowSearchModal(false);
+          if (!isEditMode) {
+            navigate(`/cari/hareket-duzeltme?id=${h.id}`);
+          } else {
+            loadRecordById(h.id);
+          }
         }}
       />
 

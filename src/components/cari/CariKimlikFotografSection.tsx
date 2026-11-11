@@ -33,6 +33,9 @@ import {
 import { autoCropIdCard } from "../../utils/imageCropUtils";
 import { CariFotografItem } from "../../services/cariService";
 import { ImageCropperModal } from "../common/ImageCropperModal";
+import {
+  KimlikDegistirmeNedeniBelgeSection,
+} from "./KimlikDegistirmeNedeniBelgeSection";
 
 export interface CariKimlikFotografSectionProps {
   currentPhoto?: CariFotografItem | null;
@@ -46,6 +49,16 @@ export interface CariKimlikFotografSectionProps {
   onPhotoDeleted: (index?: number, photoId?: number) => void;
   onOcrApply: (data: OcrExtractedData) => void;
   disabled?: boolean;
+  kimlikDegistirmeNedeni?: string;
+  onKimlikDegistirmeNedeniChange?: (neden: string) => void;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
+  onKimlikBelgeChange?: (payload: {
+    belgeData: string | null;
+    belgeMime: string | null;
+    belgeDosyaAdi: string | null;
+  }) => void;
 }
 
 export const getBelgeTuruTitle = (turu?: number): string => {
@@ -74,6 +87,12 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
   onPhotoDeleted,
   onOcrApply,
   disabled = false,
+  kimlikDegistirmeNedeni = "",
+  onKimlikDegistirmeNedeniChange,
+  kimlikBelgeData,
+  kimlikBelgeMime,
+  kimlikBelgeDosyaAdi,
+  onKimlikBelgeChange,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1451,6 +1470,20 @@ export const CariKimlikFotografSection: React.FC<CariKimlikFotografSectionProps>
             <span className="text-truncate">{ocrError}</span>
           </Alert>
         )}
+
+        {/* Kimlik Değiştirme Nedeni ve Doğrudan SQL'de Saklanan Belge / Fotoğraf Alanı */}
+        <div className="w-100 mt-2 border-top pt-2">
+          <KimlikDegistirmeNedeniBelgeSection
+            neden={kimlikDegistirmeNedeni || ""}
+            onNedenChange={(val) => onKimlikDegistirmeNedeniChange?.(val)}
+            belgeData={kimlikBelgeData}
+            belgeMime={kimlikBelgeMime}
+            belgeDosyaAdi={kimlikBelgeDosyaAdi}
+            onBelgeChange={(payload) => onKimlikBelgeChange?.(payload)}
+            disabled={disabled}
+            layout="vertical"
+          />
+        </div>
       </div>
 
       {/* Kamera Modalı */}

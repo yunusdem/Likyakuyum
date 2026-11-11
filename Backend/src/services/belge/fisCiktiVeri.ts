@@ -159,7 +159,16 @@ export const erisimAdresiYap = (vkn: string, ettn: string) => (ettn && vkn ? `ht
  * Kayıtlı fişin numarası / ETTN'si `kayit` ile gelir (ekrandakinden önceliklidir).
  */
 export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { belgeNo?: string; ettn?: string } = {}): DovizFisVerisi {
-  const satim = Number(g.tip) === 1;
+  let effectiveTip = Number(g.tip ?? 0);
+  const lineItem = Array.isArray(g.lines) && g.lines[0];
+  if (lineItem) {
+    if ((lineItem as any).tip !== undefined && (lineItem as any).tip !== null) {
+      effectiveTip = Number((lineItem as any).tip);
+    } else if ((lineItem as any).islemYonu) {
+      effectiveTip = String((lineItem as any).islemYonu).toLowerCase() === "satis" || Number((lineItem as any).islemYonu) === 1 ? 1 : 0;
+    }
+  }
+  const satim = effectiveTip === 1;
   const basamak = {
     doviz: kurusAyari(g.dovizKurusSayisi, firma.basamak.doviz),
     kur: kurusAyari(g.kurKurusSayisi, firma.basamak.kur),
@@ -201,11 +210,18 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
   const tarihHam = yazi(g.tarih);
   const tarih = /^\d{4}-\d{2}-\d{2}/.test(tarihHam) ? tarihHam.slice(0, 10).split("-").reverse().join("/") : tarihHam;
   const saat = yazi(g.saat).slice(0, 5);
-  const isArbitraj = Boolean(g.isArbitraj || (g.gelisNedeni && String(g.gelisNedeni).toLowerCase().includes("arbitraj")));
+  let isArbitraj = false;
+  if (lineItem && (lineItem as any).isArbitraj !== undefined) {
+    isArbitraj = Boolean((lineItem as any).isArbitraj);
+  } else if (g.isArbitraj !== undefined) {
+    isArbitraj = Boolean(g.isArbitraj);
+  } else if (g.gelisNedeni && String(g.gelisNedeni).toLowerCase().includes("arbitraj")) {
+    isArbitraj = true;
+  }
   const tipAdi = satim ? "SATIM" : "ALIM";
   const belgeBaslikEki = isArbitraj ? `ARBİTRAJ ${tipAdi}` : tipAdi;
   const tipSeriBilgisi = isArbitraj ? `${tipAdi} (ARBİTRAJ)` : tipAdi;
-  const islemTuru = isArbitraj ? "ARBİTRAJ" : (satim ? "DÖVİZ SATIŞ" : "DÖVİZ ALIŞ");
+  const islemTuru = isArbitraj ? (satim ? "ARBİTRAJ SATIŞ" : "ARBİTRAJ ALIŞ") : (satim ? "DÖVİZ SATIŞ" : "DÖVİZ ALIŞ");
   const belgeKutuBaslik = isArbitraj ? `ARBİTRAJ ${tipAdi} BELGESİ BİLGİLERİ` : `${tipAdi} BELGESİ BİLGİLERİ`;
   const kmvNotu = !satim || firma.kmvSekli === 1 ? "" : kmvDahil ? "Kmv kura dahildir." : "Kmv kura dahil değildir.";
 

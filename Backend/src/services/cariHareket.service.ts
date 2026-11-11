@@ -18,6 +18,10 @@ export class CariHareketService {
       search?: string;
       onlyCariHareket?: boolean;
       kaynak?: string;
+      onlyOwnRecords?: boolean;
+      userId?: number;
+      userVezneId?: number;
+      cariSinirlamaTipi?: number;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<CariHareketModel[]> {
@@ -116,9 +120,10 @@ export class CariHareketService {
   public static async getNavigation(
     currentId?: number | string,
     dbContext?: { dbServer?: string; dbName?: string },
-    baslangic?: string | null
+    baslangic?: string | null,
+    userFilter?: { userId: number; userVezneId?: number }
   ) {
-    return CariHareketSqlRepository.getNavigationIds(currentId, dbContext, baslangic);
+    return CariHareketSqlRepository.getNavigationIds(currentId, dbContext, baslangic, userFilter);
   }
 
   public static async getCariBakiye(

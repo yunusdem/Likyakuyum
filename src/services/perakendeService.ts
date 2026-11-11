@@ -98,6 +98,11 @@ export interface PerakendeFaturaModel {
   genelToplam: number;
   istatistikId?: number | null;
   istatistikKodu?: string | null;
+  bankaAciklama?: string | null;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   eBelgeDurumu: number; // 0: Taslak, 1: İletildi, 2: Onaylandı, 3: Hata, 4: İptal
   gibStatuKodu?: string | null;
   ekleyenId?: number | null;
@@ -162,6 +167,11 @@ export interface SavePerakendeFaturaPayload {
   kur?: number;
   istatistikId?: number | null;
   istatistikKodu?: string | null;
+  bankaAciklama?: string | null;
+  kimlikDegistirmeNedeni?: string | null;
+  kimlikBelgeData?: string | null;
+  kimlikBelgeMime?: string | null;
+  kimlikBelgeDosyaAdi?: string | null;
   iskontoId?: number | null;
   iskontoKodu?: string | null;
   iskontoOrani?: number | null;

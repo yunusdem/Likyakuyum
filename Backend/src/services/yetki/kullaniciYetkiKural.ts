@@ -37,6 +37,10 @@ export interface KullaniciYetkisi {
   acikVadeli: boolean;
   supheliIslem: boolean;
   caprazKurKontroluYok: boolean;
+  vezneSonIslemler: boolean;
+  kendiKayitlari: boolean;
+  cariSinirlamaTipi: number;
+  atananCariIdler: number[];
   kurYetkisi: KurYetkisiTuru;
   /** Limitli / Yüzde kur yetkisinde gişe kurundan en çok sapma (yüzde) */
   kurTolerans: number;
@@ -64,6 +68,10 @@ export const TAM_YETKI: KullaniciYetkisi = {
   acikVadeli: true,
   supheliIslem: true,
   caprazKurKontroluYok: true,
+  vezneSonIslemler: true,
+  kendiKayitlari: false,
+  cariSinirlamaTipi: 0,
+  atananCariIdler: [],
   kurYetkisi: "Var",
   kurTolerans: 0,
   milyemYetkisi: "Var",
@@ -137,6 +145,10 @@ export const yetkiProfilden = (u: any): KullaniciYetkisi => {
     acikVadeli: u.canViewOpenTermTrans !== undefined ? evet(u.canViewOpenTermTrans) : (base ? base.acikVadeli : false),
     supheliIslem: u.isSuspiciousTransAuth !== undefined ? evet(u.isSuspiciousTransAuth) : (base ? base.supheliIslem : false),
     caprazKurKontroluYok: u.noCrossRateCheck !== undefined ? evet(u.noCrossRateCheck) : (base ? base.caprazKurKontroluYok : false),
+    vezneSonIslemler: isAdmin || (u.hasVezneLastTransactionsPerm !== undefined ? evet(u.hasVezneLastTransactionsPerm) : (base ? base.vezneSonIslemler : false)),
+    kendiKayitlari: !isAdmin && (u.hasOnlyOwnRecordsPerm !== undefined ? evet(u.hasOnlyOwnRecordsPerm) : (u.onlyOwnRecords !== undefined ? evet(u.onlyOwnRecords) : false)),
+    cariSinirlamaTipi: !isAdmin && u.cariSinirlamaTipi !== undefined ? Number(u.cariSinirlamaTipi) : 0,
+    atananCariIdler: !isAdmin && Array.isArray(u.atananCariIdler) ? u.atananCariIdler.map(Number) : [],
     kurYetkisi,
     kurTolerans,
     milyemYetkisi,
@@ -181,6 +193,10 @@ export const yetkiSatirdan = (r: any, firmaYoneticisi = false): KullaniciYetkisi
     acikVadeli: evet(r.ACIK_VADELI_ISLEM_GOREBILIR) || yonetici,
     supheliIslem: evet(r.SUPHELI_ISLEMLER_YETKILISI) || yonetici,
     caprazKurKontroluYok: evet(r.CAPRAZ_KUR_KONTROLU_YOK) || yonetici,
+    vezneSonIslemler: evet(r.VEZNE_SON_ISLEMLER_YETKISI) || yonetici,
+    kendiKayitlari: !yonetici && (evet(r.KENDI_KAYITLARI_YETKISI) || evet(r.YALNIZ_KENDI_KAYITLARI)),
+    cariSinirlamaTipi: !yonetici && r.CARI_SINIRLAMA_TIPI != null ? Number(r.CARI_SINIRLAMA_TIPI) : 0,
+    atananCariIdler: !yonetici && Array.isArray(r.atananCariIdler) ? r.atananCariIdler.map(Number) : [],
     kurYetkisi,
     kurTolerans,
     milyemYetkisi,

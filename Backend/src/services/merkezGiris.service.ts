@@ -364,8 +364,9 @@ export class MerkezGirisService {
 
   /** Şifre kuralına uymuyorsa 400. */
   public static sifreKuraliniDenetle(sifre: string): void {
-    const hata = sifreKuralHatasi(sifre);
-    if (hata) throw ApiError.badRequest(hata);
+    if (!sifre || typeof sifre !== "string" || !sifre.trim()) {
+      throw ApiError.badRequest("Şifre boş olamaz.");
+    }
   }
 
   /**

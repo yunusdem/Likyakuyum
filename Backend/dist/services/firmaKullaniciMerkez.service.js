@@ -85,9 +85,7 @@ export class FirmaKullaniciMerkezService {
         const kendisi = mevcutKullaniciAdi === b.kullanici.kullaniciAdi;
         if (!kendisi)
             MerkezGirisService.yoneticiOlmali(b);
-        if (girdi.password) {
-            if (kendisi)
-                throw ApiError.badRequest("Kendi şifrenizi 'Şifre Değiştir' ekranından değiştirin.");
+        if (girdi.password && String(girdi.password).trim() !== "") {
             MerkezGirisService.sifreKuraliniDenetle(girdi.password);
         }
     }
@@ -112,8 +110,8 @@ export class FirmaKullaniciMerkezService {
             adSoyad: guncel.fullName || hedef.adSoyad,
             firmaYoneticisi: kendisi ? hedef.firmaYoneticisi : !!guncel.isSysAdmin,
         });
-        if (yeniSifre) {
-            await KullaniciSqlRepository.sifreGuncelle(hedef.kullaniciId, await sifreHashle(yeniSifre), true);
+        if (yeniSifre && String(yeniSifre).trim() !== "") {
+            await KullaniciSqlRepository.sifreGuncelle(hedef.kullaniciId, await sifreHashle(yeniSifre), false);
         }
     }
     static silmeEngeli() {

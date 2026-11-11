@@ -174,6 +174,16 @@ export class UserSqlRepository {
         BEGIN
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [DOVIZ_ZIYNET_GIRIS_SEKLI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_DOVIZ_ZIYNET_GIRIS_SEKLI DEFAULT 0;
         END;
+
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'VEZNE_SON_ISLEMLER_YETKISI') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [VEZNE_SON_ISLEMLER_YETKISI] BIT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_VEZNE_SON_ISLEMLER_YETKISI DEFAULT 0;
+        END;
+
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'KENDI_KAYITLARI_YETKISI') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [KENDI_KAYITLARI_YETKISI] BIT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_KENDI_KAYITLARI_YETKISI DEFAULT 0;
+        END;
       `);
     } catch (e) {
       logger.warn("TODVZ_KULLANICI kolon kontrolü sırasında uyarı:", e);
@@ -220,6 +230,8 @@ export class UserSqlRepository {
       hasSlipAmountChangePerm: toBool(entity.FIS_TUTAR_DEGISTIRME_YETKISI),
       isSuspiciousTransAuth: toBool(entity.SUPHELI_ISLEMLER_YETKILISI),
       noCrossRateCheck: toBool(entity.CAPRAZ_KUR_KONTROLU_YOK),
+      hasVezneLastTransactionsPerm: toBool(entity.VEZNE_SON_ISLEMLER_YETKISI),
+      hasOnlyOwnRecordsPerm: toBool(entity.KENDI_KAYITLARI_YETKISI),
 
       // Middle hardware & rates
       printerId: String(entity.YAZICI_ID ?? "1"),
@@ -233,6 +245,8 @@ export class UserSqlRepository {
       milyemPermValue: entity.MILYEM_TOLERANS_ORANI ?? 0,
       iscilikGirisSekli: Number(entity.ISCILIK_GIRIS_SEKLI ?? 0),
       dovizZiynetGirisSekli: Number(entity.DOVIZ_ZIYNET_GIRIS_SEKLI ?? 0),
+      cariSinirlamaTipi: Number(entity.CARI_SINIRLAMA_TIPI ?? 0),
+      atananCariIdler: (entity as any).atananCariIdler || [],
 
       // Right menu permissions
       menuPerms: {
@@ -319,6 +333,43 @@ export class UserSqlRepository {
     LEFT JOIN [dbo].[TODVZ_VEZNE] V ON V.VEZNE_ID = U.VEZNE_ID
   `;
 
+  public static async getAtananCariler(pool: sql.ConnectionPool, kullaniciId: number): Promise<number[]> {
+    try {
+      if (await pool.request().query("SELECT OBJECT_ID('dbo.TODVZ_KULLANICI_CARI') AS V").then(r => !r.recordset[0]?.V)) {
+        return [];
+      }
+      const res = await pool.request()
+        .input("uid", sql.Int, kullaniciId)
+        .query("SELECT CARI_KART_ID FROM dbo.TODVZ_KULLANICI_CARI WITH (NOLOCK) WHERE KULLANICI_ID = @uid");
+      return (res.recordset || []).map((r: any) => Number(r.CARI_KART_ID));
+    } catch {
+      return [];
+    }
+  }
+
+  public static async syncAtananCariler(pool: sql.ConnectionPool, kullaniciId: number, cariler?: number[]): Promise<void> {
+    if (!cariler || !Array.isArray(cariler)) return;
+    try {
+      if (await pool.request().query("SELECT OBJECT_ID('dbo.TODVZ_KULLANICI_CARI') AS V").then(r => !r.recordset[0]?.V)) {
+        return;
+      }
+      await pool.request()
+        .input("uid", sql.Int, kullaniciId)
+        .query("DELETE FROM dbo.TODVZ_KULLANICI_CARI WHERE KULLANICI_ID = @uid");
+      for (const cid of cariler) {
+        const numId = Number(cid);
+        if (numId > 0) {
+          await pool.request()
+            .input("uid", sql.Int, kullaniciId)
+            .input("cid", sql.Int, numId)
+            .query("IF NOT EXISTS (SELECT 1 FROM dbo.TODVZ_KULLANICI_CARI WHERE KULLANICI_ID = @uid AND CARI_KART_ID = @cid) INSERT INTO dbo.TODVZ_KULLANICI_CARI (KULLANICI_ID, CARI_KART_ID) VALUES (@uid, @cid)");
+        }
+      }
+    } catch (err) {
+      logger.error("syncAtananCariler error:", err);
+    }
+  }
+
   /**
    * Resolves a valid ISTATISTIK_ID from [dbo].[TODVZ_ISTATISTIK] by kod or id
    */
@@ -388,7 +439,9 @@ export class UserSqlRepository {
         return null;
       }
 
-      return UserSqlRepository.mapEntityToModel(result.recordset[0]);
+      const model = UserSqlRepository.mapEntityToModel(result.recordset[0]);
+      model.atananCariIdler = await UserSqlRepository.getAtananCariler(pool, toInt(model.id));
+      return model;
     } catch (error) {
       logger.error(`UserSqlRepository.findById(${id}) error:`, error);
       throw error;
@@ -414,7 +467,9 @@ export class UserSqlRepository {
         return null;
       }
 
-      return UserSqlRepository.mapEntityToModel(result.recordset[0]);
+      const model = UserSqlRepository.mapEntityToModel(result.recordset[0]);
+      model.atananCariIdler = await UserSqlRepository.getAtananCariler(pool, toInt(model.id));
+      return model;
     } catch (error: any) {
       if (error?.statusCode === 400 || error?.statusCode === 401 || error?.message?.includes("bağlanılamadı")) {
         throw error;
@@ -574,6 +629,9 @@ export class UserSqlRepository {
       request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
       request.input("ISCILIK_GIRIS_SEKLI", sql.TinyInt, toInt(user.iscilikGirisSekli, 0));
       request.input("DOVIZ_ZIYNET_GIRIS_SEKLI", sql.TinyInt, toInt(user.dovizZiynetGirisSekli, 0));
+      request.input("VEZNE_SON_ISLEMLER_YETKISI", sql.Bit, toBit(user.hasVezneLastTransactionsPerm));
+      request.input("KENDI_KAYITLARI_YETKISI", sql.Bit, toBit(user.hasOnlyOwnRecordsPerm));
+      request.input("CARI_SINIRLAMA_TIPI", sql.TinyInt, toInt(user.cariSinirlamaTipi, 0));
 
       await UserSqlRepository.ensureSidebarColumn(pool);
       request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (app?.sidebarStyle || "classic").slice(0, 30));
@@ -596,7 +654,8 @@ export class UserSqlRepository {
           [ENTEGRATOR_KULLANICI_ADI], [ENTEGRATOR_KULLANICI_SIFRESI], [E_BELGE_KULLANILIYOR],
           [MASAK_KULLANICI_ADI], [MASAK_KULLANICI_SIFRESI], [MASAK_UYARISI_VERSIN], [SUPHELI_ISLEMLER_YETKILISI],
           [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK], [SIDEBAR_GORUNUM],
-          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI], [DOVIZ_ZIYNET_GIRIS_SEKLI]
+          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI], [DOVIZ_ZIYNET_GIRIS_SEKLI],
+          [VEZNE_SON_ISLEMLER_YETKISI], [KENDI_KAYITLARI_YETKISI], [CARI_SINIRLAMA_TIPI]
         )
         VALUES (
           @AD, @SIFRE, @SISTEM_YONETICISI, @YAZICI_ID, @VEZNE_ID, @KUR_YETKISI,
@@ -615,7 +674,8 @@ export class UserSqlRepository {
           @ENTEGRATOR_KULLANICI_ADI, @ENTEGRATOR_KULLANICI_SIFRESI, @E_BELGE_KULLANILIYOR,
           @MASAK_KULLANICI_ADI, @MASAK_KULLANICI_SIFRESI, @MASAK_UYARISI_VERSIN, @SUPHELI_ISLEMLER_YETKILISI,
           @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK, @SIDEBAR_GORUNUM,
-          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI, @DOVIZ_ZIYNET_GIRIS_SEKLI
+          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI, @DOVIZ_ZIYNET_GIRIS_SEKLI,
+          @VEZNE_SON_ISLEMLER_YETKISI, @KENDI_KAYITLARI_YETKISI, @CARI_SINIRLAMA_TIPI
         );
 
         DECLARE @NEW_ID INT = SCOPE_IDENTITY();
@@ -628,7 +688,12 @@ export class UserSqlRepository {
       if (!result.recordset || result.recordset.length === 0) {
         throw new Error("Kullanıcı kaydı oluşturuldu fakat yeni kayıt geri alınamadı.");
       }
-      return UserSqlRepository.mapEntityToModel(result.recordset[0]);
+      const model = UserSqlRepository.mapEntityToModel(result.recordset[0]);
+      if (user.atananCariIdler !== undefined) {
+        await UserSqlRepository.syncAtananCariler(pool, toInt(model.id), user.atananCariIdler);
+      }
+      model.atananCariIdler = await UserSqlRepository.getAtananCariler(pool, toInt(model.id));
+      return model;
     } catch (error) {
       logger.error("UserSqlRepository.create error:", error);
       throw error;
@@ -724,6 +789,9 @@ export class UserSqlRepository {
       request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
       request.input("ISCILIK_GIRIS_SEKLI", sql.TinyInt, toInt(user.iscilikGirisSekli, 0));
       request.input("DOVIZ_ZIYNET_GIRIS_SEKLI", sql.TinyInt, toInt(user.dovizZiynetGirisSekli, 0));
+      request.input("VEZNE_SON_ISLEMLER_YETKISI", sql.Bit, toBit(user.hasVezneLastTransactionsPerm));
+      request.input("KENDI_KAYITLARI_YETKISI", sql.Bit, toBit(user.hasOnlyOwnRecordsPerm));
+      request.input("CARI_SINIRLAMA_TIPI", sql.TinyInt, toInt(user.cariSinirlamaTipi, 0));
 
       await UserSqlRepository.ensureSidebarColumn(pool);
       request.input("SIDEBAR_GORUNUM", sql.VarChar(30), (app?.sidebarStyle || "classic").slice(0, 30));
@@ -797,7 +865,10 @@ export class UserSqlRepository {
           [ISCILIK_GIRIS_SEKLI] = @ISCILIK_GIRIS_SEKLI,
           [MILYEM_YETKISI] = @MILYEM_YETKISI,
           [MILYEM_TOLERANS_ORANI] = @MILYEM_TOLERANS_ORANI,
-          [DOVIZ_ZIYNET_GIRIS_SEKLI] = @DOVIZ_ZIYNET_GIRIS_SEKLI
+          [DOVIZ_ZIYNET_GIRIS_SEKLI] = @DOVIZ_ZIYNET_GIRIS_SEKLI,
+          [VEZNE_SON_ISLEMLER_YETKISI] = @VEZNE_SON_ISLEMLER_YETKISI,
+          [KENDI_KAYITLARI_YETKISI] = @KENDI_KAYITLARI_YETKISI,
+          [CARI_SINIRLAMA_TIPI] = @CARI_SINIRLAMA_TIPI
         WHERE [KULLANICI_ID] = @userId;
 
         ${UserSqlRepository.BASE_SELECT}
@@ -809,7 +880,13 @@ export class UserSqlRepository {
         return null;
       }
 
-      return UserSqlRepository.mapEntityToModel(result.recordset[0]);
+      if (user.atananCariIdler !== undefined) {
+        await UserSqlRepository.syncAtananCariler(pool, toInt(id), user.atananCariIdler);
+      }
+
+      const model = UserSqlRepository.mapEntityToModel(result.recordset[0]);
+      model.atananCariIdler = await UserSqlRepository.getAtananCariler(pool, toInt(model.id));
+      return model;
     } catch (error) {
       logger.error(`UserSqlRepository.update(${id}) error:`, error);
       throw error;

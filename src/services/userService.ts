@@ -56,6 +56,10 @@ export interface UserProfileDto {
   hasSlipAmountChangePerm: boolean;
   isSuspiciousTransAuth: boolean;
   noCrossRateCheck: boolean;
+  hasVezneLastTransactionsPerm?: boolean;
+  hasOnlyOwnRecordsPerm?: boolean;
+  cariSinirlamaTipi?: number; // 0: Sınırlama yok, 1: İzin verilen cariler, 2: Yasaklanan cariler
+  atananCariIdler?: number[];
 
   // General Tab - Middle
   printerId: string;
@@ -197,6 +201,18 @@ export const UserService = {
   async getCashiers() {
     const res = await apiClient.get<{ id: number; kod?: string; name: string }[]>("/users/cashiers");
     return res.data || [];
+  },
+
+  /**
+   * Var olan kullanıcının şifresini doğrular (Kullanıcı Tanımları güncelleme kontrolü)
+   */
+  async verifyPassword(payload: { userId?: string; username?: string; password: string }): Promise<boolean> {
+    try {
+      const res = await apiClient.post<{ matched: boolean }>("/users/verify-password", payload);
+      return res.data?.matched === true;
+    } catch {
+      return false;
+    }
   },
 };
 

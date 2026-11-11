@@ -634,7 +634,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
         <style>
           @page {
             size: A4 portrait;
-            margin: 10mm 8mm 5mm 8mm;
+            margin: 30mm 8mm 5mm 8mm;
           }
           * {
             box-sizing: border-box;
@@ -651,7 +651,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           .a4-tani-sheet {
             width: 100%;
             max-width: 194mm;
-            max-height: 282mm;
+            max-height: 258mm;
             margin: 0 auto;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
@@ -903,7 +903,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                 width: "210mm",
                 maxWidth: "210mm",
                 maxHeight: "282mm",
-                padding: "6mm 10mm",
+                padding: "26mm 10mm 6mm 10mm",
                 boxSizing: "border-box",
                 fontFamily: "Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                 fontSize: "9px",
@@ -1230,7 +1230,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                     style={{
                       border: "1.5px solid #000",
                       width: "100%",
-                      height: "270px",
+                      height: "245px",
                       display: "flex",
                       flexDirection: "column",
                       backgroundColor: "#ffffff",
@@ -1369,8 +1369,8 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         justifyContent: "center",
                         alignItems: "flex-start",
                         overflow: "hidden",
-                        minHeight: "155mm",
-                        maxHeight: "172mm",
+                        minHeight: "140mm",
+                        maxHeight: "155mm",
                         boxSizing: "border-box",
                       }}
                     >
@@ -1452,7 +1452,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           @media print {
             @page {
               size: A4 portrait;
-              margin: 10mm 8mm 5mm 8mm;
+              margin: 30mm 8mm 5mm 8mm;
             }
             .tani-editable-cell {
               outline: none !important;
@@ -1471,9 +1471,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
               left: 0 !important;
               top: 0 !important;
               width: 100% !important;
-              max-height: 282mm !important;
+              max-height: 258mm !important;
               margin: 0 !important;
-              padding: 10mm 8mm 5mm 8mm !important;
+              padding: 30mm 8mm 5mm 8mm !important;
               box-shadow: none !important;
               background: #ffffff !important;
               -webkit-print-color-adjust: exact !important;

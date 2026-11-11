@@ -1,6 +1,6 @@
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
-import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
-import { yetkiGerekli } from "../services/yetki/kullaniciYetkisi.js";
+import { cariGunSiniri, fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
+import { kullaniciYetkisi, yetkiGerekli } from "../services/yetki/kullaniciYetkisi.js";
 import { CariHareketService } from "../services/cariHareket.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -20,17 +20,37 @@ export class CariHareketController {
      */
     static list = asyncHandler(async (req, res) => {
         const dbContext = CariHareketController.getDbContext(req);
+        const userId = CariHareketController.getUserId(req);
+        const yetkiler = await kullaniciYetkisi(req);
+        let onlyOwnRecords = false;
+        let userVezneId = undefined;
+        if (yetkiler.kendiKayitlari) {
+            onlyOwnRecords = true;
+            userVezneId = (await fisVeznesi(userId, dbContext)) ?? undefined;
+        }
+        let effectiveGunSiniri = await gunSiniri(req);
+        const cariKartIdNum = req.query.cariKartId ? Number(req.query.cariKartId) : undefined;
+        if (cariKartIdNum) {
+            const cSinir = await cariGunSiniri(cariKartIdNum, req);
+            if (cSinir) {
+                effectiveGunSiniri = sonrakiGun(effectiveGunSiniri, cSinir);
+            }
+        }
         const filters = {
-            // Kullanıcının işlem gösterme sınırı istekteki başlangıçtan sonraysa o geçerli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
-            startDate: (sonrakiGun(req.query.startDate, await gunSiniri(req)) ?? undefined),
+            // Kullanıcının veya cari kartın işlem gösterme sınırı istekteki başlangıçtan sonraysa o geçerli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
+            startDate: (sonrakiGun(req.query.startDate, effectiveGunSiniri) ?? undefined),
             endDate: req.query.endDate,
-            cariKartId: req.query.cariKartId ? Number(req.query.cariKartId) : undefined,
+            cariKartId: cariKartIdNum,
             vezneId: req.query.vezneId ? Number(req.query.vezneId) : undefined,
             tip: req.query.tip !== undefined ? Number(req.query.tip) : undefined,
             hareketTipi: req.query.hareketTipi !== undefined ? Number(req.query.hareketTipi) : undefined,
             search: req.query.search,
             onlyCariHareket: String(req.query.onlyCariHareket) === "true",
             kaynak: req.query.kaynak,
+            onlyOwnRecords,
+            userId,
+            userVezneId,
+            cariSinirlamaTipi: !yetkiler.yonetici ? yetkiler.cariSinirlamaTipi : 0,
         };
         const list = await CariHareketService.list(filters, dbContext);
         return ApiResponse.ok(res, "Cari hareketler başarıyla listelendi.", list);
@@ -50,9 +70,11 @@ export class CariHareketController {
     static create = asyncHandler(async (req, res) => {
         const dbContext = CariHareketController.getDbContext(req);
         const userId = CariHareketController.getUserId(req);
-        // Vezne kullanıcının kasası (istekteki yok sayılır); tarih yetkisi
-        const vezneId = await fisVeznesi(userId, dbContext);
-        await fisKayitYetkisi(req, "cariHareket", null, req.body?.tarih);
+        const { yetki } = await fisKayitYetkisi(req, "cariHareket", null, req.body?.tarih);
+        // Sınırsız yetkili yönetici istediği vezneyi seçebilir; değilse kart veznesi kullanılır
+        const vezneId = (yetki.yonetici && req.body?.vezneId && Number(req.body.vezneId) > 0)
+            ? Number(req.body.vezneId)
+            : await fisVeznesi(userId, dbContext);
         const created = await CariHareketService.create({ ...req.body, vezneId }, userId, dbContext);
         return ApiResponse.created(res, "Cari hareket başarıyla kaydedildi.", created);
     });
@@ -62,9 +84,11 @@ export class CariHareketController {
     static update = asyncHandler(async (req, res) => {
         const dbContext = CariHareketController.getDbContext(req);
         const userId = CariHareketController.getUserId(req);
-        // Düzeltmede kaydın kendi veznesi; gün sınırı ve tarih yetkisi
-        const vezneId = await fisVeznesi(userId, dbContext, { tur: "cariHareket", id: req.params.id });
-        await fisKayitYetkisi(req, "cariHareket", req.params.id, req.body?.tarih);
+        const { yetki } = await fisKayitYetkisi(req, "cariHareket", req.params.id, req.body?.tarih);
+        // Sınırsız yetkili yönetici istediği vezneyi seçebilir; değilse kaydın veznesi korunur
+        const vezneId = (yetki.yonetici && req.body?.vezneId && Number(req.body.vezneId) > 0)
+            ? Number(req.body.vezneId)
+            : await fisVeznesi(userId, dbContext, { tur: "cariHareket", id: req.params.id });
         const updated = await CariHareketService.update(req.params.id, { ...req.body, vezneId }, userId, dbContext);
         return ApiResponse.ok(res, "Cari hareket başarıyla güncellendi.", updated);
     });
@@ -73,7 +97,7 @@ export class CariHareketController {
      */
     static delete = asyncHandler(async (req, res) => {
         const dbContext = CariHareketController.getDbContext(req);
-        await kayitErisimi(req, "cariHareket", req.params.id);
+        await kayitErisimi(req, "cariHareket", req.params.id, { isDelete: true });
         await CariHareketService.delete(req.params.id, dbContext);
         return ApiResponse.ok(res, "Cari hareket başarıyla silindi.", { id: req.params.id });
     });
@@ -82,7 +106,22 @@ export class CariHareketController {
      */
     static getNavigation = asyncHandler(async (req, res) => {
         const dbContext = CariHareketController.getDbContext(req);
-        const nav = await CariHareketService.getNavigation(req.params.id, dbContext, await gunSiniri(req));
+        const userId = CariHareketController.getUserId(req);
+        const yetkiler = await kullaniciYetkisi(req);
+        let userFilter = undefined;
+        if (yetkiler.kendiKayitlari) {
+            const userVezneId = (await fisVeznesi(userId, dbContext)) ?? undefined;
+            userFilter = { userId, userVezneId };
+        }
+        let effectiveGunSiniri = await gunSiniri(req);
+        const cariKartIdNum = req.query.cariKartId ? Number(req.query.cariKartId) : undefined;
+        if (cariKartIdNum) {
+            const cSinir = await cariGunSiniri(cariKartIdNum, req);
+            if (cSinir) {
+                effectiveGunSiniri = sonrakiGun(effectiveGunSiniri, cSinir);
+            }
+        }
+        const nav = await CariHareketService.getNavigation(req.params.id, dbContext, effectiveGunSiniri, userFilter);
         return ApiResponse.ok(res, "Navigasyon bilgisi getirildi.", nav);
     });
     /**
