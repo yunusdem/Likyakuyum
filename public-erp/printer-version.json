@@ -1,8 +1,8 @@
 {
-  "version": "1.0.7",
+  "version": "1.1.0",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "Mükerrer ve çift fiş basımını önleyen deduplication motoru ve akıllı kilit",
+  "releaseNotes": "Konsol/CMD pencereleri tamamen gizlendi, donanıma doğrudan yüksek hızlı GDI yazdırma motoru aktifleştirildi.",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-10-24T11:35:00Z"
+  "updatedAt": "2026-11-12T14:40:00Z"
 }

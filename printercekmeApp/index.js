@@ -12,7 +12,17 @@ const { exec, spawn } = require("child_process");
 const os = require("os");
 const util = require("util");
 
-const execAsync = util.promisify(exec);
+// Child process çağrılarında Windows'ta konsol penceresinin açılmaması için windowsHide varsayılan olarak true yapılır
+const safeExec = (command, options, callback) => {
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+  const opts = { windowsHide: true, ...(options || {}) };
+  return exec(command, opts, callback);
+};
+
+const execAsync = util.promisify(safeExec);
 
 // Windows GUI modunda (Subsystem = 2) konsol bağlı olmadığında console.log çökmelerini önle
 try {
@@ -74,8 +84,9 @@ function runPowerShell(script, timeoutMs = 12000) {
     // PowerShell -EncodedCommand UTF-16LE Base64 bekler
     const b64 = Buffer.from(script, "utf16le").toString("base64");
 
-    const ps = spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", b64], {
+    const ps = spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
       windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
     let stdout = "";
@@ -145,11 +156,11 @@ async function getSystemPrinters(forceRefresh = false) {
       const systemRoot = process.env.SystemRoot || "C:\\Windows";
       const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
 
-      // 1. Aşama: PowerShell Get-Printer (Temiz -NoProfile -Command, Bypass bayrağı olmadan)
+      // 1. Aşama: PowerShell Get-Printer (Temiz -NoProfile -Command, gizli pencere)
       let psSuccess = false;
       try {
-        const psCommand = `"${psPath}" -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, Default, PrinterStatus | ConvertTo-Json -Compress"`;
-        const { stdout } = await execAsync(psCommand, { encoding: "utf8", timeout: 8000 });
+        const psCmd = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, Default, PrinterStatus | ConvertTo-Json -Compress`;
+        const { stdout } = await runPowerShell(psCmd, 8000);
         if (stdout && stdout.trim()) {
           const parsed = JSON.parse(stdout.trim());
           const list = Array.isArray(parsed) ? parsed : [parsed];
@@ -180,8 +191,8 @@ async function getSystemPrinters(forceRefresh = false) {
       // 2. Aşama: Get-CimInstance Fallback
       if (!psSuccess || printers.length === 0) {
         try {
-          const cimCmd = `"${psPath}" -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress"`;
-          const { stdout: cimOut } = await execAsync(cimCmd, { encoding: "utf8", timeout: 6000 });
+          const cimCmd = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress`;
+          const { stdout: cimOut } = await runPowerShell(cimCmd, 6000);
           if (cimOut && cimOut.trim()) {
             const parsed = JSON.parse(cimOut.trim());
             const list = Array.isArray(parsed) ? parsed : [parsed];
@@ -206,8 +217,8 @@ async function getSystemPrinters(forceRefresh = false) {
       // 3. Aşama: .NET InstalledPrinters Fallback (Hafif ve evrensel)
       if (printers.length === 0) {
         try {
-          const netCmd = `"${psPath}" -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [System.Drawing.Printing.PrinterSettings]::InstalledPrinters | ConvertTo-Json -Compress"`;
-          const { stdout: netOut } = await execAsync(netCmd, { encoding: "utf8", timeout: 5000 });
+          const netCmd = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [System.Drawing.Printing.PrinterSettings]::InstalledPrinters | ConvertTo-Json -Compress`;
+          const { stdout: netOut } = await runPowerShell(netCmd, 5000);
           if (netOut && netOut.trim()) {
             const parsed = JSON.parse(netOut.trim());
             const list = Array.isArray(parsed) ? parsed : [parsed];
@@ -1045,8 +1056,8 @@ if ($matched) {
   Write-Output "NOT_FOUND"
 }
 `;
-      const { stdout } = await execAsync(`"${psPath}" -NoProfile -NonInteractive -Command "${psCmd.replace(/\r?\n/g, ' ')}"`, { timeout: 4000 });
-      console.log(`[printercekmeApp] Varsayılan yazıcı "${printerName}" ayarlandı. Çıktı: ${stdout.trim()}`);
+      const { stdout } = await runPowerShell(psCmd, 4000);
+      console.log(`[printercekmeApp] Varsayılan yazıcı "${printerName}" ayarlandı. Çıktı: ${(stdout || "").trim()}`);
       return res.json({ success: true, printerName });
     } catch (err) {
       console.warn("[printercekmeApp] Varsayılan yazıcı ayarlama hatası:", err.message);
@@ -1225,7 +1236,7 @@ async function executePrintJob(job) {
           try {
             pngFile = path.join(tmpDir, `print_${timestamp}.png`);
             const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
-            const fastChromiumFlags = [
+            const fastChromiumArgs = [
               "--headless=new",
               "--disable-gpu",
               "--no-sandbox",
@@ -1256,14 +1267,27 @@ async function executePrintJob(job) {
               "--disable-software-rasterizer",
               "--run-all-compositor-stages-before-draw",
               "--virtual-time-budget=200",
-            ].join(" ");
-            const renderCmd = `"${chromiumPath}" ${fastChromiumFlags} --screenshot="${pngFile}" "${fileUrl}"`;
-            try {
-              await execAsync(renderCmd, { timeout: 4000 });
-            } catch {
-              const fallbackCmd = `"${chromiumPath}" --headless --disable-gpu --no-sandbox --allow-file-access-from-files --hide-scrollbars --window-size=304,1600 --screenshot="${pngFile}" "${fileUrl}"`;
-              await execAsync(fallbackCmd, { timeout: 4000 });
-            }
+              `--screenshot=${pngFile}`,
+              fileUrl,
+            ];
+            await new Promise((resolve) => {
+              const child = spawn(chromiumPath, fastChromiumArgs, {
+                windowsHide: true,
+                stdio: "ignore",
+              });
+              const timer = setTimeout(() => {
+                try { child.kill(); } catch {}
+                resolve();
+              }, 3000);
+              child.on("close", () => {
+                clearTimeout(timer);
+                resolve();
+              });
+              child.on("error", () => {
+                clearTimeout(timer);
+                resolve();
+              });
+            });
             if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
               pngFile = "";
             }

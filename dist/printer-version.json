@@ -1,8 +1,8 @@
 {
-  "version": "1.0.9",
+  "version": "1.1.0",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "Sistem tepsisi (System Tray) arka plan servis modu ve bilgisayar başlangıcında otomatik açılma desteği eklendi",
+  "releaseNotes": "Konsol/CMD pencereleri tamamen gizlendi, donanıma doğrudan yüksek hızlı GDI yazdırma motoru aktifleştirildi.",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-10-28T14:50:00Z"
+  "updatedAt": "2026-11-12T14:40:00Z"
 }
