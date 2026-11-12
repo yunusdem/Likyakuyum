@@ -575,13 +575,17 @@ async function performSelfUpdate(downloadUrl, targetVersion = "") {
     } catch {}
 
     if (os.platform() === "win32") {
+      const exeDir = path.dirname(currentExec);
       const batPath = path.join(tmpFolder, `likya_updater_${Date.now()}.bat`);
       const batContent = `@echo off
 chcp 65001 >nul
+set "EXE_DIR=${exeDir}"
 set "OLD_EXE=${currentExec}"
 set "NEW_EXE=${updateNewExe}"
 
-echo Guncelleme uygulaniyor, lutfen bekleyiniz...
+echo ================================================================
+echo Likya ERP Yazici Servisi Guncelleniyor...
+echo ================================================================
 timeout /t 1 /nobreak >nul
 
 :: Eski surecleri zorla sonlandir (dosya kilidi kalmasin)
@@ -594,7 +598,7 @@ set /a attempts+=1
 del /f /q "%OLD_EXE%.old" >nul 2>&1
 move /y "%OLD_EXE%" "%OLD_EXE%.old" >nul 2>&1
 if not exist "%OLD_EXE%" goto moved
-if %attempts% geq 30 goto fail
+if %attempts% geq 25 goto fail
 timeout /t 1 /nobreak >nul
 goto loop
 
@@ -603,10 +607,9 @@ move /y "%NEW_EXE%" "%OLD_EXE%" >nul 2>&1
 if exist "%OLD_EXE%" goto start
 
 :start
-start "" "%OLD_EXE%" --daemon
 timeout /t 1 /nobreak >nul
-start "" "%OLD_EXE%" --console
-timeout /t 3 /nobreak >nul
+start "" /d "%EXE_DIR%" "%OLD_EXE%"
+timeout /t 2 /nobreak >nul
 del /f /q "%OLD_EXE%.old" >nul 2>&1
 del /f /q "%NEW_EXE%" >nul 2>&1
 del "%~f0" >nul 2>&1
@@ -614,9 +617,7 @@ exit
 
 :fail
 if exist "%OLD_EXE%" (
-  start "" "%OLD_EXE%" --daemon
-  timeout /t 1 /nobreak >nul
-  start "" "%OLD_EXE%" --console
+  start "" /d "%EXE_DIR%" "%OLD_EXE%"
 )
 del /f /q "%NEW_EXE%" >nul 2>&1
 del "%~f0" >nul 2>&1
@@ -1901,12 +1902,12 @@ function setupWindowsAutoStart() {
     }
 
     // 1. Kayıt defteri (Registry HKCU Run key)
-    const regCmd = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "LikyaPrinterAgent" /t REG_SZ /d "\\"${currentExec}\\" --daemon" /f`;
+    const regCmd = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "LikyaPrinterAgent" /t REG_SZ /d "\\"${currentExec}\\"" /f`;
     exec(regCmd, { windowsHide: true }, (err) => {
       if (err) {
         console.warn("[printercekmeApp] Otomatik başlangıç kayıt defteri uyarısı:", err.message);
       } else {
-        console.log(`[printercekmeApp] Otomatik başlangıç kayıt defterine eklendi: ${currentExec} --daemon`);
+        console.log(`[printercekmeApp] Otomatik başlangıç kayıt defterine eklendi: ${currentExec}`);
       }
     });
 
@@ -1916,7 +1917,7 @@ function setupWindowsAutoStart() {
       const startupDir = path.join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
       if (fs.existsSync(startupDir)) {
         const vbsPath = path.join(startupDir, "LikyaPrinterAgent.vbs");
-        const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """${currentExec}"" --daemon", 0, False\r\n`;
+        const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """${currentExec}""", 1, False\r\n`;
         try {
           fs.writeFileSync(vbsPath, vbsContent, "utf8");
           console.log(`[printercekmeApp] Başlangıç klasörü kısayolu oluşturuldu: ${vbsPath}`);
@@ -1935,6 +1936,7 @@ function startSystemTray() {
   if (os.platform() !== "win32") return;
 
   const currentExec = process.pkg ? process.execPath : process.argv[1];
+  const exeDir = path.dirname(currentExec);
 
   const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
@@ -2011,7 +2013,7 @@ $menu.Items.Add("-") | Out-Null
 $itemConsole = $menu.Items.Add("🖥️ Konsol Ekranını Aç")
 $itemConsole.add_Click({
     try {
-        Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -ArgumentList "--console" -WindowStyle Normal
+        Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -WorkingDirectory "${exeDir.replace(/\\/g, "\\\\")}" -WindowStyle Normal
     } catch {}
 })
 
@@ -2061,7 +2063,7 @@ $notify.ContextMenuStrip = $menu
 # Double click opens console
 $notify.add_DoubleClick({
     try {
-        Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -ArgumentList "--console" -WindowStyle Normal
+        Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -WorkingDirectory "${exeDir.replace(/\\/g, "\\\\")}" -WindowStyle Normal
     } catch {}
     try {
         [System.Diagnostics.Process]::Start("http://127.0.0.1:${PORT}") | Out-Null
@@ -2071,30 +2073,34 @@ $notify.add_DoubleClick({
 # Show balloon tip on startup
 try {
     $notify.BalloonTipTitle = "Likya ERP Yazıcı Servisi"
-    $notify.BalloonTipText = "Yazıcı servisi arka planda aktif. Konsol kapatılsa dahi servis kesintisiz çalışmaya devam eder."
+    $notify.BalloonTipText = "Yazıcı servisi Port ${PORT}'da aktif. Fişler kesintisiz yazdırılır."
     $notify.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
     $notify.ShowBalloonTip(3000)
 } catch {}
 
-# Parent process watcher timer: Eğer DAEMON beklenmedik şekilde çökerse otomatik tekrar başlat
+# Parent process watchdog timer: Konsol kapatıldığında veya süreç sonlandığında ANINDA tekrar aç!
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1500
 $timer.add_Tick({
+    if ($script:isManualExit) { return }
+    $isRunning = $false
     try {
         $p = [System.Diagnostics.Process]::GetProcessById($parentPid)
-        if ($p.HasExited -and -not $script:isManualExit) {
-            Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -ArgumentList "--daemon" -WindowStyle Hidden
-            $notify.Visible = $false
-            $notify.Dispose()
-            [System.Windows.Forms.Application]::Exit()
+        if (-not $p.HasExited) {
+            $isRunning = $true
         }
     } catch {
-        if (-not $script:isManualExit) {
-            Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -ArgumentList "--daemon" -WindowStyle Hidden
-            $notify.Visible = $false
-            $notify.Dispose()
-            [System.Windows.Forms.Application]::Exit()
-        }
+        $isRunning = $false
+    }
+
+    if (-not $isRunning -and -not $script:isManualExit) {
+        # Konsol penceresi kapatıldı! Hemen yeniden aç
+        try {
+            Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -WorkingDirectory "${exeDir.replace(/\\/g, "\\\\")}"
+        } catch {}
+        $notify.Visible = $false
+        $notify.Dispose()
+        [System.Windows.Forms.Application]::Exit()
     }
 })
 $timer.Start()
@@ -2138,19 +2144,22 @@ function runConsoleMode() {
   console.log(`💡 Bilgi: Bu konsol penceresini kapatsanız dahi yazıcı servisi`);
   console.log(`   arka planda kesintisiz çalışmaya devam eder ve fişler yazdırılır.`);
   console.log("================================================================\n");
-  console.log("📡 Arka plan servisine bağlanılıyor...");
 
   let ws = null;
   let retryTimer = null;
   let isClosed = false;
+  let connectAttempts = 0;
 
   function connect() {
     if (isClosed) return;
+    connectAttempts++;
+
     try {
       ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
 
       ws.on("open", () => {
-        console.log("🟢 Arka plan servisine bağlandı. Yazıcılar ve yazdırma olayları canlı dinleniyor...\n");
+        connectAttempts = 0;
+        console.log("🟢 Yazıcı servisine bağlandı. Yazıcılar ve yazdırma olayları canlı dinleniyor...\n");
         try {
           ws.send(JSON.stringify({ action: "console_registered" }));
           ws.send(JSON.stringify({ action: "get_printers" }));
@@ -2202,20 +2211,30 @@ function runConsoleMode() {
       ws.on("close", () => {
         cleanup();
         if (!isClosed) {
-          console.log("🟡 Servis bağlantısı koptu. Yeniden bağlanılıyor...");
-          retryTimer = setTimeout(connect, 2000);
+          console.log("🟡 Servis bağlantısı sonlandı. Servis bu pencerede doğrudan başlatılıyor...");
+          startServer();
         }
       });
 
       ws.on("error", () => {
         cleanup();
         if (!isClosed) {
-          retryTimer = setTimeout(connect, 2000);
+          if (connectAttempts >= 2) {
+            console.log("⚠️ Arka plan servisi yanıt vermiyor. Servis bu pencerede doğrudan başlatılıyor...\n");
+            startServer();
+            return;
+          }
+          retryTimer = setTimeout(connect, 1000);
         }
       });
     } catch {
       if (!isClosed) {
-        retryTimer = setTimeout(connect, 2000);
+        if (connectAttempts >= 2) {
+          console.log("⚠️ Arka plan servisi başlatılamadı. Servis doğrudan başlatılıyor...\n");
+          startServer();
+          return;
+        }
+        retryTimer = setTimeout(connect, 1000);
       }
     }
   }
@@ -2242,8 +2261,9 @@ function runConsoleMode() {
 function startServer() {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
-      console.log(`[printercekmeApp] Port ${PORT} zaten kullanımda. Servis arka planda çalışıyor.`);
-      process.exit(0);
+      console.log(`[printercekmeApp] Port ${PORT} kullanımda. Canlı konsol moduna geçiliyor...`);
+      runConsoleMode();
+      return;
     }
     console.error("[printercekmeApp] Sunucu hatası:", err);
   });
@@ -2257,62 +2277,55 @@ function startServer() {
     console.log(`🔄 Otomatik Güncelleme: Aktif (v${CURRENT_VERSION} - likyakuyum.com / likyaerp.com)`);
     console.log(`================================================================`);
     // Başlangıçta yazıcı listesini ve durumlarını arka planda ısıt (cache warm-up)
-    getSystemPrinters().catch(() => {});
+    getSystemPrinters(true).then((list) => {
+      console.log(`📋 Algılanan Sistem Yazıcıları (${list.length} adet):`);
+      list.forEach((p, idx) => {
+        const def = p.isDefault ? " [VARSAYILAN]" : "";
+        console.log(`   ${idx + 1}. ${p.name || p}${def} (Durum: ${p.status || 'Hazır'})`);
+      });
+      console.log("");
+    }).catch(() => {});
     // Windows başlangıç ve sistem tepsisi (System Tray) entegrasyonu
     setupWindowsAutoStart();
     startSystemTray();
   });
 }
 
-function spawnDaemonAndRunConsole(execPath) {
-  try {
-    const daemonProc = spawn(execPath, ["--daemon"], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    daemonProc.unref();
-  } catch (err) {
-    console.warn("[printercekmeApp] Daemon başlatma uyarısı:", err.message);
-  }
-  // Daemon'un portu bağlaması için kısa süre bekle ve konsol moduna geç
-  setTimeout(() => {
-    runConsoleMode();
-  }, 600);
-}
-
 function main() {
   const args = process.argv.slice(2);
-  const isDaemon = args.includes("--daemon");
   const isConsole = args.includes("--console");
 
   if (isConsole) {
-    runConsoleMode();
+    const req = http.get(`http://127.0.0.1:${PORT}/status`, { timeout: 600 }, (res) => {
+      if (res.statusCode === 200) {
+        runConsoleMode();
+      } else {
+        startServer();
+      }
+    });
+    req.on("error", () => startServer());
+    req.on("timeout", () => { req.destroy(); startServer(); });
     return;
   }
 
-  if (isDaemon || os.platform() !== "win32") {
-    startServer();
-    return;
-  }
-
-  // Windows'ta doğrudan çalıştırıldıysa (çift tıklama veya terminal)
-  const currentExec = process.pkg ? process.execPath : process.argv[1];
-  const req = http.get(`http://127.0.0.1:${PORT}/status`, { timeout: 400 }, (res) => {
+  // Normal çalıştırma: Port 9100 boşsa DOĞRUDAN sunucuyu başlat (sıfır gecikme)
+  const req = http.get(`http://127.0.0.1:${PORT}/status`, { timeout: 600 }, (res) => {
     if (res.statusCode === 200) {
+      console.log(`[printercekmeApp] Servis Port ${PORT} üzerinde arka planda zaten aktif.`);
+      console.log(`[printercekmeApp] Canlı konsol moduna bağlanılıyor...\n`);
       runConsoleMode();
     } else {
-      spawnDaemonAndRunConsole(currentExec);
+      startServer();
     }
   });
 
   req.on("error", () => {
-    spawnDaemonAndRunConsole(currentExec);
+    startServer();
   });
 
   req.on("timeout", () => {
     req.destroy();
-    spawnDaemonAndRunConsole(currentExec);
+    startServer();
   });
 }
 
