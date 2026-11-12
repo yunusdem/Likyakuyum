@@ -4,13 +4,15 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.3";
+const CURRENT_VERSION = "1.1.4";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
 const { exec, spawn } = require("child_process");
 const os = require("os");
 const util = require("util");
+
+let activeTrayProc = null;
 
 // Child process çağrılarında Windows'ta konsol penceresinin açılmaması için windowsHide varsayılan olarak true yapılır
 const safeExec = (command, options, callback) => {
@@ -478,10 +480,7 @@ async function performSelfUpdate(downloadUrl, targetVersion = "") {
     return { success: true, message: "Geliştirme ortamında çalışıldığı için exe değişimi simüle edildi." };
   }
 
-  const systemDrive = process.env.SystemDrive || "C:";
-  const tmpFolder = os.platform() === "win32"
-    ? path.join(systemDrive, "ProgramData", "LikyaPrintTemp")
-    : path.join(os.tmpdir(), "likya-print-temp");
+  const tmpFolder = path.join(os.tmpdir(), "LikyaPrintTemp");
 
   if (!fs.existsSync(tmpFolder)) {
     try { fs.mkdirSync(tmpFolder, { recursive: true }); } catch {}
@@ -510,6 +509,14 @@ async function performSelfUpdate(downloadUrl, targetVersion = "") {
 
     console.log(`[printercekmeApp] Yeni sürüm doğrulandı (${(stats.size / (1024 * 1024)).toFixed(1)} MB). Değiştirme ve yeniden başlatma hazırlanıyor...`);
 
+    // Sistem tepsisi nöbetçi sürecini (activeTrayProc) kapat ki eski süreci yeniden başlatmasın!
+    try {
+      if (activeTrayProc) {
+        activeTrayProc.kill();
+        activeTrayProc = null;
+      }
+    } catch {}
+
     if (os.platform() === "win32") {
       const batPath = path.join(tmpFolder, `likya_updater_${Date.now()}.bat`);
       const batContent = `@echo off
@@ -518,7 +525,11 @@ set "OLD_EXE=${currentExec}"
 set "NEW_EXE=${updateNewExe}"
 
 echo Guncelleme uygulaniyor, lutfen bekleyiniz...
-timeout /t 2 /nobreak >nul
+timeout /t 1 /nobreak >nul
+
+:: Eski surecleri zorla sonlandir (dosya kilidi kalmasin)
+taskkill /f /im PrinterAgent.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
 
 set /a attempts=0
 :loop
@@ -526,7 +537,7 @@ set /a attempts+=1
 del /f /q "%OLD_EXE%.old" >nul 2>&1
 move /y "%OLD_EXE%" "%OLD_EXE%.old" >nul 2>&1
 if not exist "%OLD_EXE%" goto moved
-if %attempts% geq 25 goto fail
+if %attempts% geq 30 goto fail
 timeout /t 1 /nobreak >nul
 goto loop
 
@@ -1997,6 +2008,7 @@ $timer.Start()
     windowsHide: true,
     stdio: ["ignore", "pipe", "ignore"],
   });
+  activeTrayProc = trayProc;
 
   trayProc.stdout.on("data", (data) => {
     const msg = data.toString("utf8").trim();

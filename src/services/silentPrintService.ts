@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.1.3";
+export const TARGET_PRINTER_AGENT_VERSION = "1.1.4";
 
 /**
  * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
@@ -160,14 +160,14 @@ export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ u
   lastUpdateCheckTime = now;
 
   // 1. Hedef en son sürümü dinamik olarak belirle:
-  // Önce aktif siteden (/printer-version.json), sonra bilinen domainlerden en yeni sürümü keşfet
+  // developer.likyakuyum.com ve aktif siteler taranır, her zaman bulunan EN YÜKSEK sürüm hedeflenir
   let targetVersion = TARGET_PRINTER_AGENT_VERSION;
   let targetDownloadUrl = "";
 
   const origin = window.location.origin;
   const candidateVersionEndpoints = [
-    `${origin}/printer-version.json`,
     "https://developer.likyakuyum.com/printer-version.json",
+    `${origin}/printer-version.json`,
     "https://likyakuyum.com/printer-version.json",
     "https://likyaerp.com/printer-version.json",
   ];
@@ -178,7 +178,8 @@ export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ u
       if (res && res.ok) {
         const json = await res.json().catch(() => null);
         if (json && json.version) {
-          if (!targetDownloadUrl || isNewerVersion(json.version, targetVersion)) {
+          // Asla eski bir sürüme (örn: 1.0.9) geri düşürme; hedef sürümden büyük veya eşit olan en yüksek sürümü al
+          if (isNewerVersion(json.version, targetVersion) || (!targetDownloadUrl && !isNewerVersion(targetVersion, json.version))) {
             targetVersion = json.version;
             let dUrl = json.downloadUrl || "/PrinterAgent.exe";
             if (!dUrl.startsWith("http")) {
@@ -193,7 +194,7 @@ export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ u
   }
 
   if (!targetDownloadUrl) {
-    targetDownloadUrl = `${origin}/PrinterAgent.exe?v=${Date.now()}`;
+    targetDownloadUrl = "https://developer.likyakuyum.com/PrinterAgent.exe";
   }
 
   // 2. Bilgisayarda çalışan yerel ajanın sürümünü sorgula:
