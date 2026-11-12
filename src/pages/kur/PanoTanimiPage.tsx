@@ -569,7 +569,11 @@ export const PanoTanimiPage: React.FC = () => {
             variant="success"
             size="sm"
             className="d-flex align-items-center gap-1.5 fw-semibold shadow-xs"
-            onClick={() => window.open(`/kur/pano?id=${form.panoId || 0}`, "_blank", "noopener,noreferrer")}
+            onClick={() => {
+              const sw = window.screen.availWidth || window.innerWidth;
+              const sh = window.screen.availHeight || window.innerHeight;
+              window.open(`/kur/pano?id=${form.panoId || 0}`, "_blank", `width=${sw},height=${sh},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,resizable=yes`);
+            }}
           >
             <IconExternalLink size={16} />
             <span>Canlı Pano Ekranı</span>

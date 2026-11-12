@@ -685,7 +685,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
             const to = matchedChild.link.startsWith("/") ? matchedChild.link : `/${matchedChild.link}`;
             if (to === "/kur/pano" || to.startsWith("/kur/pano?")) {
-              window.open(to, "_blank", "noopener,noreferrer");
+              const sw = window.screen.availWidth || window.innerWidth;
+              const sh = window.screen.availHeight || window.innerHeight;
+              window.open(to, "_blank", `width=${sw},height=${sh},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,resizable=yes`);
               return;
             }
             navigateWithDashboardHop(to);
@@ -758,7 +760,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     }
     const cleanTo = to.startsWith("/") ? to : `/${to}`;
     if (cleanTo === "/kur/pano" || cleanTo.startsWith("/kur/pano?")) {
-      window.open(cleanTo, "_blank", "noopener,noreferrer");
+      const sw = window.screen.availWidth || window.innerWidth;
+      const sh = window.screen.availHeight || window.innerHeight;
+      window.open(cleanTo, "_blank", `width=${sw},height=${sh},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,resizable=yes`);
       return;
     }
     navigateWithDashboardHop(to);

@@ -149,7 +149,9 @@ export const TopNavbarMenu: React.FC = () => {
     setActiveDropdownIndex(null);
     const cleanTo = to.startsWith("/") ? to : `/${to}`;
     if (cleanTo === "/kur/pano" || cleanTo.startsWith("/kur/pano?")) {
-      window.open(cleanTo, "_blank", "noopener,noreferrer");
+      const sw = window.screen.availWidth || window.innerWidth;
+      const sh = window.screen.availHeight || window.innerHeight;
+      window.open(cleanTo, "_blank", `width=${sw},height=${sh},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,resizable=yes`);
       return;
     }
     navigateWithDashboardHop(to);
