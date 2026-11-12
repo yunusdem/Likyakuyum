@@ -1802,6 +1802,25 @@ function startSystemTray() {
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+$win32 = Add-Type -Name Win32 -Namespace Native -PassThru -MemberDefinition '
+    [DllImport("Kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+'
+
+# Hide parent console window
+$parentPid = ${process.pid}
+$hwnd = [IntPtr]::Zero
+try {
+    $parentProc = [System.Diagnostics.Process]::GetProcessById($parentPid)
+    $hwnd = $parentProc.MainWindowHandle
+} catch {}
+if ($hwnd -eq [IntPtr]::Zero) {
+    $hwnd = [Native.Win32]::GetConsoleWindow()
+}
+if ($hwnd -ne [IntPtr]::Zero) {
+    [Native.Win32]::ShowWindow($hwnd, 0)
+}
+
 # Create NotifyIcon
 $notify = New-Object System.Windows.Forms.NotifyIcon
 
@@ -1934,32 +1953,27 @@ $timer.Start()
   const b64 = Buffer.from(psScript, "utf16le").toString("base64");
   const systemRoot = process.env.SystemRoot || "C:\\Windows";
   const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
-  const wscriptPath = `${systemRoot}\\System32\\wscript.exe`;
 
-  // PowerShell'i Windows GUI modunda wscript.exe (SW_HIDE = 0) ile başlat.
-  // Bu sayede Windows görev çubuğunda (altta) ASLA konsol penceresi veya simge oluşmaz.
-  try {
-    const tempDir = os.tmpdir();
-    const vbsPath = path.join(tempDir, "LikyaTrayRunner.vbs");
-    const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """${psPath}"" -NoProfile -NonInteractive -STA -WindowStyle Hidden -EncodedCommand ${b64}", 0, False\r\n`;
-    fs.writeFileSync(vbsPath, vbsContent, "utf8");
+  const trayProc = spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
 
-    exec(`"${wscriptPath}" //B //NoLogo "${vbsPath}"`, { windowsHide: true }, (err) => {
-      if (err) {
-        console.warn("[printercekmeApp] wscript tepsi başlatıcı uyarısı:", err.message);
-        // Fallback: doğrudan gizli spawn
-        try {
-          spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
-            windowsHide: true,
-            detached: true,
-            stdio: "ignore",
-          }).unref();
-        } catch {}
-      }
-    });
-  } catch (launchErr) {
-    console.warn("[printercekmeApp] Tepsi oluşturma hatası:", launchErr.message);
-  }
+  trayProc.stdout.on("data", (data) => {
+    const msg = data.toString("utf8").trim();
+    if (msg.includes("ACTION:EXIT")) {
+      console.log("[printercekmeApp] Sistem tepsisinden çıkış komutu alındı. Kapatılıyor...");
+      process.exit(0);
+    }
+  });
+
+  trayProc.on("error", (err) => {
+    console.warn("[printercekmeApp] Sistem tepsisi başlatma uyarısı:", err.message);
+  });
+
+  process.on("exit", () => {
+    try { trayProc.kill(); } catch {}
+  });
 }
 
 server.on("error", (err) => {
