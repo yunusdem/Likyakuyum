@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.2";
+const CURRENT_VERSION = "1.1.3";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -76,45 +76,8 @@ function initWindowsPrinterRegistry() {
 }
 initWindowsPrinterRegistry();
 
-// PowerShell scriptlerini Base64 Unicode (-EncodedCommand) ile güvenle ve asılı kalmadan çalıştıran fonksiyon
+// PowerShell scriptlerini gizli pencere ile (windowsHide: true) doğrudan bellek üzerinden çalıştıran fonksiyon
 function runPowerShell(script, timeoutMs = 12000) {
-  return new Promise((resolve, reject) => {
-    const systemRoot = process.env.SystemRoot || "C:\\Windows";
-    const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
-    // PowerShell -EncodedCommand UTF-16LE Base64 bekler
-    const b64 = Buffer.from(script, "utf16le").toString("base64");
-
-    const ps = spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      try { ps.kill(); } catch {}
-      reject(new Error("PowerShell işlem zaman aşımına uğradı."));
-    }, timeoutMs);
-
-    ps.stdout.on("data", (d) => { stdout += d.toString("utf8"); });
-    ps.stderr.on("data", (d) => { stderr += d.toString("utf8"); });
-
-    ps.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, code });
-    });
-
-    ps.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-}
-
-// ─── Windows Tamamen Sessiz PowerShell Çalıştırıcı (Zero-Console Runner) ────────
-// wscript.exe üzerinden SW_HIDE (0) bayrağıyla PowerShell'i çalıştırır.
-// Windows Kernel hiçbir CMD veya PowerShell konsol penceresi AÇMAZ.
-function runPowerShellHidden(script, timeoutMs = 12000) {
   return new Promise((resolve) => {
     if (os.platform() !== "win32") {
       return resolve({ stdout: "", stderr: "win32 değil", code: 1 });
@@ -122,59 +85,48 @@ function runPowerShellHidden(script, timeoutMs = 12000) {
 
     const systemRoot = process.env.SystemRoot || "C:\\Windows";
     const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
-    const wscriptPath = `${systemRoot}\\System32\\wscript.exe`;
+    // PowerShell -EncodedCommand UTF-16LE Base64 bekler
+    const b64 = Buffer.from(script, "utf16le").toString("base64");
 
-    const tmpFolder = path.join(process.env.SystemDrive || "C:", "ProgramData", "LikyaPrintTemp");
-    try { if (!fs.existsSync(tmpFolder)) fs.mkdirSync(tmpFolder, { recursive: true }); } catch {}
+    const ps = spawn(psPath, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-    const id = Date.now() + "_" + Math.random().toString(36).substring(2, 7);
-    const outFile = path.join(tmpFolder, `ps_out_${id}.txt`);
-    const vbsFile = path.join(tmpFolder, `ps_run_${id}.vbs`);
-
-    const wrappedScript = `
-$ErrorActionPreference = 'Continue'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-try {
-  ${script}
-} catch {
-  Write-Output "ERROR: $($_.Exception.Message)"
-}
-`;
-    const b64 = Buffer.from(wrappedScript, "utf16le").toString("base64");
-    const psCmd = `"${psPath}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand ${b64} > "${outFile}" 2>&1`;
-
-    // VBScript WshShell.Run: 0 = SW_HIDE (Konsol penceresi ASLA açılmaz), True = bWaitOnReturn (işlem bitene kadar bekle)
-    const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run "${psCmd.replace(/"/g, '""')}", 0, True\r\n`;
-    fs.writeFileSync(vbsFile, vbsContent, "utf8");
-
+    let stdout = "";
+    let stderr = "";
     let finished = false;
-    const cleanup = () => {
+
+    const timer = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      try { ps.kill(); } catch {}
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim() || "PowerShell işlem zaman aşımına uğradı.", code: 1 });
+    }, timeoutMs);
+
+    ps.stdout.on("data", (d) => { stdout += d.toString("utf8"); });
+    ps.stderr.on("data", (d) => { stderr += d.toString("utf8"); });
+
+    ps.on("close", (code) => {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
-      setTimeout(() => {
-        try { fs.unlinkSync(vbsFile); } catch {}
-        try { fs.unlinkSync(outFile); } catch {}
-      }, 5000);
-    };
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim(), code: code || 0 });
+    });
 
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve({ stdout: "", stderr: "PowerShell işlem zaman aşımına uğradı.", code: 1 });
-    }, timeoutMs);
-
-    safeExec(`"${wscriptPath}" //B //NoLogo "${vbsFile}"`, { timeout: timeoutMs }, (err) => {
-      let output = "";
-      try {
-        if (fs.existsSync(outFile)) {
-          output = fs.readFileSync(outFile, "utf8");
-        }
-      } catch {}
-
-      cleanup();
-      resolve({ stdout: output.trim(), stderr: err ? err.message : "", code: err ? 1 : 0 });
+    ps.on("error", (err) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      resolve({ stdout: "", stderr: err ? err.message : "", code: 1 });
     });
   });
+}
+
+// ─── Windows Tamamen Sessiz PowerShell Çalıştırıcı (Zero-Console Runner) ────────
+// windowsHide: true ile doğrudan OS pipe üzerinden çalışır; dosya yazma gecikmesi veya konsol penceresi ASLA oluşmaz.
+function runPowerShellHidden(script, timeoutMs = 12000) {
+  return runPowerShell(script, timeoutMs);
 }
 
 const app = express();
@@ -1085,17 +1037,6 @@ app.post(["/api/set-default", "/set-default"], async (req, res) => {
       const psCmd = `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 try {
-  Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class NativeSpool {
-    [DllImport("winspool.drv", CharSet = CharSet.Auto, SetLastError = true)]
-    public static extern bool SetDefaultPrinter(string Name);
-}
-"@ -ErrorAction SilentlyContinue
-} catch {}
-
-try {
   Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows' -Name 'LegacyDefaultPrinterMode' -Value 1 -ErrorAction SilentlyContinue
 } catch {}
 
@@ -1113,9 +1054,9 @@ if (-not $matched) {
   }
 }
 if ($matched) {
-  try { [NativeSpool]::SetDefaultPrinter($matched) | Out-Null } catch {
+  try {
     (New-Object -ComObject WScript.Network).SetDefaultPrinter($matched)
-  }
+  } catch {}
   Write-Output "SUCCESS: $matched"
 } else {
   Write-Output "NOT_FOUND"

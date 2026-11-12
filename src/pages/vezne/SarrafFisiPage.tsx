@@ -411,7 +411,17 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
   // Ziynet ve Para işlemlerinde milyem / has / işçilik çalışmaz, doğrudan adet (veya miktar) * kur hesaplanır
   if (isParaOrZiynet) {
     const base = dovizZiynetGirisSekli === 1 ? (miktar > 0 ? miktar : adet) : (adet > 0 ? adet : miktar);
-    if (changedField !== "tutar") {
+    let kurVal = isKurFixed ? "" : (changedField === "kur" ? r.kur : (r.kur !== "" && r.kur !== null && r.kur !== undefined ? r.kur : kur));
+    if (changedField === "tutar") {
+      const tutarNum = parseDecimal(r.tutar);
+      if (tutarNum > 0 && base > 0 && !isKurFixed) {
+        kurVal = parseFloat((tutarNum / base).toFixed(4));
+        tutar = r.tutar;
+      } else if (tutarNum === 0 || r.tutar === "") {
+        tutar = "";
+        if (!isKurFixed) kurVal = "";
+      }
+    } else {
       if (base > 0 && effectiveKur > 0) {
         tutar = parseFloat((base * effectiveKur).toFixed(2));
       } else if (base > 0 && isKurFixed) {
@@ -427,7 +437,7 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
       milyem: "",
       hasGram: "",
       tutar,
-      kur: isKurFixed ? "" : (changedField === "kur" ? r.kur : (r.kur !== "" && r.kur !== null && r.kur !== undefined ? r.kur : kur)),
+      kur: isKurFixed ? "" : kurVal,
     };
   }
 
@@ -440,8 +450,18 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
       hasGram = base;
     }
   }
-  if (changedField !== "tutar") {
-    const effHas = parseDecimal(hasGram) > 0 ? parseDecimal(hasGram) : base;
+  let kurOut = isKurFixed ? "" : (changedField === "kur" ? r.kur : (kur !== "" ? kur : (defaultHasKuru > 0 ? defaultHasKuru : "")));
+  const effHas = parseDecimal(hasGram) > 0 ? parseDecimal(hasGram) : base;
+  if (changedField === "tutar") {
+    const tutarNum = parseDecimal(r.tutar);
+    if (tutarNum > 0 && effHas > 0 && !isKurFixed) {
+      kurOut = parseFloat((tutarNum / effHas).toFixed(4));
+      tutar = r.tutar;
+    } else if (tutarNum === 0 || r.tutar === "") {
+      tutar = "";
+      if (!isKurFixed) kurOut = "";
+    }
+  } else {
     const mKur = kurNum > 0 ? kurNum : (defaultHasKuru > 0 ? defaultHasKuru : 1);
     if (effHas > 0 && mKur > 0) {
       tutar = parseFloat((effHas * mKur).toFixed(2));
@@ -452,7 +472,7 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
     ...r,
     hasGram,
     tutar,
-    kur: isKurFixed ? "" : (changedField === "kur" ? r.kur : (kur !== "" ? kur : (defaultHasKuru > 0 ? defaultHasKuru : ""))),
+    kur: isKurFixed ? "" : kurOut,
   };
 };
 
@@ -545,10 +565,19 @@ const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyo
     const adet = parseDecimal(r.adet);
     const miktar = parseDecimal(r.miktar);
     const base = dovizZiynetGirisSekli === 1 ? (miktar > 0 ? miktar : adet) : (adet > 0 ? adet : miktar);
-    const kur = changedField === "kur" ? r.kur : (r.kur !== "" && r.kur !== null && r.kur !== undefined ? r.kur : (defaultKur > 0 ? defaultKur : ""));
-    const effectiveKur = parseDecimal(kur);
+    let kur = changedField === "kur" ? r.kur : (r.kur !== "" && r.kur !== null && r.kur !== undefined ? r.kur : (defaultKur > 0 ? defaultKur : ""));
     let tutar: number | string = r.tutar;
-    if (changedField !== "tutar") {
+    if (changedField === "tutar") {
+      const tutarNum = parseDecimal(r.tutar);
+      if (tutarNum > 0 && base > 0) {
+        kur = parseFloat((tutarNum / base).toFixed(4));
+        tutar = r.tutar;
+      } else if (tutarNum === 0 || r.tutar === "") {
+        kur = "";
+        tutar = "";
+      }
+    } else {
+      const effectiveKur = parseDecimal(kur);
       if (effectiveKur > 0 && base > 0) {
         tutar = parseFloat((base * effectiveKur).toFixed(2));
       } else {
@@ -602,24 +631,13 @@ const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyo
   const kurNum = parseDecimal(r.kur);
   const isGumusRow = effTipi === 2 || (r.urunKodu && (r.urunKodu.toUpperCase().includes("GUMUS") || r.urunKodu.toUpperCase().includes("GÜMÜŞ")));
   const isGoldRow = effTipi === 1 || (!isGumusRow && !isParaOrZiynet);
-  const kur = changedField === "kur"
+  let kur = changedField === "kur"
     ? r.kur
     : ((isGoldRow || isGumusRow)
         ? (kurNum > 0 ? r.kur : (r.kur === "" ? "" : (defaultKur > 0 ? defaultKur : "")))
         : (r.kur !== "" ? r.kur : (defaultKur > 0 ? defaultKur : "")));
   const effectiveKur = parseDecimal(kur);
   const hasFiyati = defaultKur > 0 ? defaultKur : effectiveKur;
-
-  // TL Tutar hesabı: Has * Kur (veya miktar/adet * kur)
-  let tlTutar: number | string = "";
-  const hasNum = parseDecimal(hasGram);
-  if (hasNum > 0 && effectiveKur > 0) {
-    tlTutar = parseFloat((hasNum * effectiveKur).toFixed(2));
-  } else if (base > 0 && effectiveKur > 0) {
-    tlTutar = parseFloat((base * effectiveKur).toFixed(2));
-  } else if (r.tlTutar !== "" && parseDecimal(r.tlTutar) > 0) {
-    tlTutar = parseDecimal(r.tlTutar);
-  }
 
   // İşçilik hesabı: 0: Gram, 1: Adet, 2: Toplam
   const iscilikSekli = Number(r.iscilikHesaplamaSekli) || 0;
@@ -748,7 +766,7 @@ const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyo
       if (isKdvDisabled) iscilikKdvTutari = "";
       iscilikToplam = netIsc > 0 ? netIsc : "";
     }
-  } else {
+  } else if (changedField !== "tutar") {
     // Default recalculation (e.g. iscilikiMiktari, miktar, adet, kur vb.)
     const rawIscilik = parseDecimal(r.iscilikiMiktari);
     const effectiveIscilik = (iscilikGirisSekli === 0) ? (rawIscilik / 1000) : rawIscilik;
@@ -785,11 +803,38 @@ const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyo
     }
   }
 
-  // Toplam Tutar (TL) hesabı: TL Tutar + İşçilik Toplam
-  const tlTutVal = parseDecimal(tlTutar);
+  // TL Tutar, Kur ve Toplam Tutar hesabı
+  const hasNum = parseDecimal(hasGram);
+  const hasDivisor = hasNum > 0 ? hasNum : (base > 0 ? base : 0);
   const iscTopVal = parseDecimal(iscilikToplam);
+  let tlTutar: number | string = "";
   let tutar: number | string = r.tutar;
-  if (changedField !== "tutar") {
+
+  if (changedField === "tutar") {
+    const tutarNum = parseDecimal(r.tutar);
+    if (tutarNum > 0) {
+      const netTl = tutarNum > iscTopVal ? parseFloat((tutarNum - iscTopVal).toFixed(2)) : tutarNum;
+      tlTutar = netTl;
+      if (hasDivisor > 0) {
+        kur = parseFloat((netTl / hasDivisor).toFixed(4));
+      }
+      tutar = r.tutar;
+    } else if (tutarNum === 0 || r.tutar === "") {
+      tlTutar = "";
+      tutar = "";
+      kur = "";
+    }
+  } else {
+    const effectiveKur = parseDecimal(kur);
+    if (hasNum > 0 && effectiveKur > 0) {
+      tlTutar = parseFloat((hasNum * effectiveKur).toFixed(2));
+    } else if (base > 0 && effectiveKur > 0) {
+      tlTutar = parseFloat((base * effectiveKur).toFixed(2));
+    } else if (r.tlTutar !== "" && parseDecimal(r.tlTutar) > 0) {
+      tlTutar = parseDecimal(r.tlTutar);
+    }
+
+    const tlTutVal = parseDecimal(tlTutar);
     if (tlTutVal > 0 || iscTopVal > 0) {
       tutar = parseFloat((tlTutVal + iscTopVal).toFixed(2));
     } else {
@@ -5379,6 +5424,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const n = parseDecimal(val);
         val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
       }
+      if (field === "tutar") {
+        const n = parseDecimal(val);
+        val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
+      }
       if (field === "milyem") {
         const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
         const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
@@ -5585,6 +5634,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             }
           }
         }
+      }
+      if (field === "tutar") {
+        const n = parseDecimal(val);
+        val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
       }
       const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
       const curOdemeDefaultKur = effTipi === 2 ? (Number(gumusHasKuru) || 0) : (Number(altinHasKuru) || 0);
@@ -6644,7 +6697,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const isColPassive = (col: GridColKey, rIdx: number = rowIndex) => {
       if (col !== "urunKodu" && col in colVisibility && !colVisibility[col as keyof typeof colVisibility]) return true;
-      if (col === "urunAdi" || col === "hasGram" || col === "tlTutar" || col === "iscilikHasGram" || col === "tutar") return true;
+      if (col === "urunAdi" || col === "hasGram" || col === "tlTutar" || col === "iscilikHasGram") return true;
       const isKurAllowed = kurDegistirilebilir(kYetkiRef.current);
       if (col === "kur" && !isKurAllowed) return true;
       if (col === "milyem" && !milyemAcik) return true;
@@ -6687,6 +6740,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
+      }
+      if (colKey === "tutar") {
+        normalizeRowOnBlur(rowId, "tutar");
       }
       // On urunKodu, try to resolve product or open lookup with typed text
       if (colKey === "urunKodu") {
@@ -6820,6 +6876,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
       }
+      if (colKey === "tutar") {
+        normalizeRowOnBlur(rowId, "tutar");
+      }
       let prevIdx = colIdx - 1;
       while (prevIdx >= 0 && isColPassive(GRID_COLS[prevIdx])) {
         prevIdx--;
@@ -6856,6 +6915,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
       }
+      if (colKey === "tutar") {
+        normalizeRowOnBlur(rowId, "tutar");
+      }
       if (rowIndex < lines.length - 1) {
         const nr = lines[rowIndex + 1];
         setActiveRowIndex(rowIndex + 1);
@@ -6880,6 +6942,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (colKey === "kur") {
         normalizeRowOnBlur(rowId, "kur");
       }
+      if (colKey === "tutar") {
+        normalizeRowOnBlur(rowId, "tutar");
+      }
       if (rowIndex > 0) {
         const pr = lines[rowIndex - 1];
         setActiveRowIndex(rowIndex - 1);
@@ -6901,6 +6966,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
         if (colKey === "kur") {
           normalizeRowOnBlur(rowId, "kur");
+        }
+        if (colKey === "tutar") {
+          normalizeRowOnBlur(rowId, "tutar");
         }
         let nextIdx = colIdx + 1;
         while (nextIdx < totalCols && isColPassive(GRID_COLS[nextIdx])) {
@@ -9795,25 +9863,25 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         </td>
                       )}
 
-                      {/* Toplam Tutar - Pasif / Otomatik Hesaplanır */}
+                      {/* Toplam Tutar - Girilebilir & Otomatik Kur Günceller */}
                       {colVisibility.tutar && (
                         <td>
                           <Form.Control
                             ref={(el) => { rowInputRefs.current[`${row.id}_tutar`] = el; }}
-                            readOnly
-                            tabIndex={-1}
+                            inputMode="decimal"
+                            data-decimal="true"
                             size="sm"
-                            className="text-end font-monospace text-muted"
-                            value={row.tutar !== "" && !isNaN(Number(row.tutar)) ? Number(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : row.tutar}
+                            className="text-end font-monospace"
+                            value={row.tutar !== "" && row.tutar !== null && row.tutar !== undefined ? row.tutar : ""}
+                            onChange={(e) => updateRow(row.id, "tutar", e.target.value)}
+                            onBlur={() => normalizeRowOnBlur(row.id, "tutar")}
                             onFocus={handleKalemRowFocus}
                             onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "tutar", row.id)}
                             style={{
                               fontSize: "11px",
                               padding: "1px 4px",
-                              backgroundColor: "#e9ecef",
-                              cursor: "not-allowed",
                             }}
-                            title="Toplam Tutar (TL Tutar + İşçilik Toplam)"
+                            title="Toplam Tutar (TL) - Değiştirildiğinde kur otomatik güncellenir"
                           />
                         </td>
                       )}
