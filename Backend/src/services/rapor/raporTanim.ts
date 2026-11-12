@@ -151,6 +151,8 @@ export interface RaporSonucVeri {
   gruplar?: RaporGrup[];
   /** `tanim.grupAltTablo` satırları: anahtar = o seviyedeki grup anahtar değeri (String) */
   grupAltSatirlar?: Record<string, Record<string, any>[]>;
+  /** true → Excel yalın: 1. satır kolon başlıkları, altında veri; firma başlığı, filtre, toplam, özet ve dipnot yok (FISLIS1 Muhasebe — muhasebeye aktarılan dosya) */
+  yalinExcel?: boolean;
 }
 
 export const RAPOR_UST_SINIR = 5000;

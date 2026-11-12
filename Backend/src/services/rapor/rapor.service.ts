@@ -82,7 +82,7 @@ export class RaporService {
     if (v.sinirAsildi) throw ApiError.badRequest(`Rapor ${v.toplamKayit} satır üretiyor; üst sınır ${v.tanim.ustSinir || 5000}. Tarih aralığını daraltın.`);
     const firma = await this.firma(ctx);
     return { xlsx: await raporExcel({ tanim: v.tanim, satirlar: v.satirlar, filtreOzeti: v.filtreOzeti, firma, kullanici, ekDipnot: v.ekDipnot, ozetSatirlar: v.ozetSatirlar,
-      gruplar: v.gruplar, grupAltSatirlar: v.grupAltSatirlar }), tanim: v.tanim };
+      gruplar: v.gruplar, grupAltSatirlar: v.grupAltSatirlar, yalin: v.yalinExcel }), tanim: v.tanim };
   }
 }
 

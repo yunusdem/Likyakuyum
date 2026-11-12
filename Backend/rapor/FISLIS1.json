@@ -1,7 +1,7 @@
 {
   "kod": "FISLIS1",
   "ad": "Fiş Listeleme",
-  "aciklama": "Tarih aralığındaki fiş satırları: tarih, saat, para, vezne, seri / belge no, miktar, kur, KMV ve lira tutarı; gün bazında ara toplam, rapor sonunda para bazında toplam. Liste tipi Toplam seçilirse gün başına tek satır.",
+  "aciklama": "Tarih aralığındaki fiş satırları: tarih, saat, para, vezne, seri / belge no, miktar, kur, KMV ve lira tutarı; gün bazında ara toplam, rapor sonunda para bazında toplam. Liste tipi Toplam seçilirse gün başına tek satır; Muhasebe seçilirse gün × para başına tek satır (Tarih, ParaBirimi, Miktar, Kur, MatrahTutar, ToplamTutar, KMV, BelgeNo, KDV) ve Excel yalın indirilir.",
   "kagit": "A4-yatay",
   "parametreler": [
     {
@@ -49,6 +49,10 @@
         {
           "deger": "toplam",
           "ad": "Toplam"
+        },
+        {
+          "deger": "muhasebe",
+          "ad": "Muhasebe"
         }
       ],
       "varsayilan": "detay"
@@ -99,7 +103,8 @@
       "anahtar": "zaman",
       "baslik": "Tarih",
       "g": 1.3,
-      "bicim": "tarih"
+      "bicim": "tarih",
+      "kosul": "p:listeTipi!=muhasebe"
     },
     {
       "anahtar": "saat",
@@ -154,7 +159,8 @@
       "anahtar": "miktar",
       "baslik": "Miktar",
       "g": 1.8,
-      "bicim": "sayi"
+      "bicim": "sayi",
+      "kosul": "p:listeTipi!=muhasebe"
     },
     {
       "anahtar": "kur",
@@ -168,14 +174,16 @@
       "baslik": "KMV",
       "g": 1.4,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kosul": "p:listeTipi!=muhasebe"
     },
     {
       "anahtar": "tutar",
       "baslik": "Lira",
       "g": 2,
       "bicim": "sayi",
-      "toplam": true
+      "toplam": true,
+      "kosul": "p:listeTipi!=muhasebe"
     },
     {
       "anahtar": "unvan",
@@ -212,7 +220,8 @@
       "g": 1.6,
       "bicim": "sayi",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi!=muhasebe"
     },
     {
       "anahtar": "bmv",
@@ -220,7 +229,8 @@
       "g": 1.4,
       "bicim": "sayi",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi!=muhasebe"
     },
     {
       "anahtar": "kdv",
@@ -228,7 +238,8 @@
       "g": 1.4,
       "bicim": "sayi",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi!=muhasebe"
     },
     {
       "anahtar": "toplamTutar",
@@ -236,7 +247,8 @@
       "g": 2.1,
       "bicim": "sayi",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi!=muhasebe"
     },
     {
       "anahtar": "odemeTutari",
@@ -244,7 +256,81 @@
       "g": 2.1,
       "bicim": "sayi",
       "toplam": true,
-      "pdf": false
+      "pdf": false,
+      "kosul": "p:listeTipi!=muhasebe"
+    },
+    {
+      "anahtar": "mTarih",
+      "baslik": "Tarih",
+      "g": 1.2,
+      "bicim": "tarih",
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mPara",
+      "baslik": "ParaBirimi",
+      "g": 1,
+      "hiza": "center",
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mMiktar",
+      "baslik": "Miktar",
+      "g": 1.6,
+      "bicim": "sayi",
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mKur",
+      "baslik": "Kur",
+      "g": 1.4,
+      "bicim": "kur",
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mMatrah",
+      "baslik": "MatrahTutar",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mToplam",
+      "baslik": "ToplamTutar",
+      "g": 2,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mKmv",
+      "baslik": "KMV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mBelgeNo",
+      "baslik": "BelgeNo",
+      "g": 1.2,
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mKdv",
+      "baslik": "KDV",
+      "g": 1.4,
+      "bicim": "sayi",
+      "toplam": true,
+      "kosul": "p:listeTipi=muhasebe"
+    },
+    {
+      "anahtar": "mTip",
+      "baslik": "Tip",
+      "g": 0.9,
+      "hiza": "center",
+      "kosul": "p:listeTipi=muhasebe"
     }
   ],
   "bolum": {

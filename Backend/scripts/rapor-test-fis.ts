@@ -12,7 +12,7 @@ import { kosulSaglandi, parametreDegeri, RaporService } from "../src/services/ra
 import { paraBasliklariEkle, paraGrupKur } from "../src/services/rapor/paraGrup.js";
 import {
   metinAraliginda, isimBeyanEdilmemis, paraOzeti, paraGruplayici, fisSirala, gunlukToplamlar, gunToplamlari, istatistikGruplari, istatistikSirala,
-  kmvGruplari, kmvKirilimAnahtari, kmvKirilimla, kmvSirala, fisCinsiBolumleri, gecerliKimlikNo, vergiNoGrupla, vergiNoCinsi, vergiNoBosNotu, fisSayilariEkle, kimlikOzetiBaslikli, paraOzetiSirala, tekParali, fisListeGruplari, vezneBasligi, gunlukFisGruplari, istatistikParaOzeti,
+  kmvGruplari, kmvKirilimAnahtari, kmvKirilimla, kmvSirala, fisCinsiBolumleri, gecerliKimlikNo, vergiNoGrupla, vergiNoCinsi, vergiNoBosNotu, fisSayilariEkle, kimlikOzetiBaslikli, paraOzetiSirala, tekParali, fisListeGruplari, muhasebeSatirlari, vezneBasligi, gunlukFisGruplari, istatistikParaOzeti,
 } from "../src/services/rapor/veri/fis.js";
 import { netMetni } from "../src/services/rapor/raporMotor.js";
 import { vergiKomisyonGruplari } from "../src/services/rapor/veri/vergiKomisyon.js";
@@ -259,6 +259,51 @@ esit("fiş cinsi → bölümler", `${fisCinsiBolumleri("doviz")}|${fisCinsiBolum
   const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await raporExcel(kmvGirdi) as any);
   const h2 = JSON.stringify(wb2.worksheets[0].getSheetValues());
   esit("ISTKMV1 PDF + Excel: kırılım satırı (300 USD) ve altındaki iki fiş", `${kmvPdf.subarray(0, 5).toString()}|${kmvS.length}|${kmvS[0].miktar}|${/"S1"/.test(h2) && /"S2"/.test(h2)}|${/GENEL TOPLAM \(2 kayıt\)/.test(h2)}`, "%PDF-|2|300|true|true");
+}
+
+// ── FISLIS1 "Muhasebe" liste tipi (docs/FIS_LISTELEME_MUHASEBE.md) — beklenenler Yunus Bey'in "Kaymak Ekim Satım.xlsx" dosyasından ───────────────
+{
+  const t = raporTanimOku("FISLIS1");
+  const gorunenM = (p: any) => t.kolonlar.filter(k => kosulSaglandi(k.kosul, t, p)).map(k => k.baslik).join();
+  esit("Muhasebe: seçenek listede", t.parametreler.find(x => x.ad === "listeTipi")!.secenekler!.map(o => o.deger).join(), "detay,toplam,muhasebe");
+  esit("Muhasebe: kolonlar dosyadaki sırayla (+ Tip)", gorunenM({ ek: { listeTipi: "muhasebe" } }), "Tarih,ParaBirimi,Miktar,Kur,MatrahTutar,ToplamTutar,KMV,BelgeNo,KDV,Tip");
+  esit("Muhasebe kolonları detay / toplamda görünmez", [gorunenM({}), gorunenM({ ek: { listeTipi: "toplam" } })].some(x => /ParaBirimi|MatrahTutar/.test(x)), false);
+  // 01.10: USD 9100 → 448052,94 / KMV 896,08; RUB 28500; EUR 251190 → 13918415,71 / 1244,86 (büyük kısmı KMV'siz); CHF 330. 02.10: USD 11253.
+  // Bölümler aynı para kodunda birleşir (sarraf fişindeki USD satırı, bolum 2).
+  const d = (gunIso: string, paraKod: string, miktar: number, tutar: number, kmv: number, ek: any = {}) => ({ gunIso, paraKod, miktar, tutar, kmv, kdv: 0, tip: "Satış", bolum: 1, ...ek });
+  const ham = [
+    d("2026-10-02", "USD", 11253, 554945.26, 1109.89),
+    d("2026-10-01", "EUR", 1190, 65933.81, 131.87), d("2026-10-01", "USD", 4000, 196947.2, 393.89), d("2026-10-01", "CHF", 330, 19404, 38.81),
+    d("2026-10-01", "RUB", 28500, 16287.5, 32.58), d("2026-10-01", "EUR", 250000, 13852481.9, 1112.99), d("2026-10-01", "USD", 5100, 251105.74, 502.19, { bolum: 2 }),
+  ];
+  const m = muhasebeSatirlari(ham, false);
+  const sat = (x: any) => [x.mTarih, x.mPara, x.mMiktar, x.mKur, x.mMatrah, x.mToplam, x.mKmv, x.mBelgeNo, x.mKdv].join(";");
+  esit("Muhasebe: sıra gün artan, para azalan (USD, RUB, EUR, CHF)", m.map(x => `${x.mTarih.slice(8)} ${x.mPara}`).join(), "01 USD,01 RUB,01 EUR,01 CHF,02 USD");
+  esit("Muhasebe: 01.10 USD — dosyanın 2. satırı", sat(m[0]), "2026-10-01;USD;9100;49.236587;448052.94;448949.02;896.08;;0");
+  esit("Muhasebe: 01.10 RUB — dosyanın 3. satırı", sat(m[1]), "2026-10-01;RUB;28500;0.571491;16287.5;16320.08;32.58;;0");
+  esit("Muhasebe: 01.10 EUR — dosyanın 4. satırı (KMV oransız toplanır)", sat(m[2]), "2026-10-01;EUR;251190;55.409912;13918415.71;13919660.57;1244.86;;0");
+  esit("Muhasebe: 01.10 CHF — dosyanın 5. satırı", sat(m[3]), "2026-10-01;CHF;330;58.8;19404;19442.81;38.81;;0");
+  esit("Muhasebe: 02.10 USD — dosyanın 6. satırı", sat(m[4]), "2026-10-02;USD;11253;49.315317;554945.26;556055.15;1109.89;;0");
+  esit("Muhasebe: kesirli miktar toplamı kayan nokta artığı bırakmaz (6365,08)", muhasebeSatirlari([d("2026-10-07", "EUR", 6000.1, 1, 0), d("2026-10-07", "EUR", 364.98, 1, 0)], false)[0].mMiktar, 6365.08);
+  esit("Muhasebe: KDV toplama eklenir, miktar 0 → kur 0", sat(muhasebeSatirlari([d("2026-10-07", "TL", 0, 100, 0, { kdv: 20 })], false)[0]), "2026-10-07;TL;0;0;100;120;0;;20");
+  const tm = muhasebeSatirlari([d("2026-10-01", "USD", 10, 490, 0, { tip: "Satış" }), d("2026-10-01", "USD", 5, 240, 0, { tip: "Alış" })], true);
+  esit("Muhasebe Hepsi: gün × para × tip, Alış önce", tm.map(x => `${x.mTip}:${x.mMiktar}:${x.mKur}`).join(), "Alış:5:48,Satış:10:49");
+  esit("Muhasebe: grupsuz", fisListeGruplari(true, true).length, 0);
+
+  // Yalın Excel: Sayfa1 / Sayfa2 / Sayfa3, 1. satır başlık, 2. satırdan veri; toplam / başlık / yazdıran satırı yok
+  const tanimM = { ...t, kolonlar: t.kolonlar.filter(k => kosulSaglandi(k.kosul, t, { ek: { listeTipi: "muhasebe" } } as any) && k.anahtar !== "mTip") };
+  const xlsxM = await raporExcel({ tanim: tanimM, satirlar: m, filtreOzeti: "x", firma, kullanici: "test", ozetSatirlar: [{ paraKod: "USD" }], yalin: true });
+  writeFileSync(path.join(dir, "FIS-FISLIS1-muhasebe.xlsx"), xlsxM);
+  const wbM = new ExcelJS.Workbook(); await wbM.xlsx.load(xlsxM as any);
+  const s1 = wbM.worksheets[0];
+  esit("Yalın Excel: sayfalar", wbM.worksheets.map(w => w.name).join(), "Sayfa1,Sayfa2,Sayfa3");
+  esit("Yalın Excel: başlık satırı", (s1.getRow(1).values as any[]).slice(1).join(), "Tarih,ParaBirimi,Miktar,Kur,MatrahTutar,ToplamTutar,KMV,BelgeNo,KDV");
+  esit("Yalın Excel: satır sayısı = başlık + 5", s1.rowCount, 6);
+  const c2 = (i: number) => s1.getRow(2).getCell(i);
+  esit("Yalın Excel: 2. satır değerleri", [(c2(1).value as Date).toISOString().slice(0, 10), c2(2).value, c2(3).value, c2(4).value, c2(5).value, c2(6).value, c2(7).value, c2(8).value ?? "", c2(9).value].join(";"),
+    "2026-10-01;USD;9100;49.236587;448052.94;448949.02;896.08;;0");
+  esit("Yalın Excel: tarih kısa tarih, sayılar Genel", `${c2(1).numFmt}|${c2(4).numFmt ?? ""}|${c2(5).numFmt ?? ""}`, "mm-dd-yy||");
+  esit("Yalın Excel: sütun genişliği 13", s1.getColumn(1).width, 13);
 }
 
 console.log(hata ? `\n${hata} HATA` : "\nFİŞ RAPORLARI TESTLERİ GEÇTİ");

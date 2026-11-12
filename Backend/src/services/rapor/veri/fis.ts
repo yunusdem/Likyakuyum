@@ -100,6 +100,30 @@ export function gunlukToplamlar(satirlar: Record<string, any>[]) {
   return [...m.values()].map(({ fisler, paralar, ...o }) => ({ ...o, adet: fisler.size, miktar: paralar.size === 1 ? o.miktar : null }));
 }
 
+/**
+ * FISLIS1 "Muhasebe" liste tipi (docs/FIS_LISTELEME_MUHASEBE.md): gün × para kodu (× tip, `tipli` ise) başına tek satır — muhasebeye aktarılan
+ * "Tarih, ParaBirimi, Miktar, Kur, MatrahTutar, ToplamTutar, KMV, BelgeNo, KDV" dosyasının birebir karşılığı. Bölümler (Döviz / Sarraf / Perakende / Ticari)
+ * aynı para kodunda birleşir. Kur = Matrah ÷ Miktar (6 hane), Toplam = Matrah + KMV + KDV, BelgeNo boş; sıra: gün artan, para kodu azalan, Alış önce. Saf fonksiyon.
+ */
+export function muhasebeSatirlari(satirlar: Record<string, any>[], tipli: boolean) {
+  const yuvarla = (x: number, h: number) => { const c = 10 ** h; return Math.round((x + Math.sign(x) * Number.EPSILON) * c) / c; };
+  const m = new Map<string, { gunIso: string; paraKod: string; tip: string; miktar: number; tutar: number; kmv: number; kdv: number }>();
+  for (const s of satirlar) {
+    const paraKod = String(s.paraKod ?? "").trim(), tip = tipli ? String(s.tip ?? "") : "", a = `${s.gunIso}|${paraKod}|${tip}`;
+    if (!m.has(a)) m.set(a, { gunIso: String(s.gunIso), paraKod, tip, miktar: 0, tutar: 0, kmv: 0, kdv: 0 });
+    const o = m.get(a)!;
+    o.miktar += Number(s.miktar) || 0; o.tutar += Number(s.tutar) || 0; o.kmv += Number(s.kmv) || 0; o.kdv += Number(s.kdv) || 0;
+  }
+  const buyuk = (x: string) => x.toLocaleUpperCase("tr-TR");
+  return [...m.values()]
+    .sort((a, b) => a.gunIso.localeCompare(b.gunIso) || (buyuk(a.paraKod) < buyuk(b.paraKod) ? 1 : buyuk(a.paraKod) > buyuk(b.paraKod) ? -1 : 0) || a.tip.localeCompare(b.tip, "tr"))
+    .map(o => {
+      const miktar = yuvarla(o.miktar, 6), matrah = yuvarla(o.tutar, 2), kmv = yuvarla(o.kmv, 2), kdv = yuvarla(o.kdv, 2);
+      return { gunIso: o.gunIso, mTarih: o.gunIso, mPara: o.paraKod, mMiktar: miktar, mKur: miktar ? yuvarla(matrah / miktar, 6) : 0, mMatrah: matrah,
+        mToplam: yuvarla(matrah + kmv + kdv, 2), mKmv: kmv, mBelgeNo: "", mKdv: kdv, mTip: o.tip };
+    });
+}
+
 /** GUNFIS1 "GÜN TOPLAMI" (eski alt rapor): gün grubu anahtarı → o günün para (× tip) özeti; `grupla` verilirse Döviz / Kuyum / Ticari başlıklarıyla. Saf fonksiyon. */
 export function gunToplamlari(satirlar: Record<string, any>[], grupla?: ParaGruplayici): Record<string, Record<string, any>[]> {
   const gunler = new Map<string, Record<string, any>[]>();
@@ -283,13 +307,13 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
    * Fiş listeleme — eski "ALIŞ / SATIŞ FİŞİ LİSTELEME" metrikleri: satır = fiş satırı (tarih, saat, para, vezne, seri no, belge no, miktar, kur, KMV, lira), gün bazında gruplu
    * ve ara toplamlı; rapor sonunda fiş / satır sayısı ve para bazında toplam. Fiş düzeyindeki tutarlar (toplam tutar, ödeme tutarı) yalnızca fişin ilk satırında
    * taşınır ki toplamlar iki kez sayılmasın (ekran / Excel kolonları). Para seçilirse yalnızca o paranın satırları listelenir (eski rapordaki gibi).
-   * Eski parametreler: liste tipi (Detay / Toplam — Toplam'da gün başına tek satır), ilk – son seri no, ilk – son belge no, sıralama (gün içinde seri no / belge no / tarih / para),
+   * Eski parametreler: liste tipi (Detay / Toplam / Muhasebe — Toplam'da gün başına, Muhasebe'de gün × para başına tek satır), ilk – son seri no, ilk – son belge no, sıralama (gün içinde seri no / belge no / tarih / para),
    * iptal edilenler (işaretliyse yalnız iptal fişler). Sektör bölümleri: Döviz fişi / Sarraf fişi / Perakende fişi / Ticari fiş.
    */
   async FISLIS1(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     const k = await fisKaynagi(pool, p), pg = await paraGrupBilgisi(pool);
-    const iptal = ekIsaretli(p, "iptal"), toplamKipi = ekD(p, "listeTipi") === "toplam", siralama = secim(p.siralama, FIS_SIRALAMALARI);
+    const iptal = ekIsaretli(p, "iptal"), listeTipi = ekD(p, "listeTipi"), toplamKipi = listeTipi === "toplam", muhasebe = listeTipi === "muhasebe", siralama = secim(p.siralama, FIS_SIRALAMALARI);
     const seri = ilkSonAralik(p, "seriNo"), belge = ilkSonAralik(p, "belgeNo");
     const req = tipGirdisi(pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis).input("iptal", sql.Int, iptal ? 1 : 0), p);
     const f = filtreler(req, p, { cari: "C", vezne: "V", para: "S.PARA_ID" }) + idFiltre(req, p.istatistikIdler, "F.ISTATISTIK_ID", "is");
@@ -312,11 +336,12 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
     // Rapor sonu: para × tip bazında miktar / tutar / vergiler + fiş adedi (eski "GENEL TOPLAM" ve "Fiş sayısı" karşılığı; eski rapor satır sayar — ikisi de verilir)
     const ozet = paraOzetiSirala(paraOzeti(detay.map(ozetGirdisi)))
       .map(o => ({ ...o, satirAdedi: detay.filter((x: any) => x.paraKod === o.paraKod && x.tip === o.tip && (Number(x.bolum) === 4) === !!o.ticari).length }));
-    const satirlar = toplamKipi ? gunlukToplamlar(detay) : detay;
-    const gruplar = fisListeGruplari(toplamKipi, detay.length > 0 && tekParali(detay));
-    return sonuc(sinirla(satirlar, t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p) || " · Tüm vezneler"}${adetOzeti(p.istatistikIdler, "istatistik")}${aralikMetni("Seri no", seri)}${aralikMetni("Belge no", belge)}${iptal ? " · İptal edilenler" : ""}${toplamKipi ? " · Toplam" : ""} · ${gorulen.size} fiş, ${detay.length} satır`,
+    const tipli = p.fisTipi !== 0 && p.fisTipi !== 1;
+    const satirlar = muhasebe ? muhasebeSatirlari(detay, tipli) : toplamKipi ? gunlukToplamlar(detay) : detay;
+    const gruplar = fisListeGruplari(toplamKipi || muhasebe, detay.length > 0 && tekParali(detay));
+    return sonuc(sinirla(satirlar, t, `${aralikOzeti(p)}${tipOzeti(p)}${ozetEk(p) || " · Tüm vezneler"}${adetOzeti(p.istatistikIdler, "istatistik")}${aralikMetni("Seri no", seri)}${aralikMetni("Belge no", belge)}${iptal ? " · İptal edilenler" : ""}${toplamKipi ? " · Toplam" : muhasebe ? " · Muhasebe" : ""} · ${gorulen.size} fiş, ${detay.length} satır`,
       `Her satır bir fiş satırıdır; gün bazında gruplanır. Lira = satır tutarı. Toplam tutar ve ödeme tutarı fişin ilk satırında gösterilir. Para seçilirse yalnızca o paranın satırları listelenir. ${iptal ? "Yalnızca iptal edilen fişler listelenir." : "İptal fişler hariçtir."}`,
-      paraBasliklariEkle(ozet, { grupla: paraGruplayici(pg), alan: "paraKod" })), { gruplar });
+      paraBasliklariEkle(ozet, { grupla: paraGruplayici(pg), alan: "paraKod" })), { gruplar, ...(muhasebe ? { yalinExcel: true, ...(tipli ? {} : { kolonCikar: ["mTip"] }) } : {}) });
   },
 
   /**
