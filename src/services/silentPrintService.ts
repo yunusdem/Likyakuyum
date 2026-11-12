@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.1.2";
+export const TARGET_PRINTER_AGENT_VERSION = "1.1.3";
 
 /**
  * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
@@ -145,7 +145,7 @@ let isUpdatingAgent = false;
 
 /**
  * Bilgisayarda çalışan yerel PrinterAgent.exe'nin sürümünü denetler.
- * Yeni bir sürüm varsa sunucudan (likyakuyum.com / likyaerp.com veya aktif siteden)
+ * Yeni bir sürüm varsa sunucudan (developer.likyakuyum.com / likyakuyum.com / likyaerp.com veya aktif siteden)
  * exe'yi otomatik olarak indirip kendisini güncellemesini sağlar.
  */
 export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ updated: boolean; currentVersion?: string; targetVersion?: string }> {
@@ -154,47 +154,110 @@ export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ u
   }
 
   const now = Date.now();
-  if (!force && now - lastUpdateCheckTime < 30000) {
+  if (!force && now - lastUpdateCheckTime < 15000) {
     return { updated: false };
   }
   lastUpdateCheckTime = now;
 
-  let currentAgentVer = "";
+  // 1. Hedef en son sürümü dinamik olarak belirle:
+  // Önce aktif siteden (/printer-version.json), sonra bilinen domainlerden en yeni sürümü keşfet
+  let targetVersion = TARGET_PRINTER_AGENT_VERSION;
+  let targetDownloadUrl = "";
+
   const origin = window.location.origin;
-  const downloadUrl = `${origin}/PrinterAgent.exe?v=${Date.now()}`;
+  const candidateVersionEndpoints = [
+    `${origin}/printer-version.json`,
+    "https://developer.likyakuyum.com/printer-version.json",
+    "https://likyakuyum.com/printer-version.json",
+    "https://likyaerp.com/printer-version.json",
+  ];
 
-  // 1. HTTP /health veya /status üzerinden sürüm sorgula
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 2000);
-    const res = await fetch("http://127.0.0.1:9100/health", { signal: ctrl.signal }).catch(() => null);
-    clearTimeout(t);
-    if (res && res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (data && data.version) {
-        currentAgentVer = data.version;
-      }
-    }
-  } catch {}
-
-  // 2. HTTP yanıt vermezse WebSocket üzerinden sürüm dene
-  if (!currentAgentVer && typeof WebSocket !== "undefined") {
+  for (const ep of candidateVersionEndpoints) {
     try {
-      currentAgentVer = await new Promise<string>((resolve) => {
+      const res = await fetch(`${ep}?_t=${Date.now()}`, { cache: "no-store" }).catch(() => null);
+      if (res && res.ok) {
+        const json = await res.json().catch(() => null);
+        if (json && json.version) {
+          if (!targetDownloadUrl || isNewerVersion(json.version, targetVersion)) {
+            targetVersion = json.version;
+            let dUrl = json.downloadUrl || "/PrinterAgent.exe";
+            if (!dUrl.startsWith("http")) {
+              const parsed = new URL(ep);
+              dUrl = new URL(dUrl, parsed.origin).href;
+            }
+            targetDownloadUrl = dUrl;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (!targetDownloadUrl) {
+    targetDownloadUrl = `${origin}/PrinterAgent.exe?v=${Date.now()}`;
+  }
+
+  // 2. Bilgisayarda çalışan yerel ajanın sürümünü sorgula:
+  // Canlı HTTPS sitelerinde (developer.likyakuyum.com, likyakuyum.com, likyaerp.com)
+  // HTTP fetch engellendiği (Mixed Content) için ÖNCELİKLE WEBSOCKET KULLANILIR!
+  let currentAgentVer = "";
+
+  if (typeof WebSocket !== "undefined") {
+    currentAgentVer = await new Promise<string>((resolve) => {
+      let resolved = false;
+      const done = (v: string) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(v);
+        }
+      };
+
+      try {
         const ws = new WebSocket("ws://127.0.0.1:9100");
-        const tm = setTimeout(() => { try { ws.close(); } catch {} resolve(""); }, 1500);
+        const tm = setTimeout(() => {
+          try { ws.close(); } catch {}
+          done("");
+        }, 2000);
+
+        ws.onopen = () => {
+          try {
+            ws.send(JSON.stringify({ action: "get_version" }));
+          } catch {}
+        };
+
         ws.onmessage = (e) => {
           try {
             const parsed = JSON.parse(e.data);
             if (parsed && (parsed.action === "agent_info" || parsed.version)) {
               clearTimeout(tm);
-              ws.close();
-              resolve(parsed.version);
+              try { ws.close(); } catch {}
+              done(String(parsed.version));
             }
           } catch {}
         };
-        ws.onerror = () => { clearTimeout(tm); resolve(""); };
-      });
+
+        ws.onerror = () => {
+          clearTimeout(tm);
+          done("");
+        };
+      } catch {
+        done("");
+      }
+    });
+  }
+
+  // Eğer WebSocket ile bulunamadıysa ve localhost/HTTP ortamındaysak HTTP /health dene:
+  if (!currentAgentVer && window.location.protocol !== "https:") {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 1500);
+      const res = await fetch("http://127.0.0.1:9100/health", { signal: ctrl.signal }).catch(() => null);
+      clearTimeout(t);
+      if (res && res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data && data.version) {
+          currentAgentVer = String(data.version);
+        }
+      }
     } catch {}
   }
 
@@ -202,77 +265,109 @@ export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ u
     return { updated: false };
   }
 
-  // Sürüm kontrolü
-  if (isNewerVersion(TARGET_PRINTER_AGENT_VERSION, currentAgentVer)) {
-    console.log(`[silentPrintService] PrinterAgent.exe güncellemesi tespit edildi: v${currentAgentVer} -> v${TARGET_PRINTER_AGENT_VERSION}`);
+  // 3. Sürüm Kontrolü: Bilgisayardaki sürüm eskiyse anında güncelle!
+  if (isNewerVersion(targetVersion, currentAgentVer)) {
+    console.log(`[silentPrintService] PrinterAgent.exe güncellemesi başlatılıyor: v${currentAgentVer} -> v${targetVersion} (${targetDownloadUrl})`);
     isUpdatingAgent = true;
 
-    showPrinterAgentUpdateToast(currentAgentVer, TARGET_PRINTER_AGENT_VERSION);
+    showPrinterAgentUpdateToast(currentAgentVer, targetVersion);
 
-    // Güncelleme komutunu gönder (Önce WebSocket, sonra HTTP)
+    // Güncelleme komutunu WebSocket üzerinden gönder
     let triggered = false;
     if (typeof WebSocket !== "undefined") {
-      try {
-        triggered = await new Promise<boolean>((resolve) => {
+      triggered = await new Promise<boolean>((resolve) => {
+        try {
           const ws = new WebSocket("ws://127.0.0.1:9100");
-          const tm = setTimeout(() => { try { ws.close(); } catch {} resolve(false); }, 4000);
+          const tm = setTimeout(() => {
+            try { ws.close(); } catch {}
+            resolve(false);
+          }, 15000);
+
           ws.onopen = () => {
             ws.send(JSON.stringify({
               action: "update",
-              downloadUrl,
-              version: TARGET_PRINTER_AGENT_VERSION,
+              downloadUrl: targetDownloadUrl,
+              version: targetVersion,
             }));
           };
+
           ws.onmessage = (e) => {
             try {
               const d = JSON.parse(e.data);
               if (d && (d.action === "update_result" || d.success !== undefined)) {
                 clearTimeout(tm);
-                ws.close();
+                try { ws.close(); } catch {}
                 resolve(Boolean(d.success));
               }
             } catch {}
           };
-          ws.onerror = () => { clearTimeout(tm); resolve(false); };
-        });
-      } catch {}
+
+          ws.onerror = () => {
+            clearTimeout(tm);
+            resolve(false);
+          };
+        } catch {
+          resolve(false);
+        }
+      });
     }
 
-    if (!triggered) {
+    if (!triggered && window.location.protocol !== "https:") {
       try {
         const res = await fetch("http://127.0.0.1:9100/api/update", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ downloadUrl, version: TARGET_PRINTER_AGENT_VERSION }),
+          body: JSON.stringify({ downloadUrl: targetDownloadUrl, version: targetVersion }),
         }).catch(() => null);
         if (res && res.ok) triggered = true;
       } catch {}
     }
 
-    // Uygulama yeniden başlatıldıktan sonra yeni sürümü teyit et ve ekranda başarı bildirimi göster
+    // Uygulama kendini güncelleyip yeniden başlattıktan sonra WebSocket ile kontrol et ve bildirim göster
     let pollCount = 0;
     const pollInterval = setInterval(async () => {
       pollCount++;
-      try {
-        const chk = await fetch("http://127.0.0.1:9100/health", { cache: "no-store" }).catch(() => null);
-        if (chk && chk.ok) {
-          const dt = await chk.json().catch(() => ({}));
-          if (dt && dt.version === TARGET_PRINTER_AGENT_VERSION) {
-            clearInterval(pollInterval);
-            isUpdatingAgent = false;
-            showPrinterAgentUpdatedSuccessToast(TARGET_PRINTER_AGENT_VERSION);
-            return;
-          }
-        }
-      } catch {}
 
-      if (pollCount > 10) {
+      let checkedVer = "";
+      if (typeof WebSocket !== "undefined") {
+        checkedVer = await new Promise<string>((resDone) => {
+          try {
+            const ws = new WebSocket("ws://127.0.0.1:9100");
+            const t = setTimeout(() => { try { ws.close(); } catch {} resDone(""); }, 1200);
+            ws.onopen = () => {
+              try { ws.send(JSON.stringify({ action: "get_version" })); } catch {}
+            };
+            ws.onmessage = (e) => {
+              try {
+                const parsed = JSON.parse(e.data);
+                if (parsed && (parsed.action === "agent_info" || parsed.version)) {
+                  clearTimeout(t);
+                  try { ws.close(); } catch {}
+                  resDone(String(parsed.version));
+                }
+              } catch {}
+            };
+            ws.onerror = () => { clearTimeout(t); resDone(""); };
+          } catch {
+            resDone("");
+          }
+        });
+      }
+
+      if (checkedVer && !isNewerVersion(targetVersion, checkedVer)) {
+        clearInterval(pollInterval);
+        isUpdatingAgent = false;
+        showPrinterAgentUpdatedSuccessToast(checkedVer);
+        return;
+      }
+
+      if (pollCount > 25) { // 25 * 1.5s = ~37s
         clearInterval(pollInterval);
         isUpdatingAgent = false;
       }
-    }, 1200);
+    }, 1500);
 
-    return { updated: true, currentVersion: currentAgentVer, targetVersion: TARGET_PRINTER_AGENT_VERSION };
+    return { updated: true, currentVersion: currentAgentVer, targetVersion };
   }
 
   return { updated: false, currentVersion: currentAgentVer };

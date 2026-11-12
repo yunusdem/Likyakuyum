@@ -316,7 +316,7 @@ const findTurkiyeItem = (list?: { id: number; kod?: string; ad: string }[]) => {
   return null;
 };
 
-// 10 Grid Nav Columns in sequential order
+// 11 Grid Nav Columns in sequential order
 const GRID_COLUMNS = [
   "kod",
   "adet",
@@ -328,6 +328,7 @@ const GRID_COLUMNS = [
   "bmv",
   "kmvOrani",
   "kmv",
+  "tutar",
 ] as const;
 type GridColumnKey = (typeof GRID_COLUMNS)[number];
 
@@ -2446,7 +2447,8 @@ export const DovizFisiPage: React.FC = () => {
     } else if (
       field === "kur" ||
       field === "komisyon" ||
-      field === "komisyonOrani"
+      field === "komisyonOrani" ||
+      field === "tutar"
     ) {
       value = onlyDecimal(value);
     }
@@ -2499,6 +2501,36 @@ export const DovizFisiPage: React.FC = () => {
             updated.hasOrani = undefined;
             updated.gramaj = undefined;
           }
+        }
+
+        if (field === "tutar") {
+          const tutarNum = parseDecimal(value);
+          const mVal = parseMiktar(updated.miktar) > 0 ? parseMiktar(updated.miktar) : parseMiktar(updated.adet);
+          if (tutarNum > 0 && mVal > 0) {
+            const newRate = parseFloat((tutarNum / mVal).toFixed(kurKurusSayisi));
+            if (newRate > 0) {
+              updated.kur = newRate.toFixed(kurKurusSayisi);
+            }
+          } else if (tutarNum === 0 || value === "") {
+            updated.kur = "";
+          }
+          updated.tutar = value;
+
+          const calculated = calculateRowValues({
+            miktar: updated.miktar,
+            kur: updated.kur,
+            paraKodu: updated.paraKodu,
+            kmvOrani: updated.kmvOrani,
+            bmvOrani: updated.bmvOrani,
+            komisyonOrani: updated.komisyonOrani,
+          });
+          updated.tutar = value;
+          updated.bmv = calculated.bmv;
+          updated.kmv = calculated.kmv;
+          updated.kmvOrani = calculated.kmvOrani;
+          updated.komisyon = calculated.komisyon;
+
+          return updated;
         }
 
         const m = (field === "miktar" || field === "adet") ? value : updated.miktar;
@@ -3989,6 +4021,8 @@ export const DovizFisiPage: React.FC = () => {
           handleLineFieldChange(currentRow.id, "kmvOrani", prevRow.kmvOrani ? String(prevRow.kmvOrani) : "");
         } else if (field === "kmv") {
           handleLineFieldChange(currentRow.id, "kmv", prevRow.kmv ? String(prevRow.kmv) : "");
+        } else if (field === "tutar") {
+          handleLineFieldChange(currentRow.id, "tutar", prevRow.tutar ? String(prevRow.tutar) : "");
         }
         requestAnimationFrame(() => focusCell(rowIndex, field, "select"));
       }
@@ -4015,6 +4049,7 @@ export const DovizFisiPage: React.FC = () => {
     if (!isRowTL && kurAcik && colVisibility.kur) visibleCols.push("kur");
     if (colVisibility.komisyonOrani) visibleCols.push("komisyonOrani");
     if (colVisibility.komisyon) visibleCols.push("komisyon");
+    if (colVisibility.tutar && kurAcik) visibleCols.push("tutar");
 
     const currentVisIdx = visibleCols.indexOf(field);
     const isLastVisibleCol = currentVisIdx === visibleCols.length - 1;
@@ -4154,6 +4189,21 @@ export const DovizFisiPage: React.FC = () => {
         }
       }
 
+      if (field === "tutar") {
+        const row = lines[rowIndex];
+        if (row && kurAcik) {
+          const inputElem = document.getElementById(`grid-input-${rowIndex}-tutar`) as HTMLInputElement | null;
+          const rawVal = inputElem ? inputElem.value : String(row.tutar || "");
+          const val = rawVal.trim();
+          if (val !== "") {
+            const num = parseDecimal(val);
+            if (!isNaN(num) && num > 0) {
+              handleLineFieldChange(row.id, "tutar", num.toFixed(2));
+            }
+          }
+        }
+      }
+
       if (isLastVisibleCol) {
         // Satırın son alanında Enter'a basıldı:
         if (rowIndex >= lines.length - 1) {
@@ -4247,6 +4297,21 @@ export const DovizFisiPage: React.FC = () => {
             }
           }
           delete warnedKurRowMapRef.current[row.id];
+        }
+      }
+
+      if (field === "tutar") {
+        const row = lines[rowIndex];
+        if (row && kurAcik) {
+          const inputElem = document.getElementById(`grid-input-${rowIndex}-tutar`) as HTMLInputElement | null;
+          const rawVal = inputElem ? inputElem.value : String(row.tutar || "");
+          const val = rawVal.trim();
+          if (val !== "") {
+            const num = parseDecimal(val);
+            if (!isNaN(num) && num > 0) {
+              handleLineFieldChange(row.id, "tutar", num.toFixed(2));
+            }
+          }
         }
       }
 
@@ -8471,10 +8536,45 @@ export const DovizFisiPage: React.FC = () => {
 
                       {/* Tutar */}
                       {colVisibility.tutar && (
-                        <td className="p-0 px-2 text-end font-monospace fw-bold text-dark" style={{ fontSize: "13px" }}>
-                          {row.tutar !== "" && row.tutar !== undefined && row.tutar !== null && parseDecimal(row.tutar) > 0
-                            ? parseDecimal(row.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                            : ""}
+                        <td className="p-0">
+                          <input
+                            id={`grid-input-${idx}-tutar`}
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            disabled={isLocked || !kurAcik}
+                            readOnly={!kurAcik}
+                            tabIndex={!kurAcik ? -1 : undefined}
+                            className="form-control form-control-sm border-0 p-0 px-2 shadow-none text-end font-monospace fw-bold text-dark"
+                            style={{
+                              height: "26px",
+                              fontSize: "13px",
+                              backgroundColor: (isLocked || !kurAcik) ? "#e9ecef" : "transparent",
+                              cursor: (isLocked || !kurAcik) ? "not-allowed" : undefined,
+                            }}
+                            value={row.tutar !== "" && row.tutar !== undefined && row.tutar !== null ? row.tutar : ""}
+                            onFocus={() => {
+                              setActiveRowIndex(idx);
+                              cleanupEmptyRows(idx);
+                            }}
+                            onChange={(e) => {
+                              if (kurAcik) {
+                                handleLineFieldChange(row.id, "tutar", e.target.value);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (!kurAcik) return;
+                              const val = e.target.value.trim();
+                              if (val !== "") {
+                                const num = parseDecimal(val);
+                                if (!isNaN(num) && num > 0) {
+                                  handleLineFieldChange(row.id, "tutar", num.toFixed(2));
+                                }
+                              }
+                            }}
+                            onKeyDown={(e) => handleCellKeyDown(e, idx, "tutar")}
+                            title={!kurAcik ? "Kur değiştirme yetkiniz yok" : undefined}
+                          />
                         </td>
                       )}
                     </tr>

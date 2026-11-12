@@ -169,47 +169,99 @@ async function getSystemPrinters(forceRefresh = false) {
   try {
     const platform = os.platform();
 
-    // 1. Windows Ortamı: Get-Printer -> Get-CimInstance -> .NET PrinterSettings
+    // 1. Windows Ortamı: Registry -> WMIC -> Get-Printer -> Get-CimInstance -> .NET PrinterSettings
     if (platform === "win32") {
-      const systemRoot = process.env.SystemRoot || "C:\\Windows";
-      const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
-
-      // 1. Aşama: PowerShell Get-Printer (Temiz -NoProfile -Command, gizli pencere)
-      let psSuccess = false;
+      // 0. Aşama: Windows Registry (HKCU Devices & Windows Device) — 5 ms, sıfır gecikme, her ortamda garantili
       try {
-        const psCmd = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, Default, PrinterStatus | ConvertTo-Json -Compress`;
-        const { stdout } = await runPowerShellHidden(psCmd, 8000);
-        if (stdout && stdout.trim()) {
-          const parsed = JSON.parse(stdout.trim());
-          const list = Array.isArray(parsed) ? parsed : [parsed];
-          for (const item of list) {
-            if (!item) continue;
-            const name = String(item.Name || "").trim();
-            if (!name) continue;
-            const isDef = Boolean(item.Default);
-            let statusText = "Hazır";
-            if (item.PrinterStatus === 1 || item.PrinterStatus === "Paused") statusText = "Duraklatıldı";
-            else if (item.PrinterStatus === 2 || item.PrinterStatus === "Error") statusText = "Hata";
-            else if (item.PrinterStatus === 7 || item.PrinterStatus === "Offline") statusText = "Çevrimdışı";
-
-            printers.push({
-              name,
-              isDefault: isDef,
-              status: statusText,
-            });
+        const { stdout: regDevOut } = await execAsync('reg query "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Devices"', { timeout: 3000, windowsHide: true });
+        let defaultPrinter = "";
+        try {
+          const { stdout: regDefOut } = await execAsync('reg query "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Windows" /v Device', { timeout: 2000, windowsHide: true });
+          const defMatch = regDefOut.match(/Device\s+REG_SZ\s+([^,]+)/i);
+          if (defMatch && defMatch[1]) {
+            defaultPrinter = defMatch[1].trim();
           }
-          if (printers.length > 0) {
-            psSuccess = true;
+        } catch {}
+
+        if (regDevOut && regDevOut.trim()) {
+          const lines = regDevOut.split(/\r?\n/);
+          for (const line of lines) {
+            const m = line.match(/^\s*([^\t]+?)\s+REG_SZ\s+/i);
+            if (m && m[1]) {
+              const name = m[1].trim();
+              if (name && !printers.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+                const isDef = Boolean(defaultPrinter && defaultPrinter.toLowerCase() === name.toLowerCase());
+                printers.push({
+                  name,
+                  isDefault: isDef,
+                  status: "Hazır",
+                });
+              }
+            }
           }
         }
-      } catch (psErr) {
-        console.warn("[printercekmeApp] Get-Printer çağrısı başarısız, CIM fallback deneniyor:", psErr.message);
+      } catch (regErr) {}
+
+      // 1. Aşama: WMIC Fallback — Hızlı ve servis bağımsız
+      if (printers.length === 0) {
+        try {
+          const { stdout: wmicOut } = await execAsync('wmic printer get name,default /format:csv', { timeout: 4000, windowsHide: true });
+          if (wmicOut && wmicOut.trim()) {
+            const lines = wmicOut.split(/\r?\n/);
+            for (const line of lines) {
+              const parts = line.split(",");
+              if (parts.length >= 3 && parts[1] && parts[2]) {
+                const isDef = parts[1].trim().toUpperCase() === "TRUE";
+                const name = parts[2].trim();
+                if (name && !printers.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+                  printers.push({
+                    name,
+                    isDefault: isDef,
+                    status: "Hazır",
+                  });
+                }
+              }
+            }
+          }
+        } catch (wmicErr) {}
       }
 
-      // 2. Aşama: Get-CimInstance Fallback
-      if (!psSuccess || printers.length === 0) {
+      // 2. Aşama: PowerShell Get-Printer (Güvenli UTF8 ve hata yakalama ile)
+      if (printers.length === 0) {
         try {
-          const cimCmd = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress`;
+          const psCmd = `$OutputEncoding = [System.Text.Encoding]::UTF8; try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}; Get-Printer | Select-Object Name, Default, PrinterStatus | ConvertTo-Json -Compress`;
+          const { stdout } = await runPowerShellHidden(psCmd, 8000);
+          if (stdout && stdout.trim()) {
+            const parsed = JSON.parse(stdout.trim());
+            const list = Array.isArray(parsed) ? parsed : [parsed];
+            for (const item of list) {
+              if (!item) continue;
+              const name = String(item.Name || "").trim();
+              if (!name) continue;
+              const isDef = Boolean(item.Default);
+              let statusText = "Hazır";
+              if (item.PrinterStatus === 1 || item.PrinterStatus === "Paused") statusText = "Duraklatıldı";
+              else if (item.PrinterStatus === 2 || item.PrinterStatus === "Error") statusText = "Hata";
+              else if (item.PrinterStatus === 7 || item.PrinterStatus === "Offline") statusText = "Çevrimdışı";
+
+              if (!printers.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+                printers.push({
+                  name,
+                  isDefault: isDef,
+                  status: statusText,
+                });
+              }
+            }
+          }
+        } catch (psErr) {
+          console.warn("[printercekmeApp] Get-Printer çağrısı başarısız, CIM fallback deneniyor:", psErr.message);
+        }
+      }
+
+      // 3. Aşama: Get-CimInstance Fallback
+      if (printers.length === 0) {
+        try {
+          const cimCmd = `$OutputEncoding = [System.Text.Encoding]::UTF8; try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}; Get-CimInstance Win32_Printer | Select-Object Name, Default | ConvertTo-Json -Compress`;
           const { stdout: cimOut } = await runPowerShellHidden(cimCmd, 6000);
           if (cimOut && cimOut.trim()) {
             const parsed = JSON.parse(cimOut.trim());
@@ -225,17 +277,16 @@ async function getSystemPrinters(forceRefresh = false) {
                 });
               }
             }
-            if (printers.length > 0) psSuccess = true;
           }
         } catch (cimErr) {
           console.warn("[printercekmeApp] CIM fallback hatası:", cimErr.message);
         }
       }
 
-      // 3. Aşama: .NET InstalledPrinters Fallback (Hafif ve evrensel)
+      // 4. Aşama: .NET InstalledPrinters Fallback (Hafif ve evrensel)
       if (printers.length === 0) {
         try {
-          const netCmd = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [System.Drawing.Printing.PrinterSettings]::InstalledPrinters | ConvertTo-Json -Compress`;
+          const netCmd = `$OutputEncoding = [System.Text.Encoding]::UTF8; try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}; [System.Drawing.Printing.PrinterSettings]::InstalledPrinters | ConvertTo-Json -Compress`;
           const { stdout: netOut } = await runPowerShellHidden(netCmd, 5000);
           if (netOut && netOut.trim()) {
             const parsed = JSON.parse(netOut.trim());
@@ -322,7 +373,7 @@ function downloadFile(urlStr, destPath, maxRedirects = 5) {
       if (urlStr.startsWith("https:")) client = https;
     } catch {}
 
-    const req = client.get(urlStr, { timeout: 45000 }, (res) => {
+    const req = client.get(urlStr, { timeout: 45000, rejectUnauthorized: false }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         let redirectUrl = res.headers.location;
         if (!redirectUrl.startsWith("http")) {
@@ -367,7 +418,7 @@ function downloadFile(urlStr, destPath, maxRedirects = 5) {
 function fetchJson(urlStr, timeoutMs = 6000) {
   return new Promise((resolve, reject) => {
     const client = urlStr.startsWith("https") ? https : http;
-    const req = client.get(urlStr, { timeout: timeoutMs }, (res) => {
+    const req = client.get(urlStr, { timeout: timeoutMs, rejectUnauthorized: false }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         let redirectUrl = res.headers.location;
         if (!redirectUrl.startsWith("http")) {
@@ -467,17 +518,33 @@ set "OLD_EXE=${currentExec}"
 set "NEW_EXE=${updateNewExe}"
 
 echo Guncelleme uygulaniyor, lutfen bekleyiniz...
-timeout /t 1 /nobreak >nul
-
-:: Calisan dosyayi yeniden adlandir (Windows buna izin verir)
-move /y "%OLD_EXE%" "%OLD_EXE%.old" >nul 2>&1
-move /y "%NEW_EXE%" "%OLD_EXE%" >nul 2>&1
-
-:: Yeni guncellenmis surumu baslat
-start "" "%OLD_EXE%"
-
 timeout /t 2 /nobreak >nul
+
+set /a attempts=0
+:loop
+set /a attempts+=1
 del /f /q "%OLD_EXE%.old" >nul 2>&1
+move /y "%OLD_EXE%" "%OLD_EXE%.old" >nul 2>&1
+if not exist "%OLD_EXE%" goto moved
+if %attempts% geq 25 goto fail
+timeout /t 1 /nobreak >nul
+goto loop
+
+:moved
+move /y "%NEW_EXE%" "%OLD_EXE%" >nul 2>&1
+if exist "%OLD_EXE%" goto start
+
+:start
+start "" "%OLD_EXE%"
+timeout /t 3 /nobreak >nul
+del /f /q "%OLD_EXE%.old" >nul 2>&1
+del /f /q "%NEW_EXE%" >nul 2>&1
+del "%~f0" >nul 2>&1
+exit
+
+:fail
+if exist "%OLD_EXE%" start "" "%OLD_EXE%"
+del /f /q "%NEW_EXE%" >nul 2>&1
 del "%~f0" >nul 2>&1
 exit
 `;
@@ -516,9 +583,9 @@ exit
 }
 
 const REMOTE_VERSION_ENDPOINTS = [
+  "https://developer.likyakuyum.com/printer-version.json",
   "https://likyakuyum.com/printer-version.json",
   "https://likyaerp.com/printer-version.json",
-  "https://developer.likyakuyum.com/printer-version.json",
 ];
 
 async function checkRemoteUpdates() {
@@ -526,20 +593,29 @@ async function checkRemoteUpdates() {
     return;
   }
 
+  let bestData = null;
+  let bestEndpoint = "";
+
   for (const endpoint of REMOTE_VERSION_ENDPOINTS) {
     try {
-      const data = await fetchJson(endpoint, 6000);
-      if (data && data.version && isNewerVersion(data.version, CURRENT_VERSION)) {
-        console.log(`[printercekmeApp] Yeni sürüm tespit edildi: v${data.version} (Mevcut: v${CURRENT_VERSION}). Otomatik güncelleniyor...`);
-        let downloadUrl = data.downloadUrl || "/PrinterAgent.exe";
-        if (!downloadUrl.startsWith("http")) {
-          const parsed = new URL(endpoint);
-          downloadUrl = new URL(downloadUrl, parsed.origin).href;
+      const data = await fetchJson(`${endpoint}?_t=${Date.now()}`, 6000);
+      if (data && data.version) {
+        if (!bestData || isNewerVersion(data.version, bestData.version)) {
+          bestData = data;
+          bestEndpoint = endpoint;
         }
-        await performSelfUpdate(downloadUrl, data.version);
-        return;
       }
     } catch {}
+  }
+
+  if (bestData && isNewerVersion(bestData.version, CURRENT_VERSION)) {
+    console.log(`[printercekmeApp] Yeni sürüm tespit edildi: v${bestData.version} (Mevcut: v${CURRENT_VERSION}). Otomatik güncelleniyor...`);
+    let downloadUrl = bestData.downloadUrl || "/PrinterAgent.exe";
+    if (!downloadUrl.startsWith("http")) {
+      const parsed = new URL(bestEndpoint);
+      downloadUrl = new URL(downloadUrl, parsed.origin).href;
+    }
+    await performSelfUpdate(downloadUrl, bestData.version);
   }
 }
 
@@ -1657,7 +1733,7 @@ wss.on("connection", (ws) => {
         const msg = JSON.parse(text);
         if (msg.action === "update" || msg.type === "UPDATE") {
           console.log(`[printercekmeApp] WebSocket üzerinden güncelleme komutu alındı: ${msg.downloadUrl || 'Varsayılan URL'}`);
-          const url = msg.downloadUrl || "https://likyakuyum.com/PrinterAgent.exe";
+          const url = msg.downloadUrl || "https://developer.likyakuyum.com/PrinterAgent.exe";
           const updateRes = await performSelfUpdate(url, msg.version);
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ action: "update_result", ...updateRes }));
@@ -1739,6 +1815,8 @@ function setupWindowsAutoStart() {
 function startSystemTray() {
   if (os.platform() !== "win32") return;
 
+  const currentExec = process.pkg ? process.execPath : process.argv[1];
+
   const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -1746,9 +1824,10 @@ Add-Type -AssemblyName System.Drawing
 $win32 = Add-Type -Name Win32 -Namespace Native -PassThru -MemberDefinition '
     [DllImport("Kernel32.dll")] public static extern IntPtr GetConsoleWindow();
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 '
 
-# Hide parent console window
+# Find parent console window handle (konsolu gizlemiyoruz, açık kalır)
 $parentPid = ${process.pid}
 $hwnd = [IntPtr]::Zero
 try {
@@ -1757,9 +1836,6 @@ try {
 } catch {}
 if ($hwnd -eq [IntPtr]::Zero) {
     $hwnd = [Native.Win32]::GetConsoleWindow()
-}
-if ($hwnd -ne [IntPtr]::Zero) {
-    [Native.Win32]::ShowWindow($hwnd, 0)
 }
 
 # Create NotifyIcon
@@ -1813,7 +1889,17 @@ $itemStatus.Enabled = $false
 
 $menu.Items.Add("-") | Out-Null
 
-$itemOpen = $menu.Items.Add("🖨️ Yazıcı Paneli / Durum Ekranı")
+$itemConsole = $menu.Items.Add("🖥️ Konsol Ekranını Öne Getir")
+$itemConsole.add_Click({
+    try {
+        if ($hwnd -ne [IntPtr]::Zero) {
+            [Native.Win32]::ShowWindow($hwnd, 9)
+            [Native.Win32]::SetForegroundWindow($hwnd)
+        }
+    } catch {}
+})
+
+$itemOpen = $menu.Items.Add("🖨️ Yazıcı Paneli (Web)")
 $itemOpen.add_Click({
     try {
         [System.Diagnostics.Process]::Start("http://127.0.0.1:${PORT}") | Out-Null
@@ -1839,8 +1925,11 @@ $itemAutostart.Enabled = $false
 
 $menu.Items.Add("-") | Out-Null
 
+$script:isManualExit = $false
+
 $itemExit = $menu.Items.Add("Çıkış (Servisi Kapat)")
 $itemExit.add_Click({
+    $script:isManualExit = $true
     $notify.Visible = $false
     $notify.Dispose()
     try {
@@ -1853,8 +1942,14 @@ $itemExit.add_Click({
 
 $notify.ContextMenuStrip = $menu
 
-# Double click opens web status dashboard
+# Double click brings console to front and opens web dashboard
 $notify.add_DoubleClick({
+    try {
+        if ($hwnd -ne [IntPtr]::Zero) {
+            [Native.Win32]::ShowWindow($hwnd, 9)
+            [Native.Win32]::SetForegroundWindow($hwnd)
+        }
+    } catch {}
     try {
         [System.Diagnostics.Process]::Start("http://127.0.0.1:${PORT}") | Out-Null
     } catch {}
@@ -1863,27 +1958,30 @@ $notify.add_DoubleClick({
 # Show balloon tip on startup
 try {
     $notify.BalloonTipTitle = "Likya ERP Yazıcı Servisi"
-    $notify.BalloonTipText = "Servis arka planda (sağ alt sistem tepsisinde) aktif. Durum paneli için simgeye çift tıklayabilirsiniz."
+    $notify.BalloonTipText = "Yazıcı servisi aktif. Konsol kapatılsa dahi servis otomatik olarak açık kalacaktır."
     $notify.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
     $notify.ShowBalloonTip(3000)
 } catch {}
 
-# Parent process watcher timer
-$parentPid = ${process.pid}
+# Parent process watcher timer: Konsol kapatılsa bile anında otomatik tekrar aç!
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 2000
+$timer.Interval = 1000
 $timer.add_Tick({
     try {
         $p = [System.Diagnostics.Process]::GetProcessById($parentPid)
-        if ($p.HasExited) {
+        if ($p.HasExited -and -not $script:isManualExit) {
+            Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}"
             $notify.Visible = $false
             $notify.Dispose()
             [System.Windows.Forms.Application]::Exit()
         }
     } catch {
-        $notify.Visible = $false
-        $notify.Dispose()
-        [System.Windows.Forms.Application]::Exit()
+        if (-not $script:isManualExit) {
+            Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}"
+            $notify.Visible = $false
+            $notify.Dispose()
+            [System.Windows.Forms.Application]::Exit()
+        }
     }
 })
 $timer.Start()
