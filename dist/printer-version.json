@@ -1,8 +1,8 @@
 {
-  "version": "1.1.4",
+  "version": "1.1.5",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "Zero-Console yüksek hızlı doğrudan yazdırma motoru, anında port 9100 yazıcı tarama, kalıcı konsol penceresi ve donanıma doğrudan baskı.",
+  "releaseNotes": "Arka planda kesintisiz çalışan servis motoru, konsol kapansa dahi çalışmaya devam etme, fiş yazdırıldığında otomatik konsol açma.",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-11-12T15:58:00Z"
+  "updatedAt": "2026-11-12T16:05:00Z"
 }
