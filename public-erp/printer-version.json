@@ -1,8 +1,8 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "Konsol/CMD pencereleri tamamen gizlendi, donanıma doğrudan yüksek hızlı GDI yazdırma motoru aktifleştirildi.",
+  "releaseNotes": "Kalıcı arka plan yazdırma motoru aktifleştirildi, CMD konsol pencereleri tamamen kaldırıldı ve anında GDI baskı sağlandı.",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-11-12T14:40:00Z"
+  "updatedAt": "2026-11-12T14:55:00Z"
 }

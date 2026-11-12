@@ -53,6 +53,7 @@ import { gibService } from "../../services/gibService";
 import { adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
 import { GibFisDugmesi } from "../../components/common/GibSorguButonu";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
+import { checkAndAutoUpdatePrinterAgent } from "../../services/silentPrintService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -974,6 +975,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   kYetkiRef.current = kYetki;
   const kurAcik = kurDegistirilebilir(kYetki);
   const milyemAcik = milyemDegistirilebilir(kYetki);
+
+  // Sayfa açıldığında veya yenilendiğinde yerel PrinterAgent'ın güncel olduğunu doğrula
+  useEffect(() => {
+    checkAndAutoUpdatePrinterAgent(true).catch(() => {});
+  }, []);
 
   // Sayfa açıldığında ve pencere odaklandığında kullanıcı yetkilerini (milyem/kur yetkisi vb.) sunucudan tazele
   useEffect(() => {

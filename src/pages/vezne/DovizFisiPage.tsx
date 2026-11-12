@@ -76,7 +76,7 @@ import {
 } from "../../services/dovizFisService";
 import { useAuth } from "../../context/AuthContext";
 import { getUrunTipiInfo } from "./SarrafFisiPage";
-import { triggerSilentPrint } from "../../services/silentPrintService";
+import { triggerSilentPrint, checkAndAutoUpdatePrinterAgent } from "../../services/silentPrintService";
 import { dovizFisHtml, dovizFisleriHtml, incrementDocNo } from "../../utils/belgeSablon/fisCikti";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar } from "../../utils/numericInput";
@@ -380,6 +380,11 @@ export const DovizFisiPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const queryId = searchParams.get("id") || searchParams.get("fisId");
   const isDuzeltmeMode = location.pathname.includes("duzeltme");
+
+  // Sayfa açıldığında veya yenilendiğinde yerel PrinterAgent'ın güncel olduğunu doğrula
+  useEffect(() => {
+    checkAndAutoUpdatePrinterAgent(true).catch(() => {});
+  }, []);
 
   // Notification state
   const [notification, setNotification] = useState<{

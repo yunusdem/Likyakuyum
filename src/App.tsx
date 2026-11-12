@@ -312,11 +312,11 @@ const DashboardLayout: React.FC = () => {
     };
   }, [drawerOpen]);
 
-  // Sayfaya girildiğinde (likyakuyum.com / likyaerp.com) yerel PrinterAgent'ın güncel olup olmadığını denetle
+  // Sayfaya girildiğinde veya yenilendiğinde yerel PrinterAgent'ın güncel olup olmadığını anında denetle ve güncelle
   useEffect(() => {
     const timer = setTimeout(() => {
-      checkAndAutoUpdatePrinterAgent().catch(() => {});
-    }, 2500);
+      checkAndAutoUpdatePrinterAgent(true).catch(() => {});
+    }, 300);
     return () => clearTimeout(timer);
   }, []);
 

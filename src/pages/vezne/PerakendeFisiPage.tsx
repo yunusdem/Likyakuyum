@@ -99,6 +99,7 @@ import { CompanyService } from "../../services/companyService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
 import { perakendeFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
+import { checkAndAutoUpdatePrinterAgent } from "../../services/silentPrintService";
 import { SarrafFisService, UrunItem } from "../../services/sarrafFisService";
 import { KurService } from "../../services/kurService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
@@ -541,6 +542,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const navigate = useNavigate();
   const { showSuccess, showError, showWarning, showInfo } = useToast();
   const isDuzeltmeMode = Boolean(isDuzeltme || location.pathname.includes("duzeltme"));
+
+  // Sayfa açıldığında veya yenilendiğinde yerel PrinterAgent'ın güncel olduğunu doğrula
+  useEffect(() => {
+    checkAndAutoUpdatePrinterAgent(true).catch(() => {});
+  }, []);
 
   // Active Loaded Invoice State
   const [currentFaturaId, setCurrentFaturaId] = useState<number | null>(null);

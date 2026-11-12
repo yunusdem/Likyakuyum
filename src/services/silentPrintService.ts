@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.1.0";
+export const TARGET_PRINTER_AGENT_VERSION = "1.1.1";
 
 /**
  * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
@@ -148,25 +148,25 @@ let isUpdatingAgent = false;
  * Yeni bir sürüm varsa sunucudan (likyakuyum.com / likyaerp.com veya aktif siteden)
  * exe'yi otomatik olarak indirip kendisini güncellemesini sağlar.
  */
-export async function checkAndAutoUpdatePrinterAgent(): Promise<{ updated: boolean; currentVersion?: string; targetVersion?: string }> {
+export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ updated: boolean; currentVersion?: string; targetVersion?: string }> {
   if (typeof window === "undefined" || isUpdatingAgent) {
     return { updated: false };
   }
 
   const now = Date.now();
-  if (now - lastUpdateCheckTime < 45000) {
+  if (!force && now - lastUpdateCheckTime < 30000) {
     return { updated: false };
   }
   lastUpdateCheckTime = now;
 
   let currentAgentVer = "";
   const origin = window.location.origin;
-  const downloadUrl = `${origin}/PrinterAgent.exe`;
+  const downloadUrl = `${origin}/PrinterAgent.exe?v=${Date.now()}`;
 
   // 1. HTTP /health veya /status üzerinden sürüm sorgula
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 1200);
+    const t = setTimeout(() => ctrl.abort(), 2000);
     const res = await fetch("http://127.0.0.1:9100/health", { signal: ctrl.signal }).catch(() => null);
     clearTimeout(t);
     if (res && res.ok) {
@@ -182,7 +182,7 @@ export async function checkAndAutoUpdatePrinterAgent(): Promise<{ updated: boole
     try {
       currentAgentVer = await new Promise<string>((resolve) => {
         const ws = new WebSocket("ws://127.0.0.1:9100");
-        const tm = setTimeout(() => { try { ws.close(); } catch {} resolve(""); }, 1200);
+        const tm = setTimeout(() => { try { ws.close(); } catch {} resolve(""); }, 1500);
         ws.onmessage = (e) => {
           try {
             const parsed = JSON.parse(e.data);

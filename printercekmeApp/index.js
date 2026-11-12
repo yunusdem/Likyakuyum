@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.0";
+const CURRENT_VERSION = "1.1.1";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -110,6 +110,375 @@ function runPowerShell(script, timeoutMs = 12000) {
     });
   });
 }
+
+// ─── Kalıcı PowerShell Yazdırma Motoru (Persistent Background Worker) ───────────
+// Her fiş için yeni konsol penceresi açıp kapatmak yerine arka planda tek bir kalıcı
+// süreç tutar. Fişler milisaniyeler içinde doğrudan donanıma basılır, konsol ASLA açılmaz.
+class PersistentPrintWorker {
+  constructor() {
+    this.process = null;
+    this.ready = false;
+    this.pendingCallbacks = new Map();
+    this.init();
+  }
+
+  init() {
+    if (os.platform() !== "win32") return;
+    try {
+      const systemRoot = process.env.SystemRoot || "C:\\Windows";
+      const psPath = `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+
+      const workerScript = `
+$ErrorActionPreference = 'Continue'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+
+try {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class RawPrinter {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public class DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+    [DllImport("winspool.drv", EntryPoint = "ClosePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+    [DllImport("winspool.drv", EntryPoint = "EndDocPrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "StartPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "EndPagePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+    [DllImport("winspool.drv", EntryPoint = "WritePrinter", SetLastError = true, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+    public static bool SendBytesToPrinter(string szPrinterName, byte[] pBytes) {
+        IntPtr hPrinter = IntPtr.Zero;
+        DOCINFOA di = new DOCINFOA();
+        di.pDocName = "Likya_Fis";
+        di.pDataType = "RAW";
+        if (OpenPrinter(szPrinterName.Normalize(), out hPrinter, IntPtr.Zero)) {
+            if (StartDocPrinter(hPrinter, 1, di)) {
+                if (StartPagePrinter(hPrinter)) {
+                    IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(pBytes.Length);
+                    Marshal.Copy(pBytes, 0, pUnmanagedBytes, pBytes.Length);
+                    int dwWritten = 0;
+                    bool success = WritePrinter(hPrinter, pUnmanagedBytes, pBytes.Length, out dwWritten);
+                    Marshal.FreeCoTaskMem(pUnmanagedBytes);
+                    EndPagePrinter(hPrinter);
+                    EndDocPrinter(hPrinter);
+                    ClosePrinter(hPrinter);
+                    return success;
+                }
+                EndDocPrinter(hPrinter);
+            }
+            ClosePrinter(hPrinter);
+        }
+        return false;
+    }
+}
+"@ -ErrorAction SilentlyContinue
+} catch {}
+
+function Clean-PName($str) {
+  if (-not $str) { return "" }
+  $s = $str -replace '\\s*\\([0-9]+\\s*yönlendirildi\\)', ''
+  $s = $s -replace '\\s*\\(yönlendirildi\\s*[0-9]+\\)', ''
+  $s = $s -replace '\\s*\\([^\\)]*redirected[^\\)]*\\)', ''
+  $s = $s -replace '\\s*\\([^\\)]*session[^\\)]*\\)', ''
+  $s = $s -replace '[^a-zA-Z0-9]', ''
+  return $s.ToLower().Trim()
+}
+
+function Test-IsVirtual($str) {
+  if (-not $str) { return $true }
+  $low = $str.ToLower()
+  $virts = @("onenote", "pdf", "xps", "fax", "document writer", "root print queue", "anydesk", "teamviewer")
+  foreach ($v in $virts) {
+    if ($low.IndexOf($v) -ge 0) { return $true }
+  }
+  return $false
+}
+
+function Test-IsPos($str) {
+  if (-not $str) { return $false }
+  if (Test-IsVirtual $str) { return $false }
+  $low = $str.ToLower()
+  $posKeys = @("pos", "thermal", "termal", "receipt", "fis", "fiş", "80", "58", "xp-", "xprinter", "epson", "bixolon", "hprt", "rp80", "rp-80", "citizen", "star", "sam4s", "zj-", "argox", "zebra", "tsc", "godex", "kuveyt", "hugin", "inter")
+  foreach ($k in $posKeys) {
+    if ($low.IndexOf($k) -ge 0) { return $true }
+  }
+  return $false
+}
+
+Write-Output "READY"
+
+while ($line = [Console]::In.ReadLine()) {
+  if (-not $line -or $line.Trim() -eq '') { continue }
+  $req = $null
+  try {
+    $req = $line | ConvertFrom-Json
+  } catch {
+    continue
+  }
+  if (-not $req -or -not $req.id) { continue }
+
+  $reqId = $req.id
+  $rawTarget = if ($req.printerName) { [string]$req.printerName } else { "" }
+  $textPath = if ($req.textPath) { [string]$req.textPath } else { "" }
+  $pngPath = if ($req.pngPath) { [string]$req.pngPath } else { "" }
+  $copies = if ($req.copies) { [int]$req.copies } else { 1 }
+  $isPos = if ($req.isPos -ne $false) { $true } else { $false }
+
+  try {
+    # 1. Hızlı Doğrudan Hedef Yazıcı Doğrulaması
+    $exactPrinter = $null
+    if ($rawTarget -and $rawTarget.Trim() -ne '') {
+      try {
+        $quickDoc = New-Object System.Drawing.Printing.PrintDocument
+        $quickDoc.PrinterSettings.PrinterName = $rawTarget
+        if ($quickDoc.PrinterSettings.IsValid) {
+          $exactPrinter = $rawTarget
+        }
+      } catch {}
+    }
+
+    # 2. Sistemdeki yazıcılardan eşleştir
+    if (-not $exactPrinter) {
+      $installed = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
+      foreach ($p in $installed) {
+        if ($p.Equals($rawTarget, [System.StringComparison]::OrdinalIgnoreCase)) {
+          $exactPrinter = $p; break
+        }
+      }
+      if (-not $exactPrinter) {
+        foreach ($p in $installed) {
+          if (-not (Test-IsVirtual $p)) {
+            if ($p.IndexOf($rawTarget, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or $rawTarget.IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+              $exactPrinter = $p; break
+            }
+          }
+        }
+      }
+      if (-not $exactPrinter) {
+        $cleanRaw = Clean-PName $rawTarget
+        if ($cleanRaw.Length -ge 3) {
+          foreach ($p in $installed) {
+            if (-not (Test-IsVirtual $p)) {
+              $cleanP = Clean-PName $p
+              if ($cleanP -eq $cleanRaw -or $cleanP.IndexOf($cleanRaw) -ge 0 -or $cleanRaw.IndexOf($cleanP) -ge 0) {
+                $exactPrinter = $p; break
+              }
+            }
+          }
+        }
+      }
+      if ((-not $exactPrinter -or (Test-IsVirtual $exactPrinter)) -and $isPos) {
+        foreach ($p in $installed) {
+          if (Test-IsPos $p) { $exactPrinter = $p; break }
+        }
+      }
+      if (-not $exactPrinter) {
+        foreach ($p in $installed) {
+          if (-not (Test-IsVirtual $p)) { $exactPrinter = $p; break }
+        }
+      }
+      if (-not $exactPrinter) {
+        $exactPrinter = (New-Object System.Drawing.Printing.PrinterSettings).PrinterName
+      }
+    }
+
+    if (-not $exactPrinter) {
+      Write-Output "RESULT:$reqId:ERROR:Yazıcı bulunamadı"
+      continue
+    }
+
+    $spooledSuccess = $false
+
+    # 3. GDI PrintDocument Baskı
+    try {
+      $doc = New-Object System.Drawing.Printing.PrintDocument
+      $doc.PrinterSettings.PrinterName = $exactPrinter
+      if ($doc.PrinterSettings.IsValid) {
+        $doc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+        $doc.OriginAtMargins = $false
+        $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+
+        if ($pngPath -and (Test-Path $pngPath)) {
+          $script:pngImg = [System.Drawing.Image]::FromFile($pngPath)
+          $doc.add_PrintPage({
+            param($s, $ev)
+            $g = $ev.Graphics
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+            $targetW = $ev.PageBounds.Width
+            if ($targetW -le 50 -or $targetW -gt 400) { $targetW = 285 }
+            $scale = $targetW / $script:pngImg.Width
+            $targetH = [int]($script:pngImg.Height * $scale)
+            $leftOffset = [Math]::Max(0, [int](($ev.PageBounds.Width - $targetW) / 2))
+            $g.DrawImage($script:pngImg, $leftOffset, 0, $targetW, $targetH)
+            $ev.HasMorePages = $false
+          })
+          for ($c = 0; $c -lt $copies; $c++) { $doc.Print() }
+          $script:pngImg.Dispose()
+          $doc.Dispose()
+          $spooledSuccess = $true
+        } elseif ($textPath -and (Test-Path $textPath)) {
+          $script:lines = [System.IO.File]::ReadAllLines($textPath, [System.Text.Encoding]::UTF8)
+          if ($script:lines.Count -gt 0) {
+            $script:font = New-Object System.Drawing.Font("Consolas", 8.5, [System.Drawing.FontStyle]::Bold)
+            $script:brush = [System.Drawing.Brushes]::Black
+            $script:lineIdx = 0
+            $doc.add_PrintPage({
+              param($s, $ev)
+              $g = $ev.Graphics
+              $lineHeight = $script:font.GetHeight($g) + 1.2
+              $y = 8.0
+              $x = 14.0
+              while ($script:lineIdx -lt $script:lines.Count) {
+                $cur = $script:lines[$script:lineIdx]
+                if ($cur -ne $null) { $g.DrawString($cur, $script:font, $script:brush, $x, $y) }
+                $y += $lineHeight
+                $script:lineIdx++
+              }
+              $ev.HasMorePages = $false
+            })
+            for ($c = 0; $c -lt $copies; $c++) {
+              $script:lineIdx = 0
+              $doc.Print()
+            }
+            $doc.Dispose()
+            $script:font.Dispose()
+            $spooledSuccess = $true
+          }
+        }
+      }
+    } catch {}
+
+    # 4. Yedek Raw ESC/POS
+    if (-not $spooledSuccess -and $textPath -and (Test-Path $textPath) -and $isPos) {
+      try {
+        $rawStr = [System.IO.File]::ReadAllText($textPath, [System.Text.Encoding]::UTF8)
+        if ($rawStr) {
+          $initBytes = [byte[]]@(0x1B, 0x40, 0x1B, 0x74, 0x12)
+          $bodyBytes = [System.Text.Encoding]::GetEncoding(1254).GetBytes($rawStr + "\`r\`n\`r\`n\`r\`n\`r\`n")
+          $cutBytes = [byte[]]@(0x1D, 0x56, 0x01)
+          $allBytes = $initBytes + $bodyBytes + $cutBytes
+          for ($c = 0; $c -lt $copies; $c++) {
+            $spooledSuccess = [RawPrinter]::SendBytesToPrinter($exactPrinter, $allBytes)
+          }
+        }
+      } catch {}
+    }
+
+    if ($spooledSuccess) {
+      Write-Output "RESULT:$reqId:SUCCESS:$exactPrinter"
+    } else {
+      Write-Output "RESULT:$reqId:ERROR:Baskı iletilemedi"
+    }
+  } catch {
+    Write-Output "RESULT:$reqId:ERROR:$($_.Exception.Message)"
+  }
+}
+`;
+      const b64 = Buffer.from(workerScript, "utf16le").toString("base64");
+      this.process = spawn(psPath, ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", b64], {
+        windowsHide: true,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let buffer = "";
+      this.process.stdout.on("data", (data) => {
+        buffer += data.toString("utf8");
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.includes("READY")) {
+            this.ready = true;
+            console.log("[printercekmeApp] Kalıcı PowerShell yazdırma motoru AKTİF ve HAZIR.");
+          } else if (line.startsWith("RESULT:")) {
+            const parts = line.split(":");
+            const reqId = parts[1];
+            const status = parts[2];
+            const detail = parts.slice(3).join(":");
+            const cb = this.pendingCallbacks.get(reqId);
+            if (cb) {
+              this.pendingCallbacks.delete(reqId);
+              if (status === "SUCCESS") {
+                cb.resolve({ success: true, printerName: detail });
+              } else {
+                cb.resolve({ success: false, message: detail });
+              }
+            }
+          }
+        }
+      });
+
+      this.process.on("close", () => {
+        this.ready = false;
+        this.process = null;
+        console.warn("[printercekmeApp] Kalıcı yazdırma motoru kapandı, yeniden başlatılıyor...");
+        setTimeout(() => this.init(), 1000);
+      });
+
+      this.process.on("error", (err) => {
+        this.ready = false;
+        console.error("[printercekmeApp] Kalıcı motor hatası:", err.message);
+      });
+    } catch (e) {
+      console.error("[printercekmeApp] Kalıcı motor başlatılamadı:", e);
+    }
+  }
+
+  print(job) {
+    return new Promise((resolve) => {
+      if (!this.process || !this.process.stdin) {
+        return resolve({ success: false, message: "Kalıcı motor aktif değil" });
+      }
+      const reqId = "job_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+      const timer = setTimeout(() => {
+        this.pendingCallbacks.delete(reqId);
+        resolve({ success: false, message: "Yazdırma zaman aşımına uğradı" });
+      }, 10000);
+
+      this.pendingCallbacks.set(reqId, {
+        resolve: (val) => {
+          clearTimeout(timer);
+          resolve(val);
+        },
+      });
+
+      const payload = JSON.stringify({
+        id: reqId,
+        printerName: job.targetPrinter || "",
+        textPath: job.textPath || "",
+        pngPath: job.pngPath || "",
+        copies: job.copies || 1,
+        isPos: job.isPos !== false,
+      });
+
+      try {
+        this.process.stdin.write(payload + "\n");
+      } catch (err) {
+        clearTimeout(timer);
+        this.pendingCallbacks.delete(reqId);
+        resolve({ success: false, message: "İstek iletilemedi: " + err.message });
+      }
+    });
+  }
+}
+
+const persistentWorker = new PersistentPrintWorker();
 
 const app = express();
 const PORT = process.env.PORT || 9100;
@@ -445,22 +814,21 @@ async function performSelfUpdate(downloadUrl, targetVersion = "") {
       const batPath = path.join(tmpFolder, `likya_updater_${Date.now()}.bat`);
       const batContent = `@echo off
 chcp 65001 >nul
-set OLD_EXE="${currentExec}"
-set NEW_EXE="${updateNewExe}"
+set "OLD_EXE=${currentExec}"
+set "NEW_EXE=${updateNewExe}"
 
-echo Güncelleme uygulanıyor, lütfen bekleyiniz...
+echo Guncelleme uygulaniyor, lutfen bekleyiniz...
+timeout /t 1 /nobreak >nul
+
+:: Calisan dosyayi yeniden adlandir (Windows buna izin verir)
+move /y "%OLD_EXE%" "%OLD_EXE%.old" >nul 2>&1
+move /y "%NEW_EXE%" "%OLD_EXE%" >nul 2>&1
+
+:: Yeni guncellenmis surumu baslat
+start "" "%OLD_EXE%"
+
 timeout /t 2 /nobreak >nul
-
-:retry_delete
-del %OLD_EXE% >nul 2>&1
-if exist %OLD_EXE% (
-    timeout /t 1 /nobreak >nul
-    goto retry_delete
-)
-
-move /y %NEW_EXE% %OLD_EXE% >nul 2>&1
-start "" %OLD_EXE%
-
+del /f /q "%OLD_EXE%.old" >nul 2>&1
 del "%~f0" >nul 2>&1
 exit
 `;
@@ -476,7 +844,7 @@ exit
       console.log("[printercekmeApp] Güncelleyici batch scripti başlatıldı, eski süreç kapatılıyor...");
       setTimeout(() => {
         process.exit(0);
-      }, 800);
+      }, 400);
 
       return {
         success: true,
@@ -1230,9 +1598,9 @@ async function executePrintJob(job) {
         }
         fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
 
-        // Edge/Chromium ile piksel piksel birebir önizleme görüntüsü oluştur (Google Chrome kalitesi)
+        // Edge/Chromium ile piksel piksel birebir önizleme görüntüsü oluştur (Sadece metin yoksa çalıştırılır)
         const chromiumPath = findChromiumPath();
-        if (chromiumPath && isPos) {
+        if (chromiumPath && isPos && !text) {
           try {
             pngFile = path.join(tmpDir, `print_${timestamp}.png`);
             const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
@@ -1304,7 +1672,31 @@ async function executePrintJob(job) {
 
       console.log(`[printercekmeApp] Yerel yazdırma işlemi başlatılıyor: "${targetPrinter || 'Varsayılan'}" (PNG: ${Boolean(pngFile)})`);
 
-      // Windows Doğrudan GDI ve Spooler Yazdırma Scripti (Yüksek Hızlı Motor)
+      // 1. ÖNCELİK: Kalıcı Hazır PowerShell Motoru (0 ms gecikme, konsol penceresi ASLA açılmaz)
+      if (persistentWorker && persistentWorker.ready) {
+        try {
+          const workerRes = await persistentWorker.print({
+            targetPrinter: safeTarget,
+            textPath: textFile,
+            pngPath: pngFile,
+            copies: numCopies,
+            isPos,
+          });
+          if (workerRes && workerRes.success) {
+            printed = true;
+            console.log(`[printercekmeApp] Kalıcı motorla yazdırma BAŞARILI: "${workerRes.printerName || targetPrinter || 'Varsayılan'}"`);
+            return {
+              success: true,
+              message: `Fiş "${workerRes.printerName || targetPrinter || 'Varsayılan Yazıcı'}" cihazına başarıyla gönderildi.`,
+              printerName: workerRes.printerName || targetPrinter,
+            };
+          }
+        } catch (pwErr) {
+          console.warn("[printercekmeApp] Kalıcı motor yazdırma uyarısı, yedek motora geçiliyor:", pwErr.message);
+        }
+      }
+
+      // 2. YEDEK: Windows Doğrudan GDI ve Spooler Yazdırma Scripti
       const psScript = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
