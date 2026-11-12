@@ -20,7 +20,18 @@ export interface BelgeTablolari {
   duzeltme: boolean;
   /** TODVZ_FATURA.FIS_KAYNAGI var (1 = ticari fiş): ticari fiş vezne / cari kaynaklarında ayrı belge tipidir (B24) */
   fisKaynagi: boolean;
+  /**
+   * Cari hareket açıklaması için sonradan eklenen kolonlar (göç 027 / 032): TODVZ_FIS / TODVZ_SARRAF_FISI / TODVZ_FATURA.BANKA_ACIKLAMA,
+   * TODVZ_ODEME_SATIRI.ACIKLAMA, TODVZ_FATURA.ACIKLAMA. Göç çalışmamış firmada kolon yoksa açıklama ünvana düşer (TODVZ_FIS'te ACIKLAMA kolonu hiç yok).
+   */
+  fisBankaAciklama: boolean; sarrafBankaAciklama: boolean; odemeAciklama: boolean; faturaBankaAciklama: boolean; faturaAciklama: boolean;
 }
+
+/** Var olan açıklama kolonlarından ilk dolu olanı, hiçbiri yoksa son değeri veren SQL ifadesi. Saf fonksiyon. */
+export const ilkDoluAciklama = (kolonlar: (string | false)[], son: string): string => {
+  const var_ = kolonlar.filter((k): k is string => !!k);
+  return var_.length ? `COALESCE(${var_.map(k => `NULLIF(RTRIM(${k}),'')`).join(", ")}, ${son})` : son;
+};
 
 export async function belgeTablolari(pool: sql.ConnectionPool): Promise<BelgeTablolari> {
   const r = (await pool.request().query(`SELECT
@@ -39,10 +50,17 @@ export async function belgeTablolari(pool: sql.ConnectionPool): Promise<BelgeTab
     CASE WHEN COL_LENGTH('dbo.TODVZ_OZEL_URUN','STOK_PARA_ID') IS NULL THEN 0 ELSE 1 END ozelStok,
     CASE WHEN OBJECT_ID('dbo.TODVZ_AYAR','U') IS NULL THEN 0 ELSE 1 END ayar,
     CASE WHEN OBJECT_ID('dbo.TODVZ_VEZNE_BAKIYE_DUZELTME','U') IS NULL THEN 0 ELSE 1 END duzeltme,
-    CASE WHEN COL_LENGTH('dbo.TODVZ_FATURA','FIS_KAYNAGI') IS NULL THEN 0 ELSE 1 END fisKaynagi`)).recordset[0] || {};
+    CASE WHEN COL_LENGTH('dbo.TODVZ_FATURA','FIS_KAYNAGI') IS NULL THEN 0 ELSE 1 END fisKaynagi,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_FIS','BANKA_ACIKLAMA') IS NULL THEN 0 ELSE 1 END fisBankaAciklama,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_SARRAF_FISI','BANKA_ACIKLAMA') IS NULL THEN 0 ELSE 1 END sarrafBankaAciklama,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_ODEME_SATIRI','ACIKLAMA') IS NULL THEN 0 ELSE 1 END odemeAciklama,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_FATURA','BANKA_ACIKLAMA') IS NULL THEN 0 ELSE 1 END faturaBankaAciklama,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_FATURA','ACIKLAMA') IS NULL THEN 0 ELSE 1 END faturaAciklama`)).recordset[0] || {};
   return { kasa: !!r.kasa, transfer: !!r.transfer, dekont: !!r.dekont, sarraf: !!r.sarraf, odemeCari: !!r.sarraf && !!r.odemeCari, pos: !!r.pos,
     perakende: !!r.perakende, perakendeStok: !!r.perakende && !!r.perakendeStok, ticariSatir: !!r.perakende && !!r.ticariSatir, altinUrun: !!r.altinUrun, altinStok: !!r.altinUrun && !!r.altinStok,
-    ozelUrun: !!r.ozelUrun, ozelStok: !!r.ozelUrun && !!r.ozelStok, ayar: !!r.ayar, duzeltme: !!r.duzeltme, fisKaynagi: !!r.perakende && !!r.fisKaynagi };
+    ozelUrun: !!r.ozelUrun, ozelStok: !!r.ozelUrun && !!r.ozelStok, ayar: !!r.ayar, duzeltme: !!r.duzeltme, fisKaynagi: !!r.perakende && !!r.fisKaynagi,
+    fisBankaAciklama: !!r.fisBankaAciklama, sarrafBankaAciklama: !!r.sarrafBankaAciklama, odemeAciklama: !!r.odemeAciklama,
+    faturaBankaAciklama: !!r.faturaBankaAciklama, faturaAciklama: !!r.faturaAciklama };
 }
 
 /**
@@ -216,14 +234,18 @@ export const CARI_EVRAK: Record<number, string> = { 1: "Virman dekontu", 2: "Dö
  *  - Perakende fişi cari ödemesi (ödeme aracı cari, uygulamaya özgü): satışta borç, alışta alacak; ödeme satırındaki cari, para ve miktar.
  */
 export function cariHareketleriSql(d: BelgeTablolari): string {
+  // Açıklama: bankaya özel açıklama → satır / fiş açıklaması → ünvan; yalnız veritabanında var olan kolonlar kullanılır
+  const fisAciklama = ilkDoluAciklama([d.fisBankaAciklama && "F.BANKA_ACIKLAMA"], "RTRIM(ISNULL(F.UNVAN,''))");
+  const sarrafAciklama = ilkDoluAciklama([d.sarrafBankaAciklama && "SF.BANKA_ACIKLAMA", d.odemeAciklama && "OS.ACIKLAMA"], "RTRIM(ISNULL(SF.UNVAN,''))");
+  const faturaAciklama = ilkDoluAciklama([d.faturaBankaAciklama && "F.BANKA_ACIKLAMA", d.faturaAciklama && "F.ACIKLAMA"], "RTRIM(ISNULL(F.ALICI_UNVAN,''))");
   const parcalar: string[] = [
     `SELECT 0, H.CARI_HAREKET_ID, S.SATIR_NO, H.CARI_KART_ID, H.TARIH, H.EKLEME_ZAMANI, H.VEZNE_ID, S.PARA_ID, H.HAREKET_TIPI, H.TIP, S.MEBLAG, RTRIM(ISNULL(H.ACIKLAMA,'')), CAST(H.CARI_HAREKET_ID AS varchar(20))
      FROM dbo.TODVZ_CARI_HAREKET H JOIN dbo.TODVZ_CARI_HAREKET_SATIRI S ON S.CARI_HAREKET_ID=H.CARI_HAREKET_ID`,
     `SELECT 2, F.FIS_ID, 0, F.BANKA_HESABI_ID, F.TARIH, F.EKLEME_ZAMANI, F.VEZNE_ID, ${TL_PARA_SQL}, 0, CASE WHEN F.TIP=0 THEN 1 ELSE 0 END, F.ODEME_TUTARI,
-       COALESCE(NULLIF(RTRIM(F.BANKA_ACIKLAMA),''), NULLIF(RTRIM(F.ACIKLAMA),''), RTRIM(ISNULL(F.UNVAN,''))), COALESCE(NULLIF(RTRIM(F.SERI_NO),''), RTRIM(ISNULL(F.BELGE_NO,'')))
+       ${fisAciklama}, COALESCE(NULLIF(RTRIM(F.SERI_NO),''), RTRIM(ISNULL(F.BELGE_NO,'')))
      FROM dbo.TODVZ_FIS F WHERE ISNULL(F.IPTAL,0)=0 AND F.BANKA_HESABI_ID IS NOT NULL AND ISNULL(F.ODEME_TUTARI,0)<>0`,
     `SELECT 2, F.FIS_ID, S.SATIR_NO, S.BANKA_HESABI_ID, F.TARIH, F.EKLEME_ZAMANI, F.VEZNE_ID, S.PARA_ID, 0, CASE WHEN F.TIP=0 THEN 0 ELSE 1 END, S.MIKTAR,
-       COALESCE(NULLIF(RTRIM(F.BANKA_ACIKLAMA),''), NULLIF(RTRIM(F.ACIKLAMA),''), RTRIM(ISNULL(F.UNVAN,''))), COALESCE(NULLIF(RTRIM(F.SERI_NO),''), RTRIM(ISNULL(F.BELGE_NO,'')))
+       ${fisAciklama}, COALESCE(NULLIF(RTRIM(F.SERI_NO),''), RTRIM(ISNULL(F.BELGE_NO,'')))
      FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID WHERE ISNULL(F.IPTAL,0)=0 AND S.BANKA_HESABI_ID IS NOT NULL`,
   ];
   if (d.dekont) parcalar.push(
@@ -232,12 +254,12 @@ export function cariHareketleriSql(d: BelgeTablolari): string {
      FROM dbo.TODVZ_CARI_DEKONT D JOIN dbo.TODVZ_CARI_DEKONT_SATIRI DS ON DS.CARI_DEKONT_ID=D.CARI_DEKONT_ID WHERE D.TIP=2 AND D.IPTAL_TARIHI IS NULL`);
   if (d.sarraf) parcalar.push(
     `SELECT 3, SF.SARRAF_FISI_ID, OS.SATIR_NO, ${d.odemeCari ? "COALESCE(OS.CARI_KART_ID, SF.CARI_KART_ID)" : "SF.CARI_KART_ID"}, SF.TARIH, SF.EKLEME_ZAMANI, SF.VEZNE_ID, OS.PARA_ID, 0,
-       CASE WHEN SF.TIP=1 THEN 0 ELSE 1 END, ISNULL(NULLIF(OS.MIKTAR, 0), OS.TUTAR), COALESCE(NULLIF(RTRIM(SF.BANKA_ACIKLAMA),''), NULLIF(RTRIM(OS.ACIKLAMA),''), RTRIM(ISNULL(SF.UNVAN,''))), RTRIM(ISNULL(SF.FIS_NO,''))
+       CASE WHEN SF.TIP=1 THEN 0 ELSE 1 END, ISNULL(NULLIF(OS.MIKTAR, 0), OS.TUTAR), ${sarrafAciklama}, RTRIM(ISNULL(SF.FIS_NO,''))
      FROM dbo.TODVZ_SARRAF_FISI SF JOIN dbo.TODVZ_ODEME_SATIRI OS ON OS.SARRAF_FISI_ID=SF.SARRAF_FISI_ID
      WHERE (OS.ISLEME_YERI=1 OR OS.ODEME_ARACI_TURU=1 OR OS.CARI_KART_ID IS NOT NULL) AND OS.PARA_ID IS NOT NULL AND ${d.odemeCari ? "COALESCE(OS.CARI_KART_ID, SF.CARI_KART_ID)" : "SF.CARI_KART_ID"} IS NOT NULL`);
   if (d.perakende) parcalar.push(
     `SELECT ${d.fisKaynagi ? "CASE WHEN ISNULL(F.FIS_KAYNAGI,0)=1 THEN 5 ELSE 4 END" : "4"}, F.FATURA_ID, O.SATIR_NO, O.CARI_KART_ID, ${YEREL_GUN("F.TARIH")}, F.EKLEME_ZAMANI, F.VEZNE_ID, O.PARA_ID, 0, CASE WHEN F.FATURA_TIPI=1 THEN 0 ELSE 1 END,
-       ${FATURA_ODEME_MIKTARI}, COALESCE(NULLIF(RTRIM(F.BANKA_ACIKLAMA),''), NULLIF(RTRIM(F.ACIKLAMA),''), RTRIM(ISNULL(F.ALICI_UNVAN,''))), RTRIM(ISNULL(F.FATURA_NO,''))
+       ${FATURA_ODEME_MIKTARI}, ${faturaAciklama}, RTRIM(ISNULL(F.FATURA_NO,''))
      FROM dbo.TODVZ_FATURA F JOIN dbo.TODVZ_FATURA_ODEME O ON O.FATURA_ID=F.FATURA_ID JOIN dbo.TODVZ_PARA OP ON OP.PARA_ID=O.PARA_ID
      WHERE O.ODEME_ARACI_TURU=1 AND O.CARI_KART_ID IS NOT NULL`);
   return parcalar.join("\n     UNION ALL\n     ");
