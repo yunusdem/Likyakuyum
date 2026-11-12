@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.1.6";
+export const TARGET_PRINTER_AGENT_VERSION = "1.1.7";
 
 /**
  * Windows ortamında kayıtlı likyaprint:// protokolü üzerinden PrinterAgent.exe'yi otomatik uyandırır/başlatır.
