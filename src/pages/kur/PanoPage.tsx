@@ -363,7 +363,7 @@ export const SilverIngotSvg: React.FC<{
   );
 };
 
-// 4. Dalgalanan Bayraklar (Dövizler için Waving Flag)
+// 4. Dalgalanan Bayraklar (Dövizler için Waving Flag - Tüm Dünya ve Bölgesel Dövizler)
 export const WavingFlag: React.FC<{ code: string; width?: number | string; height?: number | string }> = ({
   code,
   width = "clamp(34px, min(3.5vw, 5.5vh), 56px)",
@@ -375,22 +375,23 @@ export const WavingFlag: React.FC<{ code: string; width?: number | string; heigh
     switch (c) {
       case "USD":
       case "USA":
+      case "USDT":
         return (
-          <svg viewBox="0 0 190 120" className="w-100 h-100" preserveAspectRatio="none">
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
             {Array.from({ length: 13 }).map((_, i) => (
               <rect
                 key={i}
                 x="0"
                 y={(i * 120) / 13}
-                width="190"
+                width="180"
                 height={120 / 13 + 0.5}
                 fill={i % 2 === 0 ? "#b22234" : "#ffffff"}
               />
             ))}
-            <rect x="0" y="0" width="76" height={(7 * 120) / 13} fill="#3c3b6e" />
+            <rect x="0" y="0" width="72" height={(7 * 120) / 13} fill="#3c3b6e" />
             {[1, 2, 3, 4, 5].map((row) =>
               [1, 2, 3, 4, 5, 6].map((col) => (
-                <circle key={`star-${row}-${col}`} cx={col * 11 - 2} cy={row * 11 - 2} r="2" fill="#ffffff" />
+                <circle key={`star-${row}-${col}`} cx={col * 10.5 - 1} cy={row * 10.5 - 1} r="1.8" fill="#ffffff" />
               ))
             )}
           </svg>
@@ -499,13 +500,323 @@ export const WavingFlag: React.FC<{ code: string; width?: number | string; heigh
           </svg>
         );
 
-      default:
+      case "KWD":
         return (
           <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
-            <rect width="180" height="120" fill="#1e293b" />
-            <circle cx="90" cy="60" r="32" fill="#334155" stroke="#facc15" strokeWidth="3" />
-            <text x="90" y="67" fill="#facc15" fontSize="22" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
-              {c.slice(0, 3)}
+            <rect width="180" height="40" y="0" fill="#007a3d" />
+            <rect width="180" height="40" y="40" fill="#ffffff" />
+            <rect width="180" height="40" y="80" fill="#ce1126" />
+            <polygon points="0,0 52,40 52,80 0,120" fill="#000000" />
+          </svg>
+        );
+
+      case "QAR":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#8d1b3d" />
+            <rect width="50" height="120" fill="#ffffff" />
+            <polygon
+              points="50,0 62,6.67 50,13.33 62,20 50,26.67 62,33.33 50,40 62,46.67 50,53.33 62,60 50,66.67 62,73.33 50,80 62,86.67 50,93.33 62,100 50,106.67 62,113.33 50,120 0,120 0,0"
+              fill="#ffffff"
+            />
+          </svg>
+        );
+
+      case "BHD":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#ce1126" />
+            <rect width="45" height="120" fill="#ffffff" />
+            <polygon
+              points="45,0 60,12 45,24 60,36 45,48 60,60 45,72 60,84 45,96 60,108 45,120 0,120 0,0"
+              fill="#ffffff"
+            />
+          </svg>
+        );
+
+      case "OMR":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="40" y="0" fill="#ffffff" />
+            <rect width="180" height="40" y="40" fill="#db161b" />
+            <rect width="180" height="40" y="80" fill="#008000" />
+            <rect x="0" y="0" width="45" height="120" fill="#db161b" />
+            <path d="M22,18 L22,34 M14,24 L30,24" stroke="#ffffff" strokeWidth="3" />
+          </svg>
+        );
+
+      case "JOD":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="40" y="0" fill="#000000" />
+            <rect width="180" height="40" y="40" fill="#ffffff" />
+            <rect width="180" height="40" y="80" fill="#007a3d" />
+            <polygon points="0,0 60,60 0,120" fill="#ce1126" />
+            <circle cx="20" cy="60" r="4.5" fill="#ffffff" />
+          </svg>
+        );
+
+      case "ILS":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#ffffff" />
+            <rect x="0" y="16" width="180" height="16" fill="#0038b8" />
+            <rect x="0" y="88" width="180" height="16" fill="#0038b8" />
+            <polygon points="90,44 104,68 76,68" stroke="#0038b8" strokeWidth="3" fill="none" />
+            <polygon points="90,76 104,52 76,52" stroke="#0038b8" strokeWidth="3" fill="none" />
+          </svg>
+        );
+
+      case "RUB":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="40" y="0" fill="#ffffff" />
+            <rect width="180" height="40" y="40" fill="#0039a6" />
+            <rect width="180" height="40" y="80" fill="#d52b1e" />
+          </svg>
+        );
+
+      case "CNY":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#de2910" />
+            <polygon points="30,16 34,26 44,26 36,32 39,42 30,36 21,42 24,32 16,26 26,26" fill="#ffde00" />
+            <circle cx="58" cy="18" r="4" fill="#ffde00" />
+            <circle cx="70" cy="30" r="4" fill="#ffde00" />
+            <circle cx="70" cy="48" r="4" fill="#ffde00" />
+            <circle cx="58" cy="60" r="4" fill="#ffde00" />
+          </svg>
+        );
+
+      case "AZN":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="40" y="0" fill="#00b5e2" />
+            <rect width="180" height="40" y="40" fill="#ef3340" />
+            <rect width="180" height="40" y="80" fill="#509e2f" />
+            <circle cx="86" cy="60" r="14" fill="#ffffff" />
+            <circle cx="90" cy="60" r="11" fill="#ef3340" />
+            <polygon
+              points="102,60 97.5,61.5 99,57 95,58.5 98,62.5 95,64 99,63 97.5,67"
+              fill="#ffffff"
+            />
+          </svg>
+        );
+
+      case "NOK":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#ba0c2f" />
+            <rect x="50" y="0" width="36" height="120" fill="#ffffff" />
+            <rect x="0" y="42" width="180" height="36" fill="#ffffff" />
+            <rect x="56" y="0" width="24" height="120" fill="#00205b" />
+            <rect x="0" y="48" width="180" height="24" fill="#00205b" />
+          </svg>
+        );
+
+      case "SEK":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#006aa7" />
+            <rect x="55" y="0" width="26" height="120" fill="#fecc00" />
+            <rect x="0" y="47" width="180" height="26" fill="#fecc00" />
+          </svg>
+        );
+
+      case "DKK":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#c60c30" />
+            <rect x="55" y="0" width="22" height="120" fill="#ffffff" />
+            <rect x="0" y="49" width="180" height="22" fill="#ffffff" />
+          </svg>
+        );
+
+      case "TRY":
+      case "TL":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#e30a17" />
+            <circle cx="72" cy="60" r="30" fill="#ffffff" />
+            <circle cx="78" cy="60" r="24" fill="#e30a17" />
+            <polygon
+              points="104,60 92,64.2 96,51.8 86,59 100,53.2"
+              fill="#ffffff"
+            />
+          </svg>
+        );
+
+      case "BGN":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="40" y="0" fill="#ffffff" />
+            <rect width="180" height="40" y="40" fill="#00966e" />
+            <rect width="180" height="40" y="80" fill="#d62612" />
+          </svg>
+        );
+
+      case "RON":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="60" height="120" x="0" fill="#002b7f" />
+            <rect width="60" height="120" x="60" fill="#fcd116" />
+            <rect width="60" height="120" x="120" fill="#ce1126" />
+          </svg>
+        );
+
+      case "PLN":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="60" y="0" fill="#ffffff" />
+            <rect width="180" height="60" y="60" fill="#dc143c" />
+          </svg>
+        );
+
+      case "GEL":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#ffffff" />
+            <rect x="76" y="0" width="28" height="120" fill="#ff0000" />
+            <rect x="0" y="46" width="180" height="28" fill="#ff0000" />
+            <path
+              d="M38,20 v16 M30,28 h16 M142,20 v16 M134,28 h16 M38,84 v16 M30,92 h16 M142,84 v16 M134,92 h16"
+              stroke="#ff0000"
+              strokeWidth="6"
+              strokeLinecap="round"
+            />
+          </svg>
+        );
+
+      case "KZT":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#00afca" />
+            <circle cx="100" cy="54" r="18" fill="#fec50c" />
+            <path d="M80,82 Q100,72 120,82 Q100,76 80,82 Z" fill="#fec50c" />
+            <rect x="0" y="0" width="14" height="120" fill="#fec50c" opacity="0.85" />
+          </svg>
+        );
+
+      case "KRW":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#ffffff" />
+            <path d="M90,36 A24,24 0 0,1 90,84 A12,12 0 0,1 90,60 A12,12 0 0,0 90,36 Z" fill="#cd2e3a" />
+            <path d="M90,36 A12,12 0 0,1 90,60 A12,12 0 0,0 90,84 A24,24 0 0,1 90,36 Z" fill="#0047a0" />
+            <rect x="36" y="24" width="20" height="4" fill="#000" transform="rotate(35 46 26)" />
+            <rect x="124" y="24" width="20" height="4" fill="#000" transform="rotate(-35 134 26)" />
+            <rect x="36" y="92" width="20" height="4" fill="#000" transform="rotate(-35 46 94)" />
+            <rect x="124" y="92" width="20" height="4" fill="#000" transform="rotate(35 134 94)" />
+          </svg>
+        );
+
+      case "INR":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="40" y="0" fill="#ff9933" />
+            <rect width="180" height="40" y="40" fill="#ffffff" />
+            <rect width="180" height="40" y="80" fill="#138808" />
+            <circle cx="90" cy="60" r="14" stroke="#000080" strokeWidth="2.5" fill="none" />
+            <circle cx="90" cy="60" r="3" fill="#000080" />
+          </svg>
+        );
+
+      case "SGD":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="60" y="0" fill="#ed2939" />
+            <rect width="180" height="60" y="60" fill="#ffffff" />
+            <circle cx="45" cy="30" r="16" fill="#ffffff" />
+            <circle cx="50" cy="30" r="14" fill="#ed2939" />
+            <circle cx="58" cy="22" r="2.5" fill="#ffffff" />
+            <circle cx="66" cy="26" r="2.5" fill="#ffffff" />
+            <circle cx="66" cy="34" r="2.5" fill="#ffffff" />
+            <circle cx="58" cy="38" r="2.5" fill="#ffffff" />
+            <circle cx="54" cy="30" r="2.5" fill="#ffffff" />
+          </svg>
+        );
+
+      case "NZD":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#00247d" />
+            <g transform="scale(0.5)">
+              <rect width="180" height="120" fill="#012169" />
+              <path d="M0,0 L180,120 M180,0 L0,120" stroke="#ffffff" strokeWidth="22" />
+              <path d="M0,0 L90,60 M180,0 L90,60 M180,120 L90,60 M0,120 L90,60" stroke="#c8102e" strokeWidth="7" />
+              <path d="M90,0 V120 M0,60 H180" stroke="#ffffff" strokeWidth="34" />
+              <path d="M90,0 V120 M0,60 H180" stroke="#c8102e" strokeWidth="20" />
+            </g>
+            <circle cx="135" cy="32" r="5" fill="#c8102e" stroke="#ffffff" strokeWidth="1.5" />
+            <circle cx="155" cy="55" r="4.5" fill="#c8102e" stroke="#ffffff" strokeWidth="1.5" />
+            <circle cx="135" cy="90" r="5" fill="#c8102e" stroke="#ffffff" strokeWidth="1.5" />
+            <circle cx="115" cy="62" r="4.5" fill="#c8102e" stroke="#ffffff" strokeWidth="1.5" />
+          </svg>
+        );
+
+      case "HKD":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="120" fill="#de2910" />
+            <circle cx="90" cy="60" r="25" fill="none" stroke="#ffffff" strokeWidth="3.5" opacity="0.9" />
+            <circle cx="90" cy="60" r="10" fill="#ffffff" />
+            <circle cx="90" cy="60" r="4" fill="#de2910" />
+          </svg>
+        );
+
+      case "EGP":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="40" y="0" fill="#ce1126" />
+            <rect width="180" height="40" y="40" fill="#ffffff" />
+            <rect width="180" height="40" y="80" fill="#000000" />
+            <path d="M84,52 L96,52 L94,68 L86,68 Z" fill="#c09300" />
+            <circle cx="90" cy="50" r="4" fill="#c09300" />
+          </svg>
+        );
+
+      case "IRR":
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <rect width="180" height="40" y="0" fill="#239f40" />
+            <rect width="180" height="40" y="40" fill="#ffffff" />
+            <rect width="180" height="40" y="80" fill="#da0000" />
+            <circle cx="90" cy="60" r="10" fill="#da0000" />
+          </svg>
+        );
+
+      default:
+        // Bilinmeyen veya özel para birimleri için prestijli döviz brövesi
+        return (
+          <svg viewBox="0 0 180 120" className="w-100 h-100" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id={`flagBg-${c}`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#0f172a" />
+                <stop offset="50%" stopColor="#1e293b" />
+                <stop offset="100%" stopColor="#0b1120" />
+              </linearGradient>
+              <linearGradient id={`flagGold-${c}`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#fef08a" />
+                <stop offset="100%" stopColor="#ca8a04" />
+              </linearGradient>
+            </defs>
+            <rect width="180" height="120" fill={`url(#flagBg-${c})`} />
+            <rect x="3" y="3" width="174" height="114" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" rx="3" />
+            <circle cx="90" cy="60" r="40" fill="none" stroke="rgba(250,204,21,0.25)" strokeWidth="1.5" />
+            <ellipse cx="90" cy="60" rx="20" ry="40" fill="none" stroke="rgba(250,204,21,0.2)" strokeWidth="1.5" />
+            <line x1="50" y1="60" x2="130" y2="60" stroke="rgba(250,204,21,0.2)" strokeWidth="1.5" />
+            <rect x="34" y="38" width="112" height="44" rx="6" fill="rgba(0,0,0,0.5)" stroke={`url(#flagGold-${c})`} strokeWidth="1.8" />
+            <text
+              x="90"
+              y="69"
+              fill={`url(#flagGold-${c})`}
+              fontSize="24"
+              fontWeight="900"
+              textAnchor="middle"
+              fontFamily="'Arial Black', sans-serif"
+              letterSpacing="2.5"
+            >
+              {c.slice(0, 4) || "FX"}
             </text>
           </svg>
         );
@@ -561,76 +872,164 @@ export function detectPanoVisual(item: { kod?: string; ad?: string; gorunecekAd?
   currencyCode?: string;
   label?: string;
 } {
-  const raw = `${item.kod || ""} ${item.ad || ""} ${item.gorunecekAd || ""}`.toLocaleLowerCase("tr-TR");
-  const codeUpper = (item.kod || "").trim().toUpperCase();
+  const codeRaw = (item.kod || "").trim().toUpperCase();
+  const titleRaw = `${item.gorunecekAd || ""} ${item.ad || ""}`.trim();
+  const combinedLower = `${codeRaw} ${titleRaw}`.toLocaleLowerCase("tr-TR");
 
-  // 1. Gümüş / Silver
-  if (raw.includes("gümüş") || raw.includes("gumus") || raw.includes("silver") || codeUpper === "XAG") {
+  // 1. Gümüş / Silver (Öncelikli)
+  if (
+    combinedLower.includes("gümüş") ||
+    combinedLower.includes("gumus") ||
+    combinedLower.includes("silver") ||
+    codeRaw === "XAG" ||
+    codeRaw.startsWith("XAG/") ||
+    codeRaw.startsWith("XAG")
+  ) {
     return { type: "silver", label: "GÜMÜŞ" };
   }
 
-  // 2. 24 Ayar / Has Altın / Külçe / Gram
-  if (raw.includes("24") || raw.includes("has") || raw.includes("külçe") || raw.includes("kulce") || (raw.includes("gram") && !raw.includes("22"))) {
+  // 2. Altın Ayarları & Külçeler (24, 22, 18, 14 Ayar / Has)
+  if (
+    combinedLower.includes("24 ayar") ||
+    combinedLower.includes("24k") ||
+    combinedLower.includes("has altın") ||
+    combinedLower.includes("has altin") ||
+    codeRaw === "24 AYAR" ||
+    codeRaw === "HAS" ||
+    codeRaw === "HAS ALTIN" ||
+    codeRaw === "XAU" ||
+    codeRaw.startsWith("XAU/") ||
+    (combinedLower.includes("külçe") && !combinedLower.includes("gümüş")) ||
+    (combinedLower.includes("kulce") && !combinedLower.includes("gumus"))
+  ) {
     return { type: "bullion_24", label: "24 AYAR" };
   }
 
-  // 3. 22 Ayar / 22K / Bilezik
-  if (raw.includes("22")) {
+  if (
+    combinedLower.includes("22 ayar") ||
+    combinedLower.includes("22k") ||
+    combinedLower.includes("bilezik") ||
+    codeRaw === "22 AYAR"
+  ) {
     return { type: "bullion_22", label: "22 AYAR" };
   }
 
-  // 4. 18 Ayar
-  if (raw.includes("18")) {
+  if (combinedLower.includes("18 ayar") || combinedLower.includes("18k") || codeRaw === "18 AYAR") {
     return { type: "bullion_18", label: "18 AYAR" };
   }
 
-  // 5. 14 Ayar
-  if (raw.includes("14")) {
+  if (combinedLower.includes("14 ayar") || combinedLower.includes("14k") || codeRaw === "14 AYAR") {
     return { type: "bullion_14", label: "14 AYAR" };
   }
 
-  // 6. Ata Lira / Cumhuriyet
-  if (raw.includes("ata") || raw.includes("cumhuriyet")) {
+  // 3. Türk Sarrafiye Altın Sikkeleri
+  if (combinedLower.includes("ata") || combinedLower.includes("cumhuriyet")) {
     return { type: "coin_ata", label: "ATA" };
   }
-
-  // 7. Çeyrek
-  if (raw.includes("çeyrek") || raw.includes("ceyrek")) {
+  if (combinedLower.includes("çeyrek") || combinedLower.includes("ceyrek")) {
     return { type: "coin_ceyrek", label: "ÇEYREK" };
   }
-
-  // 8. Yarım
-  if (raw.includes("yarım") || raw.includes("yarim")) {
+  if (combinedLower.includes("yarım") || combinedLower.includes("yarim")) {
     return { type: "coin_yarim", label: "YARIM" };
   }
-
-  // 9. Ziynet / Tam Altın / Lira
-  if (raw.includes("ziynet") || raw.includes("tam") || raw.includes("lira")) {
+  if (
+    combinedLower.includes("gremse") ||
+    combinedLower.includes("ikibuçuk") ||
+    combinedLower.includes("ikibucuk") ||
+    combinedLower.includes("beşli") ||
+    combinedLower.includes("besli")
+  ) {
+    return { type: "coin_gremse", label: "GREMSE" };
+  }
+  if (combinedLower.includes("reşat") || combinedLower.includes("resat") || combinedLower.includes("hamit")) {
+    return { type: "coin_resat", label: "REŞAT" };
+  }
+  if (
+    combinedLower.includes("ziynet") ||
+    combinedLower.includes("tam altın") ||
+    combinedLower.includes("tam altin") ||
+    (combinedLower.includes("tam") && !combinedLower.includes("döviz"))
+  ) {
     return { type: "coin_tam", label: "TAM" };
   }
 
-  // 10. Gremse / İkibuçuk / Beşli
-  if (raw.includes("gremse") || raw.includes("ikibuçuk") || raw.includes("ikibucuk") || raw.includes("beşli") || raw.includes("besli")) {
-    return { type: "coin_gremse", label: "GREMSE" };
+  // 4. Döviz Tespiti (Tüm Dünya ve Bölgesel Dövizler)
+  let detectedCurrency: string | null = null;
+
+  const currencyMap: Array<{ keys: string[]; code: string }> = [
+    { keys: ["USD", "DOLAR", "DOLLAR", "AMERİKAN", "AMERIKAN", "USDT"], code: "USD" },
+    { keys: ["EUR", "EURO", "AVRO"], code: "EUR" },
+    { keys: ["GBP", "STERLİN", "STERLIN", "POUND", "İNGİLİZ", "INGILIZ"], code: "GBP" },
+    { keys: ["CHF", "FRANK", "FRANGI", "FRANG", "İSVİÇRE", "ISVICRE"], code: "CHF" },
+    { keys: ["CAD", "KANADA"], code: "CAD" },
+    { keys: ["AUD", "AVUSTRALYA"], code: "AUD" },
+    { keys: ["JPY", "YEN", "JAPON"], code: "JPY" },
+    { keys: ["SAR", "SUUDİ", "SUUDI", "RİYAL", "RIYAL", "SAUDI"], code: "SAR" },
+    { keys: ["AED", "DİRHEM", "DIRHEM", "DIRHAM", "BAE", "EMIRATES"], code: "AED" },
+    { keys: ["KWD", "KUVEYT", "KUVEYTI"], code: "KWD" },
+    { keys: ["QAR", "KATAR", "QATAR"], code: "QAR" },
+    { keys: ["BHD", "BAHREYN", "BAHRAIN"], code: "BHD" },
+    { keys: ["OMR", "UMMAN", "OMAN"], code: "OMR" },
+    { keys: ["JOD", "ÜRDÜN", "URDUN", "JORDAN"], code: "JOD" },
+    { keys: ["ILS", "ŞEKEL", "SEKEL", "SHEKEL", "İSRAİL", "ISRAIL"], code: "ILS" },
+    { keys: ["RUB", "RUBLE", "RUS", "RUSYA"], code: "RUB" },
+    { keys: ["CNY", "YUAN", "ÇİN", "CIN", "CHINA"], code: "CNY" },
+    { keys: ["AZN", "MANAT", "AZERBAYCAN"], code: "AZN" },
+    { keys: ["NOK", "NORVEÇ", "NORVEC", "NORWAY"], code: "NOK" },
+    { keys: ["SEK", "İSVEÇ", "ISVEC", "SWEDEN"], code: "SEK" },
+    { keys: ["DKK", "DANİMARKA", "DANIMARKA", "DENMARK"], code: "DKK" },
+    { keys: ["TRY", "TL", "TÜRK LİRASI", "TURK LIRASI"], code: "TRY" },
+    { keys: ["BGN", "LEVA", "BULGAR", "BULGARİSTAN", "BULGARISTAN"], code: "BGN" },
+    { keys: ["RON", "LEY", "ROMANYA"], code: "RON" },
+    { keys: ["PLN", "ZLOTİ", "ZLOTI", "POLONYA"], code: "PLN" },
+    { keys: ["GEL", "LARİ", "LARI", "GÜRCİSTAN", "GURCISTAN"], code: "GEL" },
+    { keys: ["KZT", "TENGE", "KAZAK", "KAZAKHSTAN"], code: "KZT" },
+    { keys: ["KRW", "WON", "KORE"], code: "KRW" },
+    { keys: ["INR", "RUPİ", "RUPI", "HİNDİSTAN", "HINDISTAN"], code: "INR" },
+    { keys: ["SGD", "SİNGAPUR", "SINGAPUR"], code: "SGD" },
+    { keys: ["NZD", "ZELANDA"], code: "NZD" },
+    { keys: ["HKD", "HONG KONG", "HONGKONG"], code: "HKD" },
+    { keys: ["EGP", "MISIR LİRASI", "MISIR LIRASI", "MISIR"], code: "EGP" },
+    { keys: ["IRR", "İRAN", "IRAN", "TÜMEN", "TUMEN"], code: "IRR" },
+  ];
+
+  // A. Kod içinden pair veya net eşleşme kontrolü (örn: USD, USD/TRY, USDTRY, EUR_TRY)
+  const cleanCode = codeRaw.replace(/[^A-Z]/g, "");
+  for (const entry of currencyMap) {
+    if (codeRaw === entry.code || cleanCode.startsWith(entry.code)) {
+      detectedCurrency = entry.code;
+      break;
+    }
   }
 
-  // 11. Reşat / Hamit
-  if (raw.includes("reşat") || raw.includes("resat") || raw.includes("hamit")) {
-    return { type: "coin_resat", label: "REŞAT" };
+  // B. İsim / başlık içerisinden eşleştirme
+  if (!detectedCurrency) {
+    for (const entry of currencyMap) {
+      if (entry.keys.some((k) => combinedLower.includes(k.toLocaleLowerCase("tr-TR")))) {
+        detectedCurrency = entry.code;
+        break;
+      }
+    }
   }
 
-  // 12. Bilinen döviz kodları
-  const knownCurrencies = ["USD", "EUR", "GBP", "CHF", "CAD", "AUD", "JPY", "SAR", "AED", "KWD", "RUB", "NOK", "DKK", "SEK", "AZN", "QAR"];
-  if (knownCurrencies.includes(codeUpper)) {
-    return { type: "currency", currencyCode: codeUpper };
+  // C. Genel ISO 4217 3 harfli döviz kodu kontrolü (örn: MXN, THB, BRL vb.)
+  if (!detectedCurrency) {
+    const codeMatch = codeRaw.match(/^([A-Z]{3})(\/?[A-Z]{3})?$/);
+    if (codeMatch && codeMatch[1] && !["ALT", "HAS", "ATA", "RES", "ZYN", "GRM"].includes(codeMatch[1])) {
+      detectedCurrency = codeMatch[1];
+    }
   }
 
-  // Standart 3 harfli döviz kodu
-  if (codeUpper.length === 3 && /^[A-Z]{3}$/.test(codeUpper)) {
-    return { type: "currency", currencyCode: codeUpper };
+  if (detectedCurrency) {
+    return { type: "currency", currencyCode: detectedCurrency };
   }
 
-  // Varsayılan altın sikke
+  // 5. Gram Altın kontrolü
+  if (combinedLower.includes("gram") || combinedLower.includes("gr")) {
+    return { type: "bullion_24", label: "24 AYAR" };
+  }
+
+  // 6. Varsayılan altın sikke
   return { type: "coin_tam", label: item.kod || "ALTIN" };
 }
 
