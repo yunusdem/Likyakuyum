@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.5";
+const CURRENT_VERSION = "1.1.6";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -38,37 +38,24 @@ function broadcastLog(message) {
 
 function openConsoleWindow() {
   if (os.platform() !== "win32") return;
-  // Eğer konsol penceresi zaten açıksa yeniden açma, loglar mevcut konsola akar
-  if (activeConsoleClients.size > 0) return;
-
   const now = Date.now();
-  if (now - lastConsoleOpenTime < 3000) return; // 3 saniye debouncing
+  if (now - lastConsoleOpenTime < 2000) return;
   lastConsoleOpenTime = now;
 
-  try {
-    const currentExec = process.pkg ? process.execPath : process.argv[1];
-    const psCmd = `Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -ArgumentList "--console" -WindowStyle Normal`;
-    runPowerShellHidden(psCmd).catch(() => {
-      try {
-        spawn("cmd.exe", ["/c", "start", '"Likya ERP - Yazıcı Konsolu"', `"${currentExec}"`, "--console"], {
-          detached: true,
-          stdio: "ignore",
-          windowsHide: false,
-          shell: true,
-        }).unref();
-      } catch {}
-    });
-  } catch (e) {
-    try {
-      const currentExec = process.pkg ? process.execPath : process.argv[1];
-      spawn("cmd.exe", ["/c", "start", '"Likya ERP - Yazıcı Konsolu"', `"${currentExec}"`, "--console"], {
-        detached: true,
-        stdio: "ignore",
-        windowsHide: false,
-        shell: true,
-      }).unref();
-    } catch {}
-  }
+  // Windows'ta konsol penceresini öne getir / restore et (ShowWindow SW_RESTORE + SetForegroundWindow)
+  const psCmd = `
+Add-Type -Name Win32 -Namespace Native -MemberDefinition '
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("Kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+'
+$hwnd = [Native.Win32]::GetConsoleWindow()
+if ($hwnd -ne [IntPtr]::Zero) {
+    [Native.Win32]::ShowWindow($hwnd, 9)
+    [Native.Win32]::SetForegroundWindow($hwnd)
+}
+`;
+  runPowerShell(psCmd, 3000).catch(() => {});
 }
 
 // Child process çağrılarında Windows'ta konsol penceresinin açılmaması için windowsHide varsayılan olarak true yapılır
@@ -1892,6 +1879,25 @@ wss.on("connection", (ws) => {
   sendPrinters();
 });
 
+// ─── Windows Özel Protokol Kaydı (likyaprint://) ───────────────────────────
+// Web sitesinde fiş yazdır butonuna basıldığında eğer servis kapalıysa tarayıcının servisi anında açmasını sağlar
+function registerProtocolHandler() {
+  if (os.platform() !== "win32") return;
+  try {
+    const currentExec = process.pkg ? process.execPath : process.argv[1];
+    if (!currentExec || (!currentExec.endsWith(".exe") && !process.pkg)) return;
+    const escaped = currentExec.replace(/"/g, '\\"');
+    const cmds = [
+      `reg add "HKCU\\Software\\Classes\\likyaprint" /ve /t REG_SZ /d "URL:Likya Print Protocol" /f`,
+      `reg add "HKCU\\Software\\Classes\\likyaprint" /v "URL Protocol" /t REG_SZ /d "" /f`,
+      `reg add "HKCU\\Software\\Classes\\likyaprint\\shell\\open\\command" /ve /t REG_SZ /d "\\"${escaped}\\"" /f`,
+    ];
+    for (const c of cmds) {
+      exec(c, { windowsHide: true }, () => {});
+    }
+  } catch {}
+}
+
 // ─── Windows Otomatik Başlangıç (Startup) Ayarı ───────────────────────────
 function setupWindowsAutoStart() {
   if (os.platform() !== "win32") return;
@@ -1900,6 +1906,7 @@ function setupWindowsAutoStart() {
     if (!currentExec || (!currentExec.endsWith(".exe") && !process.pkg)) {
       return;
     }
+    const exeDir = path.dirname(currentExec);
 
     // 1. Kayıt defteri (Registry HKCU Run key)
     const regCmd = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "LikyaPrinterAgent" /t REG_SZ /d "\\"${currentExec}\\"" /f`;
@@ -1911,21 +1918,28 @@ function setupWindowsAutoStart() {
       }
     });
 
-    // 2. Windows Başlangıç Klasörüne VBS kısayolu (%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup)
+    // 2. Windows Başlangıç Klasörüne .bat başlatıcı (%APPDATA%\...\Startup)
     const appData = process.env.APPDATA;
     if (appData) {
       const startupDir = path.join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
       if (fs.existsSync(startupDir)) {
-        const vbsPath = path.join(startupDir, "LikyaPrinterAgent.vbs");
-        const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """${currentExec}""", 1, False\r\n`;
+        const batPath = path.join(startupDir, "LikyaPrinterAgent.bat");
+        const batContent = `@echo off\r\nstart "Likya ERP - Yazici Servisi" /d "${exeDir}" "${currentExec}"\r\n`;
         try {
-          fs.writeFileSync(vbsPath, vbsContent, "utf8");
-          console.log(`[printercekmeApp] Başlangıç klasörü kısayolu oluşturuldu: ${vbsPath}`);
-        } catch (vbsErr) {
-          console.warn("[printercekmeApp] Başlangıç vbs oluşturulamadı:", vbsErr.message);
+          fs.writeFileSync(batPath, batContent, "utf8");
+          console.log(`[printercekmeApp] Başlangıç klasörü başlatıcısı oluşturuldu: ${batPath}`);
+        } catch (batErr) {
+          console.warn("[printercekmeApp] Başlangıç bat oluşturulamadı:", batErr.message);
         }
       }
     }
+
+    // 3. Windows Görev Zamanlayıcısı (Logon anında en yüksek yetkiyle açılması için)
+    const schCmd = `schtasks /create /tn "LikyaPrinterAgent" /tr "\\"${currentExec}\\"" /sc onlogon /f /rl highest`;
+    exec(schCmd, { windowsHide: true }, () => {});
+
+    // 4. Özel Protokol Kaydı (likyaprint://)
+    registerProtocolHandler();
   } catch (e) {
     console.warn("[printercekmeApp] Başlangıç ayarı hatası:", e.message);
   }
@@ -2010,10 +2024,14 @@ $itemStatus.Enabled = $false
 
 $menu.Items.Add("-") | Out-Null
 
-$itemConsole = $menu.Items.Add("🖥️ Konsol Ekranını Aç")
+$itemConsole = $menu.Items.Add("🖥️ Konsol Ekranını Öne Getir")
 $itemConsole.add_Click({
     try {
-        Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -WorkingDirectory "${exeDir.replace(/\\/g, "\\\\")}" -WindowStyle Normal
+        $p = [System.Diagnostics.Process]::GetProcessById($parentPid)
+        if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) {
+            [Native.Win32]::ShowWindow($p.MainWindowHandle, 9)
+            [Native.Win32]::SetForegroundWindow($p.MainWindowHandle)
+        }
     } catch {}
 })
 
@@ -2060,10 +2078,14 @@ $itemExit.add_Click({
 
 $notify.ContextMenuStrip = $menu
 
-# Double click opens console
+# Double click brings console to front
 $notify.add_DoubleClick({
     try {
-        Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -WorkingDirectory "${exeDir.replace(/\\/g, "\\\\")}" -WindowStyle Normal
+        $p = [System.Diagnostics.Process]::GetProcessById($parentPid)
+        if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) {
+            [Native.Win32]::ShowWindow($p.MainWindowHandle, 9)
+            [Native.Win32]::SetForegroundWindow($p.MainWindowHandle)
+        }
     } catch {}
     try {
         [System.Diagnostics.Process]::Start("http://127.0.0.1:${PORT}") | Out-Null
@@ -2135,134 +2157,17 @@ $timer.Start()
   });
 }
 
-function runConsoleMode() {
-  console.log("\n================================================================");
-  console.log(`🖨️  Likya ERP - Yerel Yazıcı Konsolu (v${CURRENT_VERSION})`);
-  console.log(`📡 HTTP Endpoint : http://127.0.0.1:${PORT}/api/printers`);
-  console.log(`🔌 WebSocket     : ws://127.0.0.1:${PORT}`);
-  console.log(`🟢 Servis Durumu : Arka plan servisi aktif ve çalışıyor`);
-  console.log(`💡 Bilgi: Bu konsol penceresini kapatsanız dahi yazıcı servisi`);
-  console.log(`   arka planda kesintisiz çalışmaya devam eder ve fişler yazdırılır.`);
-  console.log("================================================================\n");
-
-  let ws = null;
-  let retryTimer = null;
-  let isClosed = false;
-  let connectAttempts = 0;
-
-  function connect() {
-    if (isClosed) return;
-    connectAttempts++;
-
-    try {
-      ws = new WebSocket(`ws://127.0.0.1:${PORT}`);
-
-      ws.on("open", () => {
-        connectAttempts = 0;
-        console.log("🟢 Yazıcı servisine bağlandı. Yazıcılar ve yazdırma olayları canlı dinleniyor...\n");
-        try {
-          ws.send(JSON.stringify({ action: "console_registered" }));
-          ws.send(JSON.stringify({ action: "get_printers" }));
-        } catch {}
-      });
-
-      ws.on("message", (data) => {
-        try {
-          const text = data ? (Buffer.isBuffer(data) ? data.toString("utf8") : String(data)).trim() : "";
-          if (!text) return;
-
-          if (text.startsWith("{")) {
-            const msg = JSON.parse(text);
-            if (msg.action === "log" && msg.message) {
-              const timeStr = new Date(msg.timestamp || Date.now()).toLocaleTimeString("tr-TR");
-              console.log(`[${timeStr}] ${msg.message}`);
-              return;
-            }
-            if (msg.action === "logs_history" && Array.isArray(msg.logs)) {
-              for (const l of msg.logs) {
-                const timeStr = new Date(l.timestamp || Date.now()).toLocaleTimeString("tr-TR");
-                console.log(`[${timeStr}] ${l.message}`);
-              }
-              return;
-            }
-            if (msg.action === "print_result") {
-              const timeStr = new Date().toLocaleTimeString("tr-TR");
-              if (msg.success) {
-                console.log(`[${timeStr}] ✅ YAZDIRMA BAŞARILI: ${msg.message || msg.printerName || 'Tamamlandı'}`);
-              } else {
-                console.log(`[${timeStr}] ❌ YAZDIRMA HATASI: ${msg.message}`);
-              }
-              return;
-            }
-          } else if (text.startsWith("[")) {
-            const list = JSON.parse(text);
-            if (Array.isArray(list) && list.length > 0) {
-              console.log(`📋 Algılanan Sistem Yazıcıları (${list.length} adet):`);
-              list.forEach((p, idx) => {
-                const def = p.isDefault ? " [VARSAYILAN]" : "";
-                console.log(`   ${idx + 1}. ${p.name || p}${def} (Durum: ${p.status || 'Hazır'})`);
-              });
-              console.log("");
-            }
-          }
-        } catch {}
-      });
-
-      ws.on("close", () => {
-        cleanup();
-        if (!isClosed) {
-          console.log("🟡 Servis bağlantısı sonlandı. Servis bu pencerede doğrudan başlatılıyor...");
-          startServer();
-        }
-      });
-
-      ws.on("error", () => {
-        cleanup();
-        if (!isClosed) {
-          if (connectAttempts >= 2) {
-            console.log("⚠️ Arka plan servisi yanıt vermiyor. Servis bu pencerede doğrudan başlatılıyor...\n");
-            startServer();
-            return;
-          }
-          retryTimer = setTimeout(connect, 1000);
-        }
-      });
-    } catch {
-      if (!isClosed) {
-        if (connectAttempts >= 2) {
-          console.log("⚠️ Arka plan servisi başlatılamadı. Servis doğrudan başlatılıyor...\n");
-          startServer();
-          return;
-        }
-        retryTimer = setTimeout(connect, 1000);
-      }
-    }
-  }
-
-  function cleanup() {
-    if (ws) {
-      try { ws.removeAllListeners(); ws.close(); } catch {}
-      ws = null;
-    }
-  }
-
-  process.on("SIGINT", () => {
-    isClosed = true;
-    cleanup();
-    process.exit(0);
-  });
-
-  connect();
-
-  // Konsol sürecinin açık kalmasını sağla
-  setInterval(() => {}, 30000);
-}
-
 function startServer() {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
-      console.log(`[printercekmeApp] Port ${PORT} kullanımda. Canlı konsol moduna geçiliyor...`);
-      runConsoleMode();
+      console.log(`[printercekmeApp] Port ${PORT} kullanımda. Eski/zombi süreç sonlandırılıp devralınıyor...`);
+      if (os.platform() === "win32") {
+        exec(`taskkill /f /fi "PID ne ${process.pid}" /im PrinterAgent.exe`, { windowsHide: true }, () => {
+          setTimeout(() => {
+            try { server.listen(PORT, HOST); } catch {}
+          }, 800);
+        });
+      }
       return;
     }
     console.error("[printercekmeApp] Sunucu hatası:", err);
@@ -2270,10 +2175,11 @@ function startServer() {
 
   server.listen(PORT, HOST, () => {
     console.log(`================================================================`);
-    console.log(`🖨️  printercekmeApp - Yerel Yazıcı Köprüsü Aktif! (v${CURRENT_VERSION})`);
+    console.log(`🖨️  Likya ERP - Yerel Yazıcı Köprüsü Aktif! (v${CURRENT_VERSION})`);
     console.log(`📡 HTTP Endpoint : http://${HOST}:${PORT}/api/printers`);
     console.log(`🔌 WebSocket     : ws://${HOST}:${PORT}`);
     console.log(`💻 İşletim Sistemi: ${os.platform()} (${os.arch()})`);
+    console.log(`🔄 Otomatik Başlangıç: Aktif (Windows açılışında otomatik başlar)`);
     console.log(`🔄 Otomatik Güncelleme: Aktif (v${CURRENT_VERSION} - likyakuyum.com / likyaerp.com)`);
     console.log(`================================================================`);
     // Başlangıçta yazıcı listesini ve durumlarını arka planda ısıt (cache warm-up)
@@ -2283,7 +2189,8 @@ function startServer() {
         const def = p.isDefault ? " [VARSAYILAN]" : "";
         console.log(`   ${idx + 1}. ${p.name || p}${def} (Durum: ${p.status || 'Hazır'})`);
       });
-      console.log("");
+      console.log("================================================================");
+      console.log("🟢 Servis hazır. Yazdırma istekleri canlı olarak dinleniyor...\n");
     }).catch(() => {});
     // Windows başlangıç ve sistem tepsisi (System Tray) entegrasyonu
     setupWindowsAutoStart();
@@ -2292,41 +2199,14 @@ function startServer() {
 }
 
 function main() {
-  const args = process.argv.slice(2);
-  const isConsole = args.includes("--console");
-
-  if (isConsole) {
-    const req = http.get(`http://127.0.0.1:${PORT}/status`, { timeout: 600 }, (res) => {
-      if (res.statusCode === 200) {
-        runConsoleMode();
-      } else {
-        startServer();
-      }
-    });
-    req.on("error", () => startServer());
-    req.on("timeout", () => { req.destroy(); startServer(); });
-    return;
-  }
-
-  // Normal çalıştırma: Port 9100 boşsa DOĞRUDAN sunucuyu başlat (sıfır gecikme)
-  const req = http.get(`http://127.0.0.1:${PORT}/status`, { timeout: 600 }, (res) => {
-    if (res.statusCode === 200) {
-      console.log(`[printercekmeApp] Servis Port ${PORT} üzerinde arka planda zaten aktif.`);
-      console.log(`[printercekmeApp] Canlı konsol moduna bağlanılıyor...\n`);
-      runConsoleMode();
-    } else {
+  // Eski zombi süreçler varsa temizle ve DOĞRUDAN sunucuyu başlat (sıfır gecikme)
+  if (os.platform() === "win32") {
+    exec(`taskkill /f /fi "PID ne ${process.pid}" /im PrinterAgent.exe`, { windowsHide: true }, () => {
       startServer();
-    }
-  });
-
-  req.on("error", () => {
+    });
+  } else {
     startServer();
-  });
-
-  req.on("timeout", () => {
-    req.destroy();
-    startServer();
-  });
+  }
 }
 
 main();

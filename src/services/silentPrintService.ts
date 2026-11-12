@@ -27,7 +27,23 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.1.5";
+export const TARGET_PRINTER_AGENT_VERSION = "1.1.6";
+
+/**
+ * Windows ortamında kayıtlı likyaprint:// protokolü üzerinden PrinterAgent.exe'yi otomatik uyandırır/başlatır.
+ */
+export function wakePrinterAgentViaProtocol(): void {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  try {
+    const ifr = document.createElement("iframe");
+    ifr.style.display = "none";
+    ifr.src = "likyaprint://start";
+    document.body.appendChild(ifr);
+    setTimeout(() => {
+      try { document.body.removeChild(ifr); } catch {}
+    }, 2000);
+  } catch {}
+}
 
 /**
  * İki semver sürümünü karşılaştırır (örn: "1.0.1" > "1.0.0").
@@ -780,7 +796,18 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
       }
     }
 
-    // 3. Servise ulaşılamadıysa ve tarayıcı yedeğine izin verilmişse:
+    // 3. Servise ulaşılamadıysa, kapalı olma ihtimaline karşı özel Windows protokolüyle (likyaprint://) servisi uyandır ve tekrar dene!
+    wakePrinterAgentViaProtocol();
+    await new Promise((r) => setTimeout(r, 1500));
+
+    try {
+      const retryWs = await printViaWebSocket(options, jobId);
+      if (retryWs.handled) {
+        return retryWs.result || { success: true, message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.` };
+      }
+    } catch {}
+
+    // 4. Servise yine ulaşılamadıysa ve tarayıcı yedeğine izin verilmişse:
     if (options.allowBrowserFallback && html) {
       printViaHiddenIframe(html, title, isPos);
       return {
