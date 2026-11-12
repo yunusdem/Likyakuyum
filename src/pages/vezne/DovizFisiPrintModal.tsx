@@ -277,7 +277,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
       if (res.success) {
         onHide();
       } else {
-        handleBrowserPrint();
+        console.warn("Doğrudan yazdırma uyarısı:", res.message);
         onHide();
       }
     } finally {

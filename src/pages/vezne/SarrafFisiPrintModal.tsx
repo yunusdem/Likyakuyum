@@ -297,8 +297,7 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
       if (res.success) {
         onHide();
       } else {
-        // Yerel ajan başarısız olduysa veya ulaşılamadıysa tarayıcı yazdırmasına yönlendir
-        handleBrowserPrint();
+        console.warn("Doğrudan yazdırma uyarısı:", res.message);
         onHide();
       }
     } finally {
