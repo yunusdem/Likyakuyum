@@ -33,14 +33,14 @@ export const GoldBullionSvg: React.FC<{
   caratText?: string;
   width?: number | string;
   height?: number | string;
-}> = ({ caratText = "995.0", width = 86, height = 64 }) => {
+}> = ({ caratText = "995.0", width = "clamp(54px, min(5.5vw, 8.5vh), 92px)", height = "clamp(40px, min(4.2vw, 6.5vh), 70px)" }) => {
   return (
     <svg
       viewBox="0 0 160 120"
       style={{
         width,
         height,
-        filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.65))",
+        filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.65))",
         flexShrink: 0,
       }}
     >
@@ -145,14 +145,14 @@ export const GoldCoinSvg: React.FC<{
   type?: "ceyrek" | "yarim" | "tam" | "ata" | "resat";
   width?: number | string;
   height?: number | string;
-}> = ({ width = 56, height = 56 }) => {
+}> = ({ width = "clamp(34px, min(3.5vw, 5.5vh), 56px)", height = "clamp(34px, min(3.5vw, 5.5vh), 56px)" }) => {
   return (
     <svg
       viewBox="0 0 120 120"
       style={{
         width,
         height,
-        filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.65))",
+        filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.65))",
         flexShrink: 0,
       }}
     >
@@ -274,14 +274,14 @@ export const GoldCoinSvg: React.FC<{
 export const SilverIngotSvg: React.FC<{
   width?: number | string;
   height?: number | string;
-}> = ({ width = 72, height = 54 }) => {
+}> = ({ width = "clamp(46px, min(4.5vw, 6.8vh), 72px)", height = "clamp(34px, min(3.4vw, 5.2vh), 54px)" }) => {
   return (
     <svg
       viewBox="0 0 140 105"
       style={{
         width,
         height,
-        filter: "drop-shadow(0 5px 12px rgba(0,0,0,0.65))",
+        filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.65))",
         flexShrink: 0,
       }}
     >
@@ -366,8 +366,8 @@ export const SilverIngotSvg: React.FC<{
 // 4. Dalgalanan Bayraklar (Dövizler için Waving Flag)
 export const WavingFlag: React.FC<{ code: string; width?: number | string; height?: number | string }> = ({
   code,
-  width = 56,
-  height = 36,
+  width = "clamp(34px, min(3.5vw, 5.5vh), 56px)",
+  height = "clamp(22px, min(2.3vw, 3.6vh), 36px)",
 }) => {
   const c = (code || "").trim().toUpperCase();
 
@@ -520,7 +520,7 @@ export const WavingFlag: React.FC<{ code: string; width?: number | string; heigh
         height,
         borderRadius: "4px",
         overflow: "hidden",
-        boxShadow: "0 4px 10px rgba(0, 0, 0, 0.6)",
+        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.6)",
         border: "1px solid rgba(255, 255, 255, 0.15)",
         display: "inline-flex",
         flexShrink: 0,
@@ -641,26 +641,25 @@ export const PanoItemVisualRenderer: React.FC<{
   const visual = detectPanoVisual(item);
 
   if (visual.type === "bullion_24") {
-    return <GoldBullionSvg caratText="995.0" width={isMajor ? "clamp(64px, 5.5vw, 92px)" : "clamp(48px, 3.8vw, 68px)"} height={isMajor ? "clamp(48px, 4.2vw, 70px)" : "clamp(36px, 2.9vw, 52px)"} />;
+    return <GoldBullionSvg caratText="995.0" />;
   }
   if (visual.type === "bullion_22") {
-    return <GoldBullionSvg caratText="916.0" width={isMajor ? "clamp(64px, 5.5vw, 92px)" : "clamp(48px, 3.8vw, 68px)"} height={isMajor ? "clamp(48px, 4.2vw, 70px)" : "clamp(36px, 2.9vw, 52px)"} />;
+    return <GoldBullionSvg caratText="916.0" />;
   }
   if (visual.type === "bullion_18") {
-    return <GoldBullionSvg caratText="750.0" width={isMajor ? "clamp(64px, 5.5vw, 92px)" : "clamp(48px, 3.8vw, 68px)"} height={isMajor ? "clamp(48px, 4.2vw, 70px)" : "clamp(36px, 2.9vw, 52px)"} />;
+    return <GoldBullionSvg caratText="750.0" />;
   }
   if (visual.type === "bullion_14") {
-    return <GoldBullionSvg caratText="585.0" width={isMajor ? "clamp(64px, 5.5vw, 92px)" : "clamp(48px, 3.8vw, 68px)"} height={isMajor ? "clamp(48px, 4.2vw, 70px)" : "clamp(36px, 2.9vw, 52px)"} />;
+    return <GoldBullionSvg caratText="585.0" />;
   }
   if (visual.type === "silver") {
-    return <SilverIngotSvg width={isMajor ? "clamp(60px, 5.2vw, 86px)" : "clamp(46px, 3.6vw, 64px)"} height={isMajor ? "clamp(44px, 3.8vw, 64px)" : "clamp(34px, 2.8vw, 48px)"} />;
+    return <SilverIngotSvg />;
   }
   if (visual.type === "currency") {
-    return <WavingFlag code={visual.currencyCode || "USD"} width={isMajor ? "clamp(58px, 5.5vw, 92px)" : "clamp(44px, 3.8vw, 64px)"} height={isMajor ? "clamp(36px, 3.5vw, 58px)" : "clamp(28px, 2.4vw, 40px)"} />;
+    return <WavingFlag code={visual.currencyCode || "USD"} />;
   }
 
-  // Altın sikke türleri (Çeyrek, Yarım, Tam, Ata, Reşat...)
-  return <GoldCoinSvg type={visual.type.replace("coin_", "") as any} width={isMajor ? "clamp(56px, 5vw, 84px)" : "clamp(44px, 3.6vw, 64px)"} height={isMajor ? "clamp(56px, 5vw, 84px)" : "clamp(44px, 3.6vw, 64px)"} />;
+  return <GoldCoinSvg type={visual.type.replace("coin_", "") as any} />;
 };
 
 // ─── Fotoğraftaki Birebir Başlangıç / Demo Verileri ───────────────────────────
@@ -871,23 +870,37 @@ export const PanoPage: React.FC = () => {
 
   return (
     <div
-      className="pano-live-page min-vh-100 d-flex flex-column user-select-none"
+      className="pano-live-page user-select-none"
       onDoubleClick={toggleFullscreen}
       title="Tam ekran yapmak veya çıkmak için çift tıklayabilirsiniz (veya F tuşuna basabilirsiniz)"
       style={{
         backgroundColor: "#0d0f14",
-        backgroundImage: "radial-gradient(ellipse at 50% 20%, #161b26 0%, #0d0f14 80%, #07090c 100%)",
+        backgroundImage: "radial-gradient(ellipse at 50% 15%, #181d28 0%, #0d0f14 75%, #06070a 100%)",
         color: "#ffffff",
-        position: "relative",
-        overflow: "hidden",
+        position: "fixed",
+        inset: 0,
         width: "100vw",
         height: "100vh",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        boxSizing: "border-box",
+        margin: 0,
+        padding: 0,
       }}
     >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700;800&family=Orbitron:wght@600;700;800;900&family=Rajdhani:wght@600;700;800&display=swap');
 
-        /* Fotoğraftaki TV Ekranı Yazı Tipleri */
+        /* Ekranı %100 Dolduracak Sıfır Boşluk Düzeni */
+        html, body, #root {
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+          width: 100vw !important;
+          height: 100vh !important;
+        }
+
         .font-pano-title {
           font-family: 'Rajdhani', 'Chakra Petch', sans-serif;
           font-weight: 800;
@@ -936,12 +949,11 @@ export const PanoPage: React.FC = () => {
           animation: flashRed 1.4s ease-out;
         }
 
-        /* Hover ile hafif parlayan satırlar */
         .pano-row-hover {
           transition: background-color 0.2s ease;
         }
         .pano-row-hover:hover {
-          background-color: rgba(255, 255, 255, 0.03);
+          background-color: rgba(255, 255, 255, 0.035);
         }
 
         /* Kontrol Araç Çubuğu Hover */
@@ -997,16 +1009,17 @@ export const PanoPage: React.FC = () => {
         <Button
           variant="warning"
           size="sm"
-          className="fw-bold"
+          className="fw-bold d-flex align-items-center gap-1.5 px-2.5"
           onClick={toggleFullscreen}
           title="Tam Ekran (F)"
         >
           {isFullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
+          <span className="small">{isFullscreen ? "Küçült" : "Tam Ekran"}</span>
         </Button>
       </div>
 
-      {/* Main TV Screen Container */}
-      <div className="w-100 h-100 d-flex flex-column px-3 px-md-5 py-2 py-md-3 justify-content-between">
+      {/* Main Full-Viewport TV Screen Layout */}
+      <div className="w-100 h-100 d-flex flex-column justify-content-between">
         {loading && !activePano && topRows.length === 0 ? (
           <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1">
             <Spinner animation="border" variant="warning" style={{ width: "3.5rem", height: "3.5rem" }} />
@@ -1021,112 +1034,139 @@ export const PanoPage: React.FC = () => {
             </Button>
           </div>
         ) : (
-          <div className="w-100 h-100 d-flex flex-column justify-content-between">
+          <div className="w-100 h-100 d-flex flex-column">
             {/* =================================================================
                 1. BÖLÜM: ÜST SATIRLAR (24 AYAR & 22 AYAR KÜLÇE ALTIN BÖLÜMÜ)
-                Fotoğraftaki gibi üstte 2 satır tam genişlikte yer alır.
+                Ekran yüksekliğinin yaklaşık %33'ünü kaplar, her satır flex: 1 ile eşit paylaşır.
                ================================================================= */}
-            <div className="w-100 d-flex flex-column gap-2 gap-md-3 pt-2">
-              {topRows.map((rowItem) => {
-                const title = rowItem.gorunecekAd || rowItem.ad || rowItem.kod;
-                const alisStr = formatPanoRate(rowItem.dovizAlis);
-                const satisStr = formatPanoRate(rowItem.dovizSatis);
-                const flash = flashedItems[(rowItem.kod || "").toUpperCase()];
+            {topRows.length > 0 && (
+              <div
+                className="w-100 d-flex flex-column"
+                style={{
+                  height: topRows.length === 1 ? "18vh" : "33vh",
+                  flexShrink: 0,
+                  padding: "clamp(6px, 1.2vh, 16px) clamp(16px, 2.5vw, 44px) 0",
+                  boxSizing: "border-box",
+                }}
+              >
+                {topRows.map((rowItem) => {
+                  const title = rowItem.gorunecekAd || rowItem.ad || rowItem.kod;
+                  const alisStr = formatPanoRate(rowItem.dovizAlis);
+                  const satisStr = formatPanoRate(rowItem.dovizSatis);
+                  const flash = flashedItems[(rowItem.kod || "").toUpperCase()];
 
-                return (
-                  <div
-                    key={`top-${rowItem.paraId}-${rowItem.kod}`}
-                    className={`d-flex align-items-center w-100 px-3 px-md-4 py-2 pano-row-hover rounded-3 ${
-                      flash ? (flash === "up" ? "flash-up" : "flash-down") : ""
-                    }`}
-                    style={{
-                      borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                      background: "rgba(255, 255, 255, 0.015)",
-                    }}
-                  >
-                    {/* Sol: Görsel (Külçe Altın) + Başlık (24 AYAR / 22 AYAR) */}
-                    <div className="d-flex align-items-center gap-3 gap-md-4" style={{ width: "35%", minWidth: "220px" }}>
-                      <PanoItemVisualRenderer item={rowItem} isMajor={true} />
-                      <div
-                        className="font-pano-title text-white text-uppercase text-nowrap"
-                        style={{
-                          fontSize: "clamp(1.9rem, min(3.8vw, 6vh), 4.2rem)",
-                          letterSpacing: "3px",
-                          lineHeight: 1,
-                        }}
-                      >
-                        {title}
-                      </div>
-                    </div>
-
-                    {/* Orta: ALIŞ - WE BUY Bölümü */}
+                  return (
                     <div
-                      className="d-flex flex-column align-items-center justify-content-center"
-                      style={{ width: "32.5%", textAlign: "center" }}
+                      key={`top-${rowItem.paraId}-${rowItem.kod}`}
+                      className={`d-flex align-items-center w-100 px-3 px-md-4 pano-row-hover rounded-3 ${
+                        flash ? (flash === "up" ? "flash-up" : "flash-down") : ""
+                      }`}
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                        background: "rgba(255, 255, 255, 0.015)",
+                        marginBottom: "clamp(3px, 0.6vh, 8px)",
+                      }}
                     >
-                      <div
-                        className="font-pano-header text-uppercase text-nowrap mb-1"
-                        style={{
-                          color: "rgba(255, 255, 255, 0.65)",
-                          fontSize: "clamp(0.8rem, min(1.2vw, 2.2vh), 1.4rem)",
-                          letterSpacing: "2px",
-                        }}
-                      >
-                        ALIŞ - WE BUY
+                      {/* Sol: Görsel (Külçe Altın) + Başlık (24 AYAR / 22 AYAR) */}
+                      <div className="d-flex align-items-center gap-3 gap-md-4" style={{ width: "35%", minWidth: "220px" }}>
+                        <PanoItemVisualRenderer item={rowItem} isMajor={true} />
+                        <div
+                          className="font-pano-title text-white text-uppercase text-nowrap"
+                          style={{
+                            fontSize: "clamp(1.5rem, min(3.2vw, 4.8vh), 3.8rem)",
+                            letterSpacing: "3px",
+                            lineHeight: 1,
+                          }}
+                        >
+                          {title}
+                        </div>
                       </div>
-                      <div
-                        className="font-pano-rate rate-color-buy text-nowrap"
-                        style={{
-                          fontSize: "clamp(2.5rem, min(4.8vw, 7.5vh), 5.6rem)",
-                          letterSpacing: "2px",
-                        }}
-                      >
-                        {alisStr}
-                      </div>
-                    </div>
 
-                    {/* Sağ: SATIŞ - WE SELL Bölümü */}
-                    <div
-                      className="d-flex flex-column align-items-center justify-content-center"
-                      style={{ width: "32.5%", textAlign: "center" }}
-                    >
+                      {/* Orta: ALIŞ - WE BUY Bölümü */}
                       <div
-                        className="font-pano-header text-uppercase text-nowrap mb-1"
-                        style={{
-                          color: "rgba(255, 255, 255, 0.65)",
-                          fontSize: "clamp(0.8rem, min(1.2vw, 2.2vh), 1.4rem)",
-                          letterSpacing: "2px",
-                        }}
+                        className="d-flex flex-column align-items-center justify-content-center"
+                        style={{ width: "32.5%", textAlign: "center" }}
                       >
-                        SATIŞ - WE SELL
+                        <div
+                          className="font-pano-header text-uppercase text-nowrap mb-0.5"
+                          style={{
+                            color: "rgba(255, 255, 255, 0.65)",
+                            fontSize: "clamp(0.68rem, min(0.95vw, 1.8vh), 1.2rem)",
+                            letterSpacing: "2px",
+                          }}
+                        >
+                          ALIŞ - WE BUY
+                        </div>
+                        <div
+                          className="font-pano-rate rate-color-buy text-nowrap"
+                          style={{
+                            fontSize: "clamp(1.9rem, min(4.2vw, 6.2vh), 4.6rem)",
+                            letterSpacing: "2px",
+                          }}
+                        >
+                          {alisStr}
+                        </div>
                       </div>
+
+                      {/* Sağ: SATIŞ - WE SELL Bölümü */}
                       <div
-                        className="font-pano-rate rate-color-sell text-nowrap"
-                        style={{
-                          fontSize: "clamp(2.5rem, min(4.8vw, 7.5vh), 5.6rem)",
-                          letterSpacing: "2px",
-                        }}
+                        className="d-flex flex-column align-items-center justify-content-center"
+                        style={{ width: "32.5%", textAlign: "center" }}
                       >
-                        {satisStr}
+                        <div
+                          className="font-pano-header text-uppercase text-nowrap mb-0.5"
+                          style={{
+                            color: "rgba(255, 255, 255, 0.65)",
+                            fontSize: "clamp(0.68rem, min(0.95vw, 1.8vh), 1.2rem)",
+                            letterSpacing: "2px",
+                          }}
+                        >
+                          SATIŞ - WE SELL
+                        </div>
+                        <div
+                          className="font-pano-rate rate-color-sell text-nowrap"
+                          style={{
+                            fontSize: "clamp(1.9rem, min(4.2vw, 6.2vh), 4.6rem)",
+                            letterSpacing: "2px",
+                          }}
+                        >
+                          {satisStr}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* =================================================================
                 2. BÖLÜM: ALT İKİ SÜTUNLUK IZGARA
+                Ekranın kalan %67'sini kaplar, her satır flex: 1 ile eşit paylaştırılır.
                 Sol Sütun (Eski Çeyrek, Yarım, Tam, Ata)
                 Sağ Sütun (Yeni Çeyrek, Yarım, Tam, Gümüş)
                ================================================================= */}
-            <div className="w-100 d-flex flex-grow-1 pt-3 pb-2 gap-4 gap-xl-5">
+            <div
+              className="w-100 d-flex flex-grow-1"
+              style={{
+                height: topRows.length > 0 ? (topRows.length === 1 ? "82vh" : "67vh") : "100vh",
+                minHeight: 0,
+                padding: "clamp(4px, 1vh, 12px) clamp(16px, 2.5vw, 44px) clamp(8px, 1.5vh, 18px)",
+                gap: "clamp(16px, 2.5vw, 48px)",
+                boxSizing: "border-box",
+              }}
+            >
               {/* --- SOL SÜTUN --- */}
-              <div className="d-flex flex-column flex-grow-1" style={{ width: "50%", minWidth: 0 }}>
+              <div className="d-flex flex-column h-100" style={{ width: "50%", minWidth: 0 }}>
                 {/* Sütun Başlıkları: ALIŞ - WE BUY & SATIŞ - WE SELL */}
                 <div
-                  className="d-flex align-items-center pb-2 mb-2"
-                  style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.12)" }}
+                  className="d-flex align-items-center pb-1"
+                  style={{
+                    flex: "0 0 auto",
+                    height: "clamp(22px, 3.6vh, 36px)",
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
+                  }}
                 >
                   <div style={{ width: "42%" }} />
                   <div
@@ -1134,7 +1174,7 @@ export const PanoPage: React.FC = () => {
                     style={{
                       width: "29%",
                       color: "rgba(255, 255, 255, 0.65)",
-                      fontSize: "clamp(0.72rem, min(1.05vw, 2vh), 1.25rem)",
+                      fontSize: "clamp(0.65rem, min(0.95vw, 1.7vh), 1.15rem)",
                       letterSpacing: "1.5px",
                     }}
                   >
@@ -1145,7 +1185,7 @@ export const PanoPage: React.FC = () => {
                     style={{
                       width: "29%",
                       color: "rgba(255, 255, 255, 0.65)",
-                      fontSize: "clamp(0.72rem, min(1.05vw, 2vh), 1.25rem)",
+                      fontSize: "clamp(0.65rem, min(0.95vw, 1.7vh), 1.15rem)",
                       letterSpacing: "1.5px",
                     }}
                   >
@@ -1153,8 +1193,8 @@ export const PanoPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Sol Sütun Satırları */}
-                <div className="d-flex flex-column flex-grow-1 justify-content-around">
+                {/* Sol Sütun Satırları (Her satır flex: 1 ile eşit yükseklik alır) */}
+                <div className="d-flex flex-column flex-grow-1" style={{ minHeight: 0 }}>
                   {leftColumnItems.map((item, idx) => {
                     const title = item.gorunecekAd || item.ad || item.kod;
                     const alisStr = formatPanoRate(item.dovizAlis);
@@ -1164,9 +1204,14 @@ export const PanoPage: React.FC = () => {
                     return (
                       <div
                         key={`left-${item.paraId}-${idx}`}
-                        className={`d-flex align-items-center py-2 px-2 pano-row-hover rounded-2 ${
+                        className={`d-flex align-items-center px-2 pano-row-hover rounded-2 ${
                           flash ? (flash === "up" ? "flash-up" : "flash-down") : ""
                         }`}
+                        style={{
+                          flex: 1,
+                          minHeight: 0,
+                          borderBottom: idx < leftColumnItems.length - 1 ? "1px solid rgba(255, 255, 255, 0.05)" : "none",
+                        }}
                       >
                         {/* Sol: Sikke/Görsel + Ürün İsmi */}
                         <div
@@ -1177,7 +1222,7 @@ export const PanoPage: React.FC = () => {
                           <div
                             className="font-pano-title text-white text-uppercase text-nowrap"
                             style={{
-                              fontSize: "clamp(0.95rem, min(1.65vw, 3.2vh), 2.1rem)",
+                              fontSize: "clamp(0.85rem, min(1.45vw, 2.5vh), 1.85rem)",
                               letterSpacing: "1px",
                               lineHeight: 1.1,
                             }}
@@ -1191,7 +1236,7 @@ export const PanoPage: React.FC = () => {
                           className="font-pano-rate rate-color-buy text-center text-nowrap"
                           style={{
                             width: "29%",
-                            fontSize: "clamp(1.5rem, min(2.8vw, 4.8vh), 3.6rem)",
+                            fontSize: "clamp(1.2rem, min(2.4vw, 4.0vh), 3.0rem)",
                             letterSpacing: "1px",
                           }}
                         >
@@ -1203,7 +1248,7 @@ export const PanoPage: React.FC = () => {
                           className="font-pano-rate rate-color-sell text-center text-nowrap"
                           style={{
                             width: "29%",
-                            fontSize: "clamp(1.5rem, min(2.8vw, 4.8vh), 3.6rem)",
+                            fontSize: "clamp(1.2rem, min(2.4vw, 4.0vh), 3.0rem)",
                             letterSpacing: "1px",
                           }}
                         >
@@ -1219,16 +1264,21 @@ export const PanoPage: React.FC = () => {
               <div
                 style={{
                   width: "1px",
-                  background: "linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.15) 20%, rgba(255, 255, 255, 0.15) 80%, transparent)",
+                  height: "100%",
+                  background: "linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.15) 15%, rgba(255, 255, 255, 0.15) 85%, transparent)",
                 }}
               />
 
               {/* --- SAĞ SÜTUN --- */}
-              <div className="d-flex flex-column flex-grow-1" style={{ width: "50%", minWidth: 0 }}>
+              <div className="d-flex flex-column h-100" style={{ width: "50%", minWidth: 0 }}>
                 {/* Sütun Başlıkları: ALIŞ - WE BUY & SATIŞ - WE SELL */}
                 <div
-                  className="d-flex align-items-center pb-2 mb-2"
-                  style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.12)" }}
+                  className="d-flex align-items-center pb-1"
+                  style={{
+                    flex: "0 0 auto",
+                    height: "clamp(22px, 3.6vh, 36px)",
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
+                  }}
                 >
                   <div style={{ width: "42%" }} />
                   <div
@@ -1236,7 +1286,7 @@ export const PanoPage: React.FC = () => {
                     style={{
                       width: "29%",
                       color: "rgba(255, 255, 255, 0.65)",
-                      fontSize: "clamp(0.72rem, min(1.05vw, 2vh), 1.25rem)",
+                      fontSize: "clamp(0.65rem, min(0.95vw, 1.7vh), 1.15rem)",
                       letterSpacing: "1.5px",
                     }}
                   >
@@ -1247,7 +1297,7 @@ export const PanoPage: React.FC = () => {
                     style={{
                       width: "29%",
                       color: "rgba(255, 255, 255, 0.65)",
-                      fontSize: "clamp(0.72rem, min(1.05vw, 2vh), 1.25rem)",
+                      fontSize: "clamp(0.65rem, min(0.95vw, 1.7vh), 1.15rem)",
                       letterSpacing: "1.5px",
                     }}
                   >
@@ -1255,8 +1305,8 @@ export const PanoPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Sağ Sütun Satırları */}
-                <div className="d-flex flex-column flex-grow-1 justify-content-around">
+                {/* Sağ Sütun Satırları (Her satır flex: 1 ile eşit yükseklik alır) */}
+                <div className="d-flex flex-column flex-grow-1" style={{ minHeight: 0 }}>
                   {rightColumnItems.map((item, idx) => {
                     const title = item.gorunecekAd || item.ad || item.kod;
                     const alisStr = formatPanoRate(item.dovizAlis);
@@ -1266,9 +1316,14 @@ export const PanoPage: React.FC = () => {
                     return (
                       <div
                         key={`right-${item.paraId}-${idx}`}
-                        className={`d-flex align-items-center py-2 px-2 pano-row-hover rounded-2 ${
+                        className={`d-flex align-items-center px-2 pano-row-hover rounded-2 ${
                           flash ? (flash === "up" ? "flash-up" : "flash-down") : ""
                         }`}
+                        style={{
+                          flex: 1,
+                          minHeight: 0,
+                          borderBottom: idx < rightColumnItems.length - 1 ? "1px solid rgba(255, 255, 255, 0.05)" : "none",
+                        }}
                       >
                         {/* Sol: Sikke/Görsel + Ürün İsmi */}
                         <div
@@ -1279,7 +1334,7 @@ export const PanoPage: React.FC = () => {
                           <div
                             className="font-pano-title text-white text-uppercase text-nowrap"
                             style={{
-                              fontSize: "clamp(0.95rem, min(1.65vw, 3.2vh), 2.1rem)",
+                              fontSize: "clamp(0.85rem, min(1.45vw, 2.5vh), 1.85rem)",
                               letterSpacing: "1px",
                               lineHeight: 1.1,
                             }}
@@ -1293,7 +1348,7 @@ export const PanoPage: React.FC = () => {
                           className="font-pano-rate rate-color-buy text-center text-nowrap"
                           style={{
                             width: "29%",
-                            fontSize: "clamp(1.5rem, min(2.8vw, 4.8vh), 3.6rem)",
+                            fontSize: "clamp(1.2rem, min(2.4vw, 4.0vh), 3.0rem)",
                             letterSpacing: "1px",
                           }}
                         >
@@ -1305,7 +1360,7 @@ export const PanoPage: React.FC = () => {
                           className="font-pano-rate rate-color-sell text-center text-nowrap"
                           style={{
                             width: "29%",
-                            fontSize: "clamp(1.5rem, min(2.8vw, 4.8vh), 3.6rem)",
+                            fontSize: "clamp(1.2rem, min(2.4vw, 4.0vh), 3.0rem)",
                             letterSpacing: "1px",
                           }}
                         >
