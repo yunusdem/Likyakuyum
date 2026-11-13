@@ -79,7 +79,7 @@ import { getUrunTipiInfo } from "./SarrafFisiPage";
 import { triggerSilentPrint, checkAndAutoUpdatePrinterAgent } from "../../services/silentPrintService";
 import { dovizFisHtml, dovizFisleriHtml, incrementDocNo } from "../../utils/belgeSablon/fisCikti";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
-import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar } from "../../utils/numericInput";
+import { onlyDecimal, blockNonNumericKeys, parseDecimal, parseKur, formatMiktar, formatTutar, formatTutarInput } from "../../utils/numericInput";
 import { useEBankaFisKesimi } from "../ebanka/useEBankaFisKesimi";
 import { ebelgeService } from "../../services/ebelgeService";
 import { gibService } from "../../services/gibService";
@@ -1560,7 +1560,7 @@ export const DovizFisiPage: React.FC = () => {
             ettn: a.ettn || "",
           }));
 
-          const totalArbTl = fis.arbitrajSatirlar.reduce((acc: number, r: any) => acc + (Number(r.tutar) || 0), 0);
+          const totalArbTl = fis.arbitrajSatirlar.reduce((acc: number, r: any) => acc + (parseDecimal(r.tutar) || 0), 0);
 
           const loadedArbitrajApply: ArbitrajApplyResult = {
             toplamTl: totalArbTl,
@@ -1925,7 +1925,7 @@ export const DovizFisiPage: React.FC = () => {
               bmv: parsedBmv,
               kmvOrani: rawKmvOrani != null && Number(rawKmvOrani) > 0 ? String(rawKmvOrani) : "",
               kmv: parsedKmv,
-              tutar: s.tutar != null ? Number(s.tutar).toFixed(tlKurusSayisi) : "",
+              tutar: s.tutar != null && parseDecimal(s.tutar) > 0 ? formatTutar(s.tutar, tlKurusSayisi) : "",
               seriNo: s.seriNo || "",
               belgeNo: s.belgeNo || "",
               ettn: s.ettn || "",
@@ -2124,7 +2124,7 @@ export const DovizFisiPage: React.FC = () => {
               const newRate = resolveCurrencyRate(paraItem, tip, kurTuru);
               if (newRate > 0) {
                 const miktarNum = parseMiktar(row.miktar);
-                const newTutar = miktarNum > 0 ? parseFloat((miktarNum * newRate).toFixed(2)) : row.tutar;
+                const newTutar = miktarNum > 0 ? formatTutar(parseFloat((miktarNum * newRate).toFixed(2)), tlKurusSayisi) : row.tutar;
                 return {
                   ...row,
                   kur: newRate,
@@ -2160,7 +2160,7 @@ export const DovizFisiPage: React.FC = () => {
     const hasMiktar = Boolean(row.miktar !== "" && row.miktar !== null && row.miktar !== undefined && parseMiktar(row.miktar) > 0);
     const hasAdet = Boolean(row.adet !== "" && row.adet !== null && row.adet !== undefined && parseMiktar(row.adet) > 0);
     const hasKur = Boolean(row.kur !== "" && row.kur !== null && row.kur !== undefined && parseKur(row.kur) > 0);
-    const hasTutar = Boolean(row.tutar !== "" && row.tutar !== null && row.tutar !== undefined && Number(row.tutar) > 0);
+    const hasTutar = Boolean(row.tutar !== "" && row.tutar !== null && row.tutar !== undefined && parseDecimal(row.tutar) > 0);
     return !hasCode && !hasMiktar && !hasAdet && !hasKur && !hasTutar;
   }, []);
 
@@ -2229,7 +2229,7 @@ export const DovizFisiPage: React.FC = () => {
       let bmvVal = "";
       let kmvVal = "";
       let komVal = "";
-      let tutarVal: number | "" = "";
+      let tutarVal: string = "";
       let kmvOraniVal = params.kmvOrani !== undefined && params.kmvOrani !== null ? String(params.kmvOrani) : "";
 
       const bmvRate = parseDecimal(params.bmvOrani || "0");
@@ -2248,13 +2248,15 @@ export const DovizFisiPage: React.FC = () => {
       // Eğer oran tam sayı olarak 2 girilmişse (Binde 2), 2 / 1000 = 0.002 olarak değerlendirilir.
       const effectiveKmvFactor = kmvRate >= 1 && kmvRate <= 10 ? (kmvRate / 1000) : (kmvRate / 100);
 
+      const formattedTutar = brutTutar > 0 ? formatTutar(brutTutar, tlKurusSayisi) : "";
+
       if (kmvMode === 1) {
         // 1 - Uygulanmasın
-        tutarVal = brutTutar > 0 ? brutTutar : "";
+        tutarVal = formattedTutar;
         kmvVal = "";
       } else if (kmvMode === 2) {
         // 2 - Kura Dahil: Tutar = Miktar * Kur sabit kalır; KMV hücresinde bilgi amaçlı gösterilir (Masraf kutusuna eklenmez)
-        tutarVal = brutTutar > 0 ? brutTutar : "";
+        tutarVal = formattedTutar;
         if (kmvRate > 0 && brutTutar > 0) {
           const calculatedKmv = parseFloat((brutTutar * effectiveKmvFactor).toFixed(2));
           kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(2) : "";
@@ -2263,7 +2265,7 @@ export const DovizFisiPage: React.FC = () => {
         }
       } else {
         // 3 - Kurdan Hariç: Tutar = Miktar * Kur; KMV Tutarı = Tutar * KMV_Orani / 100
-        tutarVal = brutTutar > 0 ? brutTutar : "";
+        tutarVal = formattedTutar;
         if (kmvRate > 0 && brutTutar > 0) {
           const calculatedKmv = parseFloat((brutTutar * effectiveKmvFactor).toFixed(2));
           kmvVal = calculatedKmv > 0 ? calculatedKmv.toFixed(2) : "";
@@ -2281,7 +2283,7 @@ export const DovizFisiPage: React.FC = () => {
         komisyon: komVal,
       };
     },
-    [companyDefinitions, tip]
+    [companyDefinitions, tip, tlKurusSayisi]
   );
 
   const handleAddRow = () => {
@@ -4198,7 +4200,7 @@ export const DovizFisiPage: React.FC = () => {
           if (val !== "") {
             const num = parseDecimal(val);
             if (!isNaN(num) && num > 0) {
-              handleLineFieldChange(row.id, "tutar", num.toFixed(2));
+              handleLineFieldChange(row.id, "tutar", formatTutar(num, tlKurusSayisi));
             }
           }
         }
@@ -4309,7 +4311,7 @@ export const DovizFisiPage: React.FC = () => {
           if (val !== "") {
             const num = parseDecimal(val);
             if (!isNaN(num) && num > 0) {
-              handleLineFieldChange(row.id, "tutar", num.toFixed(2));
+              handleLineFieldChange(row.id, "tutar", formatTutar(num, tlKurusSayisi));
             }
           }
         }
@@ -8552,14 +8554,30 @@ export const DovizFisiPage: React.FC = () => {
                               backgroundColor: (isLocked || !kurAcik) ? "#e9ecef" : "transparent",
                               cursor: (isLocked || !kurAcik) ? "not-allowed" : undefined,
                             }}
-                            value={row.tutar !== "" && row.tutar !== undefined && row.tutar !== null ? row.tutar : ""}
+                            value={
+                              row.tutar !== "" && row.tutar !== undefined && row.tutar !== null
+                                ? (typeof row.tutar === "number" ? formatTutar(row.tutar, tlKurusSayisi) : row.tutar)
+                                : ""
+                            }
                             onFocus={() => {
                               setActiveRowIndex(idx);
                               cleanupEmptyRows(idx);
                             }}
                             onChange={(e) => {
                               if (kurAcik) {
-                                handleLineFieldChange(row.id, "tutar", e.target.value);
+                                const input = e.target;
+                                let rawVal = input.value;
+                                if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
+                                  rawVal = rawVal.replace(/^0+/, "") || "0";
+                                }
+                                const isAtEnd = (input.selectionStart ?? rawVal.length) >= rawVal.length - 1;
+                                const formatted = formatTutarInput(rawVal);
+                                handleLineFieldChange(row.id, "tutar", formatted);
+                                if (isAtEnd) {
+                                  requestAnimationFrame(() => {
+                                    input.setSelectionRange(formatted.length, formatted.length);
+                                  });
+                                }
                               }
                             }}
                             onBlur={(e) => {
@@ -8568,7 +8586,7 @@ export const DovizFisiPage: React.FC = () => {
                               if (val !== "") {
                                 const num = parseDecimal(val);
                                 if (!isNaN(num) && num > 0) {
-                                  handleLineFieldChange(row.id, "tutar", num.toFixed(2));
+                                  handleLineFieldChange(row.id, "tutar", formatTutar(num, tlKurusSayisi));
                                 }
                               }
                             }}

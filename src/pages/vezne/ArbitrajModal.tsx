@@ -20,6 +20,7 @@ import { TodvzTanimDto } from "../../services/companyService";
 import { DovizFisService, DovizFisListItem } from "../../services/dovizFisService";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import { KimlikDegistirmeNedeniBelgeSection } from "../../components/cari/KimlikDegistirmeNedeniBelgeSection";
+import { parseDecimal, formatTutar, formatTutarInput } from "../../utils/numericInput";
 
 export interface ArbitrajCurrencyItem {
   id: number;
@@ -365,10 +366,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
   // Parse helper
   const parseNum = useCallback((val: number | string | undefined): number => {
-    if (val === undefined || val === null || val === "") return 0;
-    const clean = String(val).replace(/\s/g, "").replace(/,/g, ".");
-    const num = parseFloat(clean);
-    return isNaN(num) ? 0 : num;
+    return parseDecimal(val);
   }, []);
 
   // Yeni boş satır üretici helper - seçili istatistiğin Kom %, BMV %, KMV % oranlarını koşulsuz uygular
@@ -616,7 +614,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
 
       return {
         brutTutar,
-        tutar: brutTutar > 0 ? brutTutar.toFixed(tlKurusSayisi) : "0.00",
+        tutar: brutTutar > 0 ? formatTutar(brutTutar, tlKurusSayisi) : "",
         bmvOrani: bmvRate > 0 ? bmvRate.toString() : "",
         bmv: bmvVal,
         kmvOrani: kmvRate > 0 ? kmvRate.toString() : "",
@@ -2311,8 +2309,21 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                             autoComplete="off"
                             className="text-end font-monospace fw-bold px-1.5"
                             style={{ fontSize: "12px", height: "26px", color: isSatis ? "#dc2626" : "#16a34a" }}
-                            value={l.tutar}
-                            onChange={(e) => handleUpdateLine(l.id, "tutar", e.target.value)}
+                            value={
+                              l.tutar !== "" && l.tutar !== undefined && l.tutar !== null
+                                ? (typeof l.tutar === "number" ? formatTutar(l.tutar, tlKurusSayisi) : l.tutar)
+                                : ""
+                            }
+                            onChange={(e) => handleUpdateLine(l.id, "tutar", formatTutarInput(e.target.value))}
+                            onBlur={(e) => {
+                              const val = e.target.value.trim();
+                              if (val !== "") {
+                                const num = parseDecimal(val);
+                                if (!isNaN(num) && num > 0) {
+                                  handleUpdateLine(l.id, "tutar", formatTutar(num, tlKurusSayisi));
+                                }
+                              }
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && (e.ctrlKey || e.altKey)) {
                                 e.preventDefault();
