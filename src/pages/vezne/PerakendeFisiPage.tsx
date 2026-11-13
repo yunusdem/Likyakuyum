@@ -109,7 +109,7 @@ import { StatisticService, StatisticItem } from "../../services/statisticService
 import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { formatMiktar, parseDecimal, onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
+import { formatMiktar, parseDecimal, onlyDecimal, onlyDigits, blockNonNumericKeys, formatTutar, formatTutarInput } from "../../utils/numericInput";
 import { apiClient } from "../../services/apiClient";
 import { FastLookupCache } from "../../services/fastLookupCache";
 import { ParaItem } from "./DovizFisiPage";
@@ -8751,8 +8751,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
                       {/* Satır Toplamı */}
                       <td className="text-end font-monospace fw-bold text-dark px-2" style={{ fontSize: "12px" }}>
-                        {typeof item.toplamTutar === "number" && item.toplamTutar > 0
-                          ? `${item.toplamTutar.toLocaleString("tr-TR", {
+                        {parseDecimal(item.toplamTutar || item.tutar) > 0
+                          ? `${parseDecimal(item.toplamTutar || item.tutar).toLocaleString("tr-TR", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })} ₺`
@@ -9619,7 +9619,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                                 ref={(el) => { odemeInputRefs.current[`${oRow.id}_tutar`] = el; }}
                                 size="sm"
                                 className="text-end font-monospace fw-bold"
-                                value={oRow.tutar !== "" && !isNaN(Number(oRow.tutar)) ? Number(oRow.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : oRow.tutar}
+                                value={
+                                  oRow.tutar !== "" && parseDecimal(oRow.tutar) > 0
+                                    ? parseDecimal(oRow.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                    : (oRow.tutar || "")
+                                }
                                 readOnly
                                 tabIndex={-1}
                                 onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "kur", oRow.id)}

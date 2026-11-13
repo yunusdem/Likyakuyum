@@ -54,7 +54,7 @@ import { adYazilabilir, gibAdi, uzakSorguYapilir } from "./musteriGibAd";
 import { GibFisDugmesi } from "../../components/common/GibSorguButonu";
 import { extractPlainTextFromFis, fisiYazdir } from "../../utils/belgeSablon/yazdir";
 import { checkAndAutoUpdatePrinterAgent } from "../../services/silentPrintService";
-import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
+import { onlyDecimal, onlyDigits, blockNonNumericKeys, formatMiktar, parseDecimal, formatTutar, formatTutarInput } from "../../utils/numericInput";
 import { ebelgeService } from "../../services/ebelgeService";
 import { triggerAdjacentBinoculars } from "../../utils/shortcutUtils";
 import { FastLookupCache } from "../../services/fastLookupCache";
@@ -579,7 +579,7 @@ const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyo
     } else {
       const effectiveKur = parseDecimal(kur);
       if (effectiveKur > 0 && base > 0) {
-        tutar = parseFloat((base * effectiveKur).toFixed(2));
+        tutar = formatTutar(parseFloat((base * effectiveKur).toFixed(2)), 2);
       } else {
         tutar = "";
       }
@@ -836,7 +836,7 @@ const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyo
 
     const tlTutVal = parseDecimal(tlTutar);
     if (tlTutVal > 0 || iscTopVal > 0) {
-      tutar = parseFloat((tlTutVal + iscTopVal).toFixed(2));
+      tutar = formatTutar(parseFloat((tlTutVal + iscTopVal).toFixed(2)), 2);
     } else {
       tutar = "";
     }
@@ -2582,14 +2582,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             iscilikKdvOrani: s.iscilikKdvOrani != null ? s.iscilikKdvOrani : (s.kdvOrani != null ? s.kdvOrani : ""),
             iscilikKdvTutari: s.iscilikKdvTutari != null ? s.iscilikKdvTutari : (s.kdvTutari != null ? s.kdvTutari : ""),
             kur: rowKur,
-            tutar: s.tutar != null ? s.tutar : "",
+            tutar: s.tutar != null && parseDecimal(s.tutar) > 0 ? formatTutar(s.tutar, 2) : "",
             urunTipi: effTipi,
             karat: s.karat || "",
             aciklama: s.aciklama || "",
           };
           const hesap = recomputeRow(rowObj, registeredHasKuru, undefined, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
           if (s.tutar != null && s.tutar !== "" && parseDecimal(s.tutar) > 0) {
-            hesap.tutar = parseDecimal(s.tutar);
+            hesap.tutar = formatTutar(s.tutar, 2);
           }
           // e-Banka'dan "Düzenle" ile ya da listeden açılan e-Banka fişi: satır kayıttaki toplamla açılır, işçilik yazılınca gram
           // dengelenir (M14, M30, M32). e-Banka fişinde işçilik KDV'si istatistikten bağımsız açık (M19).
@@ -2735,12 +2735,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             refMilyem: oMilyem,
             hasGram: o.hasGram != null ? o.hasGram : "",
             kur: effectiveOdemeKur,
-            tutar: o.tutar != null ? o.tutar : "",
+            tutar: o.tutar != null && parseDecimal(o.tutar) > 0 ? formatTutar(o.tutar, 2) : "",
             urunTipi: effTipi,
           };
           const computedOdeme = recomputeOdemeRow(oRow, (isGold || isGumus) ? registeredHasKuru : 0, undefined, userDovizZiynetGirisSekli);
           if (oTutNum > 0) {
-            computedOdeme.tutar = oTutNum;
+            computedOdeme.tutar = formatTutar(oTutNum, 2);
           }
           return computedOdeme;
         });
@@ -5426,7 +5426,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
       if (field === "tutar") {
         const n = parseDecimal(val);
-        val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
+        val = n > 0 ? formatTutar(n, 2) : (val === "" || n === 0 ? "" : val);
       }
       if (field === "milyem") {
         const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
@@ -5481,6 +5481,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     let sanitizedValue = value;
     if (field === "adet" || field === "miktar") {
       sanitizedValue = formatMiktar(value);
+    } else if (field === "tutar") {
+      sanitizedValue = formatTutarInput(value);
     } else if (
       field === "milyem" ||
       field === "hasGram" ||
@@ -5491,7 +5493,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       field === "iscilikKdvTutari" ||
       field === "iscilikToplam" ||
       field === "kur" ||
-      field === "tutar" ||
       field === "karat"
     ) {
       sanitizedValue = onlyDecimal(String(value));
@@ -5637,7 +5638,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
       if (field === "tutar") {
         const n = parseDecimal(val);
-        val = n > 0 ? parseFloat(n.toFixed(2)) : (val === "" || n === 0 ? "" : val);
+        val = n > 0 ? formatTutar(n, 2) : (val === "" || n === 0 ? "" : val);
       }
       const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
       const curOdemeDefaultKur = effTipi === 2 ? (Number(gumusHasKuru) || 0) : (Number(altinHasKuru) || 0);
@@ -5660,11 +5661,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     let sanitizedValue = value;
     if (field === "adet" || field === "miktar") {
       sanitizedValue = formatMiktar(value);
+    } else if (field === "tutar") {
+      sanitizedValue = formatTutarInput(value);
     } else if (
       field === "milyem" ||
       field === "hasGram" ||
-      field === "kur" ||
-      field === "tutar"
+      field === "kur"
     ) {
       sanitizedValue = onlyDecimal(String(value));
     }
@@ -9617,7 +9619,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             tabIndex={-1}
                             size="sm"
                             className="text-end font-monospace text-muted"
-                            value={row.tlTutar !== "" && !isNaN(Number(row.tlTutar)) ? Number(row.tlTutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (row.tlTutar || "")}
+                            value={row.tlTutar !== "" && parseDecimal(row.tlTutar) > 0 ? parseDecimal(row.tlTutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (row.tlTutar || "")}
                             onFocus={handleKalemRowFocus}
                             onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "tlTutar", row.id)}
                             style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
@@ -9872,8 +9874,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             data-decimal="true"
                             size="sm"
                             className="text-end font-monospace"
-                            value={row.tutar !== "" && row.tutar !== null && row.tutar !== undefined ? row.tutar : ""}
-                            onChange={(e) => updateRow(row.id, "tutar", e.target.value)}
+                            value={
+                              row.tutar !== "" && row.tutar !== null && row.tutar !== undefined
+                                ? (typeof row.tutar === "number" ? formatTutar(row.tutar, 2) : row.tutar)
+                                : ""
+                            }
+                            onChange={(e) => {
+                              const input = e.target;
+                              let rawVal = input.value;
+                              if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
+                                rawVal = rawVal.replace(/^0+/, "") || "0";
+                              }
+                              const isAtEnd = (input.selectionStart ?? rawVal.length) >= rawVal.length - 1;
+                              const formatted = formatTutarInput(rawVal);
+                              updateRow(row.id, "tutar", formatted);
+                              if (isAtEnd) {
+                                requestAnimationFrame(() => {
+                                  input.setSelectionRange(formatted.length, formatted.length);
+                                });
+                              }
+                            }}
                             onBlur={() => normalizeRowOnBlur(row.id, "tutar")}
                             onFocus={handleKalemRowFocus}
                             onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "tutar", row.id)}
@@ -10699,7 +10719,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                 tabIndex={-1}
                                 size="sm"
                                 className="text-end font-monospace text-muted"
-                                value={oRow.tutar !== "" && !isNaN(Number(oRow.tutar)) ? Number(oRow.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : oRow.tutar}
+                                value={oRow.tutar !== "" && parseDecimal(oRow.tutar) > 0 ? parseDecimal(oRow.tutar).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (oRow.tutar || "")}
                                 onFocus={handleOdemeRowFocus}
                                 onKeyDown={(e) => handleOdemeGridKeyDown(e, rowIndex, "tutar", oRow.id)}
                                 style={{
