@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
-import { fisGunu } from "../../utils/fisTarihi";
+import { fisGunu, yerelGun } from "../../utils/fisTarihi";
 import { useLocation } from "react-router-dom";
 import { Container, Row, Col, Card, Form, Button, Badge, Alert, Modal, InputGroup, Table } from "react-bootstrap";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import {
   KasaService,
   HesapItem,
@@ -37,7 +38,7 @@ export const KasaHareketPage: React.FC = () => {
 
   // ─── State: Hareket Form Alanları (TODVZ_HESAP_HAREKETI) ───────────────────
   const [hesapHareketiId, setHesapHareketiId] = useState<number | null>(null);
-  const [tarih, setTarih] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [tarih, setTarih] = useState<string>(yerelGun());
   const [aciklama, setAciklama] = useState("");
   const [tip, setTip] = useState<number>(1); // 0: Giriş, 1: Çıkış (Varsayılan: Kasadan Çıkış)
 
@@ -302,7 +303,7 @@ export const KasaHareketPage: React.FC = () => {
 
     // Hem Kayıt hem de Düzeltme ilk açılışta boş form ile başlar
     setHesapHareketiId(null);
-    setTarih(new Date().toISOString().slice(0, 10));
+    setTarih(yerelGun());
     setAciklama("");
     setTip(1);
     setHesapId(null);
@@ -329,7 +330,7 @@ export const KasaHareketPage: React.FC = () => {
   // ─── Yeni Kayıt Modu (F4 / Yeni) ───────────────────────────────────────────
   const handleNew = useCallback(() => {
     setHesapHareketiId(null);
-    setTarih(new Date().toISOString().slice(0, 10));
+    setTarih(yerelGun());
     setAciklama("");
     setTip(1);
     setHesapId(null);
@@ -847,20 +848,19 @@ export const KasaHareketPage: React.FC = () => {
       {/* ─── MODALLAR ────────────────────────────────────────────────────────── */}
 
       {/* Hareket Lookup (F3) */}
-      <LookupModal<HesapHareketiItem>
+      {/* Sunucu taraflı gelişmiş filtre (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4) */}
+      <FisDurbunModal<HesapHareketiItem>
         show={showHareketLookup}
         title="Kasa Hareketi Seçiniz"
         columns={hareketLookupColumns}
-        items={hareketList}
-        filterFn={(it, term) => {
-          const t = term.toLowerCase();
-          return (
-            (it.aciklama ? it.aciklama.toLowerCase().includes(t) : false) ||
-            (it.hesapAd ? it.hesapAd.toLowerCase().includes(t) : false) ||
-            (it.hesapKod ? it.hesapKod.toLowerCase().includes(t) : false) ||
-            (it.vezneAd ? it.vezneAd.toLowerCase().includes(t) : false)
-          );
-        }}
+        getir={(parametreler, limit) => KasaService.getHareketler({ ...parametreler, limit })}
+        sunucuArama
+        searchPlaceholder="Açıklama, hesap veya vezne ile arayın..."
+        alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}
+        vezneler={vezneList.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
+        urunler={(lookups.paralar || []).map((p) => ({ deger: String(p.id), ad: `${p.kod} - ${p.ad}` }))}
+        tipler={[{ deger: "0", ad: "Giriş" }, { deger: "1", ad: "Çıkış" }]}
+        etiketler={{ urun: "Para birimi", cari: "Hesap kodu / adı", tutar: "Gramaj / meblağ", belgeNo: "İşlem no" }}
         onSelect={(selected) => {
           handleSelectHareket(selected);
           setShowHareketLookup(false);

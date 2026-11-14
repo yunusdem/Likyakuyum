@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { gosterimBaslangici, gosterimIcinde } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
-import { fisGunu } from "../../utils/fisTarihi";
+import { fisGunu, yerelGun } from "../../utils/fisTarihi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -34,6 +34,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import CodeLookupInput from "../../components/common/CodeLookupInput";
 import LookupModal from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import { printReportTable } from "../../utils/printReport";
 import {
@@ -144,7 +145,7 @@ export const CariHareketPage: React.FC = () => {
   const [cariKod, setCariKod] = useState<string>("");
   const [cariAd, setCariAd] = useState<string>("");
 
-  const [tarih, setTarih] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [tarih, setTarih] = useState<string>(() => yerelGun());
   const [hareketTipi, setHareketTipi] = useState<number>(0); // 0: Nakit (varsayılan)
   const [aciklama, setAciklama] = useState<string>("");
   const [cariTipi, setCariTipi] = useState<number | null>(0); // 0: Borç (varsayılan)
@@ -468,7 +469,7 @@ export const CariHareketPage: React.FC = () => {
       setCariKartId(null);
       setCariKod("");
       setCariAd("");
-      setTarih(new Date().toISOString().split("T")[0]);
+      setTarih(yerelGun());
       setHareketTipi(0);
       setAciklama("");
       setCariTipi(0);
@@ -513,7 +514,7 @@ export const CariHareketPage: React.FC = () => {
         setVezneId(item.vezneId);
         setVezneKod(item.vezneKod);
         setVezneAd(item.vezneAd);
-        setTarih(item.tarih ? item.tarih.split("T")[0] : new Date().toISOString().split("T")[0]);
+        setTarih(item.tarih ? item.tarih.split("T")[0] : yerelGun());
         setHareketTipi(item.hareketTipi);
         setAciklama(item.aciklama || "");
         setCariTipi(item.tip);
@@ -611,7 +612,7 @@ export const CariHareketPage: React.FC = () => {
     setShowCariAdSuggest(false);
     setCariAdSuggestItems([]);
     setCariAdArrowNavigated(false);
-    setTarih(new Date().toISOString().split("T")[0]);
+    setTarih(yerelGun());
     setHareketTipi(0);
     setAciklama("");
     setCariTipi(0); // Borç varsayılan
@@ -789,27 +790,23 @@ export const CariHareketPage: React.FC = () => {
   const handleNavLast = () => navInfo.lastId && loadRecordById(navInfo.lastId);
 
   // Open Search Modal (F3)
+  // Dürbün listesini pencere kendisi sunucudan filtreli çeker (FisDurbunModal; docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
   const handleOpenSearchModal = useCallback(async () => {
     setShowSearchModal(true);
-    try {
-      setIsLoadingSearch(true);
-      const list = await CariHareketService.list();
-      const userId = Number(user?.id) || 1;
-      const userVezneId = user?.vezneId ? Number(user.vezneId) : 0;
-      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
-      const filteredList = (list || []).filter((h) => {
-        if (!hasOnlyOwn) return true;
-        const eId = Number(h.ekleyenId || 0);
-        const gId = Number(h.guncelleyenId || 0);
-        const vId = Number(h.vezneId || 0);
-        return eId === userId || gId === userId || (userVezneId > 0 && vId === userVezneId);
-      });
-      setAllHareketler(filteredList);
-    } catch (err) {
-      console.error("Hareket listesi arama hatası:", err);
-    } finally {
-      setIsLoadingSearch(false);
-    }
+  }, []);
+
+  const durbunHareketGetir = useCallback(async (parametreler: Record<string, string | number>, limit: number): Promise<CariHareketItem[]> => {
+    const list = await CariHareketService.list({ durbun: parametreler, limit });
+    const userId = Number(user?.id) || 1;
+    const userVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+    const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+    return (list || []).filter((h) => {
+      if (!hasOnlyOwn) return true;
+      const eId = Number(h.ekleyenId || 0);
+      const gId = Number(h.guncelleyenId || 0);
+      const vId = Number(h.vezneId || 0);
+      return eId === userId || gId === userId || (userVezneId > 0 && vId === userVezneId);
+    });
   }, [user, kYetki]);
 
   // Global F3 shortcut listener
@@ -2493,12 +2490,16 @@ export const CariHareketPage: React.FC = () => {
       />
 
       {/* Cari Hareket Arama / Fiş Seçimi Modalı (F3) */}
-      <LookupModal<CariHareketItem>
+      <FisDurbunModal<CariHareketItem>
         show={showSearchModal}
         onHide={() => setShowSearchModal(false)}
         title="Kayıtlı Cari Hareket Fişleri (Arama & Seçim)"
-        items={allHareketler}
-        isLoading={isLoadingSearch}
+        getir={durbunHareketGetir}
+        alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}
+        vezneler={vezneList.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
+        urunler={paraList.map((p) => ({ deger: String(p.id), ad: `${p.kod} - ${p.ad}` }))}
+        tipler={[{ deger: "0", ad: "Borç" }, { deger: "1", ad: "Alacak" }]}
+        etiketler={{ cari: "Cari kodu / adı", urun: "Para birimi", tutar: "Satır meblağı", belgeNo: "Fiş no" }}
         searchPlaceholder="Fiş no, cari adı, açıklama veya vezne ile arayın..."
         columns={[
           {

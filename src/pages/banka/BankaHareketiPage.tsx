@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
-import { fisGunu } from "../../utils/fisTarihi";
+import { fisGunu, yerelGun } from "../../utils/fisTarihi";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Container, Row, Col, Card, Form, Button, Badge, Alert, Modal, InputGroup } from "react-bootstrap";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import {
   BankaService,
   BankaHareketItem,
@@ -61,7 +62,7 @@ export const BankaHareketiPage: React.FC = () => {
   const [bankaId, setBankaId] = useState<number | null>(null);
   const [cariAdi, setCariAdi] = useState<string>("");
   const [cariKartId, setCariKartId] = useState<number | null>(null);
-  const [tarih, setTarih] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [tarih, setTarih] = useState<string>(() => yerelGun());
   const [aciklama, setAciklama] = useState<string>("");
   const [meblag, setMeblag] = useState<string>("");
 
@@ -78,6 +79,9 @@ export const BankaHareketiPage: React.FC = () => {
   const [bankaList, setBankaList] = useState<any[]>(DEFAULT_BANKALAR);
   const [cariList, setCariList] = useState<any[]>([]);
   const [hareketList, setHareketList] = useState<BankaHareketItem[]>([]);
+  // Dürbün filtresinin seçenekleri: gerçek banka hesap kartları ve para birimleri
+  const [durbunBankalar, setDurbunBankalar] = useState<{ deger: string; ad: string }[]>([]);
+  const [durbunParalar, setDurbunParalar] = useState<{ deger: string; ad: string }[]>([]);
   // Listede fişlerin Hesap (banka) satırları da var (salt okunur, docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M17);
   // form, dolaşım ve adresle açılış yalnız banka fişlerinde
   const bankaFisleri = useMemo(() => hareketList.filter((h) => !h.kaynak), [hareketList]);
@@ -182,6 +186,8 @@ export const BankaHareketiPage: React.FC = () => {
       });
 
       setBankaList(combinedBankalar);
+      setDurbunBankalar((bankalar || []).map((b: BankaHesapItem) => ({ deger: String(b.bankaId), ad: `${b.hesapNo || ""} - ${b.hesapAdi || b.bankaAdi || ""}` })));
+      setDurbunParalar((lookups?.paralar || []).map((p) => ({ deger: String(p.id), ad: `${p.kod} - ${p.ad}` })));
       setHareketList(hareketler || []);
       if (lookups?.cariler && lookups.cariler.length > 0) {
         setCariList(lookups.cariler);
@@ -214,7 +220,7 @@ export const BankaHareketiPage: React.FC = () => {
     setHesapAdi(h.bankaHesapAdi || "");
     setCariKartId(h.cariKartId || null);
     setCariAdi(h.cariUnvan || "");
-    setTarih(h.tarih ? h.tarih.split("T")[0] : new Date().toISOString().split("T")[0]);
+    setTarih(h.tarih ? h.tarih.split("T")[0] : yerelGun());
     setAciklama(h.aciklama || "");
 
     const tutar = Number(h.toplamMeblag || h.satirlar?.[0]?.meblag || 0);
@@ -230,7 +236,7 @@ export const BankaHareketiPage: React.FC = () => {
     setBankaId(null);
     setCariAdi("");
     setCariKartId(null);
-    setTarih(new Date().toISOString().split("T")[0]);
+    setTarih(yerelGun());
     setAciklama("");
     setMeblag("");
     hesapNoRef.current?.focus();
@@ -926,12 +932,17 @@ export const BankaHareketiPage: React.FC = () => {
       />
 
       {/* 3. Banka Hareketi Arama (F3 Dürbün - Mevcut Kayıtlar) */}
-      <LookupModal<BankaHareketItem>
+      <FisDurbunModal<BankaHareketItem>
         show={showHareketLookup}
         title="Banka Hareketi Arama (F3)"
         initialSearchTerm={hareketInitialSearch}
         columns={hareketLookupColumns}
-        items={hareketList}
+        getir={(parametreler, limit) => BankaService.getHareketler({ ...parametreler, limit, fisSatirlari: true })}
+        alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}
+        vezneler={durbunBankalar}
+        urunler={durbunParalar}
+        tipler={[{ deger: "0", ad: "Giriş" }, { deger: "1", ad: "Çıkış" }]}
+        etiketler={{ vezne: "Banka hesabı", urun: "Para birimi", tutar: "Tutar (TL)", belgeNo: "Belge / işlem no" }}
         filterFn={(it, term) => {
           const t = term.toLowerCase();
           return (

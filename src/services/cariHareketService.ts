@@ -90,6 +90,9 @@ export class CariHareketService {
     search?: string;
     onlyCariHareket?: boolean;
     kaynak?: string;
+    /** Dürbün gelişmiş filtresi (drb önekli; utils/fisDurbunFiltre.ts) */
+    durbun?: Record<string, string | number>;
+    limit?: number;
   }): Promise<CariHareketItem[]> {
     const params = new URLSearchParams();
     if (filters?.startDate) params.append("startDate", filters.startDate);
@@ -105,6 +108,8 @@ export class CariHareketService {
     if (filters?.search) params.append("search", filters.search);
     if (filters?.onlyCariHareket !== undefined) params.append("onlyCariHareket", String(filters.onlyCariHareket));
     if (filters?.kaynak) params.append("kaynak", filters.kaynak);
+    if (filters?.limit) params.append("limit", String(filters.limit));
+    Object.entries(filters?.durbun || {}).forEach(([k, v]) => params.append(k, String(v)));
 
     const queryStr = params.toString() ? `?${params.toString()}` : "";
     const res = await apiClient.get<CariHareketItem[]>(`/cari-hareket${queryStr}`);

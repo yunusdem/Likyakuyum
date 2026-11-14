@@ -236,6 +236,8 @@ export class DovizFisService {
     vezneId?: number;
     limit?: number;
     isArbitraj?: boolean;
+    /** Dürbün gelişmiş filtresi (drbBas, drbBit, drbVezne … — utils/fisDurbunFiltre.ts) */
+    [durbun: string]: string | number | boolean | undefined;
   }): Promise<DovizFisListItem[]> {
     const res = await apiClient.get<DovizFisListItem[]>("/doviz-fis", params);
     return res.data || [];

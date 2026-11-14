@@ -463,7 +463,8 @@ export const TicariService = {
   async girisSiraNo(): Promise<string> {
     return (await apiClient.get("/ticari/giris/sira-no")).data?.fisNo || "";
   },
-  async girisListe(f: { baslangic?: string; bitis?: string; cariKartId?: number | null; arama?: string } = {}): Promise<StokGiris[]> {
+  /** Dürbün gelişmiş filtresi drb önekli alanlarla gider (utils/fisDurbunFiltre.ts) */
+  async girisListe(f: { baslangic?: string; bitis?: string; cariKartId?: number | null; arama?: string; limit?: number; [durbun: string]: string | number | null | undefined } = {}): Promise<StokGiris[]> {
     return (await apiClient.get("/ticari/giris", temizle(f as any))).data || [];
   },
   async giris(id: number): Promise<StokGiris> {
@@ -480,7 +481,8 @@ export const TicariService = {
   async satisSiraNo(senaryo: string): Promise<string> {
     return (await apiClient.get("/ticari/satis/sira-no", { senaryo })).data?.faturaNo || "";
   },
-  async satisListe(f: { baslangic?: string; bitis?: string; arama?: string; eBelgeDurumu?: number | null; stokKartId?: number | null } = {}): Promise<TicariSatisListeSatiri[]> {
+  /** Dürbün gelişmiş filtresi drb önekli alanlarla gider (utils/fisDurbunFiltre.ts) */
+  async satisListe(f: { baslangic?: string; bitis?: string; arama?: string; eBelgeDurumu?: number | null; stokKartId?: number | null; limit?: number; [durbun: string]: string | number | null | undefined } = {}): Promise<TicariSatisListeSatiri[]> {
     return (await apiClient.get("/ticari/satis", temizle(f as any))).data || [];
   },
   async satisKimlikler(): Promise<{ faturaId: number; faturaNo: string }[]> {

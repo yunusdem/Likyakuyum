@@ -3,6 +3,24 @@ import crypto from "crypto";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { FisDurbunFiltre, FisDurbunKolonlari, durbunFiltresiVar, durbunLimiti, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+
+/** Emanet dekontu dürbünü: cari = borçlu ya da alacaklı kart, ürün = para (dekont satırı), tutar = satır meblağı toplamı, belge no = dekont no */
+export const DEKONT_DURBUN_KOLONLARI: FisDurbunKolonlari = {
+  tarih: "D.TARIH",
+  vezne: ["D.VEZNE_ID"],
+  urunExists: "EXISTS (SELECT 1 FROM [dbo].[TODVZ_CARI_DEKONT_SATIRI] DS WHERE DS.CARI_DEKONT_ID = D.CARI_DEKONT_ID AND DS.PARA_ID = @DRB_URUN)",
+  tip: "D.TIP",
+  cari: ["CB.KOD", "CB.AD", "CB.VERGI_KIMLIK_NO", "CA.KOD", "CA.AD", "CA.VERGI_KIMLIK_NO"],
+  tutar: "ISNULL(SUM_SATIR.TOPLAM_MIKTAR, 0)",
+  belgeNo: ["CAST(D.CARI_DEKONT_ID AS VARCHAR(20))"],
+};
+
+/** "DK-000123" → "123" (ekrandaki dekont no biçimi kimlikten üretilir) */
+export const dekontNoKimligi = (s: string): string => {
+  const m = /^DK-?0*([0-9]+)$/i.exec(s.trim());
+  return m ? m[1] : s.trim();
+};
 
 export interface CariDekontSatiriEntity {
   CARI_DEKONT_ID: number;
@@ -822,6 +840,7 @@ export class CariDekontSqlRepository {
       vezneId?: number;
       limit?: number;
       baslangic?: string | null;
+      durbun?: FisDurbunFiltre;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<
@@ -843,7 +862,9 @@ export class CariDekontSqlRepository {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await CariDekontSqlRepository.ensureTablesAndProceduresExist(pool);
 
-    const limit = Math.min(Number(filter?.limit) || 100, 250);
+    // Dürbün filtresiyle tavan DURBUN_EN_FAZLA, yoksa eski 250
+    const durbunVar = durbunFiltresiVar(filter?.durbun);
+    const limit = durbunLimiti(filter?.limit, 100, 250, durbunVar);
     const req = pool.request();
     req.input("limit", sql.Int, limit);
 
@@ -875,6 +896,14 @@ export class CariDekontSqlRepository {
     if (filter?.baslangic) {
       req.input("bas", sql.VarChar(10), filter.baslangic);
       whereClauses.push("D.TARIH >= CAST(@bas AS date)");
+    }
+
+    // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5)
+    if (durbunVar && filter?.durbun) {
+      const d = filter.durbun.belgeNo ? { ...filter.durbun, belgeNo: dekontNoKimligi(filter.durbun.belgeNo) } : filter.durbun;
+      const k = fisDurbunKosullari(d, DEKONT_DURBUN_KOLONLARI);
+      whereClauses.push(...k.kosullar);
+      durbunParametreleriniBagla(req, k.parametreler);
     }
 
     const whereSql = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : "";

@@ -14,6 +14,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { SayfaCikisUyarisiModal, useSayfaCikisUyarisi } from "../../components/common/SayfaCikisUyarisiModal";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import { useAuth } from "../../context/AuthContext";
 import { AuthService } from "../../services/authService";
 import { MasakService, MasakEslesme } from "../../services/masakService";
@@ -27,6 +28,7 @@ import { CashDeskService } from "../../services/cashDeskService";
 import { CashDeskDefinitionsPage } from "../settings/CashDeskDefinitionsPage";
 import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "./MusteriSecimModal";
 import { CariService, CariKartItem } from "../../services/cariService";
+import { yerelGun } from "../../utils/fisTarihi";
 import { CariHareketService, CariBakiyeSummary } from "../../services/cariHareketService";
 import { CariCardRegistrationPage } from "../cari/CariCardRegistrationPage";
 import { DovizFisService, KayitsizMusteriItem, IstatistikSecimItem } from "../../services/dovizFisService";
@@ -1284,7 +1286,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [fisNo, setFisNo] = useState("");
   const [seriNo, setSeriNo] = useState("");
   const [cariKod, setCariKod] = useState("");
-  const [tarih, setTarih] = useState(() => new Date().toISOString().split("T")[0]);
+  const [tarih, setTarih] = useState(() => yerelGun());
   const [saat, setSaat] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -1296,7 +1298,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const updateTime = () => {
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
-      setTarih(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
+      setTarih((g) => (!g || g === yerelGun(new Date(now.getTime() - 15000)) ? yerelGun(now) : g)); // T1: elle seçilen gün korunur, bugünse gece yarısında ilerler
       setSaat(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
     };
     updateTime();
@@ -2444,7 +2446,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const rawBelgeNo = ((data as any).belgeNo || (data as any).irsaliyeNo || "").trim();
       setSeriNo(rawSeriNo || rawFisNo);
       setFisNo(rawBelgeNo !== rawFisNo ? rawBelgeNo : "");
-      setTarih(data.tarih || new Date().toISOString().split("T")[0]);
+      setTarih(data.tarih || yerelGun());
       if (data.saat) setSaat(new Date(data.saat).toTimeString().slice(0, 5));
       const loadedTip = (data.tip as 0 | 1) || 0;
       setTip(loadedTip);
@@ -2778,7 +2780,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setFisNo("");
     setSeriNo("");
     setCariKod("");
-    setTarih(new Date().toISOString().split("T")[0]);
+    setTarih(yerelGun());
     const d = new Date();
     setSaat(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
     setTip(1);
@@ -3060,26 +3062,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, [loadLookupsAndData, isDuzeltmeMode, queryId, resetForm]);
 
   // Navigation handlers (Düzeltme sayfaları için)
+  // Dürbün listesini pencere kendisi sunucudan filtreli çeker (FisDurbunModal; docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
   const handleOpenFisModal = useCallback(async () => {
-    try {
-      const curUserId = Number(user?.id) || 1;
-      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
-      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
-      const list = await SarrafFisService.getFisList({ limit: 500 }).catch(() => []);
-      if (list && list.length > 0) {
-        const allowed = list.filter((f: any) => {
-          if (!hasOnlyOwn) return true;
-          const kId = Number(f.kullaniciId || f.ekleyenId || 0);
-          const vId = Number(f.vezneId || 0);
-          return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
-        });
-        const sorted = [...allowed].sort((a, b) => (Number(a.sarrafFisiId) || 0) - (Number(b.sarrafFisiId) || 0));
-        setFisList(sorted);
-      }
-    } catch (e) {
-      console.error(e);
-    }
     setShowFisModal(true);
+  }, []);
+
+  const durbunFisGetir = useCallback(async (parametreler: Record<string, string | number>, limit: number): Promise<SarrafFisListItem[]> => {
+    const curUserId = Number(user?.id) || 1;
+    const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+    const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+    const list = await SarrafFisService.getFisList({ ...parametreler, limit });
+    const allowed = (list || []).filter((f: any) => {
+      if (!hasOnlyOwn) return true;
+      const kId = Number(f.kullaniciId || f.ekleyenId || 0);
+      const vId = Number(f.vezneId || 0);
+      return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+    });
+    return [...allowed].sort((a, b) => (Number(a.sarrafFisiId) || 0) - (Number(b.sarrafFisiId) || 0));
   }, [user?.id, user?.vezneId, user?.isSysAdmin, user?.hasOnlyOwnRecordsPerm, kYetki.kendiKayitlari]);
 
   const handleFirst = useCallback(async () => {
@@ -11076,21 +11075,20 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       />
 
       {/* Fiş Ara Modalı (Dürbün / Fiş Listesi) */}
-      <LookupModal<SarrafFisListItem>
+      <FisDurbunModal<SarrafFisListItem>
         show={showFisModal}
         onHide={() => setShowFisModal(false)}
         title="Kayıtlı Sarraf Fişleri"
-        items={fisList}
         selectedId={fisId}
         columns={fisColumns}
-        filterFn={(item, term) => {
-          const t = (term || "").toLowerCase().trim();
-          if (!t) return true;
-          return (item.fisNo || "").toLowerCase().includes(t) ||
-            String(item.sarrafFisiId || "").toLowerCase().includes(t) ||
-            (item.unvan || "").toLowerCase().includes(t) ||
-            (item.tarih || "").includes(t);
-        }}
+        getir={durbunFisGetir}
+        sunucuArama
+        searchPlaceholder="Fiş no veya ünvan ile arayın..."
+        alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}
+        vezneler={vezneList.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
+        urunler={urunList.map((u) => ({ deger: String(u.paraId || u.id), ad: `${u.kod} - ${u.ad}` }))}
+        tipler={[{ deger: "0", ad: "Alış" }, { deger: "1", ad: "Satış" }]}
+        etiketler={{ urun: "Altın / ürün", tutar: "Satır tutarı toplamı", belgeNo: "Fiş no" }}
         onSelect={(item) => {
           setShowFisModal(false);
           const foundIdx = fisList.findIndex((f) => Number(f.sarrafFisiId) === Number(item.sarrafFisiId));

@@ -2,6 +2,15 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { FisDurbunFiltre, FisDurbunKolonlari, durbunFiltresiVar, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+
+/** Vezne transferi dürbünü: vezne = alan ya da veren, ürün = para (transfer satırı), belge no = ref no; tip / cari / tutar yok */
+export const VEZNE_TRANSFERI_DURBUN_KOLONLARI: FisDurbunKolonlari = {
+  tarih: "t.TARIH",
+  vezne: ["t.ALAN_VEZNE_ID", "t.VEREN_VEZNE_ID"],
+  urunExists: "EXISTS (SELECT 1 FROM [dbo].[TODVZ_VEZNE_TRANSFERI_SATIRI] ds WHERE ds.VEZNE_TRANSFERI_ID = t.VEZNE_TRANSFERI_ID AND ds.PARA_ID = @DRB_URUN)",
+  belgeNo: ["t.REF_NO", "CAST(t.VEZNE_TRANSFERI_ID AS varchar(20))"],
+};
 
 export interface VezneTransferiSatiriModel {
   satirNo: number;
@@ -568,6 +577,7 @@ export class VezneTransferiSqlRepository {
       startDate?: string;
       endDate?: string;
       limit?: number;
+      durbun?: FisDurbunFiltre;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<VezneTransferiListItem[]> {
@@ -623,7 +633,15 @@ export class VezneTransferiSqlRepository {
         query += " AND (t.REF_NO LIKE @search OR t.ACIKLAMA LIKE @search OR va.AD LIKE @search OR vv.AD LIKE @search)";
       }
 
-      query += " ORDER BY t.VEZNE_TRANSFERI_ID ASC";
+      // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5): sınır en yeni kayıtlardan kesilir
+      const durbunVar = durbunFiltresiVar(filters.durbun);
+      if (durbunVar) {
+        const k = fisDurbunKosullari(filters.durbun, VEZNE_TRANSFERI_DURBUN_KOLONLARI);
+        query += k.sql;
+        durbunParametreleriniBagla(request, k.parametreler);
+      }
+
+      query += durbunVar ? " ORDER BY t.TARIH DESC, t.VEZNE_TRANSFERI_ID DESC" : " ORDER BY t.VEZNE_TRANSFERI_ID ASC";
 
       const res = await request.query(query);
       return (res.recordset || []).map((r: any) => ({

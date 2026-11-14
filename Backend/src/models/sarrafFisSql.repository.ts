@@ -5,6 +5,23 @@ import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ensureSarrafStoredProcedures } from "./sarrafProcsSql.js";
 import { EBankaMutabakatSqlRepository } from "./ebankaMutabakatSql.repository.js";
+import { FisDurbunFiltre, FisDurbunKolonlari, durbunFiltresiVar, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+
+/** Sarraf fişi dürbünü: ürün = altın / para cinsi (fiş satırı URUN_ID = TODVZ_PARA.PARA_ID), tutar = satır tutarları toplamı */
+export const SARRAF_DURBUN_KOLONLARI: FisDurbunKolonlari = {
+  tarih: "SF.TARIH",
+  vezne: ["SF.VEZNE_ID"],
+  urunExists: "EXISTS (SELECT 1 FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] DS WHERE DS.SARRAF_FISI_ID = SF.SARRAF_FISI_ID AND DS.URUN_ID = @DRB_URUN)",
+  tip: "SF.TIP",
+  cari: [
+    "SF.UNVAN",
+    "SF.VERGI_KIMLIK_NO",
+    "SF.PASAPORT_NO",
+    "(SELECT TOP 1 DC.KOD FROM [dbo].[TODVZ_CARI_KART] DC WHERE DC.CARI_KART_ID = SF.CARI_KART_ID)",
+  ],
+  tutar: "(SELECT ISNULL(SUM(DS.TUTAR), 0) FROM [dbo].[TODVZ_SARRAF_FISI_SATIRI] DS WHERE DS.SARRAF_FISI_ID = SF.SARRAF_FISI_ID)",
+  belgeNo: ["SF.FIS_NO", "CAST(SF.SARRAF_FISI_ID AS varchar(20))"],
+};
 
 export interface SarrafFisSatiriDto {
   satirId?: number | null;
@@ -261,7 +278,7 @@ export class SarrafFisSqlRepository {
     }
   }
 
-  public static async getFisList(filters: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number }, dbContext?: { dbServer?: string; dbName?: string }): Promise<SarrafFisListItem[]> {
+  public static async getFisList(filters: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number; durbun?: FisDurbunFiltre }, dbContext?: { dbServer?: string; dbName?: string }): Promise<SarrafFisListItem[]> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
       let query = `
@@ -287,6 +304,12 @@ export class SarrafFisSqlRepository {
         query += " AND (SF.EKLEYEN_ID = @userId OR (@userVezneId > 0 AND SF.VEZNE_ID = @userVezneId))";
         req.input("userId", sql.Int, filters.userId);
         req.input("userVezneId", sql.Int, filters.userVezneId || 0);
+      }
+      // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5)
+      if (durbunFiltresiVar(filters.durbun)) {
+        const k = fisDurbunKosullari(filters.durbun, SARRAF_DURBUN_KOLONLARI);
+        query += k.sql;
+        durbunParametreleriniBagla(req, k.parametreler);
       }
       query += " ORDER BY SF.TARIH DESC, SF.SARRAF_FISI_ID DESC";
       const result = await req.query(query);

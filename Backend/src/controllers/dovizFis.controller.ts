@@ -9,6 +9,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 import { DovizFisSqlRepository } from "../models/dovizFisSql.repository.js";
+import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 
 export class DovizFisController {
   private static getDbContext(req: Request) {
@@ -43,6 +44,8 @@ export class DovizFisController {
       onlyOwnRecords,
       userId,
       userVezneId,
+      // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+      durbun: fisDurbunFiltresiOku(req.query as Record<string, unknown>),
     };
     const list = await DovizFisService.getFisList(filter, dbContext);
     return ApiResponse.ok(res, "Döviz fişleri listelendi.", list);

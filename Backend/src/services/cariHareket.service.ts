@@ -5,6 +5,7 @@ import {
   CariBakiyeSummary,
 } from "../models/cariHareketSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
+import { FisDurbunFiltre, bellekteSuz, gunEkle } from "../utils/fisDurbunFiltre.js";
 
 export class CariHareketService {
   public static async list(
@@ -26,6 +27,36 @@ export class CariHareketService {
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<CariHareketModel[]> {
     return CariHareketSqlRepository.findAll(filters, dbContext);
+  }
+
+  /**
+   * Dürbün (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5). Liste birden çok kaynağın (cari hareket, sarraf / döviz /
+   * perakende fişi) birleşimi; tarih, vezne ve Borç / Alacak SQL'e gider, ürün (para), tutar (satır meblağı), cari ve belge no
+   * (kayıt no / açıklamadaki fiş no) bellekte aynı filtreyle süzülür. Bitiş günü SQL'e bir gün geniş verilip bellekte kırpılır
+   * (findAll bitişi yerel 23:59'a çeker, sürücü UTC gönderdiği için gün sonundaki kayıtlar kaçardı).
+   */
+  public static async durbunListesi(
+    filters: Parameters<typeof CariHareketService.list>[0] & {},
+    durbun: FisDurbunFiltre,
+    limit: number | undefined,
+    dbContext?: { dbServer?: string; dbName?: string }
+  ): Promise<CariHareketModel[]> {
+    const f = { ...filters };
+    if (durbun.tarihBas) f.startDate = [f.startDate ? String(f.startDate).slice(0, 10) : "", durbun.tarihBas].filter(Boolean).sort().pop();
+    if (durbun.tarihBit) f.endDate = gunEkle(durbun.tarihBit, 1);
+    if (durbun.vezneId) f.vezneId = durbun.vezneId;
+    if (durbun.tip === "0" || durbun.tip === "1") f.tip = Number(durbun.tip);
+    const liste = await CariHareketSqlRepository.findAll(f, dbContext);
+    const suzulmus = bellekteSuz(liste, durbun, {
+      tarih: (x) => x.tarih,
+      vezne: (x) => [x.vezneId],
+      urunler: (x) => (x.satirlar || []).map((s) => s.paraId),
+      tip: (x) => x.tip,
+      cari: (x) => [x.cariKod, x.cariAd],
+      tutarlar: (x) => (x.satirlar || []).map((s) => Math.abs(Number(s.meblag) || 0)),
+      belgeNo: (x) => [x.id, x.aciklama],
+    });
+    return limit && limit > 0 ? suzulmus.slice(0, limit) : suzulmus;
   }
 
   public static async getById(

@@ -6,6 +6,7 @@ import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisY
 import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
 import { bankaHesabiDenetle, sarrafKurDenetle, sarrafMilyemDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
+import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 
 export const SarrafFisController = {
   getDbContext(req: Request) {
@@ -46,6 +47,8 @@ export const SarrafFisController = {
         onlyOwnRecords,
         userId,
         userVezneId,
+        // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+        durbun: fisDurbunFiltresiOku(req.query as Record<string, unknown>),
       }, dbContext);
       res.json({ success: true, data });
     } catch (err) { next(err); }

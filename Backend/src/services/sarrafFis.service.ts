@@ -1,9 +1,10 @@
 import { SarrafFisSqlRepository, SaveSarrafFisDto, SaveSarrafFisDetayDto } from "../models/sarrafFisSql.repository.js";
+import type { FisDurbunFiltre } from "../utils/fisDurbunFiltre.js";
 
 export class SarrafFisService {
   static async getUrunler(dbContext?: { dbServer?: string; dbName?: string }) { return SarrafFisSqlRepository.getUrunler(dbContext); }
   static async getVezneBakiye(vezneId: number, dbContext?: { dbServer?: string; dbName?: string }) { return SarrafFisSqlRepository.getVezneBakiye(vezneId, dbContext); }
-  static async getFisList(filters: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number }, dbContext?: { dbServer?: string; dbName?: string }) { return SarrafFisSqlRepository.getFisList(filters, dbContext); }
+  static async getFisList(filters: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number; durbun?: FisDurbunFiltre }, dbContext?: { dbServer?: string; dbName?: string }) { return SarrafFisSqlRepository.getFisList(filters, dbContext); }
   static async getFisById(id: number, dbContext?: { dbServer?: string; dbName?: string }) { return SarrafFisSqlRepository.getFisById(id, dbContext); }
   static async saveFis(dto: SaveSarrafFisDto, dbContext?: { dbServer?: string; dbName?: string }) { return SarrafFisSqlRepository.saveFis(dto, dbContext); }
   static async deleteFis(id: number, kullaniciId: number, dbContext?: { dbServer?: string; dbName?: string }) { return SarrafFisSqlRepository.deleteFis(id, kullaniciId, dbContext); }

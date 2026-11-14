@@ -4,10 +4,11 @@ import {
   SaveCariDekontDto,
 } from "../models/cariDekontSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
+import type { FisDurbunFiltre } from "../utils/fisDurbunFiltre.js";
 
 export class CariDekontService {
   public static async getDekontList(
-    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null },
+    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; durbun?: FisDurbunFiltre },
     dbContext?: { dbServer?: string; dbName?: string }
   ) {
     return CariDekontSqlRepository.findAll(filter, dbContext);

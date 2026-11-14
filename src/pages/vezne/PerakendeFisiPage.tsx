@@ -4,6 +4,9 @@ import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { GiseKuru, kurDegistirilebilir, kurDenetle, kurDegeriniSinirla } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { useLocation, useNavigate } from "react-router-dom";
+import { yerelGun } from "../../utils/fisTarihi";
+import FisDurbunFiltre from "../../components/common/FisDurbunFiltre";
+import { DURBUN_SINIRI, FisDurbunFiltreDegeri, durbunSorguParametreleri, sinirUygula, varsayilanDurbunFiltresi } from "../../utils/fisDurbunFiltre";
 import {
   Table,
   Button,
@@ -555,7 +558,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   // Header State
   const [faturaNo, setFaturaNo] = useState<string>("");
   const [tarih, setTarih] = useState<string>(
-    new Date().toISOString().substring(0, 10)
+    yerelGun()
   );
   const [saat, setSaat] = useState<string>(
     new Date().toTimeString().substring(0, 5)
@@ -567,7 +570,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     const updateTime = () => {
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
-      setTarih(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
+      setTarih((g) => (!g || g === yerelGun(new Date(now.getTime() - 15000)) ? yerelGun(now) : g)); // T1: elle seçilen gün korunur, bugünse gece yarısında ilerler
       setSaat(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
     };
     updateTime();
@@ -1068,12 +1071,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const [historyList, setHistoryList] = useState<PerakendeFaturaListItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [historySearch, setHistorySearch] = useState<string>("");
-  const [historyStartDate, setHistoryStartDate] = useState<string>(
-    new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10)
-  );
-  const [historyEndDate, setHistoryEndDate] = useState<string>(
-    new Date().toISOString().substring(0, 10)
-  );
+  // Gelişmiş dürbün filtresi; tarih aralığı yerel günle, açılışta bu ay (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md T2, D1–D4).
+  // Önceki toISOString (UTC) varsayılanı 00:00–03:00 arası dünü veriyordu.
+  const [historyFiltre, setHistoryFiltre] = useState<FisDurbunFiltreDegeri>(() => varsayilanDurbunFiltresi());
+  const [historyTasti, setHistoryTasti] = useState<boolean>(false);
+  const historyAcilisRef = useRef<boolean>(false);
 
   // Safe selection bounds helper
   const getSelectionBounds = (el: any): { isAtStart: boolean; isAtEnd: boolean } => {
@@ -6509,14 +6511,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // Invoices History (Toolbar onSearch / F3)
   const handleOpenHistory = async () => {
+    const ilkFiltre = varsayilanDurbunFiltresi();
+    historyAcilisRef.current = true;
+    setHistoryFiltre(ilkFiltre);
     setShowHistoryModal(true);
     setHistoryLoading(true);
     try {
       const res: any = await PerakendeService.listInvoices({
-        baslangicTarihi: historyStartDate,
-        bitisTarihi: historyEndDate,
+        ...durbunSorguParametreleri(ilkFiltre),
         search: historySearch.trim() || undefined,
-        limit: 100,
+        limit: DURBUN_SINIRI + 1,
       });
       const rawList = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
       const mappedList: PerakendeFaturaListItem[] = rawList.map((f: any) => ({
@@ -6565,7 +6569,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         const vId = Number(f.vezneId || 0);
         return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
       });
-      setHistoryList(filteredList);
+      const sinirli = sinirUygula(filteredList);
+      setHistoryList(sinirli.liste);
+      setHistoryTasti(sinirli.tasti);
     } catch (err: any) {
       showError("Faturalar aranırken hata oluştu: " + (err.message || ""));
     } finally {
@@ -6577,10 +6583,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     setHistoryLoading(true);
     try {
       const res: any = await PerakendeService.listInvoices({
-        baslangicTarihi: historyStartDate,
-        bitisTarihi: historyEndDate,
+        ...durbunSorguParametreleri(historyFiltre),
         search: historySearch.trim() || undefined,
-        limit: 100,
+        limit: DURBUN_SINIRI + 1,
       });
       const rawList = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
       const mappedList: PerakendeFaturaListItem[] = rawList.map((f: any) => ({
@@ -6627,13 +6632,26 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         const vId = Number(f.vezneId || 0);
         return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
       });
-      setHistoryList(filteredList);
+      const sinirli = sinirUygula(filteredList);
+      setHistoryList(sinirli.liste);
+      setHistoryTasti(sinirli.tasti);
     } catch (err: any) {
       showError("Filtreleme hatası: " + (err.message || ""));
     } finally {
       setHistoryLoading(false);
     }
   };
+
+  // Filtre değişince gecikmeli sunucu araması (açılıştaki sıfırlama zaten yüklüyor, onu atla)
+  useEffect(() => {
+    if (!showHistoryModal) return;
+    if (historyAcilisRef.current) {
+      historyAcilisRef.current = false;
+      return;
+    }
+    const t = setTimeout(() => { void handleSearchHistory(); }, 350);
+    return () => clearTimeout(t);
+  }, [historyFiltre]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load single invoice by ID
   const handleSelectInvoiceForEdit = async (id: number) => {
@@ -10558,26 +10576,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
         <Modal.Body className="p-3 bg-light">
           {/* Filtreleme Alanı */}
+          {/* Gelişmiş dürbün filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4); değişince sunucudan yeniden çekilir */}
+          <FisDurbunFiltre
+            deger={historyFiltre}
+            onChange={setHistoryFiltre}
+            alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}
+            vezneler={vezneler.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
+            tipler={[{ deger: "1", ad: "Satış" }, { deger: "2", ad: "Alış" }]}
+            etiketler={{ urun: "Ürün adı / barkod", cari: "Alıcı / VKN / cari", tutar: "Genel toplam", belgeNo: "Fatura no" }}
+          />
           <div className="row g-2 mb-3 bg-white p-2 rounded border">
-            <div className="col-12 col-md-3">
-              <Form.Label className="small text-muted mb-1">Başlangıç Tarihi</Form.Label>
-              <Form.Control
-                size="sm"
-                type="date"
-                value={historyStartDate}
-                onChange={(e) => setHistoryStartDate(e.target.value)}
-              />
-            </div>
-            <div className="col-12 col-md-3">
-              <Form.Label className="small text-muted mb-1">Bitiş Tarihi</Form.Label>
-              <Form.Control
-                size="sm"
-                type="date"
-                value={historyEndDate}
-                onChange={(e) => setHistoryEndDate(e.target.value)}
-              />
-            </div>
-            <div className="col-12 col-md-4">
+            <div className="col-12 col-md-10">
               <Form.Label className="small text-muted mb-1">Arama</Form.Label>
               <Form.Control
                 size="sm"
@@ -10714,6 +10723,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
               </tbody>
             </Table>
           </div>
+          {historyTasti && (
+            <div className="small text-warning-emphasis fw-semibold mt-1">İlk {DURBUN_SINIRI} kayıt gösteriliyor, filtreleri daraltın.</div>
+          )}
         </Modal.Body>
 
         <Modal.Footer className="bg-light py-2 px-3 border-top">

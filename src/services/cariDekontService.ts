@@ -107,6 +107,8 @@ export class CariDekontService {
     tip?: number;
     vezneId?: number;
     limit?: number;
+    /** Dürbün gelişmiş filtresi (drb önekli; utils/fisDurbunFiltre.ts) */
+    [durbun: string]: string | number | undefined;
   }): Promise<CariDekontListItem[]> {
     const res = await apiClient.get<CariDekontListItem[]>("/cari-dekont", params);
     return res.data || [];

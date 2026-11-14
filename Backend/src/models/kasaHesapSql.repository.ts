@@ -2,6 +2,18 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { FisDurbunFiltre, FisDurbunKolonlari, durbunFiltresiVar, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+
+/** Kasa hareketi dürbünü: fiş satırı yok, para birimi başlıkta; cari yerine hesap kartı; belge no = işlem no */
+export const KASA_DURBUN_KOLONLARI: FisDurbunKolonlari = {
+  tarih: "HH.TARIH",
+  vezne: ["HH.VEZNE_ID"],
+  urunKolon: "HH.PARA_ID",
+  tip: "HH.TIP",
+  cari: ["H.KOD", "H.AD"],
+  tutar: "HH.MEBLAG",
+  belgeNo: ["CAST(HH.HESAP_HAREKETI_ID AS varchar(20))"],
+};
 
 // ─── Interfaces: TODVZ_HESAP ─────────────────────────────────────────────────
 export interface HesapModel {
@@ -750,7 +762,7 @@ export class KasaHesapSqlRepository {
   // ═══════════════════════════════════════════════════════════════════════════
 
   public static async listHareketler(
-    filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number; baslangic?: string | null },
+    filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number; baslangic?: string | null; durbun?: FisDurbunFiltre },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<HesapHareketiModel[]> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
@@ -789,6 +801,12 @@ export class KasaHesapSqlRepository {
     if (filter?.baslangic) {
       query += ` AND HH.TARIH >= CAST(@BAS AS date)`;
       req.input("BAS", sql.VarChar(10), filter.baslangic);
+    }
+    // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5)
+    if (durbunFiltresiVar(filter?.durbun)) {
+      const k = fisDurbunKosullari(filter?.durbun, KASA_DURBUN_KOLONLARI);
+      query += k.sql;
+      durbunParametreleriniBagla(req, k.parametreler);
     }
     query += ` ORDER BY HH.TARIH DESC, HH.HESAP_HAREKETI_ID DESC`;
 

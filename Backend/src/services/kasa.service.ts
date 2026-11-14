@@ -7,6 +7,7 @@ import {
 } from "../models/kasaHesapSql.repository.js";
 import { SarrafFisSqlRepository } from "../models/sarrafFisSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
+import type { FisDurbunFiltre } from "../utils/fisDurbunFiltre.js";
 
 export class KasaService {
   // ─── Hesap Kartları ────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ export class KasaService {
 
   // ─── Hesap Hareketleri ─────────────────────────────────────────────────────
   public static async listHareketler(
-    filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number; baslangic?: string | null },
+    filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number; baslangic?: string | null; durbun?: FisDurbunFiltre },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<HesapHareketiModel[]> {
     return KasaHesapSqlRepository.listHareketler(filter, dbContext);

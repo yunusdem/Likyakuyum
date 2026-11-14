@@ -4,6 +4,7 @@ import { Alert, Badge, Button, Card, Col, Form, InputGroup, Row, Spinner, Table 
 import { IconBinoculars, IconClock, IconPlus, IconShoppingBag, IconTrash, IconWallet } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { LookupModal } from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import { usePosTahsilat, PosKarti } from "../../components/pos/PosTahsilat";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -215,7 +216,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
   // Kayıt modunda saat canlı
   useEffect(() => {
     if (isDuzeltme) return;
-    const t = setInterval(() => { setTarih(yerelTarih()); setSaat(yerelSaat()); }, 10000);
+    const t = setInterval(() => { setTarih((g) => (g === yerelTarih(new Date(Date.now() - 15000)) ? yerelTarih() : g)); setSaat(yerelSaat()); }, 10000); // T1: elle seçilen gün korunur
     return () => clearInterval(t);
   }, [isDuzeltme]);
 
@@ -440,7 +441,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     if (!odemeYuku.length && genelToplam > 0) odemeYuku = [{ satirNo: 1, odemeAraciTuru: 0, paraKodu: "TL", paraAdi: "TÜRK LİRASI", miktar: genelToplam, kur: 1, tutar: genelToplam }];
     return {
       // Tarih değiştirme yetkisi yoksa yeni fiş şimdiki zamanla (kilitli kutu gece yarısını geçen ekranda dünü tutuyordu)
-      faturaId, vezneId: vezne?.id ?? null, faturaNo, tarih: !kYetki.tarihDegistirme && !faturaId ? new Date().toISOString() : new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), senaryo,
+      faturaId, vezneId: vezne?.id ?? null, faturaNo, tarih: new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), senaryo,
       cariKartId, aliciVknTckn: temizVkn, aliciUnvan: isAnonymousCustomerName(unvan) ? "NİHAİ TÜKETİCİ" : unvan.trim(),
       adres, ilce, il, vergiDairesi, eposta, telefon,
       iskontoId, iskontoKodu: iskontolar.find((i) => i.iskontoId === iskontoId)?.kod || null, iskontoTuru: fisIskTur, iskontoDegeri: sayi(fisIskDeger),
@@ -548,10 +549,13 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     if (hedef) navigate(`/ticari/satis-fisi-duzeltme?id=${hedef}`);
   };
 
+  // Dürbün listesini pencere kendisi sunucudan filtreli çeker (FisDurbunModal; docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
   const gecmisAc = async () => {
-    setGecmis({ acik: true, liste: [], yukleniyor: true });
-    const liste = await TicariService.satisListe({}).catch(() => []);
-    setGecmis({ acik: true, liste, yukleniyor: false });
+    setGecmis({ acik: true, liste: [], yukleniyor: false });
+  };
+  const gecmisGetir = (p: Record<string, string | number>, limit: number) => {
+    const { search, ...durbun } = p;
+    return TicariService.satisListe({ ...durbun, arama: search !== undefined ? String(search) : undefined, limit });
   };
 
   // Kısayollar: F1 kaydet, F10 kaydet + yazdır, F9 önizleme, F2 sil (düzeltme)
@@ -902,8 +906,12 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
           onClose={() => setMusteri({ acik: false, arama: "", alan: "all", odemeSatiri: null })} onSelectCustomer={(r) => void musteriSecildi(r)} />
       )}
       <TicariFisPrintModal show={!!onizleme} onHide={() => setOnizleme(null)} fatura={onizleme} vezne={vezne} />
-      <LookupModal<TicariSatisListeSatiri>
-        show={gecmis.acik} onHide={() => setGecmis({ acik: false, liste: [], yukleniyor: false })} title="Satış Fişi Ara" items={gecmis.liste} isLoading={gecmis.yukleniyor}
+      <FisDurbunModal<TicariSatisListeSatiri>
+        show={gecmis.acik} onHide={() => setGecmis({ acik: false, liste: [], yukleniyor: false })} title="Satış Fişi Ara"
+        getir={gecmisGetir} sunucuArama
+        alanlar={{ tarih: true, vezne: true, urun: true, cari: true, tutar: true, belgeNo: true }}
+        vezneler={vezneler.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
+        etiketler={{ urun: "Ürün adı / kodu / barkod", cari: "Müşteri / VKN", tutar: "Genel toplam", belgeNo: "Fatura no" }}
         searchPlaceholder="Fatura no, müşteri ya da VKN..."
         columns={[
           { header: "Fatura No", width: "150px", render: (f) => <span className="font-monospace fw-bold">{f.faturaNo}</span>, highlight: true },

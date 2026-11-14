@@ -178,6 +178,8 @@ export const BankaService = {
     limit?: number;
     /** Fişlerin Hesap (banka) satırları da gelsin (salt okunur; docs/EBANKA_MUHASEBELESTIRME_YOL_HARITASI.md M17) */
     fisSatirlari?: boolean;
+    /** Dürbün gelişmiş filtresi (drbBas, drbBit, drbVezne = banka hesabı … — utils/fisDurbunFiltre.ts) */
+    [durbun: string]: string | number | boolean | undefined;
   }): Promise<BankaHareketItem[]> {
     const { fisSatirlari, ...digeri } = filter || {};
     const res = await apiClient.get<BankaHareketItem[]>("/banka/hareketler", fisSatirlari ? { ...digeri, fisSatirlari: "1" } : digeri);

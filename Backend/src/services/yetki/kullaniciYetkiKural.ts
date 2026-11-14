@@ -26,6 +26,10 @@ export interface KullaniciYetkisi {
   menu: Partial<Record<MenuYetkiAlani, string | null>>;
   /** İşlem gösterme gün sayısı; 0 sınırsız */
   gosterimGunu: number;
+  /**
+   * Her kullanıcıda true: tarih değiştirme yetkisi kalktı, hiçbir fiş ekranı tarihi kilitlemez, sunucu da denetlemez
+   * (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md T1). Kullanıcı kartındaki kutu ve TARIH_DEGISTIRME_YETKISI kalır, etkisizdir (T4).
+   */
   tarihDegistirme: boolean;
   fisNoDegistirme: boolean;
   tutarDegistirme: boolean;
@@ -135,7 +139,7 @@ export const yetkiProfilden = (u: any): KullaniciYetkisi => {
     yonetici: isAdmin,
     menu: { ...(u.menuPerms || (base ? base.menu : {})) },
     gosterimGunu: u.displayDays !== undefined ? Math.max(0, Math.trunc(sayi(u.displayDays))) : (base ? base.gosterimGunu : 0),
-    tarihDegistirme: u.hasDateChangePerm !== undefined ? evet(u.hasDateChangePerm) : (base ? base.tarihDegistirme : false),
+    tarihDegistirme: true, // T1: kartın hasDateChangePerm değeri okunmaz
     fisNoDegistirme: u.hasSlipNoChangePerm !== undefined ? evet(u.hasSlipNoChangePerm) : (base ? base.fisNoDegistirme : false),
     tutarDegistirme: u.hasSlipAmountChangePerm !== undefined ? evet(u.hasSlipAmountChangePerm) : (base ? base.tutarDegistirme : false),
     bankaHesabiSecme: u.hasSlipBankAccountPerm !== undefined ? evet(u.hasSlipBankAccountPerm) : (base ? base.bankaHesabiSecme : false),
@@ -183,7 +187,7 @@ export const yetkiSatirdan = (r: any, firmaYoneticisi = false): KullaniciYetkisi
       techOps: r.TEKNIK_ISLEMLER_YETKISI ?? (yonetici ? "Tam Yetki" : null),
     },
     gosterimGunu: Math.max(0, Math.trunc(sayi(r.FIS_GOSTERME_GUN_SAYISI))),
-    tarihDegistirme: evet(r.TARIH_DEGISTIRME_YETKISI) || yonetici,
+    tarihDegistirme: true, // T1: TARIH_DEGISTIRME_YETKISI okunmaz
     fisNoDegistirme: evet(r.FIS_NO_DEGISTIRME_YETKISI) || yonetici,
     tutarDegistirme: evet(r.FIS_TUTAR_DEGISTIRME_YETKISI) || yonetici,
     bankaHesabiSecme: evet(r.FIS_BANKA_HESABI_SECME_YETKISI) || yonetici,

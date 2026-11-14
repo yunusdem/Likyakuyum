@@ -306,7 +306,8 @@ export class SarrafFisService {
     return res.data || [];
   }
 
-  static async getFisList(params?: { search?: string; tip?: number; vezneId?: number; limit?: number }): Promise<SarrafFisListItem[]> {
+  /** Dürbün gelişmiş filtresi drb önekli parametrelerle gider (utils/fisDurbunFiltre.ts) */
+  static async getFisList(params?: { search?: string; tip?: number; vezneId?: number; limit?: number; [durbun: string]: string | number | undefined }): Promise<SarrafFisListItem[]> {
     const res = await apiClient.get<SarrafFisListItem[]>("/sarraf-fis", params);
     return res.data || [];
   }

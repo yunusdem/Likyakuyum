@@ -38,9 +38,11 @@ import {
   IconBuildingBank,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
+import { yerelGun } from "../../utils/fisTarihi";
 import { SayfaCikisUyarisiModal, useSayfaCikisUyarisi } from "../../components/common/SayfaCikisUyarisiModal";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import { MasakService, MasakEslesme } from "../../services/masakService";
 import { MasakSonucModal } from "../../components/masak/MasakSonucModal";
 import MasakModal from "../../components/masak/MasakModal";
@@ -107,6 +109,38 @@ export interface ParaItem {
   hasOrani?: number;
   gramaj?: number;
 }
+
+// Dürbün modalında her zaman en son yapılan işlem en üstte, en eski işlem en altta (Tarih ve son işlem azalan sırada)
+const dovizDurbunSirasi = (a: any, b: any): number => {
+  // 1. Tarih karşılaştırması (En yeni tarih en üstte)
+  const dateAStr = a.tarih ? String(a.tarih).split("T")[0] : "";
+  const dateBStr = b.tarih ? String(b.tarih).split("T")[0] : "";
+  if (dateAStr !== dateBStr) {
+    return dateBStr.localeCompare(dateAStr);
+  }
+
+  // 2. Aynı gün içinde siralama / işlem zamanı (Son yapılan işlem en üstte)
+  if (a.siralama && b.siralama) {
+    const timeA = new Date(a.siralama).getTime();
+    const timeB = new Date(b.siralama).getTime();
+    if (timeA !== timeB && !isNaN(timeA) && !isNaN(timeB)) {
+      return timeB - timeA;
+    }
+  }
+
+  if (a.zaman && b.zaman && a.zaman !== b.zaman) {
+    return String(b.zaman).localeCompare(String(a.zaman));
+  }
+
+  // 3. Fiş ID azalan (En son oluşturulan ID en üstte)
+  return (Number(b.fisId) || 0) - (Number(a.fisId) || 0);
+};
+
+const DOVIZ_DURBUN_TIPLERI = [
+  { deger: "0", ad: "Alış" },
+  { deger: "1", ad: "Satış" },
+  { deger: "arb", ad: "Arbitraj" },
+];
 
 interface GridLineItem {
   id: string;
@@ -621,7 +655,7 @@ export const DovizFisiPage: React.FC = () => {
       return sellText || "var(--user-sell-header-text, #0f172a)";
     }
   }, [tip, user?.appearance?.buyHeaderTextColor, user?.appearance?.sellHeaderTextColor]);
-  const [tarih, setTarih] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [tarih, setTarih] = useState<string>(() => yerelGun());
   const [saat, setSaat] = useState<string>(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -1130,7 +1164,7 @@ export const DovizFisiPage: React.FC = () => {
     setGibeGonderildi(false);
     setIsGonderildi(false);
     const now = new Date();
-    setTarih(now.toISOString().split("T")[0]);
+    setTarih(yerelGun(now));
     setSaat(`${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
     setSeriNo("");
     setBelgeNo("");
@@ -1509,7 +1543,7 @@ export const DovizFisiPage: React.FC = () => {
       if (fis.vezneKod) setVezneKod(fis.vezneKod);
       if (fis.vezneAd) setVezneAd(fis.vezneAd);
       setTip(fis.tip);
-      setTarih(fis.tarih ? fis.tarih.split("T")[0] : new Date().toISOString().split("T")[0]);
+      setTarih(fis.tarih ? fis.tarih.split("T")[0] : yerelGun());
       setSaat(fis.zaman || "17:50");
       setSeriNo(fis.seriNo || "");
       setBelgeNo(fis.belgeNo || "");
@@ -1950,26 +1984,23 @@ export const DovizFisiPage: React.FC = () => {
     }
   };
 
+  // Dürbün listesini pencere kendisi sunucudan filtreli çeker (FisDurbunModal; docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
   const openFisSecimModal = async () => {
-    setIsLoadingFisList(true);
     setShowSearchModal(true);
-    try {
-      const rawFisler = await DovizFisService.getFisList({ limit: 500 });
-      const curUserId = Number(user?.id) || 1;
-      const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
-      const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
-      const allowedFisler = (rawFisler || []).filter((f: any) => {
-        if (!hasOnlyOwn) return true;
-        const kId = Number(f.kullaniciId || f.ekleyenId || 0);
-        const vId = Number(f.vezneId || 0);
-        return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
-      });
-      setSavedFisList(allowedFisler);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoadingFisList(false);
-    }
+  };
+
+  const durbunFisGetir = async (parametreler: Record<string, string | number>, limit: number): Promise<DovizFisListItem[]> => {
+    const rawFisler = await DovizFisService.getFisList({ ...parametreler, limit });
+    const curUserId = Number(user?.id) || 1;
+    const curVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+    const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+    const allowedFisler = (rawFisler || []).filter((f: any) => {
+      if (!hasOnlyOwn) return true;
+      const kId = Number(f.kullaniciId || f.ekleyenId || 0);
+      const vId = Number(f.vezneId || 0);
+      return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+    });
+    return [...allowedFisler].sort(dovizDurbunSirasi);
   };
 
   const parseRate = (val: any): number => {
@@ -5400,7 +5431,7 @@ export const DovizFisiPage: React.FC = () => {
       const sonT = isAlis ? totalT - totalM : totalT + totalM;
 
       const now = new Date();
-      const finalTarih = now.toISOString().split("T")[0];
+      const finalTarih = yerelGun(now);
       const finalZaman = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
       let effectiveMainFisId: number | undefined = (fisId && fisId > 0) ? fisId : undefined;
@@ -5938,7 +5969,7 @@ export const DovizFisiPage: React.FC = () => {
     const currentSnapshot = {
       fisId: fisId || undefined,
       tip,
-      tarih: tarih || new Date().toISOString().slice(0, 10),
+      tarih: tarih || yerelGun(),
       saat: (saat || "12:00").slice(0, 8),
       seriNo: seriNo || "",
       belgeNo: belgeNo || "",
@@ -6274,7 +6305,7 @@ export const DovizFisiPage: React.FC = () => {
       const sonT = isAlis ? totalT - totalM : totalT + totalM;
 
       const now = new Date();
-      const finalTarih = now.toISOString().split("T")[0];
+      const finalTarih = yerelGun(now);
       const finalZaman = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
       const snapshot = {
@@ -6736,34 +6767,6 @@ export const DovizFisiPage: React.FC = () => {
         item.toplamTutar != null ? `${Number(item.toplamTutar).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL` : "-",
     },
   ];
-
-  // Dürbün modalında her zaman en son yapılan işlem en üstte, en eski işlem en altta (Tarih ve son işlem azalan sırada)
-  const durbunFisList = useMemo(() => {
-    return [...savedFisList].sort((a: any, b: any) => {
-      // 1. Tarih karşılaştırması (En yeni tarih en üstte)
-      const dateAStr = a.tarih ? String(a.tarih).split("T")[0] : "";
-      const dateBStr = b.tarih ? String(b.tarih).split("T")[0] : "";
-      if (dateAStr !== dateBStr) {
-        return dateBStr.localeCompare(dateAStr);
-      }
-
-      // 2. Aynı gün içinde siralama / işlem zamanı (Son yapılan işlem en üstte)
-      if (a.siralama && b.siralama) {
-        const timeA = new Date(a.siralama).getTime();
-        const timeB = new Date(b.siralama).getTime();
-        if (timeA !== timeB && !isNaN(timeA) && !isNaN(timeB)) {
-          return timeB - timeA;
-        }
-      }
-
-      if (a.zaman && b.zaman && a.zaman !== b.zaman) {
-        return String(b.zaman).localeCompare(String(a.zaman));
-      }
-
-      // 3. Fiş ID azalan (En son oluşturulan ID en üstte)
-      return (Number(b.fisId) || 0) - (Number(a.fisId) || 0);
-    });
-  }, [savedFisList]);
 
   const cariColumns: LookupColumn<CariKartItem>[] = [
     { header: "Kod", width: "120px", render: (c) => c.kod },
@@ -9469,22 +9472,21 @@ export const DovizFisiPage: React.FC = () => {
       </Modal>
 
       {/* Dürbün / Search Modal */}
-      <LookupModal<DovizFisListItem>
+      <FisDurbunModal<DovizFisListItem>
         show={showSearchModal}
-        isLoading={isLoadingFisList}
         onHide={() => setShowSearchModal(false)}
         title="Döviz Fişi Listesi (Dürbün)"
-        items={durbunFisList}
         columns={fisColumns}
-        filterFn={(item, term) => {
-          const t = term.toLowerCase();
-          return (
-            (item.seriNo || "").toLowerCase().includes(t) ||
-            (item.belgeNo || "").toLowerCase().includes(t) ||
-            (item.unvan || "").toLowerCase().includes(t) ||
-            (item.vergiKimlikNo || "").toLowerCase().includes(t)
-          );
-        }}
+        getir={durbunFisGetir}
+        sunucuArama
+        alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}
+        vezneler={vezneList.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
+        urunler={paraList
+          .filter((p) => !["TL", "TRY", "TRL"].includes((p.kod || "").toUpperCase().trim()))
+          .map((p) => ({ deger: String(p.id), ad: `${p.kod} - ${p.ad}` }))}
+        tipler={DOVIZ_DURBUN_TIPLERI}
+        etiketler={{ urun: "Döviz / maden", tutar: "Toplam tutar (TL)" }}
+        searchPlaceholder="Seri / belge no, ünvan veya VKN ile arayın..."
         onSelect={(item) => {
           setShowSearchModal(false);
           if (!isDuzeltmeMode) {

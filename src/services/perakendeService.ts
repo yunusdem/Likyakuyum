@@ -226,6 +226,8 @@ export interface PerakendeFaturaFilter {
   eBelgeDurumu?: number;
   search?: string;
   limit?: number;
+  /** Dürbün gelişmiş filtresi (drb önekli; utils/fisDurbunFiltre.ts) */
+  [durbun: string]: string | number | undefined;
 }
 
 export class PerakendeService {

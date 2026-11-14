@@ -3,7 +3,7 @@ import { caprazKurDenetle, kurDegistirilebilir } from "../../../Backend/src/serv
 import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { CompanyService } from "../../services/companyService";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
-import { fisGunu } from "../../utils/fisTarihi";
+import { fisGunu, yerelGun } from "../../utils/fisTarihi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -31,6 +31,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { apiClient } from "../../services/apiClient";
 import {
@@ -110,7 +111,7 @@ export const CariEmanetDekontPage: React.FC = () => {
   const [dekontNo, setDekontNo] = useState<string>("");
   const [tip, setTip] = useState<number>(0); // 0: Emanet alma, 1: Emanet verme, 2: Dekont (Virman)
   const [mutabakatTuru, setMutabakatTuru] = useState<MutabakatType>("capraz");
-  const [tarih, setTarih] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [tarih, setTarih] = useState<string>(() => yerelGun());
   const [vade, setVade] = useState<string>("");
   const [iptalTarihi, setIptalTarihi] = useState<string>("");
   const [aciklama, setAciklama] = useState<string>("");
@@ -542,7 +543,7 @@ export const CariEmanetDekontPage: React.FC = () => {
     setCariDekontId(null);
     setDekontNo("");
     setTip(0);
-    setTarih(new Date().toISOString().split("T")[0]);
+    setTarih(yerelGun());
     setVade("");
     setIptalTarihi("");
     setAciklama("");
@@ -594,7 +595,7 @@ export const CariEmanetDekontPage: React.FC = () => {
         setCariDekontId(data.cariDekontId);
         setDekontNo(data.dekontNo);
         setTip(data.tip ?? 0);
-        setTarih(data.tarih ? data.tarih.split("T")[0] : new Date().toISOString().split("T")[0]);
+        setTarih(data.tarih ? data.tarih.split("T")[0] : yerelGun());
         setVade(data.vade ? data.vade.split("T")[0] : "");
         setIptalTarihi(data.iptalTarihi ? data.iptalTarihi.split("T")[0] : "");
         setAciklama(data.aciklama || "");
@@ -2506,7 +2507,7 @@ export const CariEmanetDekontPage: React.FC = () => {
                         const val = Number(e.target.value);
                         setSatirDurumu(val);
                         if (val === 1 && !iptalTarihi) {
-                          setIptalTarihi(new Date().toISOString().split("T")[0]);
+                          setIptalTarihi(yerelGun());
                         } else if (val === 0) {
                           setIptalTarihi("");
                         }
@@ -3430,13 +3431,17 @@ export const CariEmanetDekontPage: React.FC = () => {
       {/* ===================== MODALLAR ===================== */}
 
       {/* 1. Dekont Arama Modalı */}
-      <LookupModal<CariDekontListItem>
+      <FisDurbunModal<CariDekontListItem>
         show={showDekontSearchModal}
         onHide={() => setShowDekontSearchModal(false)}
         title="Kayıtlı Dekontlar Listesi"
         searchPlaceholder="Dekont no, cari kodu veya adı ile ara..."
-        items={savedDekonts}
-        isLoading={isLoadingLookups}
+        getir={(parametreler, limit) => CariDekontService.getDekontList({ ...parametreler, limit })}
+        alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}
+        vezneler={vezneList.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
+        urunler={paraList.map((p) => ({ deger: String(p.id), ad: `${p.kod} - ${p.ad}` }))}
+        tipler={[{ deger: "0", ad: "Emanet alma" }, { deger: "1", ad: "Emanet verme" }]}
+        etiketler={{ cari: "Cari kodu / adı / VKN", urun: "Para birimi", tutar: "Toplam miktar", belgeNo: "Dekont no" }}
         filterFn={(item, term) => {
           const t = term.toLowerCase();
           return (

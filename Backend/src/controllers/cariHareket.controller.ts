@@ -5,6 +5,7 @@ import { kullaniciYetkisi, yetkiGerekli } from "../services/yetki/kullaniciYetki
 import { CariHareketService } from "../services/cariHareket.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { durbunFiltresiVar, fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 
 export class CariHareketController {
   private static getDbContext(req: Request) {
@@ -58,6 +59,13 @@ export class CariHareketController {
       userVezneId,
       cariSinirlamaTipi: !yetkiler.yonetici ? yetkiler.cariSinirlamaTipi : 0,
     };
+
+    // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+    const durbun = fisDurbunFiltresiOku(req.query as Record<string, unknown>);
+    if (durbunFiltresiVar(durbun)) {
+      const liste = await CariHareketService.durbunListesi(filters, durbun, Number(req.query.limit) || undefined, dbContext);
+      return ApiResponse.ok(res, "Cari hareketler başarıyla listelendi.", liste);
+    }
 
     const list = await CariHareketService.list(filters, dbContext);
     return ApiResponse.ok(res, "Cari hareketler başarıyla listelendi.", list);

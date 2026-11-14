@@ -7,6 +7,17 @@ import { PerakendeSqlRepository } from "./perakendeSql.repository.js";
 import { DbBaglam, STOK_BELGE, TicariStokSqlRepository } from "./ticariStokSql.repository.js";
 import { bakiyeler, eksiStokDenetle } from "./ticariGirisSql.repository.js";
 import { TicariKampanyaSqlRepository } from "./ticariKampanyaSql.repository.js";
+import { FisDurbunFiltre, FisDurbunKolonlari, durbunFiltresiVar, durbunLimiti, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+
+/** Ticari satış fişi dürbünü: TARIH UTC tutulur (gün +3 saatle), ürün = stok kartı / satır adı metni, tip yok */
+export const TICARI_SATIS_DURBUN_KOLONLARI: FisDurbunKolonlari = {
+  tarih: "CAST(DATEADD(hour, 3, F.TARIH) AS date)",
+  vezne: ["F.VEZNE_ID"],
+  urunMetinExists: "EXISTS (SELECT 1 FROM dbo.TODVZ_FATURA_SATIRI DS LEFT JOIN dbo.TODVZ_STOK_KART DK ON DK.STOK_KART_ID = DS.STOK_KART_ID WHERE DS.FATURA_ID = F.FATURA_ID AND (DS.URUN_ADI LIKE @DRB_URUNM OR DS.BARKOD LIKE @DRB_URUNM OR DK.KOD LIKE @DRB_URUNM OR DK.AD LIKE @DRB_URUNM))",
+  cari: ["F.ALICI_UNVAN", "F.ALICI_VKN_TCKN", "C.KOD", "C.AD"],
+  tutar: "F.GENEL_TOPLAM",
+  belgeNo: ["F.FATURA_NO"],
+};
 
 /**
  * Ticari Satış Fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T12–T16). Perakende fişinin tablolarına (TODVZ_FATURA*)
@@ -533,7 +544,7 @@ export class TicariSatisSqlRepository {
   }
 
   /** Ticari Satış Listesi (T16) */
-  static async liste(f: { baslangic?: string | null; bitis?: string | null; arama?: string | null; eBelgeDurumu?: number | null; stokKartId?: number | null } = {}, ctx?: DbBaglam) {
+  static async liste(f: { baslangic?: string | null; bitis?: string | null; arama?: string | null; eBelgeDurumu?: number | null; stokKartId?: number | null; durbun?: FisDurbunFiltre; limit?: number | null } = {}, ctx?: DbBaglam) {
     const pool = await TicariStokSqlRepository.havuz(ctx);
     const req = pool.request();
     const kosul: string[] = [`ISNULL(F.FIS_KAYNAGI, 0) = ${FIS_KAYNAGI_TICARI}`];
@@ -546,8 +557,16 @@ export class TicariSatisSqlRepository {
       req.input("ARA", sql.NVarChar(210), `%${temiz(f.arama)}%`);
       kosul.push(`(F.FATURA_NO LIKE @ARA OR F.ALICI_UNVAN LIKE @ARA OR F.ALICI_VKN_TCKN LIKE @ARA OR EXISTS (SELECT 1 FROM dbo.TODVZ_FATURA_SATIRI S WHERE S.FATURA_ID = F.FATURA_ID AND S.URUN_ADI LIKE @ARA))`);
     }
+    // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5); yalnız dürbünde satır sınırı
+    const durbunVar = durbunFiltresiVar(f.durbun);
+    if (durbunVar) {
+      const k = fisDurbunKosullari(f.durbun, TICARI_SATIS_DURBUN_KOLONLARI);
+      kosul.push(...k.kosullar);
+      durbunParametreleriniBagla(req, k.parametreler);
+    }
+    const ust = durbunVar ? `TOP (${durbunLimiti(f.limit, 1001, 1001, true)}) ` : "";
     const r = await req.query(`
-      SELECT F.FATURA_ID, F.FATURA_NO, F.TARIH, F.SENARYO, F.ALICI_VKN_TCKN, F.ALICI_UNVAN, F.CARI_KART_ID, RTRIM(C.KOD) AS CARI_KOD,
+      SELECT ${ust}F.FATURA_ID, F.FATURA_NO, F.TARIH, F.SENARYO, F.ALICI_VKN_TCKN, F.ALICI_UNVAN, F.CARI_KART_ID, RTRIM(C.KOD) AS CARI_KOD,
         F.ARA_TOPLAM, F.TOPLAM_KDV, F.ISKONTO_TUTARI, F.GENEL_TOPLAM, ISNULL(F.E_BELGE_DURUMU, 0) AS E_BELGE_DURUMU, F.GIB_STATU_KODU,
         F.VEZNE_ID, RTRIM(V.KOD) AS VEZNE_KOD,
         (SELECT COUNT(*) FROM dbo.TODVZ_FATURA_SATIRI S WHERE S.FATURA_ID = F.FATURA_ID) AS SATIR_SAYISI,

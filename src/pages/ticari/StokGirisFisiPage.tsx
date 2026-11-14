@@ -4,11 +4,12 @@ import { IconBarcode, IconBinoculars, IconPackageImport, IconTrash, IconUser, Ic
 import { useLocation, useNavigate } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { LookupModal } from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { CariKartItem, CariService } from "../../services/cariService";
-import { KDV_SECENEKLERI, StokKart, TicariService, eksiStokUyarisiMi, miktarYaz, para } from "../../services/ticariService";
+import { KDV_SECENEKLERI, StokGiris, StokKart, TicariService, eksiStokUyarisiMi, miktarYaz, para } from "../../services/ticariService";
 import { girisSatirHesapla, yuvarla2 } from "../../../Backend/src/services/ticari/ticariHesap";
 import { StokKartSecici } from "./StokKartSecici";
 import { StokKartModal } from "./StokKartModal";
@@ -62,6 +63,8 @@ export const StokGirisFisiPage: React.FC = () => {
   const [yeniKart, setYeniKart] = useState<{ acik: boolean; barkod?: string }>({ acik: false });
   const [yukleniyor, setYukleniyor] = useState(false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // Kayıtlı fiş dürbünü (düzeltmede; docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+  const [durbunAcik, setDurbunAcik] = useState(false);
   const okutRef = useRef<HTMLInputElement | null>(null);
 
   const temizle = useCallback(async () => {
@@ -128,7 +131,7 @@ export const StokGirisFisiPage: React.FC = () => {
     let tekrar = false;
     try {
       const r = await TicariService.girisKaydet({
-        stokGirisId: id, tarih: !tarihYetkisi && !id ? new Date().toISOString() : new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), cariKartId: cari?.id ?? null, belgeNo, aciklama,
+        stokGirisId: id, tarih: new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), cariKartId: cari?.id ?? null, belgeNo, aciklama,
         vezneId: (user as any)?.vezneId ?? null,
         satirlar: satirlar.map((s) => ({ stokKartId: s.stokKartId, miktar: sayi(s.miktar), birimFiyat: sayi(s.birimFiyat), kdvOrani: s.kdvOrani })),
         eksiStokOnay: onay,
@@ -169,7 +172,7 @@ export const StokGirisFisiPage: React.FC = () => {
     <div className="container-fluid p-2">
       <ERPToolbar pageTitle={id ? `D- Stok Giriş Fişi — Düzeltme (${fisNo})` : "D- Stok Giriş Fişi"} pageIcon={<IconPackageImport size={20} />}
         onNew={id ? undefined : () => void temizle()} hideNew={!!id} onSave={() => void kaydet()} onDelete={id ? () => void sil() : undefined}
-        hideDelete={!id} hidePrint hideSearch disabled={kaydediliyor} modeText={id ? "Düzeltme Modu" : "Yeni Kayıt Modu"} />
+        hideDelete={!id} hidePrint hideSearch={!id} onSearch={id ? () => setDurbunAcik(true) : undefined} disabled={kaydediliyor} modeText={id ? "Düzeltme Modu" : "Yeni Kayıt Modu"} />
       {yukleniyor ? <div className="text-center py-5"><Spinner size="sm" className="me-2" />Yükleniyor...</div> : (
         <>
           <Card className="border shadow-xs mb-2">
@@ -291,6 +294,22 @@ export const StokGirisFisiPage: React.FC = () => {
         ]}
         filterFn={(c, t) => { const a = t.toLocaleLowerCase("tr-TR"); return String(c.kod || "").toLocaleLowerCase("tr-TR").includes(a) || String(c.ad || "").toLocaleLowerCase("tr-TR").includes(a) || String(c.vergiKimlikNo || "").includes(t); }}
         onSelect={(c) => { setCari({ id: c.id, kod: c.kod, ad: c.ad }); setCariSecici(false); }}
+        selectOnDoubleClick
+      />
+      <FisDurbunModal<StokGiris>
+        show={durbunAcik} onHide={() => setDurbunAcik(false)} title="Stok Giriş Fişi Ara"
+        getir={(p, limit) => { const { search, ...durbun } = p; return TicariService.girisListe({ ...durbun, arama: search !== undefined ? String(search) : undefined, limit }); }}
+        sunucuArama searchPlaceholder="Fiş / belge no, tedarikçi, açıklama ya da ürün..."
+        alanlar={{ tarih: true, urun: true, cari: true, tutar: true, belgeNo: true }}
+        etiketler={{ urun: "Ürün adı / kodu", cari: "Tedarikçi / VKN", tutar: "Genel toplam", belgeNo: "Fiş / belge no" }}
+        columns={[
+          { header: "Fiş No", width: "110px", render: (g) => <span className="font-monospace fw-bold">{g.fisNo}</span> },
+          { header: "Tarih", width: "130px", render: (g) => new Date(g.tarih).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" }) },
+          { header: "Tedarikçi", render: (g) => g.cariAd || "-" },
+          { header: "Belge No", width: "110px", render: (g) => g.belgeNo || "" },
+          { header: "Toplam", width: "110px", align: "right", render: (g) => `${para(g.genelToplam)} TL` },
+        ]}
+        onSelect={(g) => { setDurbunAcik(false); navigate(`/ticari/stok-giris-fisi?id=${g.stokGirisId}`); }}
         selectOnDoubleClick
       />
     </div>

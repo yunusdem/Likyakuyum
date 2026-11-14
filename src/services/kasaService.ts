@@ -92,7 +92,8 @@ export const KasaService = {
   },
 
   // ─── Hesap Hareketleri ─────────────────────────────────────────────────────
-  async getHareketler(filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number }): Promise<HesapHareketiItem[]> {
+  /** Dürbün gelişmiş filtresi drb önekli parametrelerle gider (utils/fisDurbunFiltre.ts) */
+  async getHareketler(filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number; [durbun: string]: string | number | undefined }): Promise<HesapHareketiItem[]> {
     const res = await apiClient.get<HesapHareketiItem[]>("/kasa/hareketler", filter);
     const data = (res.data as any)?.data ?? res.data;
     return Array.isArray(data) ? data : [];

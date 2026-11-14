@@ -77,8 +77,11 @@ export class VezneTransferiService {
     startDate?: string;
     endDate?: string;
     limit?: number;
+    /** Dürbün gelişmiş filtresi (drb önekli; utils/fisDurbunFiltre.ts) */
+    durbun?: Record<string, string | number>;
   }): Promise<VezneTransferiListItem[]> {
     const query = new URLSearchParams();
+    Object.entries(params?.durbun || {}).forEach(([k, v]) => { if (k !== "search") query.append(k, String(v)); });
     if (params?.search) query.append("search", params.search);
     if (params?.alanVezneId) query.append("alanVezneId", String(params.alanVezneId));
     if (params?.verenVezneId) query.append("verenVezneId", String(params.verenVezneId));

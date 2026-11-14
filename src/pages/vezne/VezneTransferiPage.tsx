@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
-import { fisGunu } from "../../utils/fisTarihi";
+import { fisGunu, yerelGun } from "../../utils/fisTarihi";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -27,6 +27,7 @@ import {
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
+import FisDurbunModal from "../../components/common/FisDurbunModal";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
@@ -270,7 +271,7 @@ export const VezneTransferiPage: React.FC = () => {
 
   // Active Transfer Form State - All default to EMPTY on new record
   const [transferId, setTransferId] = useState<number | null>(null);
-  const [tarih, setTarih] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [tarih, setTarih] = useState<string>(() => yerelGun());
   const [refNo, setRefNo] = useState<string>("");
   const [alanVezneId, setAlanVezneId] = useState<number>(0);
   const [alanVezneKod, setAlanVezneKod] = useState<string>("");
@@ -529,7 +530,7 @@ export const VezneTransferiPage: React.FC = () => {
   const resetForm = useCallback(() => {
     setTransferId(null);
     const now = new Date();
-    setTarih(now.toISOString().split("T")[0]);
+    setTarih(yerelGun(now));
     setRefNo("");
 
     const uv = getUserVezne(vezneList);
@@ -1070,7 +1071,7 @@ export const VezneTransferiPage: React.FC = () => {
       // Reset / Clear all input fields for the next transfer
       setTransferId(null);
       const now = new Date();
-      setTarih(now.toISOString().split("T")[0]);
+      setTarih(yerelGun(now));
       setRefNo("");
 
       const uv = getUserVezne(vezneList);
@@ -1156,18 +1157,14 @@ export const VezneTransferiPage: React.FC = () => {
   };
 
   // Search Past Transfers Modal (En eski kayıt ilk satırda, en yeni kayıt en altta - SQL sırasına göre ASC)
+  // Dürbün listesini pencere kendisi sunucudan filtreli çeker (FisDurbunModal; docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
   const handleOpenSearchModal = async () => {
     setShowSearchModal(true);
-    setIsLoadingTransferList(true);
-    try {
-      const list = await VezneTransferiService.getTransfers({ limit: 500 });
-      const sorted = [...(list || [])].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-      setTransferList(sorted);
-    } catch (e) {
-      console.error("Transfer listesi getirme hatası:", e);
-    } finally {
-      setIsLoadingTransferList(false);
-    }
+  };
+  const durbunTransferGetir = async (parametreler: Record<string, string | number>, limit: number): Promise<VezneTransferiListItem[]> => {
+    const search = parametreler.search !== undefined ? String(parametreler.search) : undefined;
+    const list = await VezneTransferiService.getTransfers({ search, limit, durbun: parametreler });
+    return [...(list || [])].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
   };
 
   // Keyboard shortcuts F1, F4, F5, F9, F10
@@ -1717,12 +1714,16 @@ export const VezneTransferiPage: React.FC = () => {
       />
 
       {/* Search Modal for Past Transfers */}
-      <LookupModal<VezneTransferiListItem>
+      <FisDurbunModal<VezneTransferiListItem>
         show={showSearchModal}
         onHide={() => setShowSearchModal(false)}
         title="Geçmiş Vezne Transferleri (Arama / Seçim)"
-        items={transferList}
-        isLoading={isLoadingTransferList}
+        getir={durbunTransferGetir}
+        sunucuArama
+        alanlar={{ tarih: true, vezne: true, urun: true, belgeNo: true }}
+        vezneler={vezneList.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
+        urunler={paraList.map((p) => ({ deger: String(p.id), ad: `${p.kod} - ${p.ad}` }))}
+        etiketler={{ vezne: "Vezne (alan / veren)", urun: "Para birimi", belgeNo: "Ref no" }}
         columns={searchColumns}
         searchPlaceholder="Ref no, vezne adı veya açıklamaya göre ara..."
         filterFn={(item, term) =>

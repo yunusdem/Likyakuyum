@@ -4,6 +4,7 @@ import {
   VezneTransferiListItem,
   SaveVezneTransferiDto,
 } from "../models/vezneTransferiSql.repository.js";
+import type { FisDurbunFiltre } from "../utils/fisDurbunFiltre.js";
 
 export class VezneTransferiService {
   public static async getTransfers(
@@ -14,6 +15,7 @@ export class VezneTransferiService {
       startDate?: string;
       endDate?: string;
       limit?: number;
+      durbun?: FisDurbunFiltre;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<VezneTransferiListItem[]> {

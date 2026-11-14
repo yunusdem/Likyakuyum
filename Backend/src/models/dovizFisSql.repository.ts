@@ -4,6 +4,27 @@ import crypto from "crypto";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { FisDurbunFiltre, FisDurbunKolonlari, durbunFiltresiVar, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+
+/** Döviz fişi dürbünü: ürün = para birimi (fiş satırı), tip Alış / Satış / Arbitraj */
+export const DOVIZ_DURBUN_KOLONLARI: FisDurbunKolonlari = {
+  tarih: "F.TARIH",
+  vezne: ["F.VEZNE_ID"],
+  urunExists: "EXISTS (SELECT 1 FROM [dbo].[TODVZ_FIS_SATIRI] DS WHERE DS.FIS_ID = F.FIS_ID AND DS.PARA_ID = @DRB_URUN)",
+  tipKosullari: {
+    "0": "F.TIP = 0",
+    "1": "F.TIP = 1",
+    arb: "(F.IS_ARBITRAJ = 1 OR F.GELIS_NEDENI LIKE '%Arbitraj%' OR ISNULL(F.ARBITRAJ_ID, 0) > 0)",
+  },
+  cari: [
+    "F.UNVAN",
+    "F.VERGI_KIMLIK_NO",
+    "F.PASAPORT_NO",
+    "(SELECT TOP 1 DC.KOD FROM [dbo].[TODVZ_CARI_KART] DC WHERE DC.CARI_KART_ID = F.CARI_KART_ID)",
+  ],
+  tutar: "F.TOPLAM_TUTAR",
+  belgeNo: ["F.SERI_NO", "F.BELGE_NO", "RTRIM(ISNULL(F.SERI_NO, '')) + RTRIM(ISNULL(F.BELGE_NO, ''))"],
+};
 
 export interface DovizFisSatiriModel {
   satirNo: number;
@@ -2975,12 +2996,13 @@ export class DovizFisSqlRepository {
    * Find all Döviz Fişi with search / filter
    */
   public static async findAll(
-    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; isArbitraj?: boolean; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number },
+    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; isArbitraj?: boolean; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number; durbun?: FisDurbunFiltre },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<any[]> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await DovizFisSqlRepository.ensureTablesAndProceduresExist(pool);
 
+    const durbunVar = durbunFiltresiVar(filter?.durbun);
     const limit = Math.max(1, Math.min(5000, Math.trunc(Number(filter?.limit)) || 100));
     const req = pool.request();
 
@@ -3045,9 +3067,18 @@ export class DovizFisSqlRepository {
       req.input("userVezneId", sql.Int, filter.userVezneId || 0);
     }
 
+    // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5)
+    if (durbunVar) {
+      const k = fisDurbunKosullari(filter?.durbun, DOVIZ_DURBUN_KOLONLARI);
+      query += k.sql;
+      durbunParametreleriniBagla(req, k.parametreler);
+    }
+
     // En yeni N fiş, ekrandaki ileri/geri sırası için eskiden yeniye (önceden TOP + ASC en ESKİ N fişi getiriyordu;
-    // çok fişli firmada son fişler düzeltme listesinde görünmüyordu)
-    query += ` ORDER BY COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) DESC, F.FIS_ID DESC`;
+    // çok fişli firmada son fişler düzeltme listesinde görünmüyordu). Dürbünde sınır fiş tarihine göre kesilir.
+    query += durbunVar
+      ? ` ORDER BY F.TARIH DESC, F.FIS_ID DESC`
+      : ` ORDER BY COALESCE(F.GUNCELLEME_ZAMANI, F.EKLEME_ZAMANI, F.TARIH) DESC, F.FIS_ID DESC`;
     query = `SELECT * FROM (${query}) X ORDER BY X.siralama ASC, X.fisId ASC`;
 
     const result = await req.query(query);

@@ -36,9 +36,19 @@ export interface LookupModalProps<T> {
   getRowStyle?: (item: T) => React.CSSProperties | undefined;
   /** Arama metni değişince (sunucu araması yapan çağıran için; pencere açılırken ilk metinle de çağrılır) */
   onSearchTermChange?: (term: string) => void;
+  /** Arama kutusunun altında gösterilecek ek alan (ör. fiş dürbünü filtre çubuğu, FisDurbunFiltre) */
+  headerSlot?: React.ReactNode;
+  /** En çok gösterilecek satır (varsayılan 150; sunucu filtreli listeler kendi sınırını verir) */
+  maxDisplayCount?: number;
+  /** Alt bilgi satırında toplamın yanına eklenecek kısa bilgi */
+  footerInfo?: React.ReactNode;
 }
 
 const MAX_DISPLAY_COUNT = 150;
+
+/** Olay ek filtre alanından mı geliyor (o alanda Enter / oklar seçim yapmaz) */
+const filtreAlanindan = (hedef: EventTarget | null): boolean =>
+  !!(hedef && (hedef as HTMLElement).closest && (hedef as HTMLElement).closest("[data-lookup-filtre]"));
 
 function LookupModalContent<T extends Record<string, any>>({
   show,
@@ -63,7 +73,11 @@ function LookupModalContent<T extends Record<string, any>>({
   getRowClassName,
   getRowStyle,
   onSearchTermChange,
+  headerSlot,
+  maxDisplayCount,
+  footerInfo,
 }: LookupModalProps<T>) {
+  const gosterimSiniri = maxDisplayCount && maxDisplayCount > 0 ? maxDisplayCount : MAX_DISPLAY_COUNT;
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [contextMenu, setContextMenu] = useState<{
@@ -127,8 +141,8 @@ function LookupModalContent<T extends Record<string, any>>({
   }, [items, searchTerm, filterFn]);
 
   const displayItems = useMemo(() => {
-    return filteredItems.slice(0, MAX_DISPLAY_COUNT);
-  }, [filteredItems]);
+    return filteredItems.slice(0, gosterimSiniri);
+  }, [filteredItems, gosterimSiniri]);
 
   // Initial selection and focus on modal open
   const isFirstMountRef = useRef(true);
@@ -153,7 +167,7 @@ function LookupModalContent<T extends Record<string, any>>({
           if (it.ID !== undefined && (it.ID === selectedId || String(it.ID) === String(selectedId))) return true;
           return false;
         });
-        setSelectedIndex(foundIdx >= 0 && foundIdx < MAX_DISPLAY_COUNT ? foundIdx : 0);
+        setSelectedIndex(foundIdx >= 0 && foundIdx < gosterimSiniri ? foundIdx : 0);
       } else {
         setSelectedIndex(0);
       }
@@ -245,6 +259,9 @@ function LookupModalContent<T extends Record<string, any>>({
         onHide();
         return;
       }
+
+      // Ek filtre alanında (tarih / seçim kutuları) oklar ve Enter kutunun kendisine kalır
+      if (e.key !== "Escape" && filtreAlanindan(e.target)) return;
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -355,6 +372,8 @@ function LookupModalContent<T extends Record<string, any>>({
             </Button>
           )}
         </InputGroup>
+
+        {headerSlot}
 
         {/* Info Banner */}
         <div className="d-flex align-items-center justify-content-between mb-2 px-1 text-muted small">
@@ -531,7 +550,7 @@ function LookupModalContent<T extends Record<string, any>>({
       </Modal.Body>
       <Modal.Footer className="py-2 bg-light d-flex justify-content-between align-items-center">
         <span className="small text-muted">
-          Toplam: {filteredItems.length} kayıt {filteredItems.length > MAX_DISPLAY_COUNT && `(İlk ${MAX_DISPLAY_COUNT} listeleniyor)`}
+          Toplam: {filteredItems.length} kayıt {filteredItems.length > gosterimSiniri && `(İlk ${gosterimSiniri} listeleniyor)`}{footerInfo ? <> {footerInfo}</> : null}
         </span>
         <div className="d-flex gap-2 align-items-center">
           {onAddNew && (

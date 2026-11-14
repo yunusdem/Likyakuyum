@@ -4,10 +4,11 @@ import {
   SaveDovizFisDto,
 } from "../models/dovizFisSql.repository.js";
 import { ApiError } from "../utils/ApiError.js";
+import type { FisDurbunFiltre } from "../utils/fisDurbunFiltre.js";
 
 export class DovizFisService {
   public static async getFisList(
-    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; isArbitraj?: boolean; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number },
+    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; isArbitraj?: boolean; onlyOwnRecords?: boolean; userId?: number; userVezneId?: number; durbun?: FisDurbunFiltre },
     dbContext?: { dbServer?: string; dbName?: string }
   ) {
     return DovizFisSqlRepository.findAll(filter, dbContext);
