@@ -73,6 +73,48 @@ export function formatMiktar(val: string | number | undefined | null): string {
 }
 
 /**
+ * Tutar alanları için temizleme ve anlık metin yönetimi.
+ * Binlik basamakları nokta '.' ile ayırır, ondalık kısmını virgül ',' ile korur.
+ * Kullanıcı klavyeden veya numpad'den nokta bastığında bunu ondalık ayracı olarak virgüle dönüştürür.
+ */
+export function formatTutarInput(val: string | number | undefined | null): string {
+  if (val === undefined || val === null || val === "") return "";
+  let s = String(val).trim().replace(/\s/g, "");
+  if (!s) return "";
+
+  // Eğer kullanıcı sonda nokta basmışsa ondalık virgülü olarak değerlendir (örn: "15000." -> "15000,")
+  if (s.endsWith(".")) {
+    s = s.slice(0, -1) + ",";
+  } else if (!s.includes(",")) {
+    // Sadece nokta içeren durumlarda (örn: numpadden veya yapıştırma "1500.5" veya "1500.50"):
+    const parts = s.split(".");
+    // Eğer 1 nokta varsa ve noktadan sonraki basamak sayısı 1 veya 2 ise bu ondalıktır (3 basamak ise binlik ayracıdır)
+    if (parts.length === 2 && parts[1].length <= 2) {
+      s = `${parts[0]},${parts[1]}`;
+    }
+  }
+
+  return formatWithThousandDot(s);
+}
+
+/**
+ * Sayı veya string tutar değerini standart Türkçe para formatına çevirir (örn: 15000 -> "15.000,00").
+ */
+export function formatTutar(val: string | number | undefined | null, decimals: number = 2): string {
+  if (val === undefined || val === null || val === "") return "";
+  const num = parseDecimal(val);
+  if (isNaN(num) || num === 0) {
+    if (typeof val === "number" && val === 0) return "0," + "0".repeat(decimals);
+    if (typeof val === "string" && (val.trim() === "0" || val.trim() === "0,00")) return "0," + "0".repeat(decimals);
+    return "";
+  }
+  return num.toLocaleString("tr-TR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+/**
  * Döviz ve altın kurlarını doğru ondalıklı sayıya çevirir.
  * Kurlar binlik ayracı içermez; nokta ve virgül her zaman ondalık ayracı olarak kabul edilir.
  * 24.545 -> 24.545, 34,50 -> 34.50, 1.0850 -> 1.085

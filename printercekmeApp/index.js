@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.6";
+const CURRENT_VERSION = "1.1.7";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
