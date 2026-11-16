@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.7";
+const CURRENT_VERSION = "1.1.8";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -12,6 +12,7 @@ const WebSocket = require("ws");
 const { exec, spawn } = require("child_process");
 const os = require("os");
 const util = require("util");
+const { a4PngUret, a4GdiParcasi } = require("./a4Baski");
 
 let activeTrayProc = null;
 const activeConsoleClients = new Set();
@@ -1303,6 +1304,7 @@ async function executePrintJobInternal(job) {
 
       let htmlFile = "";
       let pngFile = "";
+      let a4Sayfa = 0;
       if (html) {
         htmlFile = path.join(tmpDir, `print_${timestamp}.html`);
         const isFullDoc = html.trim().startsWith("<!DOCTYPE") || html.trim().startsWith("<html");
@@ -1438,6 +1440,17 @@ async function executePrintJobInternal(job) {
           } catch {
             pngFile = "";
           }
+        } else if (chromiumPath && !isPos) {
+          // A4: sayfa tarayıcı motoruyla görüntüye çevrilip birebir basılır (metin varsa yalnız görüntü üretilemezse kullanılır)
+          try {
+            const sonuc = await a4PngUret(chromiumPath, htmlFile, path.join(tmpDir, `print_${timestamp}_a4.png`));
+            if (sonuc) {
+              pngFile = sonuc.png;
+              a4Sayfa = sonuc.sayfa;
+            }
+          } catch {
+            pngFile = "";
+          }
         }
       }
 
@@ -1463,6 +1476,7 @@ $textPath = '${escapedTextPath}'
 $pngPath = '${escapedPngPath}'
 $copies = ${numCopies}
 $isPos = ${isPos ? "$true" : "$false"}
+$script:a4Sayfa = ${a4Sayfa}
 
 # 1. Hızlı Doğrudan Hedef Yazıcı Doğrulaması (Ağ taraması yapmadan < 1ms)
 $exactPrinter = $null
@@ -1590,7 +1604,10 @@ try {
     $doc.OriginAtMargins = $false
     $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
 
-    if ($pngPath -and (Test-Path $pngPath)) {
+    if ($pngPath -and (Test-Path $pngPath) -and (-not $isPos) -and ($script:a4Sayfa -gt 0)) {
+      # A4: tarayıcıda çizilmiş sayfa görüntüsü kâğıda birebir (kenar boşlukları HTML'den)
+${a4GdiParcasi()}
+    } elseif ($pngPath -and (Test-Path $pngPath)) {
       # Chromium ile render edilmiş birebir fiş görseli (Logo, Çizgi, QR, Bold)
       $script:pngImg = [System.Drawing.Image]::FromFile($pngPath)
       $doc.add_PrintPage({
@@ -1671,7 +1688,7 @@ exit 1
 `;
 
       try {
-        const { stdout, stderr } = await runPowerShellHidden(psScript, 10000);
+        const { stdout, stderr } = await runPowerShellHidden(psScript, a4Sayfa > 0 ? 45000 : 10000);
         const combined = (stdout || "") + "\n" + (stderr || "");
         if (combined.includes("SUCCESS")) {
           printed = true;

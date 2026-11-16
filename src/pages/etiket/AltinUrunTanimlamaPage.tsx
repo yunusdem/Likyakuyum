@@ -245,6 +245,8 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   const [showBankoEkleModal, setShowBankoEkleModal] = useState(false);
   const [showKurLookup, setShowKurLookup] = useState<"hasAlis" | "hasSatis" | "usdAlis" | "usdSatis" | "maliyet" | "satis" | "iscilik" | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Satışı yapılmış ürün: ilk silme denemesi sunucudan döner, pencere "Yine de Sil" onayına geçer
+  const [deleteSatisUyari, setDeleteSatisUyari] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -2041,13 +2043,14 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
   handleSaveAndPrintRef.current = handleSaveAndPrint;
 
   // ─── Sil (F2) ────────────────────────────────────────────────────────────────
-  const handleDelete = async () => {
+  const handleDelete = async (force = false) => {
     if (!altinUrunId) return;
     setIsSaving(true);
     try {
-      await EtiketService.deleteAltinUrun(altinUrunId);
-      showNotif("success", "Altın ürün kaydı başarıyla silindi.");
+      await EtiketService.deleteAltinUrun(altinUrunId, force ? { force: true } : undefined);
+      showNotif("success", force ? "Satışı yapılmış altın ürün kaydı silindi." : "Altın ürün kaydı başarıyla silindi.");
       setShowDeleteConfirm(false);
+      setDeleteSatisUyari(false);
       handleNew();
       if (vezneId && ayar) {
         fetchStok(vezneId, ayar);
@@ -2058,6 +2061,10 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       notifyKatalogUpdate();
     } catch (err: any) {
       const errorMsg = extractApiErrorMessage(err, "Altın ürün silinirken bir hata oluştu.");
+      if (!force && /satışı yapılmış/i.test(errorMsg)) {
+        setDeleteSatisUyari(true);
+        return;
+      }
       showNotif("danger", errorMsg);
     } finally {
       setIsSaving(false);
@@ -2200,7 +2207,11 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
         onNew={isDuzeltmeMode ? undefined : handleNew}
         hideNew={isDuzeltmeMode}
         onSave={handleSave}
-        onDelete={isDuzeltmeMode ? () => setShowDeleteConfirm(true) : undefined}
+        onDelete={
+          isDuzeltmeMode
+            ? () => (altinUrunId ? setShowDeleteConfirm(true) : showNotif("warning", "Silinecek kayıt bulunmamaktadır."))
+            : undefined
+        }
         onSearch={isDuzeltmeMode ? () => setShowLookup(true) : undefined}
         onFirst={isDuzeltmeMode ? () => handleNavigate("first") : undefined}
         onPrev={isDuzeltmeMode ? () => handleNavigate("prev") : undefined}
@@ -3740,22 +3751,30 @@ export const AltinUrunTanimlamaPage: React.FC = () => {
       />
 
       {/* ─── MODAL 6: Silme Onayı ─── */}
-      <Modal show={showDeleteConfirm} onHide={() => setShowDeleteConfirm(false)} centered size="sm">
+      <Modal show={showDeleteConfirm} onHide={() => { setShowDeleteConfirm(false); setDeleteSatisUyari(false); }} centered size="sm">
         <Modal.Header closeButton className="bg-danger text-white py-2 px-3">
           <Modal.Title className="fs-6 fw-bold">Kayıt Silme Onayı</Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3 text-center">
           <IconAlertTriangle size={36} className="text-danger mb-2" />
-          <p className="mb-0">
-            <strong>{grupKodu}-{urunNo}</strong> numaralı altın ürün kaydını silmek istediğinize emin misiniz?
-          </p>
+          {deleteSatisUyari ? (
+            <p className="mb-0">
+              <strong>{grupKodu}-{urunNo}</strong> numaralı altın ürünün <strong className="text-danger">satışı yapılmış</strong>.
+              <br />
+              Yine de silmek istiyor musunuz? Satılan ürünün stoğu vezneye geri eklenmez.
+            </p>
+          ) : (
+            <p className="mb-0">
+              <strong>{grupKodu}-{urunNo}</strong> numaralı altın ürün kaydını silmek istediğinize emin misiniz?
+            </p>
+          )}
         </Modal.Body>
         <Modal.Footer className="py-2 px-3 justify-content-center">
-          <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(false)}>
+          <Button variant="secondary" size="sm" onClick={() => { setShowDeleteConfirm(false); setDeleteSatisUyari(false); }}>
             Vazgeç
           </Button>
-          <Button variant="danger" size="sm" onClick={handleDelete} disabled={isSaving}>
-            Evet, Sil
+          <Button variant="danger" size="sm" onClick={() => handleDelete(deleteSatisUyari)} disabled={isSaving}>
+            {deleteSatisUyari ? "Yine de Sil" : "Evet, Sil"}
           </Button>
         </Modal.Footer>
       </Modal>

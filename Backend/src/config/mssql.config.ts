@@ -315,6 +315,12 @@ export const getDbPool = async (
             DISABLE TRIGGER [TUODVZ_VEZNE] ON [dbo].[TODVZ_VEZNE];
           IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TDODVZ_VEZNE' AND is_disabled = 0)
             DISABLE TRIGGER [TDODVZ_VEZNE] ON [dbo].[TODVZ_VEZNE];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TIODVZ_BANKNOT' AND is_disabled = 0)
+            DISABLE TRIGGER [TIODVZ_BANKNOT] ON [dbo].[TODVZ_BANKNOT];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TUODVZ_BANKNOT' AND is_disabled = 0)
+            DISABLE TRIGGER [TUODVZ_BANKNOT] ON [dbo].[TODVZ_BANKNOT];
+          IF EXISTS (SELECT * FROM sys.triggers WHERE name = 'TDODVZ_BANKNOT' AND is_disabled = 0)
+            DISABLE TRIGGER [TDODVZ_BANKNOT] ON [dbo].[TODVZ_BANKNOT];
         `);
       } catch (triggerErr) {
         // Ignore trigger errors if table/trigger doesn't exist

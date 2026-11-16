@@ -406,8 +406,8 @@ export const EtiketService = {
     notifyProductChanged("altin", saved, "create");
     return saved;
   },
-  async deleteAltinUrun(id: number): Promise<void> {
-    await apiClient.delete(`/etiket/altin-urun/${id}`);
+  async deleteAltinUrun(id: number, options?: { force?: boolean }): Promise<void> {
+    await apiClient.delete(`/etiket/altin-urun/${id}${options?.force ? "?force=true" : ""}`);
     notifyProductChanged("altin", { id }, "delete");
   },
   async markAltinUrunYazdirildi(ids: number[], yazdirildi: boolean): Promise<void> {
@@ -438,8 +438,8 @@ export const EtiketService = {
     notifyProductChanged("ozel", saved, "create");
     return saved;
   },
-  async deleteOzelUrun(id: number): Promise<void> {
-    await apiClient.delete(`/etiket/ozel-urun/${id}`);
+  async deleteOzelUrun(id: number, options?: { force?: boolean }): Promise<void> {
+    await apiClient.delete(`/etiket/ozel-urun/${id}${options?.force ? "?force=true" : ""}`);
     notifyProductChanged("ozel", { id }, "delete");
   },
   async markOzelUrunYazdirildi(ids: number[], yazdirildi: boolean): Promise<void> {

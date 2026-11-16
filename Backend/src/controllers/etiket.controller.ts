@@ -98,7 +98,8 @@ export class EtiketController {
 
   public static deleteAltinUrun = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = EtiketController.getDbContext(req);
-    await EtiketService.removeAltinUrun(Number(req.params.id), dbContext);
+    const force = req.query.force === "true" || req.body?.force === true;
+    await EtiketService.removeAltinUrun(Number(req.params.id), dbContext, { force });
     return ApiResponse.ok(res, "Altın ürün silindi.");
   });
 
@@ -155,7 +156,8 @@ export class EtiketController {
 
   public static deleteOzelUrun = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = EtiketController.getDbContext(req);
-    await EtiketService.removeOzelUrun(Number(req.params.id), dbContext);
+    const force = req.query.force === "true" || req.body?.force === true;
+    await EtiketService.removeOzelUrun(Number(req.params.id), dbContext, { force });
     return ApiResponse.ok(res, "Özel ürün silindi.");
   });
 

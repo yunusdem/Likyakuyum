@@ -625,63 +625,36 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     setIsPrinting(true);
     setPrintSuccessMsg(null);
 
-    const fullHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>DOVIZ ISLEM EVRAK - GERCEK KISI TANI FORMU</title>
-        <style>
-          @page {
-            size: A4 portrait;
-            margin: 30mm 8mm 5mm 8mm;
-          }
-          * {
-            box-sizing: border-box;
-          }
-          body {
-            margin: 0;
-            padding: 0;
-            background: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            color: #000000;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          .a4-tani-sheet {
-            width: 100%;
-            max-width: 194mm;
-            max-height: 258mm;
-            margin: 0 auto;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            overflow: hidden !important;
-          }
-          #tani-formu-tablosu {
-            border-collapse: collapse !important;
-            width: 100%;
-          }
-          #tani-formu-tablosu, #tani-formu-tablosu th, #tani-formu-tablosu td {
-            border: 1px solid #000000 !important;
-          }
-          .belge-sablon {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          .tani-editable-cell {
-            outline: none !important;
-            box-shadow: none !important;
-            background-color: transparent !important;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="a4-tani-sheet">
-          ${printArea.innerHTML}
-        </div>
-      </body>
-      </html>
-    `;
+    // Modaldaki A4 kâğıdı stiliyle birlikte (outerHTML) basılır: genişlik, yazı tipi, iç boşluklar ekrandakiyle aynı kalır.
+    // Kenar boşlukları kâğıdın iç boşluğundan gelir (üst 20 mm); @page boşluğu 0.
+    const sheetHtml = printArea.outerHTML.replace(/box-shadow:[^;"]*;?/g, "");
+    const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>DOVIZ ISLEM EVRAK - GERCEK KISI TANI FORMU</title>
+  <style>
+    @page { size: A4 portrait; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #ffffff; color: #000000; }
+    body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    #a4-tani-formu-printable {
+      margin: 0 !important;
+      box-shadow: none !important;
+      height: 296mm !important; /* 297 mm yuvarlamada boş 2. sayfa açabiliyor */
+      max-height: 296mm !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      overflow: hidden !important;
+    }
+    #tani-formu-tablosu { border-collapse: collapse !important; width: 100%; }
+    #tani-formu-tablosu, #tani-formu-tablosu th, #tani-formu-tablosu td { border: 1px solid #000000 !important; }
+    .belge-sablon { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .tani-editable-cell { outline: none !important; box-shadow: none !important; background-color: transparent !important; }
+  </style>
+</head>
+<body>${sheetHtml}</body>
+</html>`;
 
     try {
       const res = await triggerSilentPrint({
@@ -900,10 +873,14 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
               id="a4-tani-formu-printable"
               className="a4-tani-sheet bg-white text-dark shadow-sm"
               style={{
+                // Ekrandaki kâğıt = basılan kâğıt: tam A4, üstten 2 cm boşluk. Yazdırırken bu öğe stiliyle birlikte
+                // (outerHTML) gönderilir; @page boşluğu 0'dır, boşluklar bu iç boşluktan gelir (yazıcı ajanı @page'i 0'a zorlasa da korunur).
                 width: "210mm",
                 maxWidth: "210mm",
-                maxHeight: "282mm",
-                padding: "26mm 10mm 6mm 10mm",
+                height: "297mm",
+                maxHeight: "297mm",
+                padding: "20mm 10mm 8mm 10mm",
+                backgroundColor: "#fff",
                 boxSizing: "border-box",
                 fontFamily: "Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                 fontSize: "9px",
@@ -1452,7 +1429,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
           @media print {
             @page {
               size: A4 portrait;
-              margin: 30mm 8mm 5mm 8mm;
+              margin: 0;
             }
             .tani-editable-cell {
               outline: none !important;
@@ -1470,10 +1447,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
               position: fixed !important;
               left: 0 !important;
               top: 0 !important;
-              width: 100% !important;
-              max-height: 258mm !important;
               margin: 0 !important;
-              padding: 30mm 8mm 5mm 8mm !important;
               box-shadow: none !important;
               background: #ffffff !important;
               -webkit-print-color-adjust: exact !important;

@@ -46,8 +46,8 @@ export class EtiketService {
     return AltinUrunSqlRepository.save(dto, kullaniciId, dbContext);
   }
 
-  public static removeAltinUrun(id: number, dbContext?: DbCtx): Promise<boolean> {
-    return AltinUrunSqlRepository.remove(id, dbContext);
+  public static removeAltinUrun(id: number, dbContext?: DbCtx, options?: { force?: boolean }): Promise<boolean> {
+    return AltinUrunSqlRepository.remove(id, dbContext, options);
   }
 
   public static markAltinUrunYazdirildi(ids: number[], yazdirildi: boolean, kullaniciId?: number, dbContext?: DbCtx): Promise<void> {
@@ -85,8 +85,8 @@ export class EtiketService {
     return OzelUrunSqlRepository.save(dto, kullaniciId, dbContext);
   }
 
-  public static removeOzelUrun(id: number, dbContext?: DbCtx): Promise<boolean> {
-    return OzelUrunSqlRepository.remove(id, dbContext);
+  public static removeOzelUrun(id: number, dbContext?: DbCtx, options?: { force?: boolean }): Promise<boolean> {
+    return OzelUrunSqlRepository.remove(id, dbContext, options);
   }
 
   public static markOzelUrunYazdirildi(ids: number[], yazdirildi: boolean, kullaniciId?: number, dbContext?: DbCtx): Promise<void> {
