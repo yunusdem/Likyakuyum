@@ -12,6 +12,7 @@ import FirmaEpostaDogrulama from "../components/FirmaEpostaDogrulama";
 import FirmaYedekSilme from "../components/FirmaYedekSilme";
 import LisansKoduIslemleri from "../components/LisansKoduIslemleri";
 import FirmaKurulum from "../components/FirmaKurulum";
+import FirmaVeriAktar from "../components/FirmaVeriAktar";
 import UrunSecici, { UrunRozetleri } from "../components/UrunSecici";
 import { paketleriHazirla, secilebilirUrunler } from "../components/paketOrtak";
 import { DogrulamaRozeti, DURUM_ETIKETI, DurumRozeti, EpostaRozeti, KullaniciSayisi, LisansRozeti } from "../components/FirmaRozetleri";
@@ -410,6 +411,13 @@ const FirmaDetayPage: React.FC = () => {
             {firma.baglantiModu === "cloud" && (
               <Tab eventKey="yedek" title="Yedek & Silme" mountOnEnter>
                 <FirmaYedekSilme firma={firma} degisti={setFirma} />
+              </Tab>
+            )}
+
+            {/* Eski programdan veri aktarımı (docs/VERITABANI_TASIMA_YOL_HARITASI.md) */}
+            {firma.baglantiModu === "cloud" && firma.durum !== "SILINECEK" && firma.durum !== "SILINDI" && (
+              <Tab eventKey="veriAktar" title="Veri Aktar" mountOnEnter>
+                <FirmaVeriAktar firma={firma} />
               </Tab>
             )}
 

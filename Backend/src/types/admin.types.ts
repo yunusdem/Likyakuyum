@@ -101,7 +101,12 @@ export type AdminIslem =
   | "DESTEK_PERSONEL_GUNCELLENDI"
   | "DESTEK_PERSONEL_SIFRE"
   | "DESTEK_TELEFON_TALEBI"
-  | "DESTEK_HIZLI_CEVAP";
+  | "DESTEK_HIZLI_CEVAP"
+  // Eski programdan veri aktarımı (docs/VERITABANI_TASIMA_YOL_HARITASI.md)
+  | "VERI_AKTARIM_YUKLENDI"
+  | "VERI_AKTARILDI"
+  | "VERI_AKTARIM_HATA"
+  | "VERI_AKTARIM_DOGRULANDI";
 
 /** SILINECEK: panelden silme istendi, 30 gün geri alınabilir · SILINDI: veritabanı kaldırıldı (kayıt arşivde) */
 export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF" | "SILINECEK" | "SILINDI";

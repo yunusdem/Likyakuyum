@@ -13,6 +13,8 @@
     "surum:yayinla": "tsx src/scripts/surum-yayinla.ts",
     "sema:goc": "tsx src/scripts/sema-goc.ts",
     "kurulum:paketi": "tsx src/scripts/kurulum-paketi.ts",
+    "veri:aktar": "tsx src/scripts/veri-aktar.ts",
+    "aktarim:dogrula": "tsx src/scripts/aktarim-dogrula.ts",
     "clean": "rimraf dist"
   },
   "keywords": [

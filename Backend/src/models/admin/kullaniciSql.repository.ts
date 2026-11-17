@@ -153,6 +153,18 @@ export class KullaniciSqlRepository {
       .query(`UPDATE dbo.ADM_KULLANICI SET KULLANICI_ADI = @ad WHERE KULLANICI_ID = @id`);
   }
 
+  /** Veri aktarımından sonra: firma veritabanındaki kullanıcı kimliği ada göre yeniden bağlanır (docs/VERITABANI_TASIMA_YOL_HARITASI.md, K11). */
+  public static async firmaDbKimligiGuncelle(firmaId: number, kullaniciAdi: string, firmaDbKullaniciId: number | null): Promise<number> {
+    const pool = await getAdminPool();
+    const r = await pool
+      .request()
+      .input("f", sql.Int, firmaId)
+      .input("ad", sql.NVarChar(50), kullaniciAdi)
+      .input("id", sql.Int, firmaDbKullaniciId)
+      .query(`UPDATE dbo.ADM_KULLANICI SET FIRMA_DB_KULLANICI_ID = @id WHERE FIRMA_ID = @f AND KULLANICI_ADI = @ad`);
+    return r.rowsAffected[0] || 0;
+  }
+
   public static async sifreGuncelle(kullaniciId: number, sifreHash: string, sifreDegismeli: boolean): Promise<void> {
     const pool = await getAdminPool();
     await pool
