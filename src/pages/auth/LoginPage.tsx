@@ -606,7 +606,7 @@ export const LoginPage: React.FC = () => {
                           <option value="">Veritabanı seçiniz ({veritabanlari.length})</option>
                           {veritabanlari.map((v) => (
                             <option key={v.firmaId} value={v.firmaId}>
-                              {v.unvan} — {v.dbName}
+                              {v.dbName}
                             </option>
                           ))}
                         </Form.Select>
@@ -616,7 +616,7 @@ export const LoginPage: React.FC = () => {
                           type="text"
                           readOnly
                           tabIndex={-1}
-                          value={secili ? `${secili.unvan} — ${secili.dbName}` : ""}
+                          value={secili ? secili.dbName : ""}
                           placeholder={dbAraniyor ? "Aranıyor..." : "Müşteri no sorgulanınca gelir"}
                         />
                       )}
