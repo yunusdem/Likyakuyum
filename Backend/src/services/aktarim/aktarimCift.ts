@@ -167,7 +167,9 @@ export const eDovizIsaretle = async (tx: sql.Transaction, kaynakDb: string, hede
 export const ciftEsle = async (tx: sql.Transaction, calismaDb: string, resmiDb: string): Promise<{ eslesen: number }> => {
   const kolonVar = async (db: string, tablo: string, kolon: string) =>
     (await istek(tx).query(`SELECT COL_LENGTH(${n(`${db}.dbo.${tablo}`)}, ${n(kolon)}) AS L`)).recordset[0].L !== null;
-  const r = await istek(tx).query(`
+  // batch: #es sonraki komutlarda kullanılır. query() sürücüde sp_executesql ile çalışır ve içinde açılan geçici tablo komut bitince
+  // silinir ("Invalid object name '#es'" — yerel köprüde görünmüyordu, gerçek sürücüyle Faz 9 testinde bulundu, 17.11.2026)
+  const r = await istek(tx).batch(`
     SET NOCOUNT ON;
     IF OBJECT_ID('tempdb..#es') IS NOT NULL DROP TABLE #es;
     SELECT C.FIS_ID AS CALISMA_FIS_ID, MIN(R.FIS_ID) AS RESMI_FIS_ID INTO #es
