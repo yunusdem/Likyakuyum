@@ -12,7 +12,7 @@ import { logger } from "../../utils/logger.js";
 import { FirmaService } from "../admin/firma.service.js";
 import { klonHavuzu, klonYapilandirildiMi } from "../admin/klon.service.js";
 import { AktarimYukleme, YuklemeBilgisi } from "./aktarimYukleme.js";
-import { Engel, IncelemeOzeti, YedekSeti, geciciAc, geciciSil, geciciVarMi, incele, setSec, sunucuAnaSurumu, yedekBasligi, yedekEngelleri } from "./aktarimInceleme.js";
+import { Engel, IncelemeOzeti, YedekSeti, geciciAc, geciciHazirMi, geciciSil, geciciVarMi, incele, setSec, sunucuAnaSurumu, yedekBasligi, yedekEngelleri } from "./aktarimInceleme.js";
 import { AktarimDogrulamaHatasi, AktarimEngeli, AktarimSonucu, aktar, planHazirla } from "./aktarimMotoru.js";
 import { DogrulamaRaporu, dogrula, veritabanlariniDogrula } from "./aktarimDogrulama.js";
 import { CiftRolu, CiftSecenekleri, ciftKontrolleri, digerVeritabaniKurali } from "./aktarimCift.js";
@@ -115,6 +115,11 @@ const geciciHazirla = async (pool: sql.ConnectionPool, b: YuklemeBilgisi, is: Ak
   const set = setSec(setler);
   const gecici = geciciDbAdi(b.yuklemeId);
   if (!set || engeller.some((e) => e.seviye === "ENGEL")) return { set: set ?? setler[0], engeller, gecici };
+  // Yarım açılmış (giremediğimiz ya da salt okunur olmayan) geçici veritabanı kaldırılıp yeniden açılır
+  if ((await geciciVarMi(pool, gecici)) && !(await geciciHazirMi(pool, gecici))) {
+    ilerle(is, "AC", 6, "Yarım kalmış geçici veritabanı kaldırılıyor");
+    await geciciSil(pool, gecici);
+  }
   if (!(await geciciVarMi(pool, gecici))) {
     ilerle(is, "AC", 8, "Yedek geçici olarak açılıyor");
     await geciciAc(pool, b.yedekYolu, gecici, set.position);

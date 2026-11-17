@@ -133,10 +133,33 @@ export const yedekEngelleri = (setler: YedekSeti[], sunucuAna: number): Engel[] 
 export const sunucuAnaSurumu = async (pool: sql.ConnectionPool): Promise<number> =>
   Number((await new sql.Request(pool).query(`SELECT CAST(SERVERPROPERTY('ProductMajorVersion') AS int) AS S`)).recordset[0].S);
 
+/**
+ * Yedek, müşterinin bilgisayarındaki sahibi (dbo) taşır: sysadmin olmayan klon hesabı (sunucuda likya_klon) geri yüklediği
+ * veritabanına giremez, silemez (Msg 916, 17.11.2026 sunucu denemesi). master'daki imzalı yordam (docs/sql/AKTARIM_SAHIPLIK.sql)
+ * sahipliği geri yükleyene verir; yalnız LKY_AKTARIM_ adlı ve çağıranın açtığı veritabanlarında çalışır. sysadmin'de gerekmez.
+ */
+const SAHIPLIK_YORDAMI = "master.dbo.LKY_AKTARIM_SAHIPLIK";
+export const SAHIPLIK_BETIGI_YOK =
+  "Sunucuda veri aktarımı için gereken SQL yordamı kurulu değil: docs/sql/AKTARIM_SAHIPLIK.sql sunucuda SSMS'te sysadmin ile bir kez çalıştırılmalı.";
+
+/** Bu hesap sahipliği yordamla almak zorunda mı (sysadmin değil); öyleyse yordam kurulu mu. */
+const sahiplikGerekli = async (pool: sql.ConnectionPool): Promise<boolean> => {
+  const r = (await new sql.Request(pool).query(`SELECT IS_SRVROLEMEMBER('sysadmin') AS S, OBJECT_ID(N'${SAHIPLIK_YORDAMI}', N'P') AS Y`)).recordset[0];
+  if (Number(r.S) === 1) return false;
+  if (r.Y === null || r.Y === undefined) throw new Error(SAHIPLIK_BETIGI_YOK);
+  return true;
+};
+
+const sahipligiAl = async (pool: sql.ConnectionPool, geciciAd: string): Promise<void> => {
+  await new sql.Request(pool).input("db", sql.NVarChar(128), geciciAd).query(`EXEC ${SAHIPLIK_YORDAMI} @db = @db`);
+};
+
 /** Yedeği geçici adla açar (dosyalar sunucunun varsayılan veri klasörüne) ve salt okunur yapar. */
 export const geciciAc = async (pool: sql.ConnectionPool, yedekYolu: string, geciciAd: string, position = 1): Promise<void> => {
   if (!/^LKY_AKTARIM_[A-Za-z0-9_]{1,80}$/.test(geciciAd)) throw new Error("Geçici veritabanı adı geçersiz.");
   if (await geciciVarMi(pool, geciciAd)) throw new Error(yedekHataMetni({ number: 1801, message: "exists" }));
+  // geri yüklemeden ÖNCE: yordam yoksa giremeyeceğimiz (silemeyeceğimiz) bir veritabanı bırakmadan dur
+  const sahiplik = await sahiplikGerekli(pool);
   try {
     const yol = (await new sql.Request(pool).query(`SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(260)) AS VERI, CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS nvarchar(260)) AS LOG`)).recordset[0];
     const dosyalar = (await new sql.Request(pool).input("yol", sql.NVarChar(400), yedekYolu).input("p", sql.Int, position)
@@ -152,6 +175,7 @@ export const geciciAc = async (pool: sql.ConnectionPool, yedekYolu: string, geci
     if (!move) throw new Error("Yedekte veri dosyası yok.");
     await new sql.Request(pool).input("yol", sql.NVarChar(400), yedekYolu).input("p", sql.Int, position)
       .query(`RESTORE DATABASE ${q(geciciAd)} FROM DISK = @yol WITH FILE = @p, RECOVERY, ${move}`);
+    if (sahiplik) await sahipligiAl(pool, geciciAd);
     await new sql.Request(pool).batch(`ALTER DATABASE ${q(geciciAd)} SET RECOVERY SIMPLE WITH NO_WAIT; ALTER DATABASE ${q(geciciAd)} SET READ_ONLY WITH ROLLBACK IMMEDIATE;`);
   } catch (err: any) {
     await geciciSil(pool, geciciAd).catch(() => undefined);
@@ -161,6 +185,11 @@ export const geciciAc = async (pool: sql.ConnectionPool, yedekYolu: string, geci
 
 export const geciciSil = async (pool: sql.ConnectionPool, geciciAd: string): Promise<void> => {
   if (!/^LKY_AKTARIM_[A-Za-z0-9_]{1,80}$/.test(geciciAd)) throw new Error("Geçici veritabanı adı geçersiz.");
+  // Sahipliği alınamamış (giremediğimiz) geçici veritabanı: silebilmek için önce sahipliği al
+  await new sql.Request(pool).input("db", sql.NVarChar(128), geciciAd).query(
+    `IF DB_ID(@db) IS NOT NULL AND HAS_DBACCESS(@db) = 0 AND IS_SRVROLEMEMBER('sysadmin') = 0 AND OBJECT_ID(N'${SAHIPLIK_YORDAMI}', N'P') IS NOT NULL
+       EXEC ${SAHIPLIK_YORDAMI} @db = @db`
+  );
   await new sql.Request(pool).batch(
     `IF DB_ID(${n(geciciAd)}) IS NOT NULL BEGIN ALTER DATABASE ${q(geciciAd)} SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ${q(geciciAd)}; END`
   );
@@ -168,6 +197,13 @@ export const geciciSil = async (pool: sql.ConnectionPool, geciciAd: string): Pro
 
 export const geciciVarMi = async (pool: sql.ConnectionPool, geciciAd: string): Promise<boolean> =>
   (await new sql.Request(pool).input("ad", sql.NVarChar(128), geciciAd).query(`SELECT DB_ID(@ad) AS I`)).recordset[0].I !== null;
+
+/** Açık geçici veritabanı kullanılabilir mi: bu hesap girebiliyor ve salt okunur. Değilse yarım açılmıştır (yeniden açılmalı). */
+export const geciciHazirMi = async (pool: sql.ConnectionPool, geciciAd: string): Promise<boolean> => {
+  const r = (await new sql.Request(pool).input("ad", sql.NVarChar(128), geciciAd)
+    .query(`SELECT HAS_DBACCESS(@ad) AS E, CAST(is_read_only AS int) AS R FROM sys.databases WHERE name = @ad`)).recordset[0];
+  return !!r && Number(r.E) === 1 && Number(r.R) === 1;
+};
 
 /** Açılmış (geçici) veritabanından özet çıkarır. */
 export const incele = async (pool: sql.ConnectionPool, geciciDb: string, yedek: YedekSeti): Promise<IncelemeOzeti> => {
