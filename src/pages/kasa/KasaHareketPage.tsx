@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { fisGunu, yerelGun } from "../../utils/fisTarihi";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Container, Row, Col, Card, Form, Button, Badge, Alert, Modal, InputGroup, Table } from "react-bootstrap";
 import {
   IconCoins,
@@ -14,6 +14,7 @@ import {
   IconBuildingBank,
   IconWallet,
   IconList,
+  IconInfoCircle,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
@@ -29,11 +30,18 @@ import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { VezneTransferiService } from "../../services/vezneTransferiService";
 import { CompanyService } from "../../services/companyService";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
+import {
+  parseDecimal,
+  formatMiktar,
+  formatTutar,
+  formatTutarInput,
+} from "../../utils/numericInput";
 
 export const KasaHareketPage: React.FC = () => {
   // Tarih değiştirme yetkisi yoksa tarih alanı kilitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
   const tarihYetkisi = useKullaniciYetkisi().tarihDegistirme;
   const location = useLocation();
+  const navigate = useNavigate();
   const isEditPage = location.pathname.includes("hareket-duzeltme");
 
   // ─── State: Hareket Form Alanları (TODVZ_HESAP_HAREKETI) ───────────────────
@@ -74,7 +82,7 @@ export const KasaHareketPage: React.FC = () => {
   const [vezneBakiyeler, setVezneBakiyeler] = useState<{ paraId: number; paraKodu: string; paraAdi: string; miktar: number }[]>([]);
 
   const [isSaving, setIsSaving] = useState(false);
-  const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
+  const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning" | "info"; message: string } | null>(null);
 
   // Modallar
   const [showHareketLookup, setShowHareketLookup] = useState(false);
@@ -105,7 +113,7 @@ export const KasaHareketPage: React.FC = () => {
 
   useERPAutoFocus({ dependencies: [hesapHareketiId] });
 
-  const showNotif = (type: "success" | "danger" | "warning", msg: string) => {
+  const showNotif = (type: "success" | "danger" | "warning" | "info", msg: string) => {
     setNotification({ type, message: msg });
     setTimeout(() => setNotification(null), 4000);
   };
@@ -126,39 +134,76 @@ export const KasaHareketPage: React.FC = () => {
   }, [vezneId]);
 
   // ─── Hesaplamalar ve Dinamik Değişiklik İşleyicileri ─────────────────────────
+  const handleDotToCommaKeyDown = (e: React.KeyboardEvent<any>, onFormattedChange: (val: string) => void) => {
+    if (e.key === "." || e.key === "Decimal") {
+      e.preventDefault();
+      const input = e.currentTarget;
+      const raw = input.value;
+      if (!raw.includes(",")) {
+        const start = input.selectionStart ?? raw.length;
+        const end = input.selectionEnd ?? raw.length;
+        const nextVal = raw.slice(0, start) + "," + raw.slice(end);
+        onFormattedChange(nextVal);
+        requestAnimationFrame(() => {
+          const commaIdx = nextVal.indexOf(",");
+          const pos = commaIdx !== -1 ? commaIdx + 1 : nextVal.length;
+          input.setSelectionRange(pos, pos);
+        });
+      }
+    }
+  };
+
   const handleMeblagChange = (val: string) => {
-    setMeblag(val);
-    const mNum = parseFloat(val) || 0;
-    const oNum = parseFloat(String(kdvOrani)) || 0;
+    let raw = val;
+    if (raw.length > 1 && raw.startsWith("0") && !raw.startsWith("0,") && !raw.startsWith("0.")) {
+      raw = raw.replace(/^0+/, "") || "0";
+    }
+    const formatted = formatTutarInput(raw);
+    setMeblag(formatted);
+    const mNum = parseDecimal(formatted);
+    const oNum = parseDecimal(kdvOrani);
     if (mNum > 0 && oNum > 0) {
-      setKdvTutari(parseFloat(((mNum * oNum) / 100).toFixed(4)));
+      const kdvVal = parseFloat(((mNum * oNum) / 100).toFixed(4));
+      setKdvTutari(formatMiktar(kdvVal));
     } else {
-      setKdvTutari(0);
+      setKdvTutari("0");
     }
   };
 
   const handleKdvOraniChange = (val: string) => {
-    setKdvOrani(val);
-    const mNum = parseFloat(String(meblag)) || 0;
-    const oNum = parseFloat(val) || 0;
+    let raw = val;
+    if (raw.length > 1 && raw.startsWith("0") && !raw.startsWith("0,") && !raw.startsWith("0.")) {
+      raw = raw.replace(/^0+/, "") || "0";
+    }
+    const formatted = formatTutarInput(raw);
+    setKdvOrani(formatted);
+    const mNum = parseDecimal(meblag);
+    const oNum = parseDecimal(formatted);
     if (mNum > 0 && oNum > 0) {
-      setKdvTutari(parseFloat(((mNum * oNum) / 100).toFixed(4)));
+      const kdvVal = parseFloat(((mNum * oNum) / 100).toFixed(4));
+      setKdvTutari(formatMiktar(kdvVal));
     } else {
-      setKdvTutari(0);
+      setKdvTutari("0");
     }
   };
 
   const handleKdvTutariChange = (val: string) => {
-    setKdvTutari(val);
-    const mNum = parseFloat(String(meblag)) || 0;
-    const kNum = parseFloat(val) || 0;
+    let raw = val;
+    if (raw.length > 1 && raw.startsWith("0") && !raw.startsWith("0,") && !raw.startsWith("0.")) {
+      raw = raw.replace(/^0+/, "") || "0";
+    }
+    const formatted = formatTutarInput(raw);
+    setKdvTutari(formatted);
+    const mNum = parseDecimal(meblag);
+    const kNum = parseDecimal(formatted);
     if (mNum > 0 && kNum > 0) {
-      setKdvOrani(parseFloat(((kNum / mNum) * 100).toFixed(2)));
+      const oranVal = parseFloat(((kNum / mNum) * 100).toFixed(2));
+      setKdvOrani(formatMiktar(oranVal));
     }
   };
 
-  const meblagNum = parseFloat(String(meblag)) || 0;
-  const kdvTutariNum = parseFloat(String(kdvTutari)) || 0;
+  const meblagNum = parseDecimal(meblag);
+  const kdvTutariNum = parseDecimal(kdvTutari);
   const genelToplam = meblagNum + kdvTutariNum;
 
   const mevcutVezneBakiye = vezneBakiyeler.find(
@@ -172,13 +217,14 @@ export const KasaHareketPage: React.FC = () => {
     setHesapAd(h.ad || "");
     setHesapBakiye(h.bakiye || 0);
     const oran = h.kdvOrani ?? 0;
-    setKdvOrani(oran);
+    setKdvOrani(formatMiktar(oran));
 
-    const mNum = parseFloat(String(meblag)) || 0;
+    const mNum = parseDecimal(meblag);
     if (mNum > 0 && oran > 0) {
-      setKdvTutari(parseFloat(((mNum * oran) / 100).toFixed(4)));
+      const kdvVal = parseFloat(((mNum * oran) / 100).toFixed(4));
+      setKdvTutari(formatMiktar(kdvVal));
     } else {
-      setKdvTutari(0);
+      setKdvTutari("0");
     }
 
     const hesapMetni = `${h.kod || ""} ${h.ad || ""}`.toLocaleUpperCase("tr-TR");
@@ -215,42 +261,48 @@ export const KasaHareketPage: React.FC = () => {
         CashDeskService.getVezneler().catch(() => []),
         KasaService.getUserVezne().catch(() => null),
       ]);
+      const sortedHareketler = Array.isArray(hareketler)
+        ? [...hareketler].sort((a, b) => (Number(a.hesapHareketiId) || 0) - (Number(b.hesapHareketiId) || 0))
+        : [];
       setHesapList(hesaplar);
-      setHareketList(hareketler);
+      setHareketList(sortedHareketler);
       setLookups(lks);
       setVezneList(vezneler);
 
-      // Para birimi varsayılanı: HAS veya ilk para
-      let defaultParaId = paraId;
-      if (!defaultParaId && lks.paralar.length > 0) {
-        const hasAltin = lks.paralar.find((p) => ["HAS", "GR"].includes((p.kod || "").toUpperCase()));
-        const defaultPara = hasAltin || lks.paralar[0];
-        setParaId(defaultPara.id);
-        setParaKod(defaultPara.kod);
-        setParaAd(defaultPara.ad);
-        defaultParaId = defaultPara.id;
-      }
+      // Sadece kayıt sayfasında varsayılan vezne ve para birimini belirle
+      if (!isEditPage) {
+        setParaId((prev) => {
+          if (prev) return prev;
+          if (lks.paralar && lks.paralar.length > 0) {
+            const hasAltin = lks.paralar.find((p) => ["HAS", "GR"].includes((p.kod || "").toUpperCase()));
+            const defaultPara = hasAltin || lks.paralar[0];
+            setParaKod(defaultPara.kod);
+            setParaAd(defaultPara.ad);
+            return defaultPara.id;
+          }
+          return prev;
+        });
 
-      // Vezne varsayılanı: Kullanıcının veznesi veya ilk vezne
-      let defaultVezneId = vezneId;
-      if (!defaultVezneId) {
-        const defaultVezne =
-          (kullaniciVezneId && vezneler.find((v) => v.id === kullaniciVezneId)) || vezneler[0] || null;
-        if (defaultVezne) {
-          setVezneId(defaultVezne.id);
-          setVezneKod(defaultVezne.kod);
-          setVezneAd(defaultVezne.ad);
-          defaultVezneId = defaultVezne.id;
-        }
-      }
-
-      if (defaultVezneId) {
-        fetchVezneBakiyeler(defaultVezneId);
+        setVezneId((prev) => {
+          if (prev) {
+            fetchVezneBakiyeler(prev);
+            return prev;
+          }
+          const defaultVezne =
+            (kullaniciVezneId && vezneler.find((v) => v.id === kullaniciVezneId)) || vezneler[0] || null;
+          if (defaultVezne) {
+            setVezneKod(defaultVezne.kod);
+            setVezneAd(defaultVezne.ad);
+            fetchVezneBakiyeler(defaultVezne.id);
+            return defaultVezne.id;
+          }
+          return prev;
+        });
       }
     } catch (err: any) {
       showNotif("danger", err?.message || "Kasa hareket verileri yüklenemedi.");
     }
-  }, [paraId, vezneId, fetchVezneBakiyeler]);
+  }, [isEditPage, fetchVezneBakiyeler]);
 
   useEffect(() => {
     loadAll();
@@ -271,12 +323,22 @@ export const KasaHareketPage: React.FC = () => {
     setParaId(h.paraId);
     setParaKod(h.paraKodu || "");
     setParaAd(h.paraAdi || "");
-    setMeblag(h.meblag);
-    setKdvOrani(h.kdvOrani ?? 0);
+    setMeblag(h.meblag !== undefined && h.meblag !== null ? formatMiktar(h.meblag) : "");
+    const oNum = h.kdvOrani ?? 0;
+    setKdvOrani(formatMiktar(oNum));
     const calculatedKdv = h.kdv !== undefined && h.kdv !== null ? h.kdv : (h.meblag && h.kdvOrani ? parseFloat(((h.meblag * h.kdvOrani) / 100).toFixed(4)) : 0);
-    setKdvTutari(calculatedKdv);
+    setKdvTutari(formatMiktar(calculatedKdv));
     setEklemeZamani(h.eklemeZamani || null);
     setGuncellemeZamani(h.guncellemeZamani || null);
+
+    setHareketList((prev) => {
+      if (prev.some((x) => Number(x.hesapHareketiId) === Number(h.hesapHareketiId))) {
+        return prev;
+      }
+      const next = [...prev, h];
+      next.sort((a, b) => (Number(a.hesapHareketiId) || 0) - (Number(b.hesapHareketiId) || 0));
+      return next;
+    });
 
     // Seçilen hesabın güncel bakiye bilgisini güncelle
     const foundHesap = hesapList.find((x) => x.hesapId === h.hesapId);
@@ -288,45 +350,6 @@ export const KasaHareketPage: React.FC = () => {
     }
   }, [hesapList, fetchVezneBakiyeler]);
 
-  // Sayfa modu veya URL değiştiğinde (Kayıt vs Düzeltme)
-  useEffect(() => {
-    const queryParams = new URLSearchParams(location.search);
-    const queryId = queryParams.get("id");
-
-    if (isEditPage && queryId && hareketList.length > 0) {
-      const match = hareketList.find((h) => String(h.hesapHareketiId) === queryId);
-      if (match) {
-        handleSelectHareket(match);
-        return;
-      }
-    }
-
-    // Hem Kayıt hem de Düzeltme ilk açılışta boş form ile başlar
-    setHesapHareketiId(null);
-    setTarih(yerelGun());
-    setAciklama("");
-    setTip(1);
-    setHesapId(null);
-    setHesapKod("");
-    setHesapAd("");
-    setHesapBakiye(0);
-    setMeblag("");
-    setKdvOrani(0);
-    setKdvTutari(0);
-    setEklemeZamani(null);
-    setGuncellemeZamani(null);
-    hasAutoSelectedRef.current = false;
-  }, [isEditPage, location.pathname, location.search, hareketList, handleSelectHareket]);
-
-  // Vezne seçildiğinde anlık bakiyeleri yükle
-  useEffect(() => {
-    if (vezneId) {
-      fetchVezneBakiyeler(vezneId);
-    } else {
-      setVezneBakiyeler([]);
-    }
-  }, [vezneId, fetchVezneBakiyeler]);
-
   // ─── Yeni Kayıt Modu (F4 / Yeni) ───────────────────────────────────────────
   const handleNew = useCallback(() => {
     setHesapHareketiId(null);
@@ -337,13 +360,55 @@ export const KasaHareketPage: React.FC = () => {
     setHesapKod("");
     setHesapAd("");
     setHesapBakiye(0);
-    setKdvOrani(0);
-    setKdvTutari(0);
+    setKdvOrani("0");
+    setKdvTutari("0");
     setMeblag("");
     setEklemeZamani(null);
     setGuncellemeZamani(null);
     if (vezneId) {
       fetchVezneBakiyeler(vezneId);
+    }
+  }, [vezneId, fetchVezneBakiyeler]);
+
+  // URL'de ?id= parametresi varsa sadece ilk yüklemede çek
+  const initialUrlCheckedRef = useRef(false);
+  useEffect(() => {
+    if (initialUrlCheckedRef.current) return;
+    const queryParams = new URLSearchParams(location.search);
+    const queryId = queryParams.get("id");
+
+    if (isEditPage && queryId && hareketList.length > 0) {
+      initialUrlCheckedRef.current = true;
+      const match = hareketList.find((h) => String(h.hesapHareketiId) === queryId);
+      if (match) {
+        handleSelectHareket(match);
+      } else {
+        KasaService.getHareketById(Number(queryId))
+          .then((item) => {
+            if (item && item.hesapHareketiId) {
+              handleSelectHareket(item);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [isEditPage, location.search, hareketList, handleSelectHareket]);
+
+  // Sayfa modu değiştiğinde (Kayıt vs Düzeltme)
+  const prevPathnameRef = useRef(location.pathname);
+  useEffect(() => {
+    if (prevPathnameRef.current !== location.pathname) {
+      prevPathnameRef.current = location.pathname;
+      handleNew();
+    }
+  }, [location.pathname, handleNew]);
+
+  // Vezne seçildiğinde anlık bakiyeleri yükle
+  useEffect(() => {
+    if (vezneId) {
+      fetchVezneBakiyeler(vezneId);
+    } else {
+      setVezneBakiyeler([]);
     }
   }, [vezneId, fetchVezneBakiyeler]);
 
@@ -364,7 +429,8 @@ export const KasaHareketPage: React.FC = () => {
       setShowParaLookup(true);
       return null;
     }
-    if (!meblag || Number(meblag) <= 0) {
+    const meblagNumber = parseDecimal(meblag);
+    if (!meblag || meblagNumber <= 0) {
       showNotif("warning", "Lütfen geçerli bir gramaj/meblağ giriniz.");
       meblagRef.current?.focus();
       return null;
@@ -372,9 +438,8 @@ export const KasaHareketPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const meblagNumber = parseFloat(String(meblag)) || 0;
-      const kdvOraniNumber = parseFloat(String(kdvOrani)) || 0;
-      const kdvTutariNumber = parseFloat(String(kdvTutari)) || 0;
+      const kdvOraniNumber = parseDecimal(kdvOrani);
+      const kdvTutariNumber = parseDecimal(kdvTutari);
       const defaultAciklama = aciklama.trim() || `${hesapAd} ${tip === 1 ? "Hammadde Çıkış Fişi" : "Hammadde Giriş Fişi"}`;
       const payload: SaveHesapHareketiPayload = {
         hesapHareketiId,
@@ -398,7 +463,10 @@ export const KasaHareketPage: React.FC = () => {
         KasaService.getHareketler({ limit: 500 }),
         KasaService.getHesaplar(),
       ]);
-      setHareketList(updatedHareketler);
+      const sortedHareketler = Array.isArray(updatedHareketler)
+        ? [...updatedHareketler].sort((a, b) => (Number(a.hesapHareketiId) || 0) - (Number(b.hesapHareketiId) || 0))
+        : [];
+      setHareketList(sortedHareketler);
       setHesapList(updatedHesaplar);
 
       // Vezne bakiyesini anlık güncelle
@@ -412,6 +480,7 @@ export const KasaHareketPage: React.FC = () => {
       } else {
         setHesapHareketiId(saved.hesapHareketiId);
         setAciklama(saved.aciklama || defaultAciklama);
+        navigate(`?id=${saved.hesapHareketiId}`, { replace: true });
       }
 
       return saved;
@@ -421,7 +490,7 @@ export const KasaHareketPage: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [hesapId, vezneId, paraId, meblag, tip, aciklama, hesapAd, hesapHareketiId, tarih, tarihYetkisi, kdvOrani, kdvTutari, degisiklikTakipVar, isEditPage, handleNew, fetchVezneBakiyeler]);
+  }, [hesapId, vezneId, paraId, meblag, tip, aciklama, hesapAd, hesapHareketiId, tarih, tarihYetkisi, kdvOrani, kdvTutari, degisiklikTakipVar, isEditPage, handleNew, fetchVezneBakiyeler, navigate]);
 
   // ─── Sil / Geri Al Aksiyonu (F2) ─────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
@@ -436,7 +505,10 @@ export const KasaHareketPage: React.FC = () => {
         KasaService.getHareketler({ limit: 500 }),
         KasaService.getHesaplar(),
       ]);
-      setHareketList(updatedHareketler);
+      const sortedHareketler = Array.isArray(updatedHareketler)
+        ? [...updatedHareketler].sort((a, b) => (Number(a.hesapHareketiId) || 0) - (Number(b.hesapHareketiId) || 0))
+        : [];
+      setHareketList(sortedHareketler);
       setHesapList(updatedHesaplar);
 
       if (vezneId) {
@@ -449,17 +521,55 @@ export const KasaHareketPage: React.FC = () => {
   }, [hesapHareketiId, degisiklikTakipVar, handleNew, vezneId, fetchVezneBakiyeler]);
 
   // ─── Kayıtlar Arası Gezinme (Düzeltme Modu) ──────────────────────────────────
-  const currentIndex = hareketList.findIndex((h) => h.hesapHareketiId === hesapHareketiId);
-  const handleFirst = () => { if (hareketList.length) handleSelectHareket(hareketList[hareketList.length - 1]); };
+  const currentIndex = hareketList.findIndex((h) => Number(h.hesapHareketiId) === Number(hesapHareketiId));
+
+  const handleFirst = () => {
+    if (hareketList.length > 0) {
+      handleSelectHareket(hareketList[0]);
+    } else {
+      showNotif("info", "Kayıtlı kasa hareketi bulunamadı.");
+    }
+  };
+
+  const handleLast = () => {
+    if (hareketList.length > 0) {
+      handleSelectHareket(hareketList[hareketList.length - 1]);
+    } else {
+      showNotif("info", "Kayıtlı kasa hareketi bulunamadı.");
+    }
+  };
+
   const handlePrev = () => {
-    if (currentIndex < hareketList.length - 1) handleSelectHareket(hareketList[currentIndex + 1]);
-    else if (hareketList.length) handleSelectHareket(hareketList[0]);
+    if (hareketList.length === 0) {
+      showNotif("info", "Kayıtlı kasa hareketi bulunamadı.");
+      return;
+    }
+    if (currentIndex === -1) {
+      handleSelectHareket(hareketList[hareketList.length - 1]);
+      return;
+    }
+    if (currentIndex <= 0) {
+      showNotif("info", "İlk kayıttasınız.");
+      return;
+    }
+    handleSelectHareket(hareketList[currentIndex - 1]);
   };
+
   const handleNext = () => {
-    if (currentIndex > 0) handleSelectHareket(hareketList[currentIndex - 1]);
-    else if (hareketList.length) handleSelectHareket(hareketList[hareketList.length - 1]);
+    if (hareketList.length === 0) {
+      showNotif("info", "Kayıtlı kasa hareketi bulunamadı.");
+      return;
+    }
+    if (currentIndex === -1) {
+      handleSelectHareket(hareketList[0]);
+      return;
+    }
+    if (currentIndex >= hareketList.length - 1) {
+      showNotif("info", "Son kayıttasınız.");
+      return;
+    }
+    handleSelectHareket(hareketList[currentIndex + 1]);
   };
-  const handleLast = () => { if (hareketList.length) handleSelectHareket(hareketList[0]); };
 
   // ─── Lookup Kolonları ────────────────────────────────────────────────────────
   const hareketLookupColumns: LookupColumn<HesapHareketiItem>[] = [
@@ -582,6 +692,8 @@ export const KasaHareketPage: React.FC = () => {
           >
             {notification.type === "success" ? (
               <IconCheck size={18} className="me-2 text-success flex-shrink-0" />
+            ) : notification.type === "info" ? (
+              <IconInfoCircle size={18} className="me-2 text-info flex-shrink-0" />
             ) : (
               <IconAlertTriangle size={18} className="me-2 text-danger flex-shrink-0" />
             )}
@@ -689,10 +801,18 @@ export const KasaHareketPage: React.FC = () => {
                   <div style={{ maxWidth: "200px" }}>
                     <InputGroup size="sm">
                       <Form.Control
-                        type="number"
-                        step="any"
+                        ref={meblagRef}
+                        type="text"
+                        inputMode="decimal"
                         value={meblag}
                         onChange={(e) => handleMeblagChange(e.target.value)}
+                        onKeyDown={(e) => handleDotToCommaKeyDown(e, handleMeblagChange)}
+                        onBlur={() => {
+                          const num = parseDecimal(meblag);
+                          if (!isNaN(num) && num !== 0) {
+                            setMeblag(formatMiktar(num));
+                          }
+                        }}
                         className="fw-bold font-monospace text-primary text-end allow-full-width"
                         style={{ minWidth: "60px", flex: "1 1 auto" }}
                       />
@@ -784,21 +904,35 @@ export const KasaHareketPage: React.FC = () => {
                 <Col>
                   <div className="d-flex align-items-center gap-2" style={{ maxWidth: "200px" }}>
                     <Form.Control
-                      type="number"
-                      step="any"
+                      type="text"
+                      inputMode="decimal"
                       size="sm"
                       value={kdvOrani}
                       onChange={(e) => handleKdvOraniChange(e.target.value)}
+                      onKeyDown={(e) => handleDotToCommaKeyDown(e, handleKdvOraniChange)}
+                      onBlur={() => {
+                        const num = parseDecimal(kdvOrani);
+                        if (!isNaN(num)) {
+                          setKdvOrani(formatMiktar(num));
+                        }
+                      }}
                       className="font-monospace text-end"
                       style={{ maxWidth: "55px" }}
                     />
                     <span className="small fw-bold text-secondary flex-shrink-0">Tutar:</span>
                     <Form.Control
-                      type="number"
-                      step="any"
+                      type="text"
+                      inputMode="decimal"
                       size="sm"
                       value={kdvTutari}
                       onChange={(e) => handleKdvTutariChange(e.target.value)}
+                      onKeyDown={(e) => handleDotToCommaKeyDown(e, handleKdvTutariChange)}
+                      onBlur={() => {
+                        const num = parseDecimal(kdvTutari);
+                        if (!isNaN(num)) {
+                          setKdvTutari(formatMiktar(num));
+                        }
+                      }}
                       className="font-monospace text-end bg-light fw-semibold"
                       style={{ maxWidth: "95px" }}
                     />
@@ -817,7 +951,7 @@ export const KasaHareketPage: React.FC = () => {
                       type="text"
                       size="sm"
                       readOnly
-                      value={`${genelToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ${paraKod}`}
+                      value={`${formatTutar(genelToplam, 2)} ${paraKod || ""}`}
                       className="fw-bold font-monospace bg-light text-end"
                     />
                   </div>
@@ -855,6 +989,7 @@ export const KasaHareketPage: React.FC = () => {
         columns={hareketLookupColumns}
         getir={(parametreler, limit) => KasaService.getHareketler({ ...parametreler, limit })}
         sunucuArama
+        selectOnDoubleClick={true}
         searchPlaceholder="Açıklama, hesap veya vezne ile arayın..."
         alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}
         vezneler={vezneList.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}
