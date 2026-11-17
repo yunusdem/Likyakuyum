@@ -155,23 +155,23 @@ const createEmptyOdemeRow = (satirNo: number): OdemeRow => ({
 export const isZiynetProduct = (urun?: { urunTipi?: number | string | null; kod?: string; ad?: string; mamulTipi?: string } | null): boolean => {
   if (!urun) return false;
 
-  // 1. Ürün tanımlarından gelen urunTipi doğrudan 3 (Ziynet) ise kesinlikle Ziynet'tir
+  // 1. Ürün tanımlarından gelen urunTipi 1 (Altın) veya 2 (Gümüş) ise KESİNLİKLE Ziynet değildir!
   if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
     const tipNum = Number(urun.urunTipi);
+    if (tipNum === 1 || tipNum === 2) return false;
     if (tipNum === 3) return true;
-    // Not: tipNum === 1 olsa bile ürün adı "ÇEYREK ALTIN" vb. olabileceği için hemen false dönmeyip anahtar kelimelere bakıyoruz
   }
 
   const k = (urun.kod || "").trim().toUpperCase();
   const n = (urun.ad || (urun as any).mamulTipi || "").trim().toUpperCase();
 
-  // 2. Kesinlikle Ziynet olmayan ürünler (Has Külçe, Hurda, Bilezik vb.)
-  // DİKKAT: "22 AYAR ÇEYREK" gibi ürünlerde "AYAR" kelimesi geçebilir; bu yüzden tek başına "AYAR" ziynet'i engellememeli!
+  // 2. Kesinlikle Ziynet olmayan ürünler (Has Külçe, Hurda, Bilezik, Gümüş vb.)
   if (
     k === "24" || k === "HAS" || k === "24AYAR" || k === "KULCE" || k === "KÜLÇE" ||
     k.includes("KULCE") || k.includes("KÜLÇE") || n.includes("KÜLÇE") || n.includes("KULCE") ||
     k.includes("HURDA") || n.includes("HURDA") ||
     k.includes("BILEZIK") || k.includes("BİLEZİK") || n.includes("BİLEZİK") || n.includes("BILEZIK") ||
+    k.includes("GUMUS") || k.includes("GÜMÜŞ") || n.includes("GÜMÜŞ") || n.includes("GUMUS") ||
     n.includes("HAS ALTIN")
   ) {
     return false;
@@ -220,13 +220,12 @@ export const resolveEffectiveUrunTipi = (item?: { kod?: string; ad?: string; uru
   if (!item) return 1;
   // 1. Döviz kontrolü (USD, EUR vb.)
   if (isCurrencyItem(item as any)) return 0;
-  // 2. Ziynet kontrolü (Öncelikli: Çeyrek, Yarım, Tam, Ata vb.)
-  if (isZiynetProduct(item)) return 3;
+  // 2. Ürün tanımlarındaki doğrudan tip (1: Altın, 2: Gümüş, 3: Ziynet)
   if (item.urunTipi !== undefined && item.urunTipi !== null && String(item.urunTipi).trim() !== "") {
     const t = Number(item.urunTipi);
-    if (t === 3) return 3;
-    if (t === 2) return 2;
     if (t === 1) return 1;
+    if (t === 2) return 2;
+    if (t === 3) return 3;
   }
 
   // 3. Gümüş kontrolü
@@ -234,7 +233,10 @@ export const resolveEffectiveUrunTipi = (item?: { kod?: string; ad?: string; uru
   const a = (item.ad || (item as any).mamulTipi || "").trim().toUpperCase();
   if (k.includes("GUMUS") || k.includes("GÜMÜŞ") || a.includes("GÜMÜŞ") || a.includes("GUMUS")) return 2;
 
-  // 4. Varsayılan Altın (1)
+  // 4. Ziynet kontrolü
+  if (isZiynetProduct(item)) return 3;
+
+  // 5. Varsayılan Altın (1)
   return 1;
 };
 
