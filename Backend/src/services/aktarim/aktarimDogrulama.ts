@@ -70,7 +70,12 @@ const ozetIfadesi = (parcalar: string[]): string =>
   parcalar.length === 0 ? "CAST(0x00 AS varbinary(32))" : `HASHBYTES('SHA2_256', CONCAT(${parcalar.map((p) => `ISNULL(${p}, ${NULL_ISARETI})`).join(`, ${AYRAC}, `)}, N''))`;
 
 const metinMi = (k: KolonBilgisi) => ["varchar", "char", "nvarchar", "nchar", "text", "ntext"].includes(k.tip);
-const anahtarIfadesi = (ifade: string, k: KolonBilgisi) => (metinMi(k) ? `CAST(${ifade} AS nvarchar(450)) COLLATE DATABASE_DEFAULT` : ifade);
+// Metin anahtar ikili (BIN2) karşılaştırılır: DATABASE_DEFAULT bağlamın harf düzenidir (canlı sunucuda master = SQL_Latin1, büyük/küçük
+// harf duyarsız) — Türkçe'de ayrı olan "KADIR" / "kadir" orada aynı sayılıp eşleşmeyi bozabilirdi. Değer birebir kopyalandığı için tam eşitlik doğru ölçü.
+// Kullanıcı adı karşılaştırması: motor (aktarimMotoru) firma veritabanının harf düzeniyle (Turkish_CI_AS) eşler; doğrulama da aynı
+// ölçüyü kullanmalı. DATABASE_DEFAULT canlıda master'ın düzenidir (SQL_Latin1): varchar adı 1252'ye çevirir, Ş/Ğ/İ bozulurdu.
+const adIfadesi = (ifade: string) => `UPPER(RTRIM(CAST(${ifade} AS nvarchar(200)))) COLLATE Turkish_CI_AS`;
+const anahtarIfadesi = (ifade: string, k: KolonBilgisi) => (metinMi(k) ? `CAST(${ifade} AS nvarchar(450)) COLLATE Latin1_General_BIN2` : ifade);
 
 const tek = async (b: sql.ConnectionPool | sql.Transaction, sorgu: string): Promise<any> => (await new sql.Request(b as any).query(sorgu)).recordset[0] || {};
 const coklu = async (b: sql.ConnectionPool | sql.Transaction, sorgu: string): Promise<any[]> => (await new sql.Request(b as any).query(sorgu)).recordset as any[];
@@ -101,7 +106,7 @@ export const dogrula = async (
     const H = tamAd(plan.hedefDb, tp.tablo);
     const fazlaKolon = FAZLA_IZINLI[tp.tablo.toUpperCase()];
     const fazlaKosulu = fazlaKolon && kolonBul(ht, fazlaKolon) && kolonBul(kt, fazlaKolon)
-      ? `NOT EXISTS (SELECT 1 FROM ${K} KK WHERE UPPER(RTRIM(KK.${q(fazlaKolon)})) COLLATE DATABASE_DEFAULT = UPPER(RTRIM(H.${q(fazlaKolon)})) COLLATE DATABASE_DEFAULT)`
+      ? `NOT EXISTS (SELECT 1 FROM ${K} KK WHERE ${adIfadesi(`KK.${q(fazlaKolon)}`)} = ${adIfadesi(`H.${q(fazlaKolon)}`)})`
       : null;
 
     // 1) Satır sayısı
@@ -230,7 +235,7 @@ export const dogrula = async (
   if (tabloBul(kaynakSema, "TODVZ_KULLANICI") && tabloBul(hedefSema, "TODVZ_KULLANICI")) {
     const eksik = await coklu(baglanti, `
       SELECT RTRIM(K.AD) AS AD FROM ${tamAd(plan.kaynakDb, "TODVZ_KULLANICI")} K
-      WHERE NOT EXISTS (SELECT 1 FROM ${tamAd(plan.hedefDb, "TODVZ_KULLANICI")} H WHERE UPPER(RTRIM(H.AD)) COLLATE DATABASE_DEFAULT = UPPER(RTRIM(K.AD)) COLLATE DATABASE_DEFAULT)`);
+      WHERE NOT EXISTS (SELECT 1 FROM ${tamAd(plan.hedefDb, "TODVZ_KULLANICI")} H WHERE ${adIfadesi("H.AD")} = ${adIfadesi("K.AD")})`);
     ekle({ grup: "KULLANICI", tablo: "TODVZ_KULLANICI", ad: "Müşterinin bütün kullanıcıları hedefte", durum: eksik.length ? "FARK" : "TAMAM", ornekler: eksik.map((x) => String(x.AD)) });
   }
 

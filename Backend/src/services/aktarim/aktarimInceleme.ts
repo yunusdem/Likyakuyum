@@ -313,9 +313,12 @@ export const incele = async (pool: sql.ConnectionPool, geciciDb: string, yedek: 
       FROM ${D}.dbo.TODVZ_FIS_SATIRI S JOIN ${D}.dbo.TODVZ_FIS F ON F.FIS_ID = S.FIS_ID
       WHERE S.BELGE_NO LIKE '[A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][0-9]%' AND LEN(RTRIM(S.BELGE_NO)) = 16 AND ISNULL(F.IPTAL, 0) = 0;
     IF OBJECT_ID('tempdb..#gonderilen') IS NOT NULL DROP TABLE #gonderilen;
-    CREATE TABLE #gonderilen (BN varchar(20) PRIMARY KEY);
+    -- Kolon #belge'den türetilir: CREATE TABLE sunucunun varsayılan harf düzenini (canlıda SQL_Latin1) alır, yedek Turkish_CI_AS
+    -- ve karşılaştırma "collation conflict" verir (17.11.2026 sunucu denemesi)
+    SELECT TOP 0 BN INTO #gonderilen FROM #belge;
     ${ozet.eDoviz.logVar ? `INSERT #gonderilen SELECT DISTINCT CAST(LEFT(MESAJ, 16) AS varchar(20)) FROM ${D}.dbo.TODVZ_E_FATURA_LOG
       WHERE MESAJ LIKE '[A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][0-9]%' AND MESAJ LIKE N'%başar%gönderildi%';` : ""}
+    CREATE CLUSTERED INDEX IX ON #gonderilen (BN);
     SELECT LEFT(BN, 7) AS SERI, COUNT(*) AS N, MAX(BN) AS SON FROM #belge GROUP BY LEFT(BN, 7);
     SELECT LEFT(b.BN, 7) AS SERI, COUNT(*) AS N, MAX(b.BN) AS SON FROM #belge b JOIN #gonderilen g ON g.BN = b.BN GROUP BY LEFT(b.BN, 7);
     SELECT LEFT(b.BN, 7) AS SERI, COUNT(*) AS N, MIN(b.TARIH) AS ILK, MAX(b.TARIH) AS SON FROM #belge b

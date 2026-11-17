@@ -152,10 +152,11 @@ export const eDovizIsaretle = async (tx: sql.Transaction, kaynakDb: string, hede
     INSERT INTO ${tamAd(hedefDb, "TODVZ_EBELGE_KAYNAK")} (ANAHTAR, BELGE_NO, DURUM, HATA, TARIH)
     SELECT B.ANAHTAR, B.BN, 'GONDERILDI', ${n(ESKI_GONDERIM_NOTU + " (")} + CONVERT(nvarchar(16), B.ZAMAN, 104) + N' ' + CONVERT(nvarchar(5), B.ZAMAN, 108) + N')', B.ZAMAN
     FROM #beklenen B
-    WHERE NOT EXISTS (SELECT 1 FROM ${tamAd(hedefDb, "TODVZ_EBELGE_KAYNAK")} R WHERE R.ANAHTAR = B.ANAHTAR);
+    WHERE NOT EXISTS (SELECT 1 FROM ${tamAd(hedefDb, "TODVZ_EBELGE_KAYNAK")} R WHERE R.ANAHTAR COLLATE DATABASE_DEFAULT = B.ANAHTAR COLLATE DATABASE_DEFAULT);
     -- İşaretli = beklenen anahtarlardan gönderilmiş sayılan kaydı olanlar (eski işaret ya da bizim gerçek gönderimimiz)
+    -- (geçici tablo ile firma tablosu: iki yanda açık harf düzeni — canlı sunucunun varsayılanı SQL_Latin1, firma Turkish_CI_AS)
     SELECT
-      (SELECT COUNT(*) FROM #beklenen B JOIN ${tamAd(hedefDb, "TODVZ_EBELGE_KAYNAK")} R ON R.ANAHTAR = B.ANAHTAR AND R.DURUM NOT IN ('GONDERILMEDI', 'HATA')) AS ISARETLENEN,
+      (SELECT COUNT(*) FROM #beklenen B JOIN ${tamAd(hedefDb, "TODVZ_EBELGE_KAYNAK")} R ON R.ANAHTAR COLLATE DATABASE_DEFAULT = B.ANAHTAR COLLATE DATABASE_DEFAULT AND R.DURUM NOT IN ('GONDERILMEDI', 'HATA')) AS ISARETLENEN,
       (SELECT COUNT(*) FROM #beklenen) AS BEKLENEN;
     DROP TABLE #gonderilen; DROP TABLE #beklenen;
     SET NOCOUNT OFF;`);

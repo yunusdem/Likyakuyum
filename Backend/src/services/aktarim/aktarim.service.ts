@@ -14,6 +14,8 @@ import { klonHavuzu, klonYapilandirildiMi } from "../admin/klon.service.js";
 import { AktarimYukleme, YuklemeBilgisi } from "./aktarimYukleme.js";
 import { Engel, IncelemeOzeti, YedekSeti, geciciAc, geciciHazirMi, geciciSil, geciciVarMi, incele, setSec, sunucuAnaSurumu, yedekBasligi, yedekEngelleri } from "./aktarimInceleme.js";
 import { AktarimDogrulamaHatasi, AktarimEngeli, AktarimSonucu, aktar, planHazirla } from "./aktarimMotoru.js";
+import { AktarimPlani, DOKUNULMAZ_TABLOLAR, SABLON_KALIR_TABLOLARI } from "./aktarimPlani.js";
+import { n, q } from "./aktarimSema.js";
 import { DogrulamaRaporu, dogrula, veritabanlariniDogrula } from "./aktarimDogrulama.js";
 import { CiftRolu, CiftSecenekleri, ciftKontrolleri, digerVeritabaniKurali } from "./aktarimCift.js";
 import { ciftSecenekleri, standartEkAdimlar } from "./aktarimCli.js";
@@ -67,9 +69,14 @@ const isler = new Map<string, AktarimIsi>();
 const calisanFirmalar = new Set<number>();
 const AKTARIM_ZAMAN_ASIMI_MS = 4 * 60 * 60 * 1000;
 
-const isBaslat = (firmaId: number, yuklemeId: string, tur: IsTuru, calis: (is: AktarimIsi) => Promise<void>): AktarimIsi => {
+/**
+ * ekKilit: çift aktarımında eş firma. Aktarım eşin veritabanına da yazar (yetki, fiş eşlemesi, tetikler); iki taraf aynı anda
+ * çalışırsa kilitlenip biri geri alınırdı. Eş de iş bitene kadar meşgul sayılır.
+ */
+const isBaslat = (firmaId: number, yuklemeId: string, tur: IsTuru, calis: (is: AktarimIsi) => Promise<void>, ekKilit: number[] = []): AktarimIsi => {
   if (calisanFirmalar.has(firmaId)) throw ApiError.conflict("Bu firmada şu anda bir aktarım işi çalışıyor; bitmesini bekleyin.");
-  calisanFirmalar.add(firmaId);
+  if (ekKilit.some((f) => calisanFirmalar.has(f))) throw ApiError.conflict("Eş firmada şu anda bir aktarım işi çalışıyor; bitmesini bekleyin.");
+  for (const f of [firmaId, ...ekKilit]) calisanFirmalar.add(f);
   const is: AktarimIsi = {
     isId: crypto.randomBytes(8).toString("hex"),
     firmaId,
@@ -95,7 +102,7 @@ const isBaslat = (firmaId: number, yuklemeId: string, tur: IsTuru, calis: (is: A
       logger.error(`[AKTARIM] ${tur} firma ${firmaId} / ${yuklemeId}: ${is.hata}`);
     } finally {
       is.bitis = new Date().toISOString();
-      calisanFirmalar.delete(firmaId);
+      for (const f of [firmaId, ...ekKilit]) calisanFirmalar.delete(f);
       // Eski işleri bellekten at (son 50)
       if (isler.size > 50) for (const k of [...isler.keys()].slice(0, isler.size - 50)) isler.delete(k);
     }
@@ -224,6 +231,53 @@ export const yanlisFirmaSuphesi = (y: AktarimYukleme, firma: FirmaDto, ozet: Inc
   return e.filter((x, i) => e.findIndex((z) => z.mesaj === x.mesaj) === i);
 };
 
+/**
+ * Firma bizim sistemde kullanılmış mı (K22, 17.11.2026 senaryo denetimi). Aktarım firmadaki verileri yedektekilerle DEĞİŞTİRİR:
+ *  - CANLI_FIRMA (ENGEL, onayla geçilmez): firmadan bizim sistemle e-belge gönderilmiş → firma canlı; aktarım bizim sistemde girilen
+ *    bütün fişleri silerdi. Aktarım işinin başında da yeniden denetlenir.
+ *  - FIRMADA_KAYIT (UYARI): yalnız bizim şemada olan tablolarda (perakende fişi, bakiye düzeltme, hızlı satış …) kayıt var. Yeniden
+ *    aktarım bu tablolara dokunmaz; silinen fişlere / bakiyeye bağlı olanlar tutarsız kalabilir (geçiş günü kuralı ayrıca kararlaştırılacak).
+ */
+export const firmaKullanimi = async (pool: sql.ConnectionPool, firmaDb: string, plan: AktarimPlani | null): Promise<Engel[]> => {
+  const e: Engel[] = [];
+  const tam = (tablo: string) => `${q(firmaDb)}.dbo.${q(tablo)}`;
+  const var_ = async (tablo: string, kolon?: string) =>
+    (await new sql.Request(pool).query(kolon ? `SELECT COL_LENGTH(${n(`${firmaDb}.dbo.${tablo}`)}, ${n(kolon)}) AS L` : `SELECT OBJECT_ID(${n(`${firmaDb}.dbo.${tablo}`)}) AS L`)).recordset[0].L !== null;
+  const say = async (sorgu: string) => Number((await new sql.Request(pool).query(sorgu)).recordset[0].N) || 0;
+
+  if (await var_("TODVZ_EBELGE_GIDEN", "GONDERIM_DURUMU")) {
+    // Taslak (deneme) gönderimleri sayılmaz: yalnız gerçekten kesilmiş belgeler firmayı "canlı" yapar
+    const taslakDisi = (await var_("TODVZ_EBELGE_GIDEN", "TASLAK_MI")) ? " AND ISNULL(TASLAK_MI, 0) = 0" : "";
+    const giden = await say(`SELECT COUNT_BIG(*) AS N FROM ${tam("TODVZ_EBELGE_GIDEN")} WHERE GONDERIM_DURUMU = 'GONDERILDI'${taslakDisi}`);
+    if (giden > 0) {
+      e.push({
+        kod: "CANLI_FIRMA",
+        seviye: "ENGEL",
+        mesaj: `Bu firmadan bizim sistemle ${giden} e-belge gönderilmiş: firma canlı kullanımda. Aktarım, bizim sistemde girilen bütün kayıtları yedektekilerle değiştirir; bu firmaya aktarım yapılamaz.`,
+      });
+    }
+  }
+  if (plan) {
+    const haric = new Set([...SABLON_KALIR_TABLOLARI, ...DOKUNULMAZ_TABLOLAR, "TODVZ_EBELGE_KAYNAK"]);
+    const kayitlar = plan.tablolar
+      .filter((t) => t.islem === "SABLON_KORU" && t.hedefSatir > 0 && !haric.has(t.tablo.toUpperCase()) && !/^(LKY_DESTEK_|YWS_)/i.test(t.tablo))
+      .map((t) => ({ tablo: t.tablo, satir: t.hedefSatir }));
+    // e-Belge kaynak işaretleri: önceki aktarımın "eski programla gönderildi" kayıtları sayılmaz (onları aktarım kendisi yazar)
+    if (await var_("TODVZ_EBELGE_KAYNAK")) {
+      const bizim = await say(`SELECT COUNT_BIG(*) AS N FROM ${tam("TODVZ_EBELGE_KAYNAK")} WHERE NOT (DURUM = 'GONDERILDI' AND HATA LIKE N'Eski programla gönderildi%')`);
+      if (bizim > 0) kayitlar.push({ tablo: "TODVZ_EBELGE_KAYNAK", satir: bizim });
+    }
+    if (kayitlar.length) {
+      e.push({
+        kod: "FIRMADA_KAYIT",
+        seviye: "UYARI",
+        mesaj: `Firmada bizim sistemde girilmiş kayıtlar var (${kayitlar.map((k) => `${k.tablo} ${k.satir}`).join(", ")}). Aktarım bu tablolara dokunmaz; silinen fişlere ya da bakiyeye bağlı olanlar tutarsız kalabilir. Geçiş gününde yeniden aktarmadan önce bu kayıtlar temizlenmeli.`,
+      });
+    }
+  }
+  return e;
+};
+
 const firmaKodlari = async (): Promise<Map<number, string>> => new Map((await FirmaService.listele()).map((f) => [f.firmaId, f.firmaKodu]));
 
 export class AktarimService {
@@ -324,6 +378,7 @@ export class AktarimService {
             ilerle(is, "PLAN", 70, "Bizim şemayla eşleme ve kayıp denetimi");
             const { plan, engeller: planEngel } = await planHazirla(pool, gecici, firma.dbName, { degerKurallari: [digerVeritabaniKurali(null)] });
             sonuc.engeller.push(...planEngel);
+            sonuc.engeller.push(...(await firmaKullanimi(pool, firma.dbName, plan)));
             sonuc.plan = {
               kopyalanacak: plan.tablolar.filter((t) => t.islem === "KOPYALA").length,
               sablonTemizlenecek: plan.tablolar.filter((t) => t.islem === "SABLON_TEMIZLE").map((t) => t.tablo),
@@ -400,6 +455,12 @@ export class AktarimService {
         const { set, engeller, gecici } = await geciciHazirla(pool, b, is);
         rapor.engeller.push(...engeller);
         if (engeller.some((e) => e.seviye === "ENGEL")) throw new Error("Yedek aktarılamaz (engel var).");
+        // Canlı firma koruması: inceleme eski olabilir, aktarım anında yeniden bakılır
+        const canli = (await firmaKullanimi(pool, firma.dbName, null)).filter((e) => e.seviye === "ENGEL");
+        if (canli.length) {
+          rapor.engeller.push(...canli);
+          throw new Error(canli.map((e) => e.mesaj).join(" "));
+        }
         ilerle(is, "INCELE", 10, "Yedek özeti");
         const ozet = await incele(pool, gecici, set);
         const cift = esFirma
@@ -431,11 +492,18 @@ export class AktarimService {
         });
         rapor.dogrulama = dogrulamaTutucu.r;
         rapor.basarili = true;
+        // Buradan sonrası COMMIT'ten SONRA çalışır: veri yazıldı ve doğrulandı. Aşağıdaki yan adımlardan biri hata verirse
+        // iş "hatalı" görünmemeli (yönetici başarılı aktarımı başarısız sanıp yeniden denerdi); hata günlüğe yazılır.
+        y.dosyaYaz(yuklemeId, "rapor.json", JSON.stringify(rapor));
 
         // Merkez kullanıcılarının firma veritabanı kimlikleri ada göre yeniden bağlanır
         ilerle(is, "ESLEME", 97, "Merkez kullanıcı eşlemesi");
-        const kullanicilar = (await new sql.Request(pool).query(`SELECT KULLANICI_ID AS I, RTRIM(AD) AS AD FROM [${firma.dbName.replace(/]/g, "]]")}].dbo.TODVZ_KULLANICI`)).recordset as any[];
-        for (const k of kullanicilar) rapor.kullaniciEslemesi += await KullaniciSqlRepository.firmaDbKimligiGuncelle(firmaId, String(k.AD), Number(k.I)).catch(() => 0);
+        try {
+          const kullanicilar = (await new sql.Request(pool).query(`SELECT KULLANICI_ID AS I, RTRIM(AD) AS AD FROM [${firma.dbName.replace(/]/g, "]]")}].dbo.TODVZ_KULLANICI`)).recordset as any[];
+          for (const k of kullanicilar) rapor.kullaniciEslemesi += await KullaniciSqlRepository.firmaDbKimligiGuncelle(firmaId, String(k.AD), Number(k.I)).catch(() => 0);
+        } catch (err: any) {
+          logger.warn(`[AKTARIM] firma ${firmaId}: aktarım tamamlandı, merkez kullanıcı eşlemesi yapılamadı: ${err?.message}`);
+        }
 
         await AdminLogSqlRepository.islemLogu({
           adminId: yapan.adminId,
@@ -451,9 +519,15 @@ export class AktarimService {
             cift: rapor.cift ? { es: rapor.cift.esHedefDb, rol: rapor.cift.rol } : null,
             onYedek,
           },
-        });
+        }).catch(() => undefined);
         ilerle(is, "BITTI", 100, rapor.dogrulama?.basarili ? "Aktarım tamamlandı; doğrulama: kaynakla birebir aynı" : "Aktarım tamamlandı");
       } catch (err: any) {
+        if (rapor.basarili) {
+          // COMMIT'ten sonraki bir yan adım: aktarım geçerli, iş başarılı kalır
+          logger.warn(`[AKTARIM] firma ${firmaId}: aktarım tamamlandı, son adımda uyarı: ${err?.message}`);
+          ilerle(is, "BITTI", 100, "Aktarım tamamlandı");
+          return;
+        }
         rapor.hata = String(err?.message || err).slice(0, 1000);
         if (err instanceof AktarimEngeli) rapor.engeller.push(...err.engeller);
         if (err instanceof AktarimDogrulamaHatasi) rapor.dogrulama = err.dogrulama as unknown as DogrulamaRaporu;
@@ -464,7 +538,7 @@ export class AktarimService {
         await geciciSil(pool, geciciDbAdi(yuklemeId)).catch(() => undefined);
         await pool.close().catch(() => undefined);
       }
-    });
+    }, esFirma ? [esFirma.firmaId] : []);
   }
 
   /** Aktarımdan bağımsız doğrulama: yüklenen yedek ile firma veritabanını yeniden karşılaştırır. */
