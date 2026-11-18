@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.1.8";
+export const TARGET_PRINTER_AGENT_VERSION = "1.1.9";
 
 /**
  * Windows ortamında kayıtlı likyaprint:// protokolü üzerinden PrinterAgent.exe'yi otomatik uyandırır/başlatır.
@@ -920,7 +920,7 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
             width: 100%;
             max-width: 80mm;
             margin: 0 auto !important;
-            padding: 0 !important;
+            padding: 4px 0 0 0 !important;
             display: flex !important;
             justify-content: center !important;
             align-items: flex-start !important;

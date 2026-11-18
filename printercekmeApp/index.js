@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.8";
+const CURRENT_VERSION = "1.1.9";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -1355,16 +1355,20 @@ async function executePrintJobInternal(job) {
     .pos-print-root {
       width: 304px !important;
       max-width: 304px !important;
-      margin: 0 !important;
-      padding: 0 !important;
+      margin: 0 auto !important;
+      padding: 4px 0 0 0 !important;
       box-sizing: border-box !important;
-      text-align: left !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
     }
     .belge-sablon {
       margin: 0 auto !important;
       box-sizing: border-box !important;
       page-break-inside: avoid !important;
-      text-align: left !important;
+      transform: scale(0.95) !important;
+      transform-origin: top center !important;
     }
     ` : `
     .belge-sablon {
@@ -1643,16 +1647,28 @@ ${a4GdiParcasi()}
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
-        # 80mm fiş genişliği (72mm = 283 yüzdelik inç)
-        $targetW = [float]$ev.PageBounds.Width
-        if ($targetW -le 50 -or $targetW -gt 320) { $targetW = 283.0 }
-        $scale = $targetW / $script:pngImg.Width
+        # 80mm fiş kâğıdı için yazdırma alanı hesaplaması:
+        # Fiziksel kâğıt 80mm (~315 yüzdelik inç) olsa dahi termal yazıcı kafaları en fazla 72mm (~283 birim) basabilir.
+        # Sağdan, soldan ve üstten hiçbir şekilde taşma / kesilme olmaması için:
+        $pageW = [float]$ev.PageBounds.Width
+        if ($pageW -le 50 -or $pageW -gt 400) { $pageW = 283.0 }
+
+        # Güvenli hedef genişlik: 268 birim (~68mm). Hem 72mm kafada hem 80mm ruloda 2mm-6mm güvenli pay bırakır.
+        $targetW = [Math]::Min($pageW, 268.0)
+        $scale = $targetW / [float]$script:pngImg.Width
         $targetH = [float]($script:pngImg.Height * $scale)
 
-        $hx = [float]$ev.PageSettings.HardMarginX
-        $hy = [float]$ev.PageSettings.HardMarginY
-        $destRect = New-Object System.Drawing.RectangleF((0 - $hx), (0 - $hy), $targetW, $targetH)
-        $srcRect = New-Object System.Drawing.RectangleF(0, 0, [float]$script:pngImg.Width, [float]$script:pngImg.Height)
+        # Fişi kâğıda yatayda tam ortala; kâğıdın solundan ve sağından eşit pay kalsın, asla taşmasın:
+        $destX = 0.0
+        if ($pageW -gt $targetW) {
+            $destX = [float](($pageW - $targetW) / 2.0)
+        }
+        if ($destX -lt 3.0) { $destX = 3.0; $targetW = [Math]::Max(50.0, ($pageW - 6.0)) }
+
+        # Üstten kesim çizgisinden 5 birim (~1.3mm) pay vererek QR kod ve Maliye logosunun tepesinin kesilmesini önle
+        $destY = 5.0
+        $destRect = New-Object System.Drawing.RectangleF($destX, $destY, $targetW, $targetH)
+        $srcRect = New-Object System.Drawing.RectangleF(0.0, 0.0, [float]$script:pngImg.Width, [float]$script:pngImg.Height)
 
         $g.DrawImage($script:pngImg, $destRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
         $ev.HasMorePages = $false

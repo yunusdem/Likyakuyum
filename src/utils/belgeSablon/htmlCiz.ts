@@ -143,7 +143,7 @@ export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: numbe
     width: 100%;
     max-width: 80mm;
     margin: 0 auto !important;
-    padding: 0 !important;
+    padding: 4px 0 0 0 !important;
     display: flex !important;
     justify-content: center !important;
     align-items: flex-start !important;
@@ -151,7 +151,7 @@ export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: numbe
   }
   .belge-sablon {
     margin: 0 auto !important;
-    ${isPos ? "transform: scale(0.95); transform-origin: top center;" : ""}
+    ${isPos ? "transform: scale(0.95) !important; transform-origin: top center !important;" : ""}
     box-sizing: border-box !important;
     page-break-inside: avoid !important;
   }

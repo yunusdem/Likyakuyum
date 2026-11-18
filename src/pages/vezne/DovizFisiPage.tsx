@@ -5127,14 +5127,24 @@ export const DovizFisiPage: React.FC = () => {
       if (andDirectPrint) {
         let printerToUse: YaziciItem | null = targetPrinter || null;
         let copiesToUse: number = targetCopies || 1;
-        let isPos = false;
+        let isPos = true;
         let resolvedEffectiveName: string | null = null;
 
+        // Kullanıcının modalda daha önce seçtiği veya bilgisayara tanımlı yerel yazıcı
+        const termUUID = PrinterService.getTerminalUUID();
+        const savedTermPrinter =
+          localStorage.getItem(`likya_terminal_printer_${termUUID}`) ||
+          localStorage.getItem("likya_last_selected_printer") ||
+          localStorage.getItem("likya_terminal_last_printer");
+
         if (printerToUse) {
-          isPos = printerToUse.belgeYaziciModu !== 0;
+          isPos = true;
+          resolvedEffectiveName = printerToUse.cihazAdi || printerToUse.ad || null;
           if (!targetCopies && printerToUse.kopyaSayisi && Number(printerToUse.kopyaSayisi) > 0) {
             copiesToUse = Number(printerToUse.kopyaSayisi);
           }
+        } else if (savedTermPrinter) {
+          resolvedEffectiveName = savedTermPrinter;
         } else {
           const resolved = resolveEffectivePrinter({
             pageType: "doviz",
@@ -5144,8 +5154,7 @@ export const DovizFisiPage: React.FC = () => {
             printers,
           });
           printerToUse = resolved.printer;
-          resolvedEffectiveName = resolved.printerName;
-          isPos = resolved.recommendedPrintType === "POS";
+          resolvedEffectiveName = resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null;
           copiesToUse = resolved.kopyaSayisi || 1;
         }
 
@@ -5154,9 +5163,9 @@ export const DovizFisiPage: React.FC = () => {
         try {
           const fisCikti = await dovizFisleriHtml({ ...currentSnapshot, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi });
           const sonuc = await fisiYazdir(fisCikti, {
-            printerName: printerToUse?.cihazAdi || printerToUse?.ad || resolvedEffectiveName || null,
+            printerName: resolvedEffectiveName || printerToUse?.cihazAdi || printerToUse?.ad || null,
             copies: copiesToUse,
-            isPos,
+            isPos: true,
           });
           if (!sonuc.success) yazdirmaHatasi = sonuc.message;
         } catch (printErr: any) {

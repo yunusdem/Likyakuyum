@@ -222,8 +222,10 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
             .pos-print-root {
               width: 80mm;
               margin: 0 auto;
+              padding: 4px 0 0 0;
               display: flex;
               justify-content: center;
+              box-sizing: border-box;
             }
             .belge-sablon {
               margin: 0 auto !important;
