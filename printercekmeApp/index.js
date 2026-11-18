@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.9";
+const CURRENT_VERSION = "1.2.0";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -1379,12 +1379,13 @@ async function executePrintJobInternal(job) {
     `}
   </style>`;
 
+        const syncImageScript = `<script>try { document.querySelectorAll('img').forEach(function(img){ img.loading='eager'; img.decoding='sync'; }); } catch(e){} setTimeout(function(){}, 120);</script>`;
         let fullHtml = "";
         if (isFullDoc) {
           if (html.includes("</head>")) {
-            fullHtml = html.replace("</head>", `${printStyle}</head>`);
+            fullHtml = html.replace("</head>", `${printStyle}${syncImageScript}</head>`);
           } else {
-            fullHtml = printStyle + html;
+            fullHtml = printStyle + syncImageScript + html;
           }
         } else {
           fullHtml = `<!DOCTYPE html>
@@ -1394,6 +1395,7 @@ async function executePrintJobInternal(job) {
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <title>${title}</title>
   ${printStyle}
+  ${syncImageScript}
 </head>
 <body style="margin:0;padding:0;background:#ffffff;">
   ${isPos ? `<div class="pos-print-root">${html}</div>` : html}
@@ -1801,8 +1803,6 @@ exit 1
 let printQueue = Promise.resolve();
 
 async function executePrintJob(job) {
-  // Kullanıcı yazdırma yaptığında konsol penceresini öne getir
-  openConsoleWindow();
   const runJob = async () => {
     const { title = "Fiş", printerName, targetDevice, copies = 1 } = job || {};
     const targetPrinter = (printerName || targetDevice || "").trim();
@@ -2244,14 +2244,8 @@ function checkExistingService() {
 function startServer() {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
-      console.log(`[printercekmeApp] Port ${PORT} kullanımda (yanıt vermeyen süreç). Port temizlenip devralınıyor...`);
-      if (os.platform() === "win32") {
-        exec(`taskkill /f /fi "PID ne ${process.pid}" /im PrinterAgent.exe`, { windowsHide: true }, () => {
-          setTimeout(() => {
-            try { server.listen(PORT, HOST); } catch {}
-          }, 800);
-        });
-      }
+      console.log(`[printercekmeApp] Port ${PORT} kullanımda (zaten çalışan aktif bir servis var). Bu kopya sessizce kapanıyor.`);
+      process.exit(0);
       return;
     }
     console.error("[printercekmeApp] Sunucu hatası:", err);

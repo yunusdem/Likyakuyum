@@ -27,13 +27,20 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.1.9";
+export const TARGET_PRINTER_AGENT_VERSION = "1.2.0";
+
+let lastProtocolWakeTime = 0;
 
 /**
  * Windows ortamında kayıtlı likyaprint:// protokolü üzerinden PrinterAgent.exe'yi otomatik uyandırır/başlatır.
+ * Mükerrer çağrıları engellemek için en fazla 20 saniyede 1 kez çalışır.
  */
 export function wakePrinterAgentViaProtocol(): void {
   if (typeof window === "undefined" || typeof document === "undefined") return;
+  const now = Date.now();
+  if (now - lastProtocolWakeTime < 20000) return;
+  lastProtocolWakeTime = now;
+
   try {
     const ifr = document.createElement("iframe");
     ifr.style.display = "none";
@@ -483,10 +490,10 @@ async function printViaWebSocket(options: SilentPrintOptions, jobId: string): Pr
         }
       };
 
-      // 1. Aşama: Bağlantı kurulamazsa (servis kapalıysa) hızlıca vazgeç: 1200ms
+      // 1. Aşama: Bağlantı kurulamazsa (servis kapalıysa) vazgeç: 3500ms
       timer = setTimeout(() => {
         finish(null);
-      }, 1200);
+      }, 3500);
 
       try {
         ws = new WebSocket(wsUrl);

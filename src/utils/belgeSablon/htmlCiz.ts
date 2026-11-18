@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { GIB_LOGO_DATA_URL } from "./gibLogoBase64";
 import {
   sahneKur, kalinParcala, SATIR_ORANI, YAZI_TIPLERI,
   type BelgeSablon, type Cizim, type Sahne,
@@ -101,13 +102,33 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
         ustKatman.push(metinHtml(c, k, k, standart));
         break;
       case "resim": {
-        const src = gorselAdresi(gorseller[c.dosya]);
-        if (src) ustKatman.push(`<img alt="" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.g)};height:${pt(c.h)};object-fit:contain;image-rendering:-webkit-optimize-contrast;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
+        let src = gorselAdresi(gorseller[c.dosya]);
+        if (!src && (c.dosya === "logo-gib.png" || c.dosya.includes("gib"))) {
+          src = GIB_LOGO_DATA_URL;
+        }
+        if (src) {
+          ustKatman.push(`<img alt="" src="${src}" loading="eager" decoding="sync" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.g)};height:${pt(c.h)};object-fit:contain;image-rendering:-webkit-optimize-contrast;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
+        }
         break;
       }
       case "qr": {
-        const src = await QRCode.toDataURL(String(c.icerik), { margin: 0, errorCorrectionLevel: "M", width: Math.max(240, Math.round(say(c.boyut) * 4)) });
-        ustKatman.push(`<img alt="QR" src="${src}" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.boyut)};height:${pt(c.boyut)};image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
+        const rawContent = String(c.icerik || "").trim() || "LIKYA_KUYUM";
+        try {
+          const svgRaw = await QRCode.toString(rawContent, {
+            type: "svg",
+            margin: 0,
+            errorCorrectionLevel: "M",
+          });
+          const svgClean = svgRaw
+            .replace(/<\?xml[\s\S]*?\?>/i, "")
+            .replace(/width="[^"]*"/i, 'width="100%"')
+            .replace(/height="[^"]*"/i, 'height="100%"')
+            .replace(/<svg\b/i, '<svg style="width:100%;height:100%;display:block;shape-rendering:crispEdges;"');
+          ustKatman.push(`<div style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.boyut)};height:${pt(c.boyut)};overflow:hidden;box-sizing:border-box;">${svgClean}</div>`);
+        } catch {
+          const src = await QRCode.toDataURL(rawContent, { margin: 0, errorCorrectionLevel: "M", width: Math.max(240, Math.round(say(c.boyut) * 4)) });
+          ustKatman.push(`<img alt="QR" src="${src}" loading="eager" decoding="sync" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.boyut)};height:${pt(c.boyut)};image-rendering:pixelated;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
+        }
         break;
       }
       case "filigran":
