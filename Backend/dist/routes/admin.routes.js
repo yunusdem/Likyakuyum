@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { AdminAuthController } from "../controllers/admin/adminAuth.controller.js";
+import { aktarimRotalariniEkle } from "./aktarim.routes.js";
 import { AdminYonetimController } from "../controllers/admin/adminYonetim.controller.js";
 import { FirmaController } from "../controllers/admin/firma.controller.js";
 import { KullaniciController } from "../controllers/admin/kullanici.controller.js";
@@ -80,6 +81,8 @@ router.post("/kullanicilar/:id/sifre-sifirla", validate(adminIdSchema), Kullanic
 router.get("/firmalar/:id/kullanicilar", validate(adminIdSchema), KullaniciController.firmaKullanicilari);
 router.post("/firmalar/:id/kullanicilar", validate(kullaniciEkleSchema), KullaniciController.ekle);
 router.post("/firmalar/:id/kullanicilar/ice-aktar", validate(adminIdSchema), KullaniciController.iceAktar);
+// Eski programdan veri aktarımı (docs/VERITABANI_TASIMA_YOL_HARITASI.md)
+aktarimRotalariniEkle(router);
 router.get("/moduller", ModulController.katalog);
 router.put("/moduller/katalog", validate(modulKatalogSchema), ModulController.katalogEsitle);
 router.get("/firmalar/:id/moduller", validate(adminIdSchema), ModulController.firmaAyari);

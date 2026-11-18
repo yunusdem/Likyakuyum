@@ -3,6 +3,7 @@ import { caprazKurDenetleSunucu } from "../services/yetki/fisIcerikYetkisi.js";
 import { CariDekontService } from "../services/cariDekont.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 export class CariDekontController {
     static getDbContext(req) {
         return {
@@ -22,6 +23,8 @@ export class CariDekontController {
             vezneId: req.query.vezneId ? Number(req.query.vezneId) : undefined,
             limit: req.query.limit ? Number(req.query.limit) : 100,
             baslangic: await gunSiniri(req),
+            // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+            durbun: fisDurbunFiltresiOku(req.query),
         };
         const list = await CariDekontService.getDekontList(filter, dbContext);
         return ApiResponse.ok(res, "Cari dekontlar listelendi.", list);

@@ -5,6 +5,7 @@ import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../service
 import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
 import { bankaHesabiDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
+import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 export const PerakendeController = {
     getDbContext(req) {
         return {
@@ -71,6 +72,8 @@ export const PerakendeController = {
                 onlyOwnRecords,
                 userId,
                 userVezneId,
+                // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+                durbun: fisDurbunFiltresiOku(req.query),
             }, dbContext);
             res.json({ success: true, data });
         }

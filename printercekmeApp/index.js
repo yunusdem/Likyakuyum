@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.9";
+const CURRENT_VERSION = "1.1.8";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -38,22 +38,19 @@ function broadcastLog(message) {
 }
 
 function openConsoleWindow() {
-  if (os.platform() !== "win32") return;
-  const now = Date.now();
-  if (now - lastConsoleOpenTime < 2000) return;
-  lastConsoleOpenTime = now;
+  // Sessiz arka plan servisidir; siyah konsol penceresi AÇILMAZ.
+}
 
-  // Windows'ta konsol penceresini öne getir / restore et (ShowWindow SW_RESTORE + SetForegroundWindow)
+function hideConsoleWindow() {
+  if (os.platform() !== "win32") return;
   const psCmd = `
 Add-Type -Name Win32 -Namespace Native -MemberDefinition '
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("Kernel32.dll")] public static extern IntPtr GetConsoleWindow();
 '
 $hwnd = [Native.Win32]::GetConsoleWindow()
 if ($hwnd -ne [IntPtr]::Zero) {
-    [Native.Win32]::ShowWindow($hwnd, 9)
-    [Native.Win32]::SetForegroundWindow($hwnd)
+    [Native.Win32]::ShowWindow($hwnd, 0)
 }
 `;
   runPowerShell(psCmd, 3000).catch(() => {});
@@ -1267,9 +1264,11 @@ async function executePrintJobInternal(job) {
     return { success: true, message: "Fiş zaten yazdırılıyor (mükerrer istek engellendi)." };
   }
 
-  const contentSig = `${targetPrinter}__${title}__${(text || "").trim().slice(0, 100)}__${(html || "").length}`;
-  if (contentSig.length > 20 && recentPrintJobs.has(contentSig) && (timestamp - recentPrintJobs.get(contentSig) < 6000)) {
-    console.log(`[printercekmeApp] ⚠️ Mükerrer yazdırma isteği engellendi (İçerik İmzası: ${contentSig.slice(0, 40)}...)`);
+  // Deduplication: Aynı başlık ve içerik 2 saniye içinde tekrar geldiyse mükerrer basımı engelle
+  const contentSnippet = (text || html || "").replace(/\s+/g, "").slice(0, 80);
+  const contentSig = `${targetPrinter}__${title}__${contentSnippet}`;
+  if (contentSig.length > 10 && recentPrintJobs.has(contentSig) && (timestamp - recentPrintJobs.get(contentSig) < 2000)) {
+    console.log(`[printercekmeApp] ⚠️ Mükerrer yazdırma isteği engellendi (İçerik: ${contentSig.slice(0, 40)}...)`);
     return { success: true, message: "Fiş zaten yazdırılıyor (mükerrer istek engellendi)." };
   }
 
@@ -1782,20 +1781,27 @@ exit 1
   }
 }
 
-async function executePrintJob(job) {
-  // Konsol kapalıysa kullanıcı fiş yazdırmak istediğinde konsolu hemen aç
-  openConsoleWindow();
-  const { title = "Fiş", printerName, targetDevice, copies = 1 } = job || {};
-  const targetPrinter = (printerName || targetDevice || "").trim();
-  broadcastLog(`📄 Fiş yazdırma başlatıldı: "${title}" -> Hedef Yazıcı: "${targetPrinter || 'Varsayılan Yazıcı'}" (Kopya: ${copies})`);
+let printQueue = Promise.resolve();
 
-  const result = await executePrintJobInternal(job);
-  if (result.success) {
-    broadcastLog(`✅ Fiş başarıyla yazdırıldı -> Yazıcı: "${result.printerName || targetPrinter || 'Varsayılan Yazıcı'}"`);
-  } else {
-    broadcastLog(`❌ Yazdırma hatası: ${result.message}`);
-  }
-  return result;
+async function executePrintJob(job) {
+  const runJob = async () => {
+    const { title = "Fiş", printerName, targetDevice, copies = 1 } = job || {};
+    const targetPrinter = (printerName || targetDevice || "").trim();
+    broadcastLog(`📄 Fiş yazdırma başlatıldı: "${title}" -> Hedef Yazıcı: "${targetPrinter || 'Varsayılan Yazıcı'}" (Kopya: ${copies})`);
+
+    const result = await executePrintJobInternal(job);
+    if (result.success) {
+      broadcastLog(`✅ Fiş başarıyla yazdırıldı -> Yazıcı: "${result.printerName || targetPrinter || 'Varsayılan Yazıcı'}"`);
+    } else {
+      broadcastLog(`❌ Yazdırma hatası: ${result.message}`);
+    }
+    // Birden çok ardışık fişte yazıcının kâğıdı kesmesi ve kuyruğun rahatlaması için ara
+    await new Promise((r) => setTimeout(r, 400));
+    return result;
+  };
+
+  printQueue = printQueue.then(runJob, runJob);
+  return printQueue;
 }
 
 // ─── HTTP Endpoints ─────────────────────────────────────────────────────────
@@ -2163,10 +2169,6 @@ $timer.add_Tick({
     }
 
     if (-not $isRunning -and -not $script:isManualExit) {
-        # Konsol penceresi kapatıldı! Hemen yeniden aç
-        try {
-            Start-Process -FilePath "${currentExec.replace(/\\/g, "\\\\")}" -WorkingDirectory "${exeDir.replace(/\\/g, "\\\\")}"
-        } catch {}
         $notify.Visible = $false
         $notify.Dispose()
         [System.Windows.Forms.Application]::Exit()
@@ -2246,14 +2248,10 @@ function startServer() {
 }
 
 function main() {
-  // Eski zombi süreçler varsa temizle ve DOĞRUDAN sunucuyu başlat (sıfır gecikme)
   if (os.platform() === "win32") {
-    exec(`taskkill /f /fi "PID ne ${process.pid}" /im PrinterAgent.exe`, { windowsHide: true }, () => {
-      startServer();
-    });
-  } else {
-    startServer();
+    hideConsoleWindow();
   }
+  startServer();
 }
 
 main();

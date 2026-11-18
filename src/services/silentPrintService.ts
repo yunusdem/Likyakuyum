@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.1.9";
+export const TARGET_PRINTER_AGENT_VERSION = "1.1.8";
 
 /**
  * Windows ortamında kayıtlı likyaprint:// protokolü üzerinden PrinterAgent.exe'yi otomatik uyandırır/başlatır.
@@ -158,6 +158,7 @@ function showPrinterAgentUpdatedSuccessToast(version: string): void {
 
 let lastUpdateCheckTime = 0;
 let isUpdatingAgent = false;
+let updateAttemptedInThisSession = false;
 
 /**
  * Bilgisayarda çalışan yerel PrinterAgent.exe'nin sürümünü denetler.
@@ -165,12 +166,12 @@ let isUpdatingAgent = false;
  * exe'yi otomatik olarak indirip kendisini güncellemesini sağlar.
  */
 export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ updated: boolean; currentVersion?: string; targetVersion?: string }> {
-  if (typeof window === "undefined" || isUpdatingAgent) {
+  if (typeof window === "undefined" || isUpdatingAgent || updateAttemptedInThisSession) {
     return { updated: false };
   }
 
   const now = Date.now();
-  if (!force && now - lastUpdateCheckTime < 15000) {
+  if (!force && now - lastUpdateCheckTime < 30000) {
     return { updated: false };
   }
   lastUpdateCheckTime = now;
@@ -180,13 +181,8 @@ export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ u
   let targetVersion = TARGET_PRINTER_AGENT_VERSION;
   let targetDownloadUrl = "";
 
-  const origin = window.location.origin;
-  const candidateVersionEndpoints = [
-    "https://developer.likyakuyum.com/printer-version.json",
-    `${origin}/printer-version.json`,
-    "https://likyakuyum.com/printer-version.json",
-    "https://likyaerp.com/printer-version.json",
-  ];
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const candidateVersionEndpoints = origin ? [`${origin}/printer-version.json`] : [];
 
   for (const ep of candidateVersionEndpoints) {
     try {
@@ -286,6 +282,7 @@ export async function checkAndAutoUpdatePrinterAgent(force = false): Promise<{ u
   if (isNewerVersion(targetVersion, currentAgentVer)) {
     console.log(`[silentPrintService] PrinterAgent.exe güncellemesi başlatılıyor: v${currentAgentVer} -> v${targetVersion} (${targetDownloadUrl})`);
     isUpdatingAgent = true;
+    updateAttemptedInThisSession = true;
 
     showPrinterAgentUpdateToast(currentAgentVer, targetVersion);
 
@@ -714,13 +711,14 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
-  // 1. Tarayıcı içi mükerrer basım engeli (2.5 saniye içinde birebir aynı içerik basılamaz)
+  // 1. Tarayıcı içi mükerrer basım engeli (aynı başlık ve içerik 2 saniye içinde mükerrer tetiklenirse engellenir)
   const now = Date.now();
-  const signature = `${printerName || "default"}__${(title || "").trim()}__${(text || "").trim().slice(0, 100)}__${(html || "").length}`;
+  const contentSnippet = (text || html || "").replace(/\s+/g, "").slice(0, 80);
+  const signature = `${printerName || "default"}__${(title || "").trim()}__${contentSnippet}`;
   for (const [k, t] of activePrintSignatures.entries()) {
-    if (now - t > 10000) activePrintSignatures.delete(k);
+    if (now - t > 6000) activePrintSignatures.delete(k);
   }
-  if (activePrintSignatures.has(signature) && (now - (activePrintSignatures.get(signature) || 0)) < 2500) {
+  if (activePrintSignatures.has(signature) && (now - (activePrintSignatures.get(signature) || 0)) < 1800) {
     console.warn("[triggerSilentPrint] Mükerrer yazdırma çağrısı engellendi:", signature);
     return { success: true, message: "Fiş zaten yazdırılıyor." };
   }

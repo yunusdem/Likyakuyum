@@ -136,13 +136,14 @@ export async function fisiYazdir(fis: FisHtml | FisHtml[], y: YaziciSecimi): Pro
   for (let i = 0; i < fisler.length; i++) {
     const slip = fisler[i];
     const plainText = extractPlainTextFromFis(slip);
+    const slipTitle = slip.baslik ? `${slip.baslik} [${i + 1}/${fisler.length}]` : `Fis_${i + 1}`;
     const res = await triggerSilentPrint({
       html: slip.html,
       text: slip.html ? undefined : (plainText || undefined),
       printerName: y.printerName ?? null,
       copies: tekKopya,
       isPos: y.isPos,
-      title: slip.baslik || `Fis_${i + 1}`,
+      title: slipTitle,
       allowBrowserFallback: false,
     });
     if (!res.success) {
@@ -151,7 +152,7 @@ export async function fisiYazdir(fis: FisHtml | FisHtml[], y: YaziciSecimi): Pro
     sonSonuc = res;
     // Birden çok fişte yazıcının kesim ve kuyruk işlemini rahat yapabilmesi için küçük ara
     if (i < fisler.length - 1) {
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 600));
     }
   }
 

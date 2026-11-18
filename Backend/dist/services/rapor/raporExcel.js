@@ -7,6 +7,8 @@ export async function raporExcel(p) {
 }
 /** Asıl Excel üretimi (iş parçacığında ya da yedek olarak aynı süreçte çalışır). */
 export async function raporExcelUret(p) {
+    if (p.yalin)
+        return raporExcelYalin(p);
     const wb = new ExcelJS.Workbook();
     wb.creator = p.firma.ad || "Kuyumcu ERP";
     const ws = wb.addWorksheet(p.tanim.ad.replace(/[*?:\/\[\]]/g, "-").slice(0, 31), { views: [{ state: "frozen", ySplit: 4 }] });
@@ -272,5 +274,44 @@ export async function raporExcelUret(p) {
     ws.mergeCells(r, 1, r, kolonlar.length);
     ws.getCell(r, 1).value = `Yazdıran: ${p.kullanici} · ${new Date().toLocaleString("tr-TR", { timeZone: "Europe/Istanbul", hour12: false })}`;
     ws.getCell(r, 1).font = { size: 9, color: { argb: "FF777777" } };
+    return Buffer.from(await wb.xlsx.writeBuffer());
+}
+/**
+ * Yalın Excel (FISLIS1 Muhasebe, docs/FIS_LISTELEME_MUHASEBE.md M4): muhasebeye aktarılan dosyayla birebir — Sayfa1'de 1. satır kolon başlıkları, 2. satırdan
+ * itibaren veri; firma başlığı, filtre yazısı, toplam, özet ve dipnot yok. Sayılar Genel biçimde (yuvarlama veride yapılır), tarih kısa tarih (Excel yerel ayarıyla
+ * gg.aa.yyyy), sütun genişliği 13; Excel'in yeni dosyasındaki gibi boş Sayfa2 / Sayfa3.
+ */
+export async function raporExcelYalin(p) {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = p.firma.ad || "Kuyumcu ERP";
+    const ws = wb.addWorksheet("Sayfa1");
+    const kolonlar = p.tanim.kolonlar;
+    kolonlar.forEach((k, i) => { ws.getCell(1, i + 1).value = k.baslik; ws.getColumn(i + 1).width = 13; });
+    let r = 2;
+    for (const s of p.satirlar) {
+        if (s._stil === "baslik")
+            continue;
+        kolonlar.forEach((k, i) => {
+            const v = s[k.anahtar], c = ws.getCell(r, i + 1);
+            if (v === null || v === undefined || v === "")
+                return;
+            if (["sayi", "sayi4", "kur", "tam"].includes(k.bicim || ""))
+                c.value = Number(v);
+            else if (k.bicim === "tarih" || k.bicim === "tarihSaat") {
+                const d = typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00Z`) : new Date(v);
+                if (Number.isNaN(d.getTime()))
+                    c.value = String(v);
+                else {
+                    c.value = d;
+                    c.numFmt = "mm-dd-yy";
+                }
+            }
+            else
+                c.value = typeof v === "string" ? v : bicimle(v, k.bicim);
+        });
+        r++;
+    }
+    wb.addWorksheet("Sayfa2");
+    wb.addWorksheet("Sayfa3");
     return Buffer.from(await wb.xlsx.writeBuffer());
 }

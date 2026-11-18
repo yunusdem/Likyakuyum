@@ -2,6 +2,17 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { durbunFiltresiVar, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+/** Banka hareketi dürbünü: vezne filtresi = banka hesabı, ürün = para birimi (hareket satırı), tutar = satırların TL toplamı */
+export const BANKA_DURBUN_KOLONLARI = {
+    tarih: "h.TARIH",
+    vezne: ["h.BANKA_ID"],
+    urunExists: "EXISTS (SELECT 1 FROM TODVZ_BANKA_HAREKET_SATIRI ds WHERE ds.BANKA_HAREKET_ID = h.BANKA_HAREKET_ID AND ds.PARA_ID = @DRB_URUN)",
+    tip: "h.ISLEM_TIPI",
+    cari: ["c.KOD", "c.AD", "c.VERGI_KIMLIK_NO"],
+    tutar: "ISNULL((SELECT SUM(ds.TUTAR_TL) FROM TODVZ_BANKA_HAREKET_SATIRI ds WHERE ds.BANKA_HAREKET_ID = h.BANKA_HAREKET_ID), 0)",
+    belgeNo: ["h.BELGE_NO", "CAST(h.BANKA_HAREKET_ID AS varchar(20))"],
+};
 export class BankaSqlRepository {
     /**
      * Tabloların veritabanında var olduğunu denetler ve gerekirse oluşturur.
@@ -298,6 +309,7 @@ export class BankaSqlRepository {
     static async listHareketler(filter, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTables(pool);
+        const durbunVar = durbunFiltresiVar(filter?.durbun);
         const topLimit = filter?.limit && filter.limit > 0 ? filter.limit : 2000;
         let query = `
       SELECT TOP (${topLimit})
@@ -369,7 +381,13 @@ export class BankaSqlRepository {
       )`;
             req.input("SEARCH", sql.VarChar(100), `%${filter.search.trim()}%`);
         }
-        query += ` ORDER BY h.TARIH ASC, h.BANKA_HAREKET_ID ASC`;
+        // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5): sınır en yeni kayıtlardan kesilir
+        if (durbunVar) {
+            const k = fisDurbunKosullari(filter?.durbun, BANKA_DURBUN_KOLONLARI);
+            query += k.sql;
+            durbunParametreleriniBagla(req, k.parametreler);
+        }
+        query += durbunVar ? ` ORDER BY h.TARIH DESC, h.BANKA_HAREKET_ID DESC` : ` ORDER BY h.TARIH ASC, h.BANKA_HAREKET_ID ASC`;
         const res = await req.query(query);
         const headers = res.recordset || [];
         if (!headers.length)

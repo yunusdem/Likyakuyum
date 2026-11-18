@@ -3,6 +3,17 @@ import { EVRAK_TURU_PERAKENDE, gibeGonderildiyseEngelle } from "./ebelgeGonderim
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { durbunFiltresiVar, durbunLimiti, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+/** Perakende fişi dürbünü: tip = fatura tipi (1 satış, 2 alış), ürün = satır ürün adı / barkod metni */
+export const PERAKENDE_DURBUN_KOLONLARI = {
+    tarih: "f.[TARIH]",
+    vezne: ["f.[VEZNE_ID]"],
+    urunMetinExists: "EXISTS (SELECT 1 FROM [dbo].[TODVZ_FATURA_SATIRI] ds WHERE ds.[FATURA_ID] = f.[FATURA_ID] AND (ds.[URUN_ADI] LIKE @DRB_URUNM OR ds.[BARKOD] LIKE @DRB_URUNM))",
+    tip: "f.[FATURA_TIPI]",
+    cari: ["f.[ALICI_UNVAN]", "f.[ALICI_VKN_TCKN]", "c.[KOD]", "c.[AD]"],
+    tutar: "ISNULL(f.[GENEL_TOPLAM], 0)",
+    belgeNo: ["f.[FATURA_NO]"],
+};
 import { EbelgeSeriRepository } from "./ebelgeSeri.repository.js";
 import { perakendeOnEki, perakendeSeriTuru } from "../services/ebelgePerakende.js";
 /**
@@ -1595,8 +1606,10 @@ export class PerakendeSqlRepository {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTablesAndProcedures(pool);
         const req = pool.request();
+        const durbunVar = durbunFiltresiVar(filter.durbun);
+        const ust = durbunVar ? durbunLimiti(filter.limit, 500, 500, true) : (filter.limit || 500);
         let query = `
-      SELECT TOP ${filter.limit || 500}
+      SELECT TOP ${ust}
         f.[FATURA_ID],
         ISNULL(f.[VEZNE_ID], 1) AS [VEZNE_ID],
         ISNULL(f.[FATURA_NO], '') AS [FATURA_NO],
@@ -1661,6 +1674,12 @@ export class PerakendeSqlRepository {
             query += ` AND (f.[EKLEYEN_ID] = @userId OR (@userVezneId > 0 AND f.[VEZNE_ID] = @userVezneId))`;
             req.input("userId", sql.Int, filter.userId);
             req.input("userVezneId", sql.Int, filter.userVezneId || 0);
+        }
+        // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5)
+        if (durbunVar) {
+            const k = fisDurbunKosullari(filter.durbun, PERAKENDE_DURBUN_KOLONLARI);
+            query += k.sql;
+            durbunParametreleriniBagla(req, k.parametreler);
         }
         query += ` ORDER BY f.[FATURA_ID] DESC;`;
         const res = await req.query(query);

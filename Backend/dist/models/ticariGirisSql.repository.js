@@ -3,6 +3,16 @@ import { ApiError } from "../utils/ApiError.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { GECERLI_KDV_ORANLARI, girisSatirHesapla, yuvarla2 } from "../services/ticari/ticariHesap.js";
 import { STOK_BELGE, TicariStokSqlRepository, stokKontrolOku } from "./ticariStokSql.repository.js";
+import { durbunFiltresiVar, durbunLimiti, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+/** Stok giriş fişi dürbünü: TARIH UTC tutulur (gün +3 saatle), ürün = stok kartı metni, cari = tedarikçi, tip yok */
+export const STOK_GIRIS_DURBUN_KOLONLARI = {
+    tarih: "CAST(DATEADD(hour, 3, G.TARIH) AS date)",
+    vezne: ["G.VEZNE_ID"],
+    urunMetinExists: "EXISTS (SELECT 1 FROM dbo.TODVZ_STOK_GIRIS_SATIRI DS JOIN dbo.TODVZ_STOK_KART DK ON DK.STOK_KART_ID = DS.STOK_KART_ID WHERE DS.STOK_GIRIS_ID = G.STOK_GIRIS_ID AND (DK.KOD LIKE @DRB_URUNM OR DK.AD LIKE @DRB_URUNM))",
+    cari: ["C.KOD", "C.AD", "C.VERGI_KIMLIK_NO"],
+    tutar: "G.GENEL_TOPLAM",
+    belgeNo: ["G.FIS_NO", "G.BELGE_NO"],
+};
 /**
  * Stok Giriş Fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T9, T11): tedarikçiden ürün girişi. Her satır stok hareket
  * defterine giriş yazar, kartın son alış fiyatını günceller. Tedarikçi cari seçilirse genel toplam cariye ALACAK yazılır
@@ -325,8 +335,16 @@ export class TicariGirisSqlRepository {
             req.input("ARA", sql.NVarChar(210), `%${temiz(f.arama)}%`);
             kosul.push(`(G.FIS_NO LIKE @ARA OR G.BELGE_NO LIKE @ARA OR G.ACIKLAMA LIKE @ARA OR C.AD LIKE @ARA OR EXISTS (SELECT 1 FROM dbo.TODVZ_STOK_GIRIS_SATIRI S JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = S.STOK_KART_ID WHERE S.STOK_GIRIS_ID = G.STOK_GIRIS_ID AND (K.AD LIKE @ARA OR K.KOD LIKE @ARA)))`);
         }
+        // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5); yalnız dürbünde satır sınırı
+        const durbunVar = durbunFiltresiVar(f.durbun);
+        if (durbunVar) {
+            const k = fisDurbunKosullari(f.durbun, STOK_GIRIS_DURBUN_KOLONLARI);
+            kosul.push(...k.kosullar);
+            durbunParametreleriniBagla(req, k.parametreler);
+        }
+        const ust = durbunVar ? `TOP (${durbunLimiti(f.limit, 1001, 1001, true)}) ` : "";
         const r = await req.query(`
-      SELECT G.STOK_GIRIS_ID, G.FIS_NO, G.TARIH, G.CARI_KART_ID, RTRIM(C.KOD) AS CARI_KOD, C.AD AS CARI_AD, G.BELGE_NO, G.ACIKLAMA,
+      SELECT ${ust}G.STOK_GIRIS_ID, G.FIS_NO, G.TARIH, G.CARI_KART_ID, RTRIM(C.KOD) AS CARI_KOD, C.AD AS CARI_AD, G.BELGE_NO, G.ACIKLAMA,
         G.ARA_TOPLAM, G.TOPLAM_KDV, G.GENEL_TOPLAM, (SELECT COUNT(*) FROM dbo.TODVZ_STOK_GIRIS_SATIRI S WHERE S.STOK_GIRIS_ID = G.STOK_GIRIS_ID) AS SATIR_SAYISI,
         (SELECT SUM(S.MIKTAR) FROM dbo.TODVZ_STOK_GIRIS_SATIRI S WHERE S.STOK_GIRIS_ID = G.STOK_GIRIS_ID) AS TOPLAM_MIKTAR
       FROM dbo.TODVZ_STOK_GIRIS G LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID = G.CARI_KART_ID

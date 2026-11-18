@@ -27,6 +27,43 @@ export class BanknotSqlRepository {
         }
     }
     /**
+     * Eski masaüstü şemasında TODVZ_BANKNOT üzerinde merkeze (K2016_dvz) yazan
+     * TIODVZ/TUODVZ/TDODVZ_BANKNOT tetikleyicileri var. Merkezde tablo yoksa ya da
+     * BANKNOT_ID başka firmanınkiyle çakışıyorsa tetikleyici hata verir ve SQL Server
+     * tüm işlemi (transaction) geri alır. PARA/VEZNE/YAZICI tetikleyicileri gibi
+     * bunlar da kalıcı olarak pasife alınır (bkz. mssql.config.ts havuz açılışı).
+     */
+    static async disableSyncTriggers(pool) {
+        try {
+            await pool.request().batch(`
+        IF EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TIODVZ_BANKNOT' AND parent_id = OBJECT_ID('dbo.TODVZ_BANKNOT') AND is_disabled = 0)
+          DISABLE TRIGGER [TIODVZ_BANKNOT] ON [dbo].[TODVZ_BANKNOT];
+        IF EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TUODVZ_BANKNOT' AND parent_id = OBJECT_ID('dbo.TODVZ_BANKNOT') AND is_disabled = 0)
+          DISABLE TRIGGER [TUODVZ_BANKNOT] ON [dbo].[TODVZ_BANKNOT];
+        IF EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TDODVZ_BANKNOT' AND parent_id = OBJECT_ID('dbo.TODVZ_BANKNOT') AND is_disabled = 0)
+          DISABLE TRIGGER [TDODVZ_BANKNOT] ON [dbo].[TODVZ_BANKNOT];
+      `);
+        }
+        catch (err) {
+            logger.warn("BanknotSqlRepository.disableSyncTriggers warning:", err);
+        }
+    }
+    /** Transaction sunucuda zaten geri alınmışsa rollback() ikinci bir hata atar; asıl hatayı gizlememesi için yutulur. */
+    static async safeRollback(transaction) {
+        try {
+            await transaction.rollback();
+        }
+        catch (rbErr) {
+            logger.warn("BanknotSqlRepository rollback warning:", rbErr);
+        }
+    }
+    /** Eski masaüstünün son para sayımı (TODVZ_SAYILAN_PARA) BANKNOT_ID'ye bağlı; silinen kupürün sayım satırı da silinir. */
+    static SAYILAN_PARA_SIL = `
+    IF OBJECT_ID('dbo.TODVZ_SAYILAN_PARA', 'U') IS NOT NULL
+      DELETE SP FROM [dbo].[TODVZ_SAYILAN_PARA] SP
+       INNER JOIN [dbo].[TODVZ_BANKNOT] B ON B.[BANKNOT_ID] = SP.[BANKNOT_ID]
+       WHERE B.[PARA_ID] = @paraId`;
+    /**
      * Default banknot denominations for common currencies if none are configured yet
      */
     static getDefaultDenominations(code) {
@@ -156,7 +193,7 @@ export class BanknotSqlRepository {
         [MIKTAR] as miktar
       FROM [dbo].[TODVZ_BANKNOT]
       WHERE [PARA_ID] = @paraId
-      ORDER BY [BANKNOT_ID] ASC
+      ORDER BY [MIKTAR] DESC, [BANKNOT_ID] ASC
     `;
         const res = await pool.request().input("paraId", sql.Int, paraId).query(query);
         // If records exist in DB, return them
@@ -190,18 +227,11 @@ export class BanknotSqlRepository {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTableExists(pool);
         // Sanitize and filter out zero/negative values, sort descending by denomination
-        const cleanList = (banknotlar || [])
+        const desired = (banknotlar || [])
             .filter((b) => b && Number(b.miktar) > 0)
-            .sort((a, b) => Number(b.miktar) - Number(a.miktar))
-            .map((b, idx) => ({
-            paraId,
-            banknotId: b.banknotId && b.banknotId > 0 ? b.banknotId : idx + 1,
-            miktar: Number(b.miktar) || 0,
-        }));
-        // Re-index banknotId sequentially 1..N
-        cleanList.forEach((item, index) => {
-            item.banknotId = index + 1;
-        });
+            .map((b) => Number(b.miktar) || 0)
+            .sort((a, b) => b - a);
+        await this.disableSyncTriggers(pool);
         // Detect if BANKNOT_ID is an identity column in TODVZ_BANKNOT
         let isIdentity = false;
         try {
@@ -220,57 +250,71 @@ export class BanknotSqlRepository {
         const transaction = new sql.Transaction(pool);
         await transaction.begin();
         try {
-            // 1. Delete existing banknotes for this currency
-            const deleteReq = new sql.Request(transaction);
-            deleteReq.input("paraId", sql.Int, paraId);
-            await deleteReq.query("DELETE FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
-            // 2. Insert sanitized banknotes (handling IDENTITY columns seamlessly)
-            for (const item of cleanList) {
+            // 1. Mevcut kupürler: tutarı aynı kalanlar BANKNOT_ID'lerini korur (eski sayım kayıtları bağlı kalır),
+            //    listeden çıkanlar silinir, yeni tutarlar eklenir. Hepsini silip yeniden yazmak
+            //    TODVZ_SAYILAN_PARA yabancı anahtarına takılıyordu.
+            const existingRes = await new sql.Request(transaction)
+                .input("paraId", sql.Int, paraId)
+                .query(`
+          SELECT [BANKNOT_ID] AS banknotId, [MIKTAR] AS miktar
+          FROM [dbo].[TODVZ_BANKNOT] WITH (UPDLOCK, HOLDLOCK)
+          WHERE [PARA_ID] = @paraId
+          ORDER BY [BANKNOT_ID] ASC
+        `);
+            const unused = existingRes.recordset.map((r) => ({ banknotId: r.banknotId, miktar: Number(r.miktar) || 0 }));
+            const result = [];
+            const toInsert = [];
+            for (const miktar of desired) {
+                const idx = unused.findIndex((u) => Math.abs(u.miktar - miktar) < 0.000001);
+                if (idx >= 0) {
+                    result.push({ paraId, banknotId: unused[idx].banknotId, miktar });
+                    unused.splice(idx, 1);
+                }
+                else {
+                    const item = { paraId, banknotId: 0, miktar };
+                    result.push(item);
+                    toInsert.push(item);
+                }
+            }
+            // 2. Listeden çıkarılan kupürleri (ve onlara bağlı eski sayım satırlarını) sil
+            for (const removed of unused) {
+                await new sql.Request(transaction)
+                    .input("banknotId", sql.Int, removed.banknotId)
+                    .query(`
+            IF OBJECT_ID('dbo.TODVZ_SAYILAN_PARA', 'U') IS NOT NULL
+              DELETE FROM [dbo].[TODVZ_SAYILAN_PARA] WHERE [BANKNOT_ID] = @banknotId;
+            DELETE FROM [dbo].[TODVZ_BANKNOT] WHERE [BANKNOT_ID] = @banknotId AND [PARA_ID] = ${Number(paraId)};
+          `);
+            }
+            // 3. Yeni kupürleri ekle (IDENTITY ise numarayı SQL verir, değilse en büyük numara + 1)
+            for (const item of toInsert) {
                 const insertReq = new sql.Request(transaction);
                 insertReq.input("paraId", sql.Int, paraId);
                 insertReq.input("miktar", sql.Float, item.miktar);
                 if (isIdentity) {
+                    // OUTPUT INSERTED... tabloda açık tetikleyici varken SQL hatası verir; SCOPE_IDENTITY tetikleyiciden etkilenmez.
                     const inserted = await insertReq.query(`
             INSERT INTO [dbo].[TODVZ_BANKNOT] ([PARA_ID], [MIKTAR])
-            OUTPUT INSERTED.BANKNOT_ID as banknotId
-            VALUES (@paraId, @miktar)
+            VALUES (@paraId, @miktar);
+            SELECT CAST(SCOPE_IDENTITY() AS INT) AS banknotId;
           `);
-                    if (inserted.recordset[0]?.banknotId) {
-                        item.banknotId = inserted.recordset[0].banknotId;
-                    }
+                    item.banknotId = inserted.recordset[0]?.banknotId || 0;
                 }
                 else {
-                    insertReq.input("banknotId", sql.Int, item.banknotId);
-                    try {
-                        await insertReq.query(`
-              INSERT INTO [dbo].[TODVZ_BANKNOT] ([PARA_ID], [BANKNOT_ID], [MIKTAR])
-              VALUES (@paraId, @banknotId, @miktar)
-            `);
-                    }
-                    catch (insertErr) {
-                        if (insertErr?.message?.includes("IDENTITY_INSERT") ||
-                            insertErr?.message?.includes("identity column")) {
-                            isIdentity = true;
-                            const inserted = await insertReq.query(`
-                INSERT INTO [dbo].[TODVZ_BANKNOT] ([PARA_ID], [MIKTAR])
-                OUTPUT INSERTED.BANKNOT_ID as banknotId
-                VALUES (@paraId, @miktar)
-              `);
-                            if (inserted.recordset[0]?.banknotId) {
-                                item.banknotId = inserted.recordset[0].banknotId;
-                            }
-                        }
-                        else {
-                            throw insertErr;
-                        }
-                    }
+                    const inserted = await insertReq.query(`
+            DECLARE @yeniId INT = (SELECT ISNULL(MAX([BANKNOT_ID]), 0) + 1 FROM [dbo].[TODVZ_BANKNOT] WITH (UPDLOCK, HOLDLOCK));
+            INSERT INTO [dbo].[TODVZ_BANKNOT] ([PARA_ID], [BANKNOT_ID], [MIKTAR])
+            VALUES (@paraId, @yeniId, @miktar);
+            SELECT @yeniId AS banknotId;
+          `);
+                    item.banknotId = inserted.recordset[0]?.banknotId || 0;
                 }
             }
             await transaction.commit();
-            return cleanList;
+            return result;
         }
         catch (err) {
-            await transaction.rollback();
+            await this.safeRollback(transaction);
             logger.error(`BanknotSqlRepository.saveBanknotlar(${paraId}) error:`, err);
             throw err;
         }
@@ -281,11 +325,22 @@ export class BanknotSqlRepository {
     static async deleteBanknotlar(paraId, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTableExists(pool);
-        const res = await pool
-            .request()
-            .input("paraId", sql.Int, paraId)
-            .query("DELETE FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
-        return (res.rowsAffected[0] || 0) >= 0;
+        await this.disableSyncTriggers(pool);
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        try {
+            await new sql.Request(transaction).input("paraId", sql.Int, paraId).query(this.SAYILAN_PARA_SIL);
+            await new sql.Request(transaction)
+                .input("paraId", sql.Int, paraId)
+                .query("DELETE FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
+            await transaction.commit();
+            return true;
+        }
+        catch (err) {
+            await this.safeRollback(transaction);
+            logger.error(`BanknotSqlRepository.deleteBanknotlar(${paraId}) error:`, err);
+            throw err;
+        }
     }
     /**
      * Deletes a currency completely (both TODVZ_BANKNOT and TODVZ_PARA, along with TODVZ_KUR)
@@ -400,6 +455,7 @@ export class BanknotSqlRepository {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTableExists(pool);
         const isForce = options?.force === true;
+        await this.disableSyncTriggers(pool);
         // 1. If NOT force, check vezne definition assignment
         if (!isForce) {
             try {
@@ -459,14 +515,28 @@ export class BanknotSqlRepository {
             catch (panoDelErr) {
                 logger.warn(`Could not delete from TODVZ_PANO_SATIRI for paraId ${paraId}:`, panoDelErr);
             }
-            // 6. Delete all banknotes from TODVZ_BANKNOT for this currency
+            // 6. Delete all banknotes from TODVZ_BANKNOT for this currency (önce eski sayım satırları)
+            await new sql.Request(transaction).input("paraId", sql.Int, paraId).query(this.SAYILAN_PARA_SIL);
             await new sql.Request(transaction)
                 .input("paraId", sql.Int, paraId)
                 .query("DELETE FROM [dbo].[TODVZ_BANKNOT] WHERE [PARA_ID] = @paraId");
-            // 7. Delete rates from TODVZ_KUR for this currency
+            // 7. Delete rates from TODVZ_KUR for this currency.
+            //    TDODVZ_KUR merkezdeki K2016_dvz.dbo.TODVZ_KUR'dan da siler; merkez tablo yoksa tetikleyici
+            //    hata verip transaction'ı düşürür. O durumda tetikleyici yalnız bu silme için kapatılıp açılır.
             await new sql.Request(transaction)
                 .input("paraId", sql.Int, paraId)
-                .query("DELETE FROM [dbo].[TODVZ_KUR] WHERE [PARA_ID] = @paraId");
+                .query(`
+          DECLARE @kurTetikKapat BIT = 0;
+          IF OBJECT_ID('K2016_dvz.dbo.TODVZ_KUR') IS NULL
+             AND EXISTS (SELECT 1 FROM sys.triggers WHERE name = 'TDODVZ_KUR' AND parent_id = OBJECT_ID('dbo.TODVZ_KUR') AND is_disabled = 0)
+          BEGIN
+            SET @kurTetikKapat = 1;
+            EXEC('DISABLE TRIGGER [TDODVZ_KUR] ON [dbo].[TODVZ_KUR]');
+          END
+          DELETE FROM [dbo].[TODVZ_KUR] WHERE [PARA_ID] = @paraId;
+          IF @kurTetikKapat = 1
+            EXEC('ENABLE TRIGGER [TDODVZ_KUR] ON [dbo].[TODVZ_KUR]');
+        `);
             // 8. Reset FAVORI_PARA_ID references in TODVZ_SARRAF_FISI and TODVZ_CARI_KART to 1 (TL)
             try {
                 await new sql.Request(transaction)
@@ -503,7 +573,7 @@ export class BanknotSqlRepository {
             return (delRes.rowsAffected[0] || 0) > 0;
         }
         catch (err) {
-            await transaction.rollback();
+            await this.safeRollback(transaction);
             logger.error(`BanknotSqlRepository.deleteCurrency(${paraId}) error:`, err);
             if (err instanceof ApiError)
                 throw err;

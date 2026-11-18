@@ -2,6 +2,7 @@ import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisY
 import { KasaService } from "../services/kasa.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 export class KasaController {
     static getDbContext(req) {
         return {
@@ -53,6 +54,8 @@ export class KasaController {
             search: search ? String(search) : undefined,
             limit: limit ? Number(limit) : 200,
             baslangic: await gunSiniri(req),
+            // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+            durbun: fisDurbunFiltresiOku(req.query),
         };
         const data = await KasaService.listHareketler(filter, dbContext);
         return ApiResponse.ok(res, "Hesap hareketleri listelendi.", data);

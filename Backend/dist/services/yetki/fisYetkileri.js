@@ -2,7 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../../config/mssql.config.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { kullaniciYetkisi } from "./kullaniciYetkisi.js";
-import { gosterimBaslangici, gosterimIcinde, gunKismi, trGunu } from "./kullaniciYetkiKural.js";
+import { gosterimBaslangici, gosterimIcinde, gunKismi } from "./kullaniciYetkiKural.js";
 export const KAYIT_TABLOLARI = {
     sarraf: { tablo: "TODVZ_SARRAF_FISI", id: "SARRAF_FISI_ID", tarih: "TARIH", nolar: ["FIS_NO", "IRSALIYE_NO"], kullaniciKolon: "EKLEYEN_ID", vezneKolon: "VEZNE_ID", cariKolon: "CARI_KART_ID" },
     doviz: { tablo: "TODVZ_FIS", id: "FIS_ID", tarih: "TARIH", nolar: ["SERI_NO", "BELGE_NO"], kullaniciKolon: "EKLEYEN_ID", vezneKolon: "VEZNE_ID", cariKolon: "CARI_KART_ID" },
@@ -85,22 +85,6 @@ export async function kayitBilgisi(req, tur, id) {
         cariKartId,
     };
 }
-/**
- * İstemcinin gönderdiği tarihin veritabanına yazılacağı gün: saat dilimsiz metin olduğu gibi, Date ya da saat dilimli
- * metin UTC günü (sürücü useUTC ile yazar). Düzeltmede kaydın günüyle bununla karşılaştırılır.
- */
-const kayitGunu = (v) => {
-    if (v === null || v === undefined || v === "")
-        return null;
-    if (v instanceof Date)
-        return Number.isNaN(v.getTime()) ? null : v.toISOString().slice(0, 10);
-    const s = String(v).trim();
-    const m = /^(\d{4}-\d{2}-\d{2})/.exec(s);
-    if (m && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(s.slice(10)))
-        return m[1];
-    const d = new Date(s);
-    return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-};
 /** Kullanıcının işlem gösterme sınırının ilk günü ("YYYY-MM-DD"); sınır yoksa null. Liste uçları bununla süzer. */
 export async function gunSiniri(req) {
     return gosterimBaslangici(await kullaniciYetkisi(req));
@@ -173,17 +157,11 @@ export async function kayitErisimi(req, tur, id, options) {
         }
     }
 }
-/** Bugün (Türkiye) ya da gece yarısı geçişi için 15 dakika önceki gün */
-const bugunMu = (gun) => {
-    if (!gun)
-        return true;
-    const simdi = new Date();
-    return gun === trGunu(simdi) || gun === trGunu(new Date(simdi.getTime() - 15 * 60_000));
-};
 /**
- * Kaydedilecek fişin tarih ve numara yetkisi. id: düzeltilen kaydın kimliği (yoksa yeni kayıt), tarih: istemcinin
- * gönderdiği fiş tarihi. Dönen `nolar` doluysa istekteki numaralar bu değerlerle değiştirilmeli: yeni kayıtta boş
- * (numaratör verir), düzeltmede kaydın kendi numarası. Yetkiliyse null döner (istek olduğu gibi).
+ * Kaydedilecek fişin numara yetkisi. id: düzeltilen kaydın kimliği (yoksa yeni kayıt), tarih: istemcinin gönderdiği fiş
+ * tarihi (T1'den beri denetlenmez; geçmiş / ileri gün serbest, çağıranlar değişmesin diye parametre kalır). Dönen `nolar`
+ * doluysa istekteki numaralar bu değerlerle değiştirilmeli: yeni kayıtta boş (numaratör verir), düzeltmede kaydın kendi
+ * numarası. Yetkiliyse null döner (istek olduğu gibi).
  */
 export async function fisKayitYetkisi(req, tur, id, tarih) {
     const y = await kullaniciYetkisi(req);
@@ -196,13 +174,6 @@ export async function fisKayitYetkisi(req, tur, id, tarih) {
         if (y.kendiKayitlari) {
             throw ApiError.forbidden("Yetkiniz doğrultusunda mevcut kayıtları düzeltme veya silme yetkiniz bulunmamaktadır (Salt Okunur).");
         }
-        const gun = kayitGunu(tarih);
-        if (!y.tarihDegistirme && gun && kayit.tarih && gun !== kayit.tarih) {
-            throw ApiError.forbidden("Fiş tarihini değiştirme yetkiniz yok.");
-        }
-    }
-    else if (!y.tarihDegistirme && !bugunMu(gunKismi(tarih))) {
-        throw ApiError.forbidden("Fiş tarihini değiştirme yetkiniz yok; yeni fiş bugünün tarihiyle kaydedilir.");
     }
     if (y.fisNoDegistirme)
         return { nolar: null, yetki: y };

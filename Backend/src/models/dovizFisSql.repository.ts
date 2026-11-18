@@ -2427,7 +2427,8 @@ export class DovizFisSqlRepository {
           @YAZICI_ID = @EFF_YAZICI_ID,
           @GUID = @IN_GUID,
           @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR,
-          @YENI_KAYIT = @P_YENI_KAYIT OUTPUT;
+          @YENI_KAYIT = @P_YENI_KAYIT OUTPUT
+          WITH RECOMPILE;
 
         IF @P_FIS_ID IS NOT NULL AND @P_FIS_ID > 0
         BEGIN
@@ -2693,6 +2694,15 @@ export class DovizFisSqlRepository {
           original: err?.originalError?.message,
           rawMsg,
         });
+
+        if (rawMsg.includes("has changed since it was compiled") && !(dto as any).__recompiled) {
+          logger.warn("SODVZ_FIS_KAYDET derleme uyumsuzluğu algılandı, sp_recompile çalıştırılıp yeniden deneniyor...");
+          try {
+            await pool.request().query("EXEC sp_recompile 'SODVZ_FIS_KAYDET';");
+          } catch {}
+          (dto as any).__recompiled = true;
+          return this.saveViaProcedure(dto, dbContext);
+        }
 
         let userFriendlyMsg = err?.message || "Fiş kaydedilemedi.";
 

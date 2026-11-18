@@ -10,6 +10,7 @@ import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
 import { bankaHesabiDenetle, ticariFiyatDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
+import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 /** Ticari İşlemler uçları (docs/TICARI_ISLEMLER_YOL_HARITASI.md). Yönetim uçları: sistem yöneticisi ya da yetkili kullanıcı (T21). */
 const baglam = (req) => ({ dbServer: req.user?.dbServer, dbName: req.user?.dbName });
 const kullanici = (req) => {
@@ -129,6 +130,8 @@ export const TicariController = {
     girisSiraNo: sar(async (req) => ({ fisNo: await TicariGirisSqlRepository.siradakiNo(baglam(req)) })),
     girisListe: sar(async (req) => TicariGirisSqlRepository.liste({
         baslangic: sonrakiGun(metin(req.query.baslangic), await gunSiniri(req)), bitis: metin(req.query.bitis), cariKartId: sayiVeyaNull(req.query.cariKartId), arama: metin(req.query.arama),
+        // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+        durbun: fisDurbunFiltresiOku(req.query), limit: sayiVeyaNull(req.query.limit),
     }, baglam(req))),
     girisGetir: sar(async (req) => {
         await kayitErisimi(req, "stokGiris", kimlik(req));
@@ -153,6 +156,8 @@ export const TicariController = {
     satisListe: sar(async (req) => TicariSatisSqlRepository.liste({
         baslangic: sonrakiGun(metin(req.query.baslangic), await gunSiniri(req)), bitis: metin(req.query.bitis), arama: metin(req.query.arama),
         eBelgeDurumu: sayiVeyaNull(req.query.eBelgeDurumu), stokKartId: sayiVeyaNull(req.query.stokKartId),
+        // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+        durbun: fisDurbunFiltresiOku(req.query), limit: sayiVeyaNull(req.query.limit),
     }, baglam(req))),
     satisKimlikler: sar(async (req) => TicariSatisSqlRepository.kimlikler(baglam(req), await gunSiniri(req))),
     satisGetir: sar(async (req) => {

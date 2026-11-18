@@ -40,8 +40,8 @@ export class EtiketService {
         }
         return AltinUrunSqlRepository.save(dto, kullaniciId, dbContext);
     }
-    static removeAltinUrun(id, dbContext) {
-        return AltinUrunSqlRepository.remove(id, dbContext);
+    static removeAltinUrun(id, dbContext, options) {
+        return AltinUrunSqlRepository.remove(id, dbContext, options);
     }
     static markAltinUrunYazdirildi(ids, yazdirildi, kullaniciId, dbContext) {
         return AltinUrunSqlRepository.markYazdirildi(ids, yazdirildi, kullaniciId, dbContext);
@@ -74,8 +74,8 @@ export class EtiketService {
         }
         return OzelUrunSqlRepository.save(dto, kullaniciId, dbContext);
     }
-    static removeOzelUrun(id, dbContext) {
-        return OzelUrunSqlRepository.remove(id, dbContext);
+    static removeOzelUrun(id, dbContext, options) {
+        return OzelUrunSqlRepository.remove(id, dbContext, options);
     }
     static markOzelUrunYazdirildi(ids, yazdirildi, kullaniciId, dbContext) {
         return OzelUrunSqlRepository.markYazdirildi(ids, yazdirildi, kullaniciId, dbContext);

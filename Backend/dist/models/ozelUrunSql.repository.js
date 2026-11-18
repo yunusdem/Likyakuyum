@@ -374,7 +374,8 @@ export class OzelUrunSqlRepository {
       `);
             await pool.request().query(`
         CREATE OR ALTER PROCEDURE [dbo].[SODVZ_OZEL_URUN_SIL]
-            @OZEL_URUN_ID INT
+            @OZEL_URUN_ID INT,
+            @ZORLA BIT = 0
         AS
         BEGIN
             SET NOCOUNT ON;
@@ -387,7 +388,9 @@ export class OzelUrunSqlRepository {
                 RETURN 1;
             END
 
-            IF EXISTS (SELECT 1 FROM dbo.TODVZ_OZEL_URUN WHERE OZEL_URUN_ID = @OZEL_URUN_ID AND SATILDI = 1)
+            -- Satılmış ürün yalnız "Yine de Sil" (@ZORLA = 1) ile silinir; satılan malın stoğu vezneye geri eklenmez
+            DECLARE @SATILDI BIT = (SELECT ISNULL(SATILDI, 0) FROM dbo.TODVZ_OZEL_URUN WHERE OZEL_URUN_ID = @OZEL_URUN_ID);
+            IF (@SATILDI = 1 AND ISNULL(@ZORLA, 0) = 0)
             BEGIN
                 SET @HATA_MESAJI = 'Satışı yapılmış olan özel ürün silinemez.';
                 RAISERROR (@HATA_MESAJI, 16, 1);
@@ -407,7 +410,7 @@ export class OzelUrunSqlRepository {
             FROM dbo.TODVZ_OZEL_URUN
             WHERE OZEL_URUN_ID = @OZEL_URUN_ID;
 
-            IF (ISNULL(@IS_KONSINYE, 0) = 0 AND @VEZNE_ID IS NOT NULL AND @MIKTAR > 0)
+            IF (ISNULL(@IS_KONSINYE, 0) = 0 AND ISNULL(@SATILDI, 0) = 0 AND @VEZNE_ID IS NOT NULL AND @MIKTAR > 0)
             BEGIN
                 DECLARE @PARA_ID INT = @SIL_STOK_PARA_ID;
                 DECLARE @CLEAN_AYAR VARCHAR(50) = UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(@AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))));
@@ -1178,13 +1181,15 @@ export class OzelUrunSqlRepository {
             throw ApiError.internal("Özel ürün kaydedildi ancak okunamadı.");
         return saved;
     }
-    static async remove(ozelUrunId, dbContext) {
+    static async remove(ozelUrunId, dbContext, options) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         await this.ensureTables(pool);
         await this.ensureProcedures(pool);
         try {
             const req = pool.request();
             req.input("OZEL_URUN_ID", sql.Int, ozelUrunId);
+            if (options?.force)
+                req.input("ZORLA", sql.Bit, 1);
             await req.execute("SODVZ_OZEL_URUN_SIL");
             return true;
         }

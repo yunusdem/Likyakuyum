@@ -2,6 +2,7 @@ import { BankaService } from "../services/banka.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
+import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 export class BankaController {
     static getDbContext(req) {
         return {
@@ -67,6 +68,8 @@ export class BankaController {
             search: search ? String(search) : undefined,
             limit: limit ? Number(limit) : 200,
             fisSatirlari: fisSatirlari === "1" || fisSatirlari === "true",
+            // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
+            durbun: fisDurbunFiltresiOku(req.query),
         };
         const data = await BankaService.listHareketler(filter, dbContext);
         return ApiResponse.ok(res, "Banka hareketleri listelendi.", data);

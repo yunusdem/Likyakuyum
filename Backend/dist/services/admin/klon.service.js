@@ -45,7 +45,7 @@ export const klonYapilandirildiMi = () => !!env.KLON_DB_USER && !!env.KLON_DB_PA
 export const kd = (ad) => `[${ad.replace(/]/g, "]]")}]`;
 /** N'metin' */
 export const nm = (metin) => `N'${metin.replace(/'/g, "''")}'`;
-export const klonHavuzu = async (veritabani) => {
+export const klonHavuzu = async (veritabani, secenek = {}) => {
     const { host, port } = parseServerAndPort(env.KLON_DB_SERVER || env.ADMIN_DB_SERVER, Number(env.KLON_DB_PORT) || env.ADMIN_DB_PORT || 1433);
     return new sql.ConnectionPool({
         server: host,
@@ -56,7 +56,8 @@ export const klonHavuzu = async (veritabani) => {
         options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true },
         pool: { max: 1, min: 0, idleTimeoutMillis: 1000 },
         connectionTimeout: 15000,
-        requestTimeout: 10 * 60 * 1000, // geri yükleme büyük şablonda dakikalar sürebilir
+        // geri yükleme büyük şablonda dakikalar sürebilir; veri aktarımı (docs/VERITABANI_TASIMA_YOL_HARITASI.md) daha uzun ister
+        requestTimeout: secenek.requestTimeoutMs ?? 10 * 60 * 1000,
     }).connect();
 };
 export const klonIle = async (veritabani, is) => {

@@ -70,7 +70,7 @@ export async function getLocalPrinters() {
     // 1. PowerShell CIM (Win32_Printer)
     const psCommand = `powershell -NoProfile -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Printer | Select-Object Name, DeviceID, Default, Local, Network, WorkOffline, PortName | ConvertTo-Json -Compress"`;
     try {
-      const { stdout } = await execAsync(psCommand);
+      const { stdout } = await execAsync(psCommand, { windowsHide: true });
       if (stdout.trim()) {
         const parsed = JSON.parse(stdout);
         const rawList = Array.isArray(parsed) ? parsed : [parsed];
@@ -94,7 +94,7 @@ export async function getLocalPrinters() {
     } catch {
       // 2. WMIC Fallback
       try {
-        const { stdout } = await execAsync(`wmic printer get name,default,portname /format:csv`);
+        const { stdout } = await execAsync(`wmic printer get name,default,portname /format:csv`, { windowsHide: true });
         const lines = stdout.trim().split(/\r?\n/).slice(1);
         printers = lines
           .map((line) => line.trim().split(","))
@@ -170,7 +170,7 @@ export async function executePrintJob(job) {
     if (platform === "win32") {
       const safeTarget = (printerName || "").replace(/'/g, "''");
       const psCmd = `powershell -NoProfile -Command "$target = '${safeTarget}'; $p = if ($target) { Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $target -or $_.DeviceID -eq $target } | Select-Object -First 1 } else { $null }; if (-not $p -and $target) { $clean = ($target -split '[\\\\/]')[-1]; $p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like ('*' + $clean + '*') -or $_.DeviceID -like ('*' + $clean + '*') } | Select-Object -First 1 }; $pName = if ($p) { $p.Name } else { (Get-CimInstance Win32_Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1).Name }; if ($pName) { Out-File -FilePath '${htmlFile}.target' -InputObject $pName -Encoding UTF8 }"`;
-      await execAsync(psCmd).catch(() => {});
+      await execAsync(psCmd, { windowsHide: true }).catch(() => {});
 
       try {
         if (fs.existsSync(`${htmlFile}.target`)) {
@@ -223,7 +223,7 @@ try {
       try {
         await execAsync(
           `powershell -NoProfile -STA -ExecutionPolicy Bypass -File "${psFile}" -HtmlPath "${htmlFile}" ${printerArg} -Copies ${Number(copies) || 1}`,
-          { timeout: 30000 }
+          { timeout: 30000, windowsHide: true }
         );
         htmlPrinted = true;
       } catch (err) {
