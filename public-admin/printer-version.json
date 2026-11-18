@@ -1,8 +1,8 @@
 {
-  "version": "1.1.8",
+  "version": "1.1.9",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "A4 belgeler (Müşteri Tanı Formu, Sarraf/Perakende/Ticari A4) ekrandaki gibi birebir basılır: sayfa tarayıcı motoruyla görüntüye çevrilip kâğıda yerleştirilir, kenar boşlukları korunur.",
+  "releaseNotes": "80 mm termal fişler (Döviz Fişi, Sarraf Fişi) ekrandaki F9 modal tasarımıyla birebir (GİB logosu, tablolar, karekod) ve alt boşluk otomatik kırpılarak basılır.",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-11-16T19:20:00Z"
+  "updatedAt": "2026-11-18T10:00:00Z"
 }

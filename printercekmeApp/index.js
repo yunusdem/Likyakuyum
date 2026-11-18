@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.1.8";
+const CURRENT_VERSION = "1.1.9";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -1145,12 +1145,20 @@ app.get(["/api/printers", "/printers"], async (_req, res) => {
 function findChromiumPath() {
   if (os.platform() !== "win32") return null;
   const sysDrive = process.env.SystemDrive || "C:";
+  const localAppData = process.env.LOCALAPPDATA || `${sysDrive}\\Users\\Default\\AppData\\Local`;
+  const progFilesX86 = process.env["ProgramFiles(x86)"] || `${sysDrive}\\Program Files (x86)`;
+  const progFiles = process.env["ProgramFiles"] || `${sysDrive}\\Program Files`;
   const candidates = [
-    path.join(process.env["ProgramFiles(x86)"] || `${sysDrive}\\Program Files (x86)`, "Microsoft", "Edge", "Application", "msedge.exe"),
-    path.join(process.env["ProgramFiles"] || `${sysDrive}\\Program Files`, "Microsoft", "Edge", "Application", "msedge.exe"),
-    path.join(process.env["ProgramFiles"] || `${sysDrive}\\Program Files`, "Google", "Chrome", "Application", "chrome.exe"),
-    path.join(process.env["ProgramFiles(x86)"] || `${sysDrive}\\Program Files (x86)`, "Google", "Chrome", "Application", "chrome.exe"),
-    path.join(process.env["LOCALAPPDATA"] || `${sysDrive}\\Users\\Default\\AppData\\Local`, "Google", "Chrome", "Application", "chrome.exe"),
+    path.join(progFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
+    path.join(progFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
+    path.join(localAppData, "Microsoft", "Edge", "Application", "msedge.exe"),
+    path.join(progFiles, "Google", "Chrome", "Application", "chrome.exe"),
+    path.join(progFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+    path.join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+    `${sysDrive}\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${sysDrive}\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${sysDrive}\\Program Files\\Google\\Chrome\\Application\\chrome.exe`,
+    `${sysDrive}\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe`,
   ];
   for (const c of candidates) {
     try {
@@ -1376,9 +1384,9 @@ async function executePrintJobInternal(job) {
         }
         fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
 
-        // Edge/Chromium ile piksel piksel birebir önizleme görüntüsü oluştur (Sadece metin yoksa çalıştırılır)
+        // Edge/Chromium ile piksel piksel birebir önizleme görüntüsü oluştur (80mm POS ve A4 için görsel motor)
         const chromiumPath = findChromiumPath();
-        if (chromiumPath && isPos && !text) {
+        if (chromiumPath && isPos) {
           try {
             pngFile = path.join(tmpDir, `print_${timestamp}.png`);
             const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
@@ -1388,7 +1396,7 @@ async function executePrintJobInternal(job) {
               "--no-sandbox",
               "--allow-file-access-from-files",
               "--hide-scrollbars",
-              "--window-size=304,1600",
+              "--window-size=304,2600",
               "--disable-extensions",
               "--disable-background-networking",
               "--disable-background-timer-throttling",
@@ -1412,7 +1420,7 @@ async function executePrintJobInternal(job) {
               "--mute-audio",
               "--disable-software-rasterizer",
               "--run-all-compositor-stages-before-draw",
-              "--virtual-time-budget=200",
+              "--virtual-time-budget=300",
               `--screenshot=${pngFile}`,
               fileUrl,
             ];
@@ -1424,7 +1432,7 @@ async function executePrintJobInternal(job) {
               const timer = setTimeout(() => {
                 try { child.kill(); } catch {}
                 resolve();
-              }, 3000);
+              }, 4000);
               child.on("close", () => {
                 clearTimeout(timer);
                 resolve();
@@ -1609,7 +1617,29 @@ try {
 ${a4GdiParcasi()}
     } elseif ($pngPath -and (Test-Path $pngPath)) {
       # Chromium ile render edilmiş birebir fiş görseli (Logo, Çizgi, QR, Bold)
-      $script:pngImg = [System.Drawing.Image]::FromFile($pngPath)
+      $script:rawImg = [System.Drawing.Bitmap]::FromFile($pngPath)
+      $rawW = $script:rawImg.Width
+      $rawH = $script:rawImg.Height
+      $lastY = $rawH - 1
+      $found = $false
+      # Boş beyaz alanı kesmek için alttan yukarı piksel taraması
+      for ($y = $rawH - 1; $y -ge 0; $y -= 4) {
+        for ($x = 0; $x -lt $rawW; $x += 6) {
+          $c = $script:rawImg.GetPixel($x, $y)
+          if ($c.R -lt 240 -or $c.G -lt 240 -or $c.B -lt 240) {
+            $lastY = [Math]::Min($rawH, $y + 18)
+            $found = $true
+            break
+          }
+        }
+        if ($found) { break }
+      }
+      if (-not $found -or $lastY -le 40) { $lastY = $rawH }
+
+      $cropRect = New-Object System.Drawing.Rectangle(0, 0, $rawW, $lastY)
+      $script:pngImg = $script:rawImg.Clone($cropRect, $script:rawImg.PixelFormat)
+      $script:rawImg.Dispose()
+
       $doc.add_PrintPage({
         param($s, $ev)
         $g = $ev.Graphics

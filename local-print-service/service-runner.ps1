@@ -88,18 +88,7 @@ function Print-JobItem ($printObj) {
         if (-not $html) { $html = $printObj.htmlContent }
         $isPos = [bool]$printObj.isPos
 
-        if ($text -and $isPos) {
-            $rndFile = Join-Path $tmpDir ("print_" + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + ".txt")
-            [System.IO.File]::WriteAllText($rndFile, $text, [System.Text.Encoding]::UTF8)
-            if ($printerName) {
-                Get-Content -Path $rndFile -Raw | Out-Printer -Name $printerName
-            } else {
-                Get-Content -Path $rndFile -Raw | Out-Printer
-            }
-            Start-Sleep -Milliseconds 400
-            Remove-Item $rndFile -Force -ErrorAction SilentlyContinue
-            return $true
-        } elseif ($html) {
+        if ($html) {
             $rndFile = Join-Path $tmpDir ("print_" + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + ".html")
             [System.IO.File]::WriteAllText($rndFile, $html, [System.Text.Encoding]::UTF8)
 
@@ -129,6 +118,17 @@ function Print-JobItem ($printObj) {
                 }
             }
             Start-Sleep -Milliseconds 500
+            Remove-Item $rndFile -Force -ErrorAction SilentlyContinue
+            return $true
+        } elseif ($text -and $isPos) {
+            $rndFile = Join-Path $tmpDir ("print_" + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + ".txt")
+            [System.IO.File]::WriteAllText($rndFile, $text, [System.Text.Encoding]::UTF8)
+            if ($printerName) {
+                Get-Content -Path $rndFile -Raw | Out-Printer -Name $printerName
+            } else {
+                Get-Content -Path $rndFile -Raw | Out-Printer
+            }
+            Start-Sleep -Milliseconds 400
             Remove-Item $rndFile -Force -ErrorAction SilentlyContinue
             return $true
         }
