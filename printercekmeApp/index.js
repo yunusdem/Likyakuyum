@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.2.1";
+const CURRENT_VERSION = "1.2.2";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -1355,20 +1355,16 @@ async function executePrintJobInternal(job) {
     .pos-print-root {
       width: 304px !important;
       max-width: 304px !important;
-      margin: 0 auto !important;
+      margin: 0 !important;
       padding: 0 !important;
       box-sizing: border-box !important;
-      display: flex !important;
-      flex-direction: column !important;
-      align-items: center !important;
-      justify-content: flex-start !important;
+      text-align: left !important;
     }
     .belge-sablon {
-      margin: 0 auto !important;
+      margin: 0 !important;
       box-sizing: border-box !important;
       page-break-inside: avoid !important;
-      transform: scale(0.98) !important;
-      transform-origin: top center !important;
+      text-align: left !important;
     }
     ` : `
     .belge-sablon {
@@ -1649,29 +1645,14 @@ ${a4GdiParcasi()}
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
-        # 80mm fiş kâğıdı için yazdırma alanı hesaplaması:
-        # Driver birimi (Pixel 203/300 DPI veya 1/100 inç Display) ne olursa olsun
-        # kâğıdın tam genişliğini dinamik algıla ve fişi 80mm kâğıda %98 oranında tam oturt:
-        $availW = [float]$ev.Graphics.VisibleClipBounds.Width
-        $clipX = [float]$ev.Graphics.VisibleClipBounds.X
-        $clipY = [float]$ev.Graphics.VisibleClipBounds.Y
-
-        if ($availW -le 50) {
-            $availW = [float]$ev.PageBounds.Width
-        }
-        if ($availW -le 50) {
-            $availW = 283.0
-        }
-
-        # Kâğıdın genişliğini %98 oranında tam kapla (küçük kalmasın, kenarlardan 1'er mm pay kalsın):
-        $targetW = [float]($availW * 0.98)
-        $destX = [float](($availW - $targetW) / 2.0 + $clipX)
-        $destY = [float]($clipY + 2.0)
-
+        # 80mm fiş kâğıdı: tam soldan başlar (0.0) ve 80mm kâğıdı tam kaplar
+        $targetW = [float]$ev.PageBounds.Width
+        if ($targetW -le 50 -or $targetW -gt 320) { $targetW = 283.0 }
         $scale = $targetW / [float]$script:pngImg.Width
         $targetH = [float]($script:pngImg.Height * $scale)
 
-        $destRect = New-Object System.Drawing.RectangleF($destX, $destY, $targetW, $targetH)
+        # Fiş tam soldan (0.0) ve kesim payı için üstten (2.0) başlar
+        $destRect = New-Object System.Drawing.RectangleF(0.0, 2.0, $targetW, $targetH)
         $srcRect = New-Object System.Drawing.RectangleF(0.0, 0.0, [float]$script:pngImg.Width, [float]$script:pngImg.Height)
 
         $g.DrawImage($script:pngImg, $destRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)

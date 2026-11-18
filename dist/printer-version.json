@@ -1,5 +1,5 @@
 {
-  "version": "1.2.1",
+  "version": "1.2.2",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
   "releaseNotes": "80 mm termal fişler (Döviz Fişi, Sarraf Fişi, Arbitraj) ve A4 belgeler ekrandaki görsel şablonla birebir basılır.",
