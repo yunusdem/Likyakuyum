@@ -7,6 +7,7 @@ import { AltinkaynakKaynak } from "./altinkaynak.js";
 import { DovizcomKaynak } from "./dovizcom.js";
 import { HakanKaynak } from "./hakan.js";
 import { OzbagKaynak } from "./ozbag.js";
+import { DidimKaynak } from "./didim.js";
 
 /** Tüm siteler (Kur Kaynağı seçimi bu listeden). Yeni site: bağdaştırıcı dosyası + buraya bir satır. */
 export const KAYNAKLAR: PiyasaKaynagi[] = [
@@ -18,6 +19,7 @@ export const KAYNAKLAR: PiyasaKaynagi[] = [
   new DovizcomKaynak(),
   new HakanKaynak(),
   new OzbagKaynak(),
+  new DidimKaynak(),
 ];
 
 /** Piyasa ekranında gösterilmeyen siteler; Kur Kaynağı olarak seçilebilir kalır */

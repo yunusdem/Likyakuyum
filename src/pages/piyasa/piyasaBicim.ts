@@ -41,6 +41,7 @@ export const KAYNAK_GORUNUM: Record<string, { renk: string; kisa: string }> = {
   altinkaynak: { renk: "#b45309", kisa: "AK" },
   hakan: { renk: "#be185d", kisa: "HD" },
   ozbag: { renk: "#15803d", kisa: "ÖB" },
+  didim: { renk: "#1e40af", kisa: "DM" },
 };
 
 export const kaynakGorunum = (kod: string, ad: string) =>
