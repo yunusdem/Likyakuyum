@@ -123,7 +123,7 @@ export async function fisiYazdir(fis: FisHtml | FisHtml[], y: YaziciSecimi): Pro
     const plainText = extractPlainTextFromFis(tekFis);
     return triggerSilentPrint({
       html: tekFis.html,
-      text: tekFis.html ? undefined : (plainText || undefined),
+      text: plainText || undefined,
       printerName: y.printerName ?? null,
       copies: tekKopya,
       isPos: y.isPos,
@@ -139,7 +139,7 @@ export async function fisiYazdir(fis: FisHtml | FisHtml[], y: YaziciSecimi): Pro
     const slipTitle = slip.baslik ? `${slip.baslik} [${i + 1}/${fisler.length}]` : `Fis_${i + 1}`;
     const res = await triggerSilentPrint({
       html: slip.html,
-      text: slip.html ? undefined : (plainText || undefined),
+      text: plainText || undefined,
       printerName: y.printerName ?? null,
       copies: tekKopya,
       isPos: y.isPos,

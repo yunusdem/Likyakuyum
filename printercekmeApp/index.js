@@ -38,20 +38,24 @@ function broadcastLog(message) {
 }
 
 function openConsoleWindow() {
-  // Sessiz arka plan servisidir; siyah konsol penceresi AÇILMAZ.
-}
-
-function hideConsoleWindow() {
   if (os.platform() !== "win32") return;
+  const now = Date.now();
+  if (now - lastConsoleOpenTime < 2000) return;
+  lastConsoleOpenTime = now;
+
+  // Windows'ta bu sürecin konsol penceresini öne getir / restore et (SW_RESTORE = 9)
   const psCmd = `
 Add-Type -Name Win32 -Namespace Native -MemberDefinition '
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
-    [DllImport("Kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 '
-$hwnd = [Native.Win32]::GetConsoleWindow()
-if ($hwnd -ne [IntPtr]::Zero) {
-    [Native.Win32]::ShowWindow($hwnd, 0)
-}
+try {
+    $p = [System.Diagnostics.Process]::GetProcessById(${process.pid})
+    if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) {
+        [Native.Win32]::ShowWindow($p.MainWindowHandle, 9)
+        [Native.Win32]::SetForegroundWindow($p.MainWindowHandle)
+    }
+} catch {}
 `;
   runPowerShell(psCmd, 3000).catch(() => {});
 }
@@ -1120,6 +1124,12 @@ app.all(["/api/exit", "/exit"], (_req, res) => {
   }, 400);
 });
 
+// Protokol / dış tetikleyici uyandırma endpoint'i
+app.all(["/api/wake", "/wake"], (_req, res) => {
+  openConsoleWindow();
+  res.json({ success: true, message: "PrinterAgent aktif ve hazır." });
+});
+
 app.post(["/api/update", "/update"], async (req, res) => {
   const { downloadUrl, version } = req.body || {};
   const url = downloadUrl || "https://likyakuyum.com/PrinterAgent.exe";
@@ -1265,8 +1275,13 @@ async function executePrintJobInternal(job) {
   }
 
   // Deduplication: Aynı başlık ve içerik 2 saniye içinde tekrar geldiyse mükerrer basımı engelle
-  const contentSnippet = (text || html || "").replace(/\s+/g, "").slice(0, 80);
-  const contentSig = `${targetPrinter}__${title}__${contentSnippet}`;
+  const cleanContent = (text || html || "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const contentSnippet = cleanContent.slice(0, 100);
+  const contentSig = `${targetPrinter}__${(title || "").trim()}__${contentSnippet}`;
   if (contentSig.length > 10 && recentPrintJobs.has(contentSig) && (timestamp - recentPrintJobs.get(contentSig) < 2000)) {
     console.log(`[printercekmeApp] ⚠️ Mükerrer yazdırma isteği engellendi (İçerik: ${contentSig.slice(0, 40)}...)`);
     return { success: true, message: "Fiş zaten yazdırılıyor (mükerrer istek engellendi)." };
@@ -1784,6 +1799,8 @@ exit 1
 let printQueue = Promise.resolve();
 
 async function executePrintJob(job) {
+  // Kullanıcı yazdırma yaptığında konsol penceresini öne getir
+  openConsoleWindow();
   const runJob = async () => {
     const { title = "Fiş", printerName, targetDevice, copies = 1 } = job || {};
     const targetPrinter = (printerName || targetDevice || "").trim();
@@ -2153,11 +2170,10 @@ try {
     $notify.ShowBalloonTip(3000)
 } catch {}
 
-# Parent process watchdog timer: Konsol kapatıldığında veya süreç sonlandığında ANINDA tekrar aç!
+# Parent process watchdog timer: Ana konsol kapandığında tepsiyi temizle ve çık
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 1500
+$timer.Interval = 2000
 $timer.add_Tick({
-    if ($script:isManualExit) { return }
     $isRunning = $false
     try {
         $p = [System.Diagnostics.Process]::GetProcessById($parentPid)
@@ -2168,7 +2184,7 @@ $timer.add_Tick({
         $isRunning = $false
     }
 
-    if (-not $isRunning -and -not $script:isManualExit) {
+    if (-not $isRunning) {
         $notify.Visible = $false
         $notify.Dispose()
         [System.Windows.Forms.Application]::Exit()
@@ -2206,10 +2222,27 @@ $timer.Start()
   });
 }
 
+function checkExistingService() {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${PORT}/status`, { timeout: 600 }, (res) => {
+      if (res.statusCode === 200) {
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    });
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      try { req.destroy(); } catch {}
+      resolve(false);
+    });
+  });
+}
+
 function startServer() {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
-      console.log(`[printercekmeApp] Port ${PORT} kullanımda. Eski/zombi süreç sonlandırılıp devralınıyor...`);
+      console.log(`[printercekmeApp] Port ${PORT} kullanımda (yanıt vermeyen süreç). Port temizlenip devralınıyor...`);
       if (os.platform() === "win32") {
         exec(`taskkill /f /fi "PID ne ${process.pid}" /im PrinterAgent.exe`, { windowsHide: true }, () => {
           setTimeout(() => {
@@ -2247,10 +2280,32 @@ function startServer() {
   });
 }
 
-function main() {
-  if (os.platform() === "win32") {
-    hideConsoleWindow();
+async function main() {
+  // 1. Zaten arka planda çalışan ve yanıt veren bir PrinterAgent var mı?
+  const isAlreadyRunning = await checkExistingService();
+  if (isAlreadyRunning) {
+    // Port 9100'da servis zaten aktif ve yanıt veriyor!
+    // Asla taskkill çağırma, port çakışması yaratma.
+    // Mevcut servise konsolunu öne getirmesi için /api/wake sinyali gönder.
+    try {
+      const wakeReq = http.request({
+        hostname: "127.0.0.1",
+        port: PORT,
+        path: "/api/wake",
+        method: "GET",
+        timeout: 1000,
+      });
+      wakeReq.on("error", () => {});
+      wakeReq.end();
+    } catch {}
+    // İkinci kopya pencere açıp kapatmadan veya çakışmadan sessizce çıkar
+    setTimeout(() => {
+      process.exit(0);
+    }, 150);
+    return;
   }
+
+  // 2. Servis çalışmıyorsa başlat
   startServer();
 }
 

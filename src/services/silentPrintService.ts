@@ -711,14 +711,19 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
     };
   }
 
-  // 1. Tarayıcı içi mükerrer basım engeli (aynı başlık ve içerik 2 saniye içinde mükerrer tetiklenirse engellenir)
+  // 1. Tarayıcı içi mükerrer basım engeli (aynı başlık ve içerik 1.5 saniye içinde mükerrer tetiklenirse engellenir)
   const now = Date.now();
-  const contentSnippet = (text || html || "").replace(/\s+/g, "").slice(0, 80);
+  const cleanContent = (text || html || "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const contentSnippet = cleanContent.slice(0, 100);
   const signature = `${printerName || "default"}__${(title || "").trim()}__${contentSnippet}`;
   for (const [k, t] of activePrintSignatures.entries()) {
     if (now - t > 6000) activePrintSignatures.delete(k);
   }
-  if (activePrintSignatures.has(signature) && (now - (activePrintSignatures.get(signature) || 0)) < 1800) {
+  if (activePrintSignatures.has(signature) && (now - (activePrintSignatures.get(signature) || 0)) < 1500) {
     console.warn("[triggerSilentPrint] Mükerrer yazdırma çağrısı engellendi:", signature);
     return { success: true, message: "Fiş zaten yazdırılıyor." };
   }
@@ -796,12 +801,43 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
 
     // 3. Servise ulaşılamadıysa, kapalı olma ihtimaline karşı özel Windows protokolüyle (likyaprint://) servisi uyandır ve tekrar dene!
     wakePrinterAgentViaProtocol();
-    await new Promise((r) => setTimeout(r, 1500));
+
+    // Servisin açılmasını 3.5 saniye boyunca 300 ms aralıklarla dinamik bekle (açılır açılmaz anında basar)
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await new Promise((r) => setTimeout(r, 300));
+      try {
+        const check = await fetch("http://127.0.0.1:9100/status", { method: "GET" }).catch(() => null);
+        if (check && check.ok) {
+          break;
+        }
+      } catch {}
+    }
 
     try {
       const retryWs = await printViaWebSocket(options, jobId);
       if (retryWs.handled) {
         return retryWs.result || { success: true, message: `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.` };
+      }
+    } catch {}
+
+    try {
+      const retryHttp = await fetch("http://127.0.0.1:9100/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId,
+          html,
+          text,
+          printerName,
+          targetDevice: printerName,
+          copies,
+          isPos,
+          title,
+        }),
+      }).catch(() => null);
+      if (retryHttp && retryHttp.ok) {
+        const d = await retryHttp.json().catch(() => ({}));
+        return { success: d.success !== false, message: d.message || `Fiş "${printerName || 'Tanımlı Yazıcı'}" cihazına başarıyla gönderildi.` };
       }
     } catch {}
 
