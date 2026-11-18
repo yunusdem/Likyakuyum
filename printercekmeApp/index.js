@@ -1404,37 +1404,38 @@ async function executePrintJobInternal(job) {
           try {
             pngFile = path.join(tmpDir, `print_${timestamp}.png`);
             const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
+
+            // Şablonun gerçek yüksekliğini HTML içinden dinamik olarak hesapla (boş beyaz fazlalığı önler)
+            let calculatedHeight = 1200;
+            const matchH = html.match(/height:\s*([\d.]+)pt/i);
+            if (matchH) {
+              calculatedHeight = Math.ceil(parseFloat(matchH[1]) * (96 / 72)) + 15;
+            } else {
+              const matchPx = html.match(/height:\s*([\d.]+)px/i);
+              if (matchPx) {
+                calculatedHeight = Math.ceil(parseFloat(matchPx[1])) + 15;
+              }
+            }
+            calculatedHeight = Math.max(200, Math.min(3500, calculatedHeight));
+
             const fastChromiumArgs = [
               "--headless=new",
               "--disable-gpu",
               "--no-sandbox",
               "--allow-file-access-from-files",
               "--hide-scrollbars",
-              "--window-size=304,2600",
+              `--window-size=304,${calculatedHeight}`,
+              "--force-device-scale-factor=2",
               "--disable-extensions",
               "--disable-background-networking",
-              "--disable-background-timer-throttling",
-              "--disable-backgrounding-occluded-windows",
-              "--disable-breakpad",
               "--disable-component-update",
               "--disable-default-apps",
-              "--disable-dev-shm-usage",
-              "--disable-domain-reliability",
-              "--disable-features=AudioServiceOutOfProcess",
-              "--disable-hang-monitor",
-              "--disable-ipc-flooding-protection",
-              "--disable-popup-blocking",
-              "--disable-prompt-on-repost",
-              "--disable-renderer-backgrounding",
               "--disable-sync",
-              "--disable-translate",
-              "--metrics-recording-only",
               "--no-first-run",
               "--no-default-browser-check",
               "--mute-audio",
-              "--disable-software-rasterizer",
               "--run-all-compositor-stages-before-draw",
-              "--virtual-time-budget=300",
+              "--virtual-time-budget=1200",
               `--screenshot=${pngFile}`,
               fileUrl,
             ];
@@ -1446,7 +1447,7 @@ async function executePrintJobInternal(job) {
               const timer = setTimeout(() => {
                 try { child.kill(); } catch {}
                 resolve();
-              }, 4000);
+              }, 8000);
               child.on("close", () => {
                 clearTimeout(timer);
                 resolve();
@@ -1457,9 +1458,11 @@ async function executePrintJobInternal(job) {
               });
             });
             if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
+              console.warn("[printercekmeApp] Uyarı: POS PNG çıktısı üretilemedi, boyut yetersiz.");
               pngFile = "";
             }
-          } catch {
+          } catch (e) {
+            console.warn("[printercekmeApp] POS PNG oluşturma hatası:", e.message);
             pngFile = "";
           }
         } else if (chromiumPath && !isPos) {
@@ -1631,28 +1634,7 @@ try {
 ${a4GdiParcasi()}
     } elseif ($pngPath -and (Test-Path $pngPath)) {
       # Chromium ile render edilmiş birebir fiş görseli (Logo, Çizgi, QR, Bold)
-      $script:rawImg = [System.Drawing.Bitmap]::FromFile($pngPath)
-      $rawW = $script:rawImg.Width
-      $rawH = $script:rawImg.Height
-      $lastY = $rawH - 1
-      $found = $false
-      # Boş beyaz alanı kesmek için alttan yukarı piksel taraması
-      for ($y = $rawH - 1; $y -ge 0; $y -= 4) {
-        for ($x = 0; $x -lt $rawW; $x += 6) {
-          $c = $script:rawImg.GetPixel($x, $y)
-          if ($c.R -lt 240 -or $c.G -lt 240 -or $c.B -lt 240) {
-            $lastY = [Math]::Min($rawH, $y + 18)
-            $found = $true
-            break
-          }
-        }
-        if ($found) { break }
-      }
-      if (-not $found -or $lastY -le 40) { $lastY = $rawH }
-
-      $cropRect = New-Object System.Drawing.Rectangle(0, 0, $rawW, $lastY)
-      $script:pngImg = $script:rawImg.Clone($cropRect, $script:rawImg.PixelFormat)
-      $script:rawImg.Dispose()
+      $script:pngImg = [System.Drawing.Image]::FromFile($pngPath)
 
       $doc.add_PrintPage({
         param($s, $ev)
@@ -1661,14 +1643,18 @@ ${a4GdiParcasi()}
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
-        # 80mm fiş genişliğine göre orantılı çiz (tam oturacak şekilde)
-        $targetW = $ev.PageBounds.Width
-        if ($targetW -le 50 -or $targetW -gt 400) { $targetW = 285 }
+        # 80mm fiş genişliği (72mm = 283 yüzdelik inç)
+        $targetW = [float]$ev.PageBounds.Width
+        if ($targetW -le 50 -or $targetW -gt 320) { $targetW = 283.0 }
         $scale = $targetW / $script:pngImg.Width
-        $targetH = [int]($script:pngImg.Height * $scale)
-        $leftOffset = [Math]::Max(0, [int](($ev.PageBounds.Width - $targetW) / 2))
+        $targetH = [float]($script:pngImg.Height * $scale)
 
-        $g.DrawImage($script:pngImg, $leftOffset, 0, $targetW, $targetH)
+        $hx = [float]$ev.PageSettings.HardMarginX
+        $hy = [float]$ev.PageSettings.HardMarginY
+        $destRect = New-Object System.Drawing.RectangleF((0 - $hx), (0 - $hy), $targetW, $targetH)
+        $srcRect = New-Object System.Drawing.RectangleF(0, 0, [float]$script:pngImg.Width, [float]$script:pngImg.Height)
+
+        $g.DrawImage($script:pngImg, $destRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
         $ev.HasMorePages = $false
       })
       for ($c = 0; $c -lt $copies; $c++) {

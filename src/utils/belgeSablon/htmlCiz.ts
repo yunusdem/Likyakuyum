@@ -21,8 +21,18 @@ const say = (n: unknown) => { const v = Number(n); return Number.isFinite(v) ? M
 const pt = (n: unknown) => `${say(n)}pt`;
 /** Yalnızca güvenli renk yazımı (#rgb, #rrggbb); aksi hâlde siyah. */
 const renk = (r: string, varsayilan = "#000") => (/^#[0-9a-fA-F]{3,8}$/.test(String(r || "")) ? r : varsayilan);
-/** Görsel yalnızca data URL (png/jpeg) olarak kabul edilir; şablondan dış adres çağrılamaz. */
-const gorselAdresi = (u: string | undefined) => (u && /^data:image\/(png|jpe?g);base64,[A-Za-z0-9+/=]+$/.test(u) ? u : "");
+/** Görsel data URL veya geçerli adres olarak kabul edilir. */
+const gorselAdresi = (u: string | undefined): string => {
+  if (!u) return "";
+  const trimmed = u.trim();
+  if (trimmed.startsWith("data:image/")) {
+    return trimmed.replace(/\s+/g, "");
+  }
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("/") || trimmed.startsWith("blob:")) {
+    return trimmed;
+  }
+  return "";
+};
 
 export const YAZI_AILESI = {
   mono: "'Consolas', 'Segoe UI Mono', 'Courier New', monospace",
