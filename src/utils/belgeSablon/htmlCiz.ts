@@ -172,7 +172,7 @@ export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: numbe
   }
   .belge-sablon {
     margin: 0 auto !important;
-    ${isPos ? "transform: scale(0.95) !important; transform-origin: top center !important;" : ""}
+    ${isPos ? "transform: scale(0.98) !important; transform-origin: top center !important;" : ""}
     box-sizing: border-box !important;
     page-break-inside: avoid !important;
   }

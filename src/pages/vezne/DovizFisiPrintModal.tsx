@@ -229,8 +229,8 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
             }
             .belge-sablon {
               margin: 0 auto !important;
-              transform: scale(0.95);
-              transform-origin: top center;
+              transform: scale(0.98) !important;
+              transform-origin: top center !important;
               box-sizing: border-box !important;
             }
           </style>

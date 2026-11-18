@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.2.0";
+const CURRENT_VERSION = "1.2.1";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -1356,7 +1356,7 @@ async function executePrintJobInternal(job) {
       width: 304px !important;
       max-width: 304px !important;
       margin: 0 auto !important;
-      padding: 4px 0 0 0 !important;
+      padding: 0 !important;
       box-sizing: border-box !important;
       display: flex !important;
       flex-direction: column !important;
@@ -1367,7 +1367,7 @@ async function executePrintJobInternal(job) {
       margin: 0 auto !important;
       box-sizing: border-box !important;
       page-break-inside: avoid !important;
-      transform: scale(0.95) !important;
+      transform: scale(0.98) !important;
       transform-origin: top center !important;
     }
     ` : `
@@ -1650,25 +1650,27 @@ ${a4GdiParcasi()}
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
         # 80mm fiş kâğıdı için yazdırma alanı hesaplaması:
-        # Fiziksel kâğıt 80mm (~315 yüzdelik inç) olsa dahi termal yazıcı kafaları en fazla 72mm (~283 birim) basabilir.
-        # Sağdan, soldan ve üstten hiçbir şekilde taşma / kesilme olmaması için:
-        $pageW = [float]$ev.PageBounds.Width
-        if ($pageW -le 50 -or $pageW -gt 400) { $pageW = 283.0 }
+        # Driver birimi (Pixel 203/300 DPI veya 1/100 inç Display) ne olursa olsun
+        # kâğıdın tam genişliğini dinamik algıla ve fişi 80mm kâğıda %98 oranında tam oturt:
+        $availW = [float]$ev.Graphics.VisibleClipBounds.Width
+        $clipX = [float]$ev.Graphics.VisibleClipBounds.X
+        $clipY = [float]$ev.Graphics.VisibleClipBounds.Y
 
-        # Güvenli hedef genişlik: 268 birim (~68mm). Hem 72mm kafada hem 80mm ruloda 2mm-6mm güvenli pay bırakır.
-        $targetW = [Math]::Min($pageW, 268.0)
+        if ($availW -le 50) {
+            $availW = [float]$ev.PageBounds.Width
+        }
+        if ($availW -le 50) {
+            $availW = 283.0
+        }
+
+        # Kâğıdın genişliğini %98 oranında tam kapla (küçük kalmasın, kenarlardan 1'er mm pay kalsın):
+        $targetW = [float]($availW * 0.98)
+        $destX = [float](($availW - $targetW) / 2.0 + $clipX)
+        $destY = [float]($clipY + 2.0)
+
         $scale = $targetW / [float]$script:pngImg.Width
         $targetH = [float]($script:pngImg.Height * $scale)
 
-        # Fişi kâğıda yatayda tam ortala; kâğıdın solundan ve sağından eşit pay kalsın, asla taşmasın:
-        $destX = 0.0
-        if ($pageW -gt $targetW) {
-            $destX = [float](($pageW - $targetW) / 2.0)
-        }
-        if ($destX -lt 3.0) { $destX = 3.0; $targetW = [Math]::Max(50.0, ($pageW - 6.0)) }
-
-        # Üstten kesim çizgisinden 5 birim (~1.3mm) pay vererek QR kod ve Maliye logosunun tepesinin kesilmesini önle
-        $destY = 5.0
         $destRect = New-Object System.Drawing.RectangleF($destX, $destY, $targetW, $targetH)
         $srcRect = New-Object System.Drawing.RectangleF(0.0, 0.0, [float]$script:pngImg.Width, [float]$script:pngImg.Height)
 

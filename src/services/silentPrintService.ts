@@ -27,7 +27,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.2.0";
+export const TARGET_PRINTER_AGENT_VERSION = "1.2.1";
 
 let lastProtocolWakeTime = 0;
 
@@ -935,8 +935,8 @@ function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean
           }
           .belge-sablon {
             margin: 0 auto !important;
-            transform: scale(0.95);
-            transform-origin: top center;
+            transform: scale(0.98) !important;
+            transform-origin: top center !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
           }
