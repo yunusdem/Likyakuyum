@@ -1188,6 +1188,11 @@ export const CompanyDefinitionsPage: React.FC = () => {
             sanitized.URETIM_HESABI_ID = Number(storedUretim);
           }
           setFormData(sanitized || emptyCompanyData);
+          if (sanitized?.FISTE_COKLU_SATIR !== undefined) {
+            try {
+              localStorage.setItem("kuyumcu_erp_fiste_coklu_satir", sanitized.FISTE_COKLU_SATIR ? "1" : "0");
+            } catch {}
+          }
           const fAdi = (sanitized?.FIRMA_ADI || "").trim();
           if (fAdi) {
             try {
@@ -1279,6 +1284,11 @@ export const CompanyDefinitionsPage: React.FC = () => {
         localStorage.removeItem("kuyumcu_erp_uretim_hesabi_id");
       }
       const cleanData = sanitizeData(formData);
+      if (cleanData.FISTE_COKLU_SATIR !== undefined) {
+        try {
+          localStorage.setItem("kuyumcu_erp_fiste_coklu_satir", cleanData.FISTE_COKLU_SATIR ? "1" : "0");
+        } catch {}
+      }
       const updated = await CompanyService.updateDefinitions(cleanData);
       setFormData(sanitizeData(updated) || cleanData);
       const savedFirmaAdi = (updated?.FIRMA_ADI || cleanData?.FIRMA_ADI || "").trim();

@@ -1856,11 +1856,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, [companyDefinitions?.ISKONTO_ID, iskontoList]);
 
   const isCokluSatirIzinli = useMemo(() => {
+    const fromStorage = typeof window !== "undefined" ? localStorage.getItem("kuyumcu_erp_fiste_coklu_satir") : null;
+    if (fromStorage === "1" || fromStorage === "true") return true;
+    const raw = companyDefinitions?.FISTE_COKLU_SATIR ?? companyDefinitionsRef.current?.FISTE_COKLU_SATIR ?? CompanyService.cachedDefinitions?.FISTE_COKLU_SATIR;
     return (
-      companyDefinitions?.FISTE_COKLU_SATIR === true ||
-      (companyDefinitions?.FISTE_COKLU_SATIR as any) === 1 ||
-      (companyDefinitions?.FISTE_COKLU_SATIR as any) === "1" ||
-      (companyDefinitions?.FISTE_COKLU_SATIR as any) === "true"
+      raw === true ||
+      (raw as any) === 1 ||
+      (raw as any) === "1" ||
+      (raw as any) === "true" ||
+      (raw as any) === "True"
     );
   }, [companyDefinitions]);
 
@@ -5046,14 +5050,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // Satırın geçerli şekilde doldurulup doldurulmadığını kontrol eder (Kalemler)
   const isSarrafRowFilled = useCallback((r?: GridRow): boolean => {
     if (!r) return false;
-    const hasCode = Boolean(r.urunKodu && r.urunKodu.trim() !== "");
-    const isZiynet = r.urunTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
-    const isPara = r.urunTipi === 0;
-    const isParaOrZiynet = isPara || isZiynet;
-    const hasAdet = Boolean(r.adet && parseDecimal(r.adet) > 0);
-    const hasMiktar = isParaOrZiynet ? true : Boolean(r.miktar && parseDecimal(r.miktar) > 0);
-    const hasKurOrTutar = Boolean((r.kur && parseDecimal(r.kur) > 0) || (r.tutar && parseDecimal(r.tutar) > 0));
-    return hasCode && hasAdet && hasMiktar && hasKurOrTutar;
+    const hasCode = Boolean((r.urunKodu && r.urunKodu.trim() !== "") || (r.urunAdi && r.urunAdi.trim() !== "") || (r.urunId && r.urunId > 0));
+    if (!hasCode) return false;
+
+    const numAdet = parseDecimal(r.adet);
+    const numMiktar = parseDecimal(r.miktar);
+    const hasQuantity = numMiktar > 0 || numAdet > 0;
+
+    const numKur = parseDecimal(r.kur);
+    const numTutar = parseDecimal(r.tutar);
+    const hasKurOrTutar = numKur > 0 || numTutar > 0;
+
+    return hasCode && hasQuantity && hasKurOrTutar;
   }, []);
 
   // Boş satırları otomatik temizler (Kalemler - İlk satır daima korunur)
@@ -6053,7 +6061,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, []);
 
   const handleAddSarrafRow = useCallback(() => {
-    if (!isCokluSatirIzinli && linesRef.current.length >= 1) {
+    const fromStorage = typeof window !== "undefined" ? localStorage.getItem("kuyumcu_erp_fiste_coklu_satir") : null;
+    const rawCoklu = companyDefinitions?.FISTE_COKLU_SATIR ?? companyDefinitionsRef.current?.FISTE_COKLU_SATIR ?? CompanyService.cachedDefinitions?.FISTE_COKLU_SATIR;
+    const cokluIzin = isCokluSatirIzinli || fromStorage === "1" || fromStorage === "true" || rawCoklu === true || (rawCoklu as any) === 1 || (rawCoklu as any) === "1" || (rawCoklu as any) === "true" || (rawCoklu as any) === "True";
+    if (!cokluIzin && linesRef.current.length >= 1) {
+      showNotif("warning", "Fişte çoklu satır girişi izni kapalıdır. Firma Tanımları > Sistem sekmesinden 'Fişte Çoklu Satır Girişine İzin Ver' seçeneğini açabilirsiniz.");
       return false;
     }
     const currentLines = linesRef.current;
@@ -6062,8 +6074,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (!isSarrafRowFilled(lastRow)) {
         setActiveRowIndex(currentLines.length - 1);
         setInvalidRowIds((prev) => ({ ...prev, [lastRow.id]: true }));
-        const isZiynet = lastRow.urunTipi === 3 || isZiynetProduct({ urunTipi: lastRow.urunTipi, kod: lastRow.urunKodu, ad: lastRow.urunAdi });
-        const isPara = lastRow.urunTipi === 0;
+        const effTipi = resolveEffectiveUrunTipi({ urunTipi: lastRow.urunTipi, kod: lastRow.urunKodu, ad: lastRow.urunAdi });
+        const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: lastRow.urunTipi, kod: lastRow.urunKodu, ad: lastRow.urunAdi });
+        const isPara = effTipi === 0;
         const isParaOrZiynet = isPara || isZiynet;
         const isMiktarActive = (!isParaOrZiynet) || (isParaOrZiynet && userDovizZiynetGirisSekli === 1);
         if (!lastRow.urunKodu || !lastRow.urunKodu.trim()) {
@@ -6088,7 +6101,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setActiveRowIndex(currentLines.length);
     requestAnimationFrame(() => focusGridCell(newRow.id, "urunKodu", "select"));
     return true;
-  }, [isSarrafRowFilled, focusGridCell, isCokluSatirIzinli, kurAcik]);
+  }, [isSarrafRowFilled, focusGridCell, isCokluSatirIzinli, kurAcik, companyDefinitions, showNotif, userDovizZiynetGirisSekli]);
 
   const handleAddOdemeRow = useCallback((afterIndex?: number) => {
     const currentOdemeRows = odemeRowsRef.current;
@@ -6838,6 +6851,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       return false;
     };
 
+    if (e.key === "F7") {
+      e.preventDefault();
+      e.stopPropagation();
+      handleAddSarrafRow();
+      return;
+    }
+
     if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
       e.preventDefault();
       if (colKey === "milyem") {
@@ -7229,6 +7249,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     };
 
     const { isAtStart, isAtEnd } = getSelectionBounds(e.currentTarget);
+
+    if (e.key === "F7") {
+      e.preventDefault();
+      e.stopPropagation();
+      handleAddSarrafRow();
+      return;
+    }
 
     if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
       e.preventDefault();
@@ -8093,13 +8120,24 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
 
       if (["INPUT", "TEXTAREA", "SELECT"].includes(activeEl?.tagName || "") &&
-        !["F1", "F3", "F4", "F5", "F8", "F9", "F10", "F12"].includes(e.key)) {
+        !["F1", "F3", "F4", "F5", "F7", "F8", "F9", "F10", "F12"].includes(e.key)) {
         return;
       }
       if (e.key === "F1") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleSave(false, false); }
       else if (e.key === "F3") { e.preventDefault(); e.stopPropagation(); closeAllModals(); setShowIstatistikModal(true); }
       else if (e.key === "F4") { e.preventDefault(); e.stopPropagation(); closeAllModals(); handleNew(); }
       else if (e.key === "F5" && e.shiftKey) { e.preventDefault(); e.stopPropagation(); closeAllModals(); setShowBankaTlHesabiModal(true); }
+      else if (e.key === "F7") {
+        e.preventDefault();
+        e.stopPropagation();
+        closeAllModals();
+        const insideOdeme = Boolean(activeEl?.closest('[data-table-type="odeme"]'));
+        if (insideOdeme) {
+          handleAddOdemeRow();
+        } else {
+          handleAddSarrafRow();
+        }
+      }
       else if (e.key === "F8") { e.preventDefault(); e.stopPropagation(); closeAllModals(); openDetayModal(); }
       else if (e.key === "F9") {
         e.preventDefault();
