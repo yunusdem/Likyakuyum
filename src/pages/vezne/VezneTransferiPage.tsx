@@ -1800,6 +1800,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
         show={showVerenVezneModal}
         onHide={() => setShowVerenVezneModal(false)}
         title="Veren Vezne Seçiniz"
+        selectOnDoubleClick={true}
         items={vezneList}
         columns={vezneColumns}
         searchPlaceholder="Vezne adı veya koduna göre ara..."

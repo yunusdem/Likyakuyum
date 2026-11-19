@@ -154,6 +154,13 @@ export const PanoTanimiPage: React.FC = () => {
   });
 
   const [showHtmlModal, setShowHtmlModal] = useState<boolean>(false);
+  const [selectedThemeId, setSelectedThemeId] = useState<string>(activeTheme.id);
+
+  useEffect(() => {
+    if (showHtmlModal) {
+      setSelectedThemeId(activeTheme.id);
+    }
+  }, [showHtmlModal, activeTheme.id]);
 
   // Load panos and currencies on mount (excluding TL/TRY)
   const loadData = useCallback(async () => {
@@ -1350,6 +1357,7 @@ export const PanoTanimiPage: React.FC = () => {
         show={showSearchModal}
         onHide={() => setShowSearchModal(false)}
         title="Pano Tanımı Arama (Dürbün)"
+        selectOnDoubleClick={true}
         searchPlaceholder="Pano No, Firma Adı veya HTML Dosya Adı ile ara..."
         items={panos}
         filterFn={(p, term) => {
@@ -1402,7 +1410,8 @@ export const PanoTanimiPage: React.FC = () => {
           </p>
           <div className="d-flex flex-column gap-2.5">
             {PANO_TEMPLATES.map((tmpl) => {
-              const isSelected = activeTheme.id === tmpl.id;
+              const isSelected = selectedThemeId === tmpl.id;
+              const isCurrentlyActive = activeTheme.id === tmpl.id;
               return (
                 <Card
                   key={tmpl.id}
@@ -1411,6 +1420,9 @@ export const PanoTanimiPage: React.FC = () => {
                   }`}
                   style={{ borderWidth: isSelected ? "2px" : "1px", cursor: "pointer" }}
                   onClick={() => {
+                    setSelectedThemeId(tmpl.id);
+                  }}
+                  onDoubleClick={() => {
                     handleSelectTheme(tmpl);
                     setShowHtmlModal(false);
                   }}
@@ -1433,6 +1445,11 @@ export const PanoTanimiPage: React.FC = () => {
                               Varsayılan
                             </Badge>
                           )}
+                          {isCurrentlyActive && (
+                            <Badge bg="success-subtle" text="success" className="border border-success-subtle">
+                              Mevcut Tema
+                            </Badge>
+                          )}
                           <Badge bg={tmpl.badgeBg} text={tmpl.badgeBg === "light" ? "dark" : "white"}>
                             {tmpl.tag}
                           </Badge>
@@ -1443,25 +1460,18 @@ export const PanoTanimiPage: React.FC = () => {
                       </div>
                     </div>
                     <div>
-                      {isSelected ? (
-                        <div className="text-primary d-flex align-items-center gap-1 fw-bold small flex-shrink-0 ms-2">
-                          <IconCheck size={20} strokeWidth={2.5} />
-                          <span>Seçili</span>
-                        </div>
-                      ) : (
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          className="px-3 py-1 fw-semibold small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSelectTheme(tmpl);
-                            setShowHtmlModal(false);
-                          }}
-                        >
-                          Seç
-                        </Button>
-                      )}
+                      <Button
+                        variant={isSelected ? "primary" : "outline-primary"}
+                        size="sm"
+                        className="px-3 py-1 fw-semibold small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectTheme(tmpl);
+                          setShowHtmlModal(false);
+                        }}
+                      >
+                        {isSelected ? "Seç (Uygula)" : "Seç"}
+                      </Button>
                     </div>
                   </div>
                 </Card>
@@ -1469,10 +1479,29 @@ export const PanoTanimiPage: React.FC = () => {
             })}
           </div>
         </Modal.Body>
-        <Modal.Footer className="bg-light py-2">
-          <Button variant="secondary" size="sm" onClick={() => setShowHtmlModal(false)}>
-            Kapat
-          </Button>
+        <Modal.Footer className="bg-light py-2 d-flex justify-content-between align-items-center">
+          <span className="small text-muted">
+            🖱️ Çift tıklama veya &quot;Seç&quot; butonu ile şablonu uygulayabilirsiniz.
+          </span>
+          <div className="d-flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowHtmlModal(false)}>
+              Kapat
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              className="fw-bold px-3"
+              onClick={() => {
+                const found = PANO_TEMPLATES.find((t) => t.id === selectedThemeId);
+                if (found) {
+                  handleSelectTheme(found);
+                }
+                setShowHtmlModal(false);
+              }}
+            >
+              Seç
+            </Button>
+          </div>
         </Modal.Footer>
       </Modal>
     </div>

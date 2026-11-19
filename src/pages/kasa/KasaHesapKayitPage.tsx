@@ -533,6 +533,7 @@ export const KasaHesapKayitPage: React.FC = () => {
       <LookupModal<HesapItem>
         show={showHesapLookup}
         title="Hesap Kartı Seçiniz"
+        selectOnDoubleClick={true}
         columns={hesapLookupColumns}
         items={hesapList}
         filterFn={(it, term) => {

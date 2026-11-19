@@ -207,6 +207,11 @@ function LookupModalContent<T extends Record<string, any>>({
     selectOnDoubleClick ||
     normalizedTitle.includes("üretici firma") ||
     normalizedTitle.includes("cari") ||
+    normalizedTitle.includes("veren vezne") ||
+    normalizedTitle.includes("hesap kartı") ||
+    normalizedTitle.includes("hesap") ||
+    normalizedTitle.includes("banka") ||
+    normalizedTitle.includes("pano") ||
     isProductSelection
   );
 

@@ -1320,6 +1320,7 @@ export const KasaHareketPage: React.FC = () => {
         show={showHesapLookup}
         initialSearchTerm={hesapInitialSearch}
         title="Hesap Kartı Seçiniz"
+        selectOnDoubleClick={true}
         columns={hesapLookupColumns}
         items={hesapList}
         filterFn={(it, term) => {

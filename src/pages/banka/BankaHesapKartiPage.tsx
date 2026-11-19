@@ -692,6 +692,7 @@ export const BankaHesapKartiPage: React.FC<BankaHesapKartiPageProps> = ({
       <LookupModal<BankaHesapItem>
         show={showLookupModal}
         title="Banka Hesabı Seçiniz (F3)"
+        selectOnDoubleClick={true}
         initialSearchTerm={lookupSearchTerm}
         columns={bankaLookupColumns}
         items={bankaList}
@@ -716,6 +717,7 @@ export const BankaHesapKartiPage: React.FC<BankaHesapKartiPageProps> = ({
       <LookupModal<any>
         show={showBankNameModal}
         title="Banka / Cari Seçimi (TODVZ_CARI_KART)"
+        selectOnDoubleClick={true}
         initialSearchTerm={bankNameSearchTerm}
         columns={bankNameLookupColumns}
         items={lookups.bankaAdlari}
