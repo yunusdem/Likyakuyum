@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Table,
   Button,
@@ -42,6 +43,7 @@ import { VezneBakiyeModal } from "./VezneBakiyeModal";
 import { KurService, KurRowItem } from "../../services/kurService";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { vezneSync } from "../../services/vezneSyncService";
+import RaporPage from "../rapor/RaporPage";
 
 export const sortVezneRows = (rowsList?: VezneIzlemeRow[]): VezneIzlemeRow[] => {
   if (!rowsList || rowsList.length === 0) return [];
@@ -49,6 +51,8 @@ export const sortVezneRows = (rowsList?: VezneIzlemeRow[]): VezneIzlemeRow[] => 
 };
 
 export const VezneIzlemePage: React.FC = () => {
+  const navigate = useNavigate();
+
   // Data state
   const [columns, setColumns] = useState<VezneIzlemeColumn[]>([]);
   const [rows, setRows] = useState<VezneIzlemeRow[]>([]);
@@ -1164,7 +1168,7 @@ export const VezneIzlemePage: React.FC = () => {
                 color: "#000000",
                 boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
               }}
-              title="Firma Durumu Özetini Görüntüle (F9)"
+              title="Firma Son Durum Raporunu Aç (F9)"
             >
               <span style={{ color: "#16a34a", fontWeight: "bold", fontSize: "13px", marginRight: "7px" }}>✔</span>
               <span>F9) Firma durumu</span>
@@ -1450,53 +1454,41 @@ export const VezneIzlemePage: React.FC = () => {
         bakiyeler={activeVezneBakiyeler}
       />
 
-      {/* ─── MODAL 5: F9 Firma Durumu Modalı ─── */}
+      {/* ─── MODAL 5: F9 Firma Son Durum Raporu Modalı ─── */}
       <Modal
         show={showFirmaDurumuModal}
         onHide={() => setShowFirmaDurumuModal(false)}
-        size="lg"
+        size="xl"
+        fullscreen="xl-down"
         centered
+        dialogClassName="modal-95w"
       >
         <Modal.Header closeButton className="bg-light py-2 px-3">
           <Modal.Title className="fs-6 fw-bold text-primary d-flex align-items-center gap-2">
             <IconBuildingBank size={18} />
-            F9) Firma Durumu / Varlık Özeti
+            <span>F9) Firma Son Durum Raporu</span>
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body className="p-3">
-          <div className="table-responsive">
-            <Table bordered hover size="sm" className="mb-0" style={{ fontSize: "12.5px" }}>
-              <thead style={{ backgroundColor: "#bfdbfe", color: "#1e3a8a" }}>
-                <tr>
-                  <th>Para Kodu</th>
-                  <th>Para Adı</th>
-                  <th className="text-end">Toplam Kasa Bakiyesi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows
-                  .filter((r) => r.toplam !== 0)
-                  .map((r) => (
-                    <tr key={r.paraId}>
-                      <td className="fw-bold">{r.paraKodu}</td>
-                      <td>{r.paraAdi}</td>
-                      <td className="text-end font-monospace fw-bold text-primary">
-                        {formatNumber(r.toplam, r.paraKodu)} {r.paraKodu}
-                      </td>
-                    </tr>
-                  ))}
-                {rows.filter((r) => r.toplam !== 0).length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="text-center text-muted py-3">
-                      Tüm kasalarda pozitif bakiye bulunmamaktadır.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
-          </div>
+        <Modal.Body className="p-2" style={{ maxHeight: "calc(90vh - 110px)", overflowY: "auto" }}>
+          {showFirmaDurumuModal && (
+            <RaporPage
+              yol="firma-son-durum"
+              isModal
+              onClose={() => setShowFirmaDurumuModal(false)}
+            />
+          )}
         </Modal.Body>
-        <Modal.Footer className="bg-light py-1.5 px-3">
+        <Modal.Footer className="bg-light py-1.5 px-3 d-flex justify-content-between">
+          <Button
+            variant="outline-primary"
+            size="sm"
+            onClick={() => {
+              navigate("/raporlar/firma-son-durum");
+              setShowFirmaDurumuModal(false);
+            }}
+          >
+            Tam Sayfada Aç ↗
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => setShowFirmaDurumuModal(false)}>
             Kapat (ESC)
           </Button>

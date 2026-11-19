@@ -1404,10 +1404,11 @@ export const KasaHareketPage: React.FC = () => {
             <IconAlertTriangle size={18} /> Kasa Hareketini Geri Al
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body className="py-3">
-          <p className="mb-0 small">
-            <strong>#{hesapHareketiId}</strong> numaralı hareket ({hesapAd} - {meblag} {paraKod}) geri alınacak ve vezne bakiyesi eski haline döndürülecektir. Devam etmek istiyor musunuz?
+        <Modal.Body className="py-3 text-center">
+          <p className="mb-2 small">
+            <strong>#{hesapHareketiId}</strong> numaralı hareket ({hesapAd} - {meblag} {paraKod}) geri alınacak ve vezne bakiyesi eski haline döndürülecektir.
           </p>
+          <p className="mb-0 fw-semibold text-danger">Yine de silinsin mi?</p>
         </Modal.Body>
         <Modal.Footer className="py-2">
           <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(false)}>

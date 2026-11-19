@@ -23,6 +23,7 @@ import {
   IconCheck,
   IconPlus,
   IconTrash,
+  IconAlertTriangle,
   IconArrowRight,
   IconUser,
   IconBuildingBank,
@@ -206,6 +207,7 @@ export const CariEmanetDekontPage: React.FC = () => {
   const [showVezneLookup, setShowVezneLookup] = useState<boolean>(false);
   const [showParaLookupTarget, setShowParaLookupTarget] = useState<{ side: "sol" | "sag"; index: number } | null>(null);
   const [showBakiyeModal, setShowBakiyeModal] = useState<boolean>(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [alertInfo, setAlertInfo] = useState<{ type: "success" | "danger" | "warning" | "info"; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
@@ -1872,7 +1874,12 @@ export const CariEmanetDekontPage: React.FC = () => {
   // Silme İşlemi
   const handleDelete = async () => {
     if (!cariDekontId) return;
-    if (!window.confirm("Bu dekont kaydını silmek istediğinize emin misiniz?")) return;
+    setShowDeleteModal(true);
+  };
+
+  const confirmExecuteDelete = async () => {
+    setShowDeleteModal(false);
+    if (!cariDekontId) return;
     try {
       setIsSaving(true);
       await CariDekontService.deleteDekont(cariDekontId);
@@ -3663,6 +3670,30 @@ export const CariEmanetDekontPage: React.FC = () => {
           setShowParaLookupTarget(null);
         }}
       />
+
+      {/* Silme Onay Modalı */}
+      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered size="sm">
+        <Modal.Header closeButton className="py-2.5 bg-light">
+          <Modal.Title className="fs-6 fw-bold text-danger d-flex align-items-center gap-2">
+            <IconAlertTriangle size={18} />
+            Dekont Silme Onayı
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="py-3 text-center">
+          <p className="mb-2">
+            <strong>#{dekontNo || cariDekontId}</strong> numaralı emanet dekont kaydı silinecektir.
+          </p>
+          <p className="mb-0 fw-semibold text-danger">Yine de silinsin mi?</p>
+        </Modal.Body>
+        <Modal.Footer className="py-2 bg-light d-flex justify-content-between">
+          <Button variant="secondary" size="sm" onClick={() => setShowDeleteModal(false)}>
+            Vazgeç
+          </Button>
+          <Button variant="danger" size="sm" onClick={confirmExecuteDelete} disabled={isSaving}>
+            Evet, Sil
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* 5. F5 - Cari Bakiye Bilgi Modalı */}
       <Modal show={showBakiyeModal} onHide={() => setShowBakiyeModal(false)} centered size="sm">

@@ -206,6 +206,7 @@ function LookupModalContent<T extends Record<string, any>>({
   const isDoubleClickMode = Boolean(
     selectOnDoubleClick ||
     normalizedTitle.includes("üretici firma") ||
+    normalizedTitle.includes("cari") ||
     isProductSelection
   );
 

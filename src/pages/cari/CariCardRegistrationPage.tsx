@@ -2528,11 +2528,12 @@ export const CariCardRegistrationPage: React.FC<CariCardRegistrationPageProps> =
             <IconTrash size={20} /> Cari Kart Silme Onayı
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="py-3 text-center">
           <p className="mb-2">
-            <strong>[{selectedCari?.kod}] {selectedCari?.ad}</strong> cari kartını veritabanından kalıcı olarak silmek istediğinize emin misiniz?
+            <strong>[{selectedCari?.kod}] {selectedCari?.ad}</strong> cari kartını silmek istediğinize emin misiniz?
           </p>
-          <p className="small text-danger mb-0">
+          <p className="mb-2 fw-semibold text-danger">Yine de silinsin mi?</p>
+          <p className="small text-muted mb-0">
             ⚠️ Bu işlem geri alınamaz. İlgili cariye ait hareketler varsa silme işlemi engellenebilir.
           </p>
         </Modal.Body>

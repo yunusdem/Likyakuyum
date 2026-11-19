@@ -477,6 +477,7 @@ export const DovizFisiPage: React.FC = () => {
 
   // Modals
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState<boolean>(false);
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
   const [showTeklifTaniModal, setShowTeklifTaniModal] = useState<boolean>(false);
   const [printSnapshot, setPrintSnapshot] = useState<any>(null);
@@ -5258,9 +5259,12 @@ export const DovizFisiPage: React.FC = () => {
       });
       return;
     }
-    if (!window.confirm("Bu döviz fişini silmek istediğinize emin misiniz?")) {
-      return;
-    }
+    setShowDeleteConfirmModal(true);
+  };
+
+  const confirmExecuteDelete = async () => {
+    setShowDeleteConfirmModal(false);
+    if (!fisId) return;
 
     try {
       await DovizFisService.deleteFis(fisId);
@@ -5271,11 +5275,12 @@ export const DovizFisiPage: React.FC = () => {
       await fetchVezneBalances(vezneId);
       const rawFresh = await DovizFisService.getFisList({ limit: 100 });
       setSavedFisList(rawFresh);
-      if (rawFresh.length > 0) {
-        await loadFisById(rawFresh[0].fisId);
-      } else {
-        resetForm();
+      resetForm();
+      if (location.search) {
+        navigate(location.pathname, { replace: true });
       }
+      setArbitrajActiveInfo(null);
+      focusTipSelect();
     } catch (err: any) {
       setNotification({
         type: "danger",
@@ -5775,6 +5780,7 @@ export const DovizFisiPage: React.FC = () => {
   );
 
   const closeAllModals = useCallback(() => {
+    setShowDeleteConfirmModal(false);
     setShowKurListesiModal(false);
     setShowVezneBakiyeModal(false);
     setShowTlHesabiModal(false);
@@ -6976,24 +6982,6 @@ export const DovizFisiPage: React.FC = () => {
         onRefresh={loadLookupsAndList}
         rightContent={
           <div className="d-flex align-items-center gap-2">
-            {isArbitrajActive && (
-              <div
-                className="d-flex align-items-center gap-1.5 px-2.5 py-1 rounded border shadow-2xs fw-bold text-nowrap"
-                style={{
-                  fontSize: "11px",
-                  backgroundColor: "#eff6ff",
-                  borderColor: "#3b82f6",
-                  color: "#1d4ed8",
-                  cursor: "pointer",
-                }}
-                onClick={() => setShowArbitrajModal(true)}
-                title="Bu fişe bağlı Arbitraj Fişi kayıtlıdır. Detayları görüntülemek için tıklayınız."
-              >
-                <IconArrowsExchange size={14} className="text-primary" />
-                <span>ARBİTRAJ KAYITLI</span>
-              </div>
-            )}
-
             <div className="d-flex align-items-center gap-2 px-2 py-0.5 bg-white rounded border shadow-2xs small font-monospace" style={{ fontSize: "11px" }}>
               <span className="text-muted" style={{ fontSize: "10.5px" }}>TL:</span>
               <strong className="text-dark" style={{ fontSize: "11px" }}>
@@ -10348,6 +10336,30 @@ export const DovizFisiPage: React.FC = () => {
             }}
           >
             Yine de Kaydet
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Silme Onay Modalı */}
+      <Modal show={showDeleteConfirmModal} onHide={() => setShowDeleteConfirmModal(false)} centered size="sm">
+        <Modal.Header closeButton className="py-2.5 bg-light">
+          <Modal.Title className="fs-6 fw-bold text-danger d-flex align-items-center gap-2">
+            <IconAlertTriangle size={18} />
+            Fiş Silme Onayı
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="py-3 text-center">
+          <p className="mb-2">
+            <strong>#{belgeNo || fisId}</strong> numaralı döviz fişi silinecektir.
+          </p>
+          <p className="mb-0 fw-semibold text-danger">Yine de silinsin mi?</p>
+        </Modal.Body>
+        <Modal.Footer className="py-2 bg-light d-flex justify-content-between">
+          <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirmModal(false)}>
+            Vazgeç
+          </Button>
+          <Button variant="danger" size="sm" onClick={confirmExecuteDelete}>
+            Evet, Sil
           </Button>
         </Modal.Footer>
       </Modal>

@@ -11878,20 +11878,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         </Modal.Footer>
       </Modal>
 
-      {/* Silme Onay Modalı (F8) */}
+      {/* Silme Onay Modalı */}
       <Modal show={showDeleteConfirm} onHide={() => setShowDeleteConfirm(false)} centered size="sm">
-        <Modal.Header closeButton className="py-2">
-          <Modal.Title className="h6 mb-0">
-            <IconAlertTriangle size={16} className="text-danger me-1" />
+        <Modal.Header closeButton className="py-2.5 bg-light">
+          <Modal.Title className="fs-6 fw-bold text-danger d-flex align-items-center gap-2">
+            <IconAlertTriangle size={18} />
             Belgeyi Sil
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body className="small py-2">
-          Belge <strong>#{fisNo || fisId}</strong> silinecektir. Emin misiniz?
+        <Modal.Body className="py-3 text-center">
+          <p className="mb-2">
+            Belge <strong>#{fisNo || fisId}</strong> silinecektir.
+          </p>
+          <p className="mb-0 fw-semibold text-danger">Yine de silinsin mi?</p>
         </Modal.Body>
-        <Modal.Footer className="py-1">
-          <Button size="sm" variant="secondary" onClick={() => setShowDeleteConfirm(false)}>İptal</Button>
-          <Button size="sm" variant="danger" onClick={handleDelete}>Sil</Button>
+        <Modal.Footer className="py-2 bg-light d-flex justify-content-between">
+          <Button size="sm" variant="secondary" onClick={() => setShowDeleteConfirm(false)}>Vazgeç</Button>
+          <Button size="sm" variant="danger" onClick={handleDelete}>Evet, Sil</Button>
         </Modal.Footer>
       </Modal>
 

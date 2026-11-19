@@ -45,7 +45,7 @@ import {
 } from "../../services/vezneIzlemeService";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
 import { useAuth } from "../../context/AuthContext";
-import { onlyDecimal, blockNonNumericKeys, parseDecimal } from "../../utils/numericInput";
+import { onlyDecimal, blockNonNumericKeys, parseDecimal, formatMiktar } from "../../utils/numericInput";
 import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 
 interface VezneBakiyeDropdownProps {
@@ -519,7 +519,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
               paraId: s.paraId,
               paraKodu: s.paraKodu,
               paraAdi: s.paraAdi,
-              miktar: s.miktar,
+              miktar: formatMiktar(s.miktar),
             }))
           );
         } else {
@@ -661,12 +661,104 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
       }
 
       if (field === "miktar") {
-        target.miktar = onlyDecimal(value);
+        target.miktar = typeof value === "number" ? formatMiktar(value) : onlyDecimal(value);
       }
 
       next[index] = target;
       return next;
     });
+  };
+
+  // Miktar alanında binlik basamakları nokta (.) ve kesir kısmını virgül (,) ile biçimlendirir
+  const handleLineMiktarInputChange = (
+    idx: number,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const input = e.target;
+    let rawVal = onlyDecimal(input.value);
+
+    // Eğer nokta girilmişse ondalık virgülüne dönüştür
+    if (rawVal.endsWith(".")) {
+      rawVal = rawVal.slice(0, -1) + ",";
+    } else if (rawVal.includes(".") && !rawVal.includes(",")) {
+      const parts = rawVal.split(".");
+      // Tek nokta varsa ve noktadan sonraki basamak sayısı <= 2 ise ondalık virgüle çevir
+      if (parts.length === 2 && parts[1].length <= 2) {
+        rawVal = `${parts[0]},${parts[1]}`;
+      }
+    }
+
+    if (
+      rawVal.length > 1 &&
+      rawVal.startsWith("0") &&
+      !rawVal.startsWith("0,") &&
+      !rawVal.startsWith("0.")
+    ) {
+      rawVal = rawVal.replace(/^0+/, "") || "0";
+    }
+
+    const selStart = input.selectionStart ?? rawVal.length;
+    const beforeCursor = rawVal.slice(0, selStart);
+    const digitsBefore = (beforeCursor.match(/[0-9,]/g) || []).length;
+    const isAtEnd = selStart >= rawVal.length - 1;
+
+    const formatted = rawVal ? formatMiktar(rawVal) : "";
+    handleLineChange(idx, "miktar", formatted);
+
+    requestAnimationFrame(() => {
+      if (isAtEnd) {
+        input.setSelectionRange(formatted.length, formatted.length);
+      } else {
+        let newCursorPos = 0;
+        let count = 0;
+        for (let i = 0; i < formatted.length; i++) {
+          if (/[0-9,]/.test(formatted[i])) count++;
+          if (count === digitsBefore) {
+            newCursorPos = i + 1;
+            break;
+          }
+        }
+        if (count < digitsBefore) newCursorPos = formatted.length;
+        input.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    });
+  };
+
+  const handleLineMiktarBlur = (idx: number) => {
+    let val = (
+      lines[idx]?.miktar !== undefined && lines[idx]?.miktar !== null
+        ? String(lines[idx].miktar)
+        : ""
+    ).trim();
+    if (val.endsWith(",")) {
+      val = val.slice(0, -1);
+    }
+    if (val !== "") {
+      handleLineChange(idx, "miktar", formatMiktar(val));
+    }
+  };
+
+  const handleNumericDotKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    idx: number
+  ) => {
+    if (e.key === "." || e.key === "Decimal") {
+      e.preventDefault();
+      const input = e.currentTarget;
+      const raw = input.value;
+      if (!raw.includes(",")) {
+        const start = input.selectionStart ?? raw.length;
+        const end = input.selectionEnd ?? raw.length;
+        const nextVal = raw.slice(0, start) + "," + raw.slice(end);
+        const formatted = formatMiktar(nextVal);
+        handleLineChange(idx, "miktar", formatted);
+        requestAnimationFrame(() => {
+          const commaIdx = formatted.indexOf(",");
+          const pos = commaIdx !== -1 ? commaIdx + 1 : formatted.length;
+          input.setSelectionRange(pos, pos);
+        });
+      }
+    }
   };
 
   // Keyboard navigation across grid cells with Arrow keys & Enter
@@ -692,7 +784,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
           const prevKod = (prevRow.paraKodu || "").trim();
           handleLineChange(idx, "paraKodu", prevKod);
         } else if (field === "miktar") {
-          handleLineChange(idx, "miktar", prevRow.miktar ?? "");
+          handleLineChange(idx, "miktar", prevRow.miktar ? formatMiktar(prevRow.miktar) : "");
         }
         setTimeout(() => {
           const input = rowInputRefs.current[`${field}-${idx}`];
@@ -893,7 +985,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
           paraId: b.paraId,
           paraKodu: b.paraKodu,
           paraAdi: b.paraAdi,
-          miktar: b.miktar,
+          miktar: formatMiktar(b.miktar),
         }));
 
         setLines(newLines);
@@ -939,7 +1031,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
       paraId: l.paraId,
       kod: l.paraKodu,
       ad: l.paraAdi,
-      sayilacak: Number(l.miktar) || 0,
+      sayilacak: typeof l.miktar === "number" ? l.miktar : parseDecimal(l.miktar),
     }));
 
   const handleOpenParaSay = useCallback(() => {
@@ -959,7 +1051,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
             0
           );
           if (total > 0) {
-            return { ...row, miktar: total };
+            return { ...row, miktar: formatMiktar(total) };
           }
         }
         return row;
@@ -1061,7 +1153,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
                   ${validLines.map((l) => `
                     <tr>
                       <td style="padding: 3px 0;">${l.paraKodu} - ${l.paraAdi}</td>
-                      <td style="text-align: right; font-weight: bold; padding: 3px 0;">${Number(l.miktar).toLocaleString("tr-TR", { minimumFractionDigits: 2 })}</td>
+                      <td style="text-align: right; font-weight: bold; padding: 3px 0;">${(typeof l.miktar === "number" ? l.miktar : parseDecimal(l.miktar)).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
                     </tr>
                   `).join("")}
                 </tbody>
@@ -1633,9 +1725,11 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
                       className="text-end fw-bold p-1"
                       style={{ height: "26px", fontSize: "13px" }}
                       value={line.miktar}
-                      onChange={(e) => handleLineChange(idx, "miktar", e.target.value)}
+                      onChange={(e) => handleLineMiktarInputChange(idx, e as any)}
+                      onBlur={() => handleLineMiktarBlur(idx)}
                       onKeyDown={(e) => {
                         blockNonNumericKeys(e, true);
+                        handleNumericDotKeyDown(e as any, idx);
                         handleGridKeyDown(e, idx, "miktar");
                       }}
                     />
@@ -1789,11 +1883,12 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
             <span>Vezne Transferi Silme Onayı</span>
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body className="p-3 small">
-          <p className="mb-2 fw-semibold">
-            {refNo || `#${transferId}`} numaralı vezne transfer kaydını silmek istediğinize emin misiniz?
+        <Modal.Body className="p-3 small text-center">
+          <p className="mb-2">
+            <strong>{refNo || `#${transferId}`}</strong> numaralı vezne transfer kaydı silinecektir.
           </p>
-          <div className="alert alert-warning mb-0 py-1.5 px-2.5 small">
+          <p className="mb-2 fw-semibold text-danger">Yine de silinsin mi?</p>
+          <div className="alert alert-warning mb-0 py-1.5 px-2.5 small text-start">
             <strong>Dikkat:</strong> Bu işlem veritabanında kayıtlı bakiyeleri otomatik olarak tersine çevirecek (Alan vezneden eksiltip Veren vezneye iade edecek) ve işlem geri alınamayacaktır.
           </div>
         </Modal.Body>
@@ -1950,11 +2045,16 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
               </thead>
               <tbody>
                 {lines
-                  .filter((l) => l.paraId > 0 && Number(l.miktar) !== 0)
+                  .filter((l) => l.paraId > 0 && (typeof l.miktar === "number" ? l.miktar : parseDecimal(l.miktar)) !== 0)
                   .map((l, i) => (
                     <tr key={i}>
                       <td><strong>{l.paraKodu}</strong> - {l.paraAdi}</td>
-                      <td className="text-end fw-bold">{Number(l.miktar).toLocaleString("tr-TR", { minimumFractionDigits: 2 })}</td>
+                      <td className="text-end fw-bold">
+                        {(typeof l.miktar === "number" ? l.miktar : parseDecimal(l.miktar)).toLocaleString("tr-TR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 4,
+                        })}
+                      </td>
                     </tr>
                   ))}
               </tbody>

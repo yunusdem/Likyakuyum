@@ -971,8 +971,11 @@ export const BankaHareketiPage: React.FC = () => {
             <IconAlertTriangle size={18} /> Hareketi Sil
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body className="py-3 text-secondary" style={{ fontSize: "13px" }}>
-          Bu banka hareketini (#{hareketId}) silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+        <Modal.Body className="py-3 text-center" style={{ fontSize: "13px" }}>
+          <p className="mb-2">
+            Bu banka hareketini (<strong>#{hareketId}</strong>) silmek istediğinize emin misiniz?
+          </p>
+          <p className="mb-0 fw-semibold text-danger">Yine de silinsin mi?</p>
         </Modal.Body>
         <Modal.Footer className="py-2 bg-light">
           <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(false)}>

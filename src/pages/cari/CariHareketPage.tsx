@@ -48,6 +48,7 @@ import { CariService, CariKartItem, CariLookups } from "../../services/cariServi
 import { apiClient } from "../../services/apiClient";
 import { useAuth } from "../../context/AuthContext";
 import { onlyDecimal, blockNonNumericKeys, formatMiktar, parseDecimal } from "../../utils/numericInput";
+import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 
 interface VezneItem {
   id: number;
@@ -822,25 +823,6 @@ export const CariHareketPage: React.FC = () => {
     });
   }, [user, kYetki]);
 
-  // Global F3 & F10 shortcut listener
-  useEffect(() => {
-    const handleGlobalF3 = (e: KeyboardEvent) => {
-      if (e.key === "F3") {
-        e.preventDefault();
-        e.stopPropagation();
-        handleOpenSearchModal();
-      } else if (e.key === "F10") {
-        if (!isRecordLocked && !isSaving) {
-          e.preventDefault();
-          e.stopPropagation();
-          handleSave();
-        }
-      }
-    };
-    window.addEventListener("keydown", handleGlobalF3, { capture: true });
-    return () => window.removeEventListener("keydown", handleGlobalF3, { capture: true });
-  }, [handleOpenSearchModal, isRecordLocked, isSaving, handleSave]);
-
   const handleRemoveLine = (index: number) => {
     if (isRecordLocked) return;
     if (lines.length <= 1) {
@@ -997,7 +979,7 @@ export const CariHareketPage: React.FC = () => {
             if (cariHareketler && cariHareketler.length > 0) {
               loadRecordById(cariHareketler[0].id);
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }
     } else {
@@ -1137,7 +1119,7 @@ export const CariHareketPage: React.FC = () => {
             if (cariHareketler && cariHareketler.length > 0) {
               loadRecordById(cariHareketler[0].id);
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }
     } else {
@@ -1608,6 +1590,77 @@ export const CariHareketPage: React.FC = () => {
     ? `D- Cari Hareket Düzeltme ${currentHareketId ? `(#${currentHareketId})` : ""}`
     : `C- Cari Hareket Kayıt ${currentHareketId ? `(#${currentHareketId})` : ""}`;
 
+  // Global F1, F2, F3, F4, F8, F10, F12 & Ctrl+N shortcut listener
+  useEffect(() => {
+    const handleGlobalShortcuts = (e: KeyboardEvent) => {
+      // Modallar açıkken F tuşlarını engelle
+      if (showCariModal || showParaModal || showSearchModal || showDeleteModal) {
+        return;
+      }
+
+      if (e.key === "F1") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isRecordLocked && !isSaving) {
+          handleSave();
+        }
+      } else if (e.key === "F2" || isCtrlNEvent(e)) {
+        if (!isEditMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleNewRecord();
+        }
+      } else if (e.key === "F3") {
+        if (isEditMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleOpenSearchModal();
+        }
+      } else if (e.key === "F4") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isRecordLocked) {
+          setCariSearchTerm(cariKod.trim() || cariAd.trim());
+          setShowCariModal(true);
+        }
+      } else if (e.key === "F8") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (cariKartId) {
+          loadCariBakiye(cariKartId);
+        }
+      } else if (e.key === "F10") {
+        if (!isRecordLocked && !isSaving) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSave();
+        }
+      } else if (e.key === "F12") {
+        e.preventDefault();
+        e.stopPropagation();
+        handlePrint();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalShortcuts, { capture: true });
+    return () => window.removeEventListener("keydown", handleGlobalShortcuts, { capture: true });
+  }, [
+    showCariModal,
+    showParaModal,
+    showSearchModal,
+    showDeleteModal,
+    isRecordLocked,
+    isSaving,
+    handleSave,
+    handleNewRecord,
+    isEditMode,
+    handleOpenSearchModal,
+    cariKod,
+    cariAd,
+    cariKartId,
+    loadCariBakiye,
+    handlePrint,
+  ]);
+
   // Point 3: Vezne dolu olduğu için kod bölümüne fokuslu gelecek
   useERPAutoFocus({
     preferredSelector: "#cariKodInput",
@@ -1625,7 +1678,7 @@ export const CariHareketPage: React.FC = () => {
         hideSave={isRecordLocked}
         onSearch={handleOpenSearchModal}
         onDelete={isEditMode && currentHareketId && !isRecordLocked ? () => setShowDeleteModal(true) : undefined}
-        hideSearch={false}
+        hideSearch={!isEditMode}
         hideDelete={!isEditMode || isRecordLocked}
         hideNavigation={!isEditMode}
         onFirst={navInfo.firstId ? handleNavFirst : undefined}
@@ -2085,7 +2138,7 @@ export const CariHareketPage: React.FC = () => {
                                     }}
                                     onChange={(e) => handleLineSmbTextChange(idx, e.target.value)}
                                     onKeyDown={(e) => handleSmbKeyDown(e, idx)}
-                                     onBlur={() => {
+                                    onBlur={() => {
                                       setTimeout(() => {
                                         setActiveSmbSuggestIdx(null);
                                         setLines((prev) => {
@@ -2311,7 +2364,24 @@ export const CariHareketPage: React.FC = () => {
                 <Form.Label column style={{ width: "115px", flex: "0 0 115px", maxWidth: "115px" }} className="small fw-semibold text-secondary text-start text-nowrap">
                   Cari tipi
                 </Form.Label>
-                <Col>
+                <Col
+                  onKeyDown={(e) => {
+                    if (isRecordLocked) return;
+                    if (e.key === " " || e.code === "Space") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setCariTipi((prev) => {
+                        const next = prev === 0 ? 1 : 0;
+                        if (next === 1) {
+                          setTimeout(() => cariTipiAlacakRef.current?.focus(), 10);
+                        } else {
+                          setTimeout(() => cariTipiBorcRef.current?.focus(), 10);
+                        }
+                        return next;
+                      });
+                    }
+                  }}
+                >
                   <ButtonGroup className="w-100" style={{ maxWidth: "340px" }}>
                     <Button
                       ref={cariTipiBorcRef}
@@ -2321,6 +2391,13 @@ export const CariHareketPage: React.FC = () => {
                       onClick={() => !isRecordLocked && setCariTipi(0)}
                       onKeyDown={(e) => {
                         if (isRecordLocked) return;
+                        if (e.key === " " || e.code === "Space") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setCariTipi(1);
+                          setTimeout(() => cariTipiAlacakRef.current?.focus(), 10);
+                          return;
+                        }
                         if (e.key === "ArrowRight") {
                           e.preventDefault();
                           setCariTipi(1);
@@ -2347,6 +2424,13 @@ export const CariHareketPage: React.FC = () => {
                       onClick={() => !isRecordLocked && setCariTipi(1)}
                       onKeyDown={(e) => {
                         if (isRecordLocked) return;
+                        if (e.key === " " || e.code === "Space") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setCariTipi(0);
+                          setTimeout(() => cariTipiBorcRef.current?.focus(), 10);
+                          return;
+                        }
                         if (e.key === "ArrowLeft") {
                           e.preventDefault();
                           setCariTipi(0);
@@ -2512,6 +2596,93 @@ export const CariHareketPage: React.FC = () => {
         </Col>
       </Row>
 
+      {/* ─── Alt Kısayol ve İşlem Çubuğu (Footer) ────────────── */}
+      <div
+        className="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-1.5 rounded border bg-white text-muted shadow-sm mt-3"
+        style={{ fontSize: "11.5px" }}
+      >
+        <div className="d-flex align-items-center flex-wrap gap-2 gap-md-3">
+          {/* F1) Kaydet */}
+          <span
+            className="user-select-none d-inline-flex align-items-center gap-1"
+            onClick={!isRecordLocked && !isSaving ? handleSave : undefined}
+            style={{ cursor: !isRecordLocked && !isSaving ? "pointer" : "not-allowed" }}
+            title="Cari Hareketi Kaydet (F1 / F10)"
+          >
+            <kbd className="bg-primary text-white px-1.5 py-0.5 rounded fw-bold">F1</kbd>
+            <strong className="text-dark">Kaydet</strong>
+          </span>
+
+          {!isEditMode && (
+            <>
+              <span className="text-secondary">•</span>
+
+              {/* F2 / Ctrl+N) Yeni Kayıt */}
+              <span
+                className="user-select-none d-inline-flex align-items-center gap-1"
+                onClick={handleNewRecord}
+                style={{ cursor: "pointer" }}
+                title="Yeni Cari Hareket Fişi Aç (F2 / Ctrl+N)"
+              >
+                <kbd className="bg-success text-white px-1.5 py-0.5 rounded fw-bold">F2 / Ctrl+N</kbd>
+                <strong className="text-dark">Yeni Fiş</strong>
+              </span>
+            </>
+          )}
+
+          {isEditMode && (
+            <>
+              <span className="text-secondary">•</span>
+
+              {/* F3) Fiş Arama */}
+              <span
+                className="user-select-none d-inline-flex align-items-center gap-1"
+                onClick={handleOpenSearchModal}
+                style={{ cursor: "pointer" }}
+                title="Geçmiş Cari Hareket Fişlerini Dürbünle Ara ve Seç (F3)"
+              >
+                <kbd className="bg-info text-white px-1.5 py-0.5 rounded fw-bold">F3</kbd>
+                <strong className="text-dark">Fiş Ara</strong>
+              </span>
+            </>
+          )}
+
+          <span className="text-secondary">•</span>
+
+          {/* F4) Cari Kart Seç */}
+          <span
+            className="user-select-none d-inline-flex align-items-center gap-1"
+            onClick={() => {
+              if (isRecordLocked) return;
+              setCariSearchTerm(cariKod.trim() || cariAd.trim());
+              setShowCariModal(true);
+            }}
+            style={{ cursor: !isRecordLocked ? "pointer" : "not-allowed" }}
+            title="Cari Kart Listesi ve Arama Penceresini Aç (F4 / Çift Tıklama ile Seçilir)"
+          >
+            <kbd className="bg-secondary text-white px-1.5 py-0.5 rounded fw-bold">F4</kbd>
+            <strong className="text-dark">Cari Seç</strong>
+          </span>
+
+          <span className="text-secondary">•</span>
+
+          {/* F8) Bakiye Yenile */}
+          <span
+            className="user-select-none d-inline-flex align-items-center gap-1"
+            onClick={() => cariKartId && loadCariBakiye(cariKartId)}
+            style={{ cursor: cariKartId ? "pointer" : "not-allowed" }}
+            title="Seçili Carinin Bakiye Tablosunu Sunucudan Yenile (F8)"
+          >
+            <kbd className="bg-warning text-dark px-1.5 py-0.5 rounded fw-bold">F8</kbd>
+            <strong className="text-dark">Bakiye Yenile</strong>
+          </span>
+        </div>
+
+        <div className="text-muted small d-none d-lg-block fw-semibold">
+          Likya Kuyumculuk ERP
+        </div>
+      </div>
+
       {/* 4. MODALS */}
 
       {/* Cari Kart Lookup Modal */}
@@ -2519,6 +2690,7 @@ export const CariHareketPage: React.FC = () => {
         show={showCariModal}
         onHide={() => setShowCariModal(false)}
         title="Cari Kart Seçimi"
+        selectOnDoubleClick={true}
         items={cariList}
         initialSearchTerm={cariSearchTerm}
         isLoading={isLoadingLookups}
@@ -2549,6 +2721,7 @@ export const CariHareketPage: React.FC = () => {
           setActiveParaLineIndex(null);
         }}
         title="Para Birimi / SMB Seçimi"
+        selectOnDoubleClick={true}
         items={paraList}
         isLoading={isLoadingLookups}
         searchPlaceholder="Para kodu veya adı ile arayın..."
@@ -2651,14 +2824,14 @@ export const CariHareketPage: React.FC = () => {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="py-3 text-center">
-          <p className="mb-1">
-            <strong>#{currentHareketId}</strong> numaralı cari hareket kaydını silmek istediğinize emin misiniz?
+          <p className="mb-2">
+            <strong>#{currentHareketId}</strong> numaralı cari hareket kaydı silinecektir.
           </p>
-          <small className="text-muted">Bu işlem geri alınamaz.</small>
+          <p className="mb-0 fw-semibold text-danger">Yine de silinsin mi?</p>
         </Modal.Body>
         <Modal.Footer className="py-2 bg-light d-flex justify-content-between">
           <Button variant="secondary" size="sm" onClick={() => setShowDeleteModal(false)}>
-            İptal
+            Vazgeç
           </Button>
           <Button variant="danger" size="sm" onClick={handleDeleteConfirm} disabled={isSaving}>
             Evet, Sil

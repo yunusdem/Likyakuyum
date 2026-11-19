@@ -1063,6 +1063,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // Print Preview Modal
   const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; no: string } | null>(null);
   const [isPendingDirectPrint, setIsPendingDirectPrint] = useState<boolean>(false);
   const [printedFatura, setPrintedFatura] = useState<PerakendeFaturaModel | null>(null);
 
@@ -6940,9 +6942,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       showError("Bu fiş başka bir kullanıcıya aittir; silinemez.");
       return;
     }
-    if (!window.confirm(`'${no}' numaralı faturayı silmek ve ürünleri stoğa iade etmek istediğinize emin misiniz?`)) {
-      return;
-    }
+    setDeleteTarget({ id, no });
+    setShowDeleteModal(true);
+  };
+
+  const confirmExecuteDelete = async () => {
+    if (!deleteTarget) return;
+    const { id, no } = deleteTarget;
+    setShowDeleteModal(false);
+    setDeleteTarget(null);
 
     try {
       await PerakendeService.deleteInvoice(id);
@@ -10918,6 +10926,30 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         initialBankaAciklama={bankaAciklama}
         onApply={handleApplyBankaTlHesabi}
       />
+
+      {/* Silme Onay Modalı */}
+      <Modal show={showDeleteModal} onHide={() => { setShowDeleteModal(false); setDeleteTarget(null); }} centered size="sm">
+        <Modal.Header closeButton className="py-2.5 bg-light">
+          <Modal.Title className="fs-6 fw-bold text-danger d-flex align-items-center gap-2">
+            <IconAlertTriangle size={18} />
+            Fatura Silme Onayı
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="py-3 text-center">
+          <p className="mb-2">
+            <strong>#{deleteTarget?.no || deleteTarget?.id}</strong> numaralı fatura silinecek ve ürünler stoğa iade edilecektir.
+          </p>
+          <p className="mb-0 fw-semibold text-danger">Yine de silinsin mi?</p>
+        </Modal.Body>
+        <Modal.Footer className="py-2 bg-light d-flex justify-content-between">
+          <Button variant="secondary" size="sm" onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}>
+            Vazgeç
+          </Button>
+          <Button variant="danger" size="sm" onClick={confirmExecuteDelete}>
+            Evet, Sil
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       <SayfaCikisUyarisiModal
         acik={cikisUyarisi.acik}

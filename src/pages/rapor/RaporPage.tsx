@@ -95,8 +95,15 @@ const paraKolonlar: SecimKolon<ProductItem>[] = [
 ];
 const paraArama = (p: ProductItem) => [p.kod, p.ad, p.bagliParaKodu];
 
-export const RaporPage: React.FC = () => {
-  const { yol } = useParams<{ yol: string }>();
+export interface RaporPageProps {
+  yol?: string;
+  isModal?: boolean;
+  onClose?: () => void;
+}
+
+export const RaporPage: React.FC<RaporPageProps> = ({ yol: propYol, isModal, onClose }) => {
+  const { yol: paramYol } = useParams<{ yol: string }>();
+  const yol = propYol || paramYol;
   const { user } = useAuth();
   const kYetki = useKullaniciYetkisi();
   const menu = useMemo(() => RAPOR_MENU.find(m => m.yol === yol), [yol]);
@@ -546,7 +553,7 @@ export const RaporPage: React.FC = () => {
         </div>
       )}
 
-      <Card className="border shadow-sm my-2 w-100 bg-white">
+      <Card className={`border shadow-sm w-100 bg-white ${isModal ? "mb-2 mt-0" : "my-2"}`}>
         {/* Tek başlık satırı: rapor adı + (kapalıyken) filtre özeti + işlem düğmeleri; parametreler açıkken altında kompakt alan kutusu.
             Kullanıcı isteği 01.10.2026: kısa olsun, ekranın küçük bölümünü kaplasın. Uygula'dan sonra kutu kapanır (yönetici isteği 14.09.2026). */}
         <Card.Body className="p-2">
