@@ -50,6 +50,7 @@ const KISAYOLLAR: { k: TarihKisayolu; ad: string }[] = [
   { k: "dun", ad: "Dün" },
   { k: "buHafta", ad: "Bu hafta" },
   { k: "buAy", ad: "Bu ay" },
+  { k: "tumu", ad: "Tümü" },
 ];
 
 const kutu: React.CSSProperties = { fontSize: "12px", height: "28px" };

@@ -18,10 +18,11 @@ export interface FisDurbunFiltreDegeri {
   belgeNo: string;
 }
 
-export type TarihKisayolu = "bugun" | "dun" | "buHafta" | "buAy";
+export type TarihKisayolu = "bugun" | "dun" | "buHafta" | "buAy" | "tumu";
 
 /** Hızlı düğme → yerel gün aralığı. Hafta pazartesi başlar. */
 export function tarihAraligi(kisayol: TarihKisayolu, simdi: Date = new Date()): { baslangic: string; bitis: string } {
+  if (kisayol === "tumu") return { baslangic: "", bitis: "" };
   const bugun = new Date(simdi.getFullYear(), simdi.getMonth(), simdi.getDate());
   if (kisayol === "bugun") return { baslangic: yerelGun(bugun), bitis: yerelGun(bugun) };
   if (kisayol === "dun") {
@@ -38,6 +39,7 @@ export function tarihAraligi(kisayol: TarihKisayolu, simdi: Date = new Date()): 
 
 /** Seçili aralık hangi hızlı düğmeye denk geliyor (düğmeyi vurgulamak için) */
 export function hangiKisayol(baslangic: string, bitis: string, simdi: Date = new Date()): TarihKisayolu | null {
+  if (!baslangic && !bitis) return "tumu";
   for (const k of ["bugun", "dun", "buHafta", "buAy"] as TarihKisayolu[]) {
     const a = tarihAraligi(k, simdi);
     if (a.baslangic === baslangic && a.bitis === bitis) return k;

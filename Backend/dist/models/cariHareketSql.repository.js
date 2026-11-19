@@ -1017,6 +1017,64 @@ export class CariHareketSqlRepository {
             else {
                 throw ApiError.badRequest(`Seçilen Cari Kart (#${data.cariKartId}${data.cariKod ? ` - ${data.cariKod}` : ""}) veritabanında bulunamadı. Lütfen sayfayı yenileyip güncel cari listesinden seçim yapınız.`);
             }
+            // 1. Önce bu ID'nin TODVZ_CARI_HAREKET tablosunda olup olmadığını kontrol et
+            const chCheck = await new sql.Request(transaction).input("CH_ID", sql.Int, numId).query(`
+        SELECT [CARI_HAREKET_ID] FROM [dbo].[TODVZ_CARI_HAREKET] WITH (NOLOCK) WHERE [CARI_HAREKET_ID] = @CH_ID;
+      `);
+            if (chCheck.recordset.length > 0) {
+                await CariHareketSqlRepository.stokGirisiDegil(transaction, numId);
+                await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
+                const headerRequest = new sql.Request(transaction);
+                headerRequest.input("CARI_HAREKET_ID", sql.Int, numId);
+                headerRequest.input("CARI_KART_ID", sql.Int, effectiveCariKartId);
+                headerRequest.input("TARIH", sql.DateTime, data.tarih ? new Date(data.tarih) : new Date());
+                headerRequest.input("HAREKET_TIPI", sql.TinyInt, data.hareketTipi ?? 0);
+                headerRequest.input("ACIKLAMA", sql.VarChar(100), (data.aciklama || "").trim().slice(0, 100));
+                headerRequest.input("TIP", sql.TinyInt, data.tip ?? 0);
+                headerRequest.input("GUNCELLEYEN_ID", sql.Int, userId);
+                headerRequest.input("VEZNE_ID", sql.Int, data.vezneId);
+                headerRequest.input("POS_CIHAZI_ID", sql.Int, data.posCihaziId || null);
+                await headerRequest.query(`
+          UPDATE [dbo].[TODVZ_CARI_HAREKET]
+          SET
+            [CARI_KART_ID] = @CARI_KART_ID,
+            [TARIH] = @TARIH,
+            [HAREKET_TIPI] = @HAREKET_TIPI,
+            [ACIKLAMA] = @ACIKLAMA,
+            [TIP] = @TIP,
+            [GUNCELLEYEN_ID] = @GUNCELLEYEN_ID,
+            [GUNCELLEME_ZAMANI] = GETDATE(),
+            [VEZNE_ID] = @VEZNE_ID,
+            [POS_CIHAZI_ID] = @POS_CIHAZI_ID
+          WHERE [CARI_HAREKET_ID] = @CARI_HAREKET_ID;
+        `);
+                // Delete existing lines
+                const delReq = new sql.Request(transaction);
+                delReq.input("CARI_HAREKET_ID", sql.Int, numId);
+                await delReq.query("DELETE FROM [dbo].[TODVZ_CARI_HAREKET_SATIRI] WHERE [CARI_HAREKET_ID] = @CARI_HAREKET_ID;");
+                // Insert new lines
+                const validLines = (data.satirlar || []).filter((s) => s.paraId && s.meblag > 0);
+                for (let i = 0; i < validLines.length; i++) {
+                    const line = validLines[i];
+                    const lineReq = new sql.Request(transaction);
+                    lineReq.input("CARI_HAREKET_ID", sql.Int, numId);
+                    lineReq.input("SATIR_NO", sql.Int, i + 1);
+                    lineReq.input("PARA_ID", sql.Int, line.paraId);
+                    lineReq.input("MEBLAG", sql.Float, Number(line.meblag));
+                    await lineReq.query(`
+            INSERT INTO [dbo].[TODVZ_CARI_HAREKET_SATIRI] ([CARI_HAREKET_ID], [SATIR_NO], [PARA_ID], [MEBLAG])
+            VALUES (@CARI_HAREKET_ID, @SATIR_NO, @PARA_ID, @MEBLAG);
+          `);
+                }
+                await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, 1);
+                await transaction.commit();
+                const updated = await CariHareketSqlRepository.findById(numId, dbContext);
+                if (!updated) {
+                    throw ApiError.internal("Cari hareket güncellendi ancak okunamadı.");
+                }
+                return updated;
+            }
+            // 2. TODVZ_CARI_HAREKET'te yoksa, Sarraf Fişi fallback kontrolü
             const sfCheck = await new sql.Request(transaction).input("SF_ID", sql.Int, numId).query(`
         SELECT [SARRAF_FISI_ID] FROM [dbo].[TODVZ_SARRAF_FISI] WITH (NOLOCK) WHERE [SARRAF_FISI_ID] = @SF_ID;
       `);
@@ -1044,12 +1102,22 @@ export class CariHareketSqlRepository {
                     insOdeme.input("TUTAR", sql.Float, l.meblag);
                     insOdeme.input("CARI_KART_ID", sql.Int, effectiveCariKartId);
                     await insOdeme.query(`
+            DECLARE @HAS_ORANI FLOAT = 0;
+            SELECT TOP 1 @HAS_ORANI = ISNULL(HAS_ORANI, 0)
+            FROM [dbo].[TODVZ_PARA] WITH (NOLOCK)
+            WHERE PARA_ID = @PARA_ID;
+
+            DECLARE @MILYEM_VAL FLOAT = ISNULL(@HAS_ORANI * 1000, 0);
+            DECLARE @HAS_GRAM_VAL FLOAT = CASE WHEN @HAS_ORANI > 0 THEN @MIKTAR * @HAS_ORANI ELSE 0 END;
+
             INSERT INTO [dbo].[TODVZ_ODEME_SATIRI] (
               SARRAF_FISI_ID, SATIR_NO, ISLEME_YERI, ODEME_ARACI_TURU, PARA_ID,
-              MIKTAR, KUR, TUTAR, CARI_KART_ID
+              POS_CIHAZI_ID, MIKTAR, MILYEM, HAS_GRAM, KUR, TUTAR, DEGISTIRILDI,
+              CARI_KART_ID
             ) VALUES (
               @SARRAF_FISI_ID, @SATIR_NO, @ISLEME_YERI, @ODEME_ARACI_TURU, @PARA_ID,
-              @MIKTAR, @KUR, @TUTAR, @CARI_KART_ID
+              NULL, @MIKTAR, @MILYEM_VAL, @HAS_GRAM_VAL, @KUR, @TUTAR, 0,
+              @CARI_KART_ID
             );
           `);
                 }
@@ -1151,31 +1219,64 @@ export class CariHareketSqlRepository {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
             await CariHareketSqlRepository.ensureTablesExist(pool);
             // baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
-            const ownFilter = userFilter ? "AND ([EKLEYEN_ID] = @uId OR [GUNCELLEYEN_ID] = @uId OR (@vId > 0 AND [VEZNE_ID] = @vId))" : "";
+            const chFilter = userFilter ? "AND (H.[EKLEYEN_ID] = @uId OR H.[GUNCELLEYEN_ID] = @uId OR (@vId > 0 AND H.[VEZNE_ID] = @vId))" : "";
+            const sfFilter = userFilter ? "AND (SF.[KULLANICI_ID] = @uId OR (@vId > 0 AND SF.[VEZNE_ID] = @vId))" : "";
+            const fFilter = userFilter ? "AND (F.[KULLANICI_ID] = @uId OR (@vId > 0 AND F.[VEZNE_ID] = @vId))" : "";
+            const fatFilter = userFilter ? "AND (FAT.[KULLANICI_ID] = @uId OR (@vId > 0 AND FAT.[VEZNE_ID] = @vId))" : "";
             const query = `
-        WITH AllMovements AS (
-          SELECT H.[CARI_HAREKET_ID] AS [ID], H.[TARIH], H.[EKLEYEN_ID], H.[GUNCELLEYEN_ID], H.[VEZNE_ID]
+        WITH CombinedMovements AS (
+          SELECT 
+            H.[CARI_HAREKET_ID] AS [ID],
+            H.[TARIH],
+            H.[EKLEME_ZAMANI]
           FROM [dbo].[TODVZ_CARI_HAREKET] H WITH (NOLOCK)
           WHERE H.[CARI_KART_ID] IS NOT NULL
+            ${baslangic ? "AND H.[TARIH] >= CAST(@BAS AS date)" : ""}
+            ${chFilter}
+
           UNION ALL
-          SELECT SF.[SARRAF_FISI_ID] AS [ID], SF.[TARIH], ISNULL(SF.[EKLEYEN_ID], 1) AS [EKLEYEN_ID], ISNULL(SF.[GUNCELLEYEN_ID], ISNULL(SF.[EKLEYEN_ID], 1)) AS [GUNCELLEYEN_ID], SF.[VEZNE_ID]
+
+          SELECT 
+            SF.[SARRAF_FISI_ID] AS [ID],
+            SF.[TARIH],
+            ISNULL(SF.[EKLEME_ZAMANI], SF.[TARIH]) AS [EKLEME_ZAMANI]
           FROM [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK)
-          INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID] AND OS.[ODEME_ARACI_TURU] = 1
-          WHERE (COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) IS NOT NULL)
+          INNER JOIN [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
+          WHERE OS.[ODEME_ARACI_TURU] = 1 
+            AND (COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) IS NOT NULL)
+            ${baslangic ? "AND SF.[TARIH] >= CAST(@BAS AS date)" : ""}
+            ${sfFilter}
+
           UNION ALL
-          SELECT F.[FIS_ID] AS [ID], F.[TARIH], ISNULL(F.[EKLEYEN_ID], 1) AS [EKLEYEN_ID], ISNULL(F.[GUNCELLEYEN_ID], 1) AS [GUNCELLEYEN_ID], F.[VEZNE_ID]
+
+          SELECT 
+            F.[FIS_ID] AS [ID],
+            F.[TARIH],
+            ISNULL(F.[EKLEME_ZAMANI], F.[TARIH]) AS [EKLEME_ZAMANI]
           FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
-          WHERE F.[CARI_KART_ID] IS NOT NULL AND F.[CARI_KART_ID] > 0 AND ISNULL(F.[IPTAL], 0) = 0
+          WHERE F.[CARI_KART_ID] IS NOT NULL
+            ${baslangic ? "AND F.[TARIH] >= CAST(@BAS AS date)" : ""}
+            ${fFilter}
+
           UNION ALL
-          SELECT FAT.[FATURA_ID] AS [ID], FAT.[TARIH], ISNULL(FAT.[EKLEYEN_ID], 1) AS [EKLEYEN_ID], 1 AS [GUNCELLEYEN_ID], FAT.[VEZNE_ID]
+
+          SELECT 
+            FAT.[FATURA_ID] AS [ID],
+            FAT.[TARIH],
+            ISNULL(FAT.[EKLEME_ZAMANI], FAT.[TARIH]) AS [EKLEME_ZAMANI]
           FROM [dbo].[TODVZ_FATURA] FAT WITH (NOLOCK)
           LEFT JOIN [dbo].[TODVZ_FATURA_ODEME] FO WITH (NOLOCK) ON FO.[FATURA_ID] = FAT.[FATURA_ID] AND (FO.[ODEME_ARACI_TURU] = 1 OR FO.[CARI_KART_ID] IS NOT NULL)
           WHERE (COALESCE(NULLIF(FO.[CARI_KART_ID], 0), NULLIF(FAT.[CARI_KART_ID], 0)) IS NOT NULL)
+            ${baslangic ? "AND FAT.[TARIH] >= CAST(@BAS AS date)" : ""}
+            ${fatFilter}
         )
-        SELECT DISTINCT [ID] AS [CARI_HAREKET_ID], [TARIH]
-        FROM AllMovements
-        WHERE 1=1 ${baslangic ? "AND [TARIH] >= CAST(@BAS AS date)" : ""} ${ownFilter}
-        ORDER BY [TARIH] ASC, [CARI_HAREKET_ID] ASC;
+        SELECT 
+          [ID] AS [CARI_HAREKET_ID],
+          MAX([TARIH]) AS [TARIH],
+          MAX([EKLEME_ZAMANI]) AS [EKLEME_ZAMANI]
+        FROM CombinedMovements
+        GROUP BY [ID]
+        ORDER BY MAX([TARIH]) ASC, MAX([EKLEME_ZAMANI]) ASC, [ID] ASC;
       `;
             const navReq = pool.request();
             if (baslangic)

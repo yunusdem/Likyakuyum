@@ -62,7 +62,7 @@ export class CariHareketController {
 
     // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
     const durbun = fisDurbunFiltresiOku(req.query as Record<string, unknown>);
-    if (durbunFiltresiVar(durbun)) {
+    if (durbunFiltresiVar(durbun) || req.query.limit !== undefined) {
       const liste = await CariHareketService.durbunListesi(filters, durbun, Number(req.query.limit) || undefined, dbContext);
       return ApiResponse.ok(res, "Cari hareketler başarıyla listelendi.", liste);
     }

@@ -787,7 +787,13 @@ export const CariHareketPage: React.FC = () => {
   const handleNavFirst = () => navInfo.firstId && loadRecordById(navInfo.firstId);
   const handleNavPrev = () => navInfo.prevId && loadRecordById(navInfo.prevId);
   const handleNavNext = () => navInfo.nextId && loadRecordById(navInfo.nextId);
-  const handleNavLast = () => navInfo.lastId && loadRecordById(navInfo.lastId);
+  const handleNavLast = () => {
+    if (navInfo.lastId && navInfo.lastId !== currentHareketId) {
+      loadRecordById(navInfo.lastId);
+    } else {
+      loadLastRecord();
+    }
+  };
 
   // Open Search Modal (F3)
   // Dürbün listesini pencere kendisi sunucudan filtreli çeker (FisDurbunModal; docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
@@ -809,18 +815,24 @@ export const CariHareketPage: React.FC = () => {
     });
   }, [user, kYetki]);
 
-  // Global F3 shortcut listener
+  // Global F3 & F10 shortcut listener
   useEffect(() => {
     const handleGlobalF3 = (e: KeyboardEvent) => {
       if (e.key === "F3") {
         e.preventDefault();
         e.stopPropagation();
         handleOpenSearchModal();
+      } else if (e.key === "F10") {
+        if (!isRecordLocked && !isSaving) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSave();
+        }
       }
     };
     window.addEventListener("keydown", handleGlobalF3, { capture: true });
     return () => window.removeEventListener("keydown", handleGlobalF3, { capture: true });
-  }, [handleOpenSearchModal]);
+  }, [handleOpenSearchModal, isRecordLocked, isSaving, handleSave]);
 
   const handleRemoveLine = (index: number) => {
     if (isRecordLocked) return;
@@ -893,6 +905,62 @@ export const CariHareketPage: React.FC = () => {
       updated[index] = { ...updated[index], meblag: cleanVal };
       return updated;
     });
+  };
+
+  const handleMiktarInputChange = (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
+    const input = e.currentTarget;
+    let rawVal = onlyDecimal(input.value);
+
+    // Numpad veya klavyeden nokta basıldıysa virgüle çevir
+    if (rawVal.endsWith(".")) {
+      rawVal = rawVal.slice(0, -1) + ",";
+    } else if (!rawVal.includes(",")) {
+      // Tek nokta içeren durumlarda (örn: yapıştırma "1500.5" veya "0.25")
+      const parts = rawVal.split(".");
+      if (parts.length === 2 && (parts[1].length <= 2 || parts[0] === "0" || parts[0] === "")) {
+        rawVal = `${parts[0]},${parts[1]}`;
+      }
+    }
+
+    if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
+      rawVal = rawVal.replace(/^0+/, "") || "0";
+    }
+
+    const selStart = input.selectionStart ?? rawVal.length;
+    const beforeCursor = rawVal.slice(0, selStart);
+    const digitsBefore = (beforeCursor.match(/[0-9,]/g) || []).length;
+    const isAtEnd = selStart >= rawVal.length - 1;
+
+    const formatted = rawVal ? formatMiktar(rawVal) : "";
+    handleLineMeblagChange(idx, formatted);
+
+    requestAnimationFrame(() => {
+      if (isAtEnd) {
+        input.setSelectionRange(formatted.length, formatted.length);
+      } else {
+        let newCursorPos = 0;
+        let count = 0;
+        for (let i = 0; i < formatted.length; i++) {
+          if (/[0-9,]/.test(formatted[i])) count++;
+          if (count === digitsBefore) {
+            newCursorPos = i + 1;
+            break;
+          }
+        }
+        if (count < digitsBefore) newCursorPos = formatted.length;
+        input.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    });
+  };
+
+  const handleMiktarInputBlur = (idx: number) => {
+    let val = (lines[idx]?.meblag !== undefined && lines[idx]?.meblag !== null ? String(lines[idx].meblag) : "").trim();
+    if (val.endsWith(",")) {
+      val = val.slice(0, -1);
+    }
+    if (val !== "") {
+      handleLineMeblagChange(idx, formatMiktar(val));
+    }
   };
 
   // Cari Kod Input & Suggestions (anında canlı eşleşme ve yükleme)
@@ -1336,6 +1404,50 @@ export const CariHareketPage: React.FC = () => {
   const handleMiktarKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
     blockNonNumericKeys(e, true);
 
+    // Nokta / Numpad decimal basıldığında virgüle çevir
+    if (e.key === "." || e.key === "Decimal") {
+      e.preventDefault();
+      const input = e.currentTarget;
+      const raw = input.value || "";
+      if (!raw.includes(",")) {
+        if (!raw || raw.trim() === "") {
+          handleLineMeblagChange(idx, "0,");
+          requestAnimationFrame(() => {
+            input.setSelectionRange(2, 2);
+          });
+          return;
+        }
+        const start = input.selectionStart ?? raw.length;
+        const end = input.selectionEnd ?? raw.length;
+        const nextVal = raw.slice(0, start) + "," + raw.slice(end);
+        const formatted = formatMiktar(nextVal);
+        handleLineMeblagChange(idx, formatted);
+        requestAnimationFrame(() => {
+          const commaIdx = formatted.indexOf(",");
+          const pos = commaIdx !== -1 ? commaIdx + 1 : formatted.length;
+          input.setSelectionRange(pos, pos);
+        });
+      }
+      return;
+    }
+
+    if (e.key === ",") {
+      const input = e.currentTarget;
+      const raw = input.value || "";
+      if (raw.includes(",")) {
+        e.preventDefault();
+        return;
+      }
+      if (!raw || raw.trim() === "") {
+        e.preventDefault();
+        handleLineMeblagChange(idx, "0,");
+        requestAnimationFrame(() => {
+          input.setSelectionRange(2, 2);
+        });
+        return;
+      }
+    }
+
     if (e.key === "ArrowLeft") {
       const { isAtStart } = getSelectionBounds(e.currentTarget);
       if (isAtStart) {
@@ -1364,7 +1476,11 @@ export const CariHareketPage: React.FC = () => {
 
     if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
       e.preventDefault();
-      const currentMeblag = String(lines[idx].meblag).trim();
+      let currentMeblag = String(lines[idx].meblag || "").trim();
+      if (currentMeblag.endsWith(",")) {
+        currentMeblag = currentMeblag.slice(0, -1);
+        handleLineMeblagChange(idx, formatMiktar(currentMeblag));
+      }
       const numMeblag = parseDecimal(currentMeblag);
       const hasValidAmount = numMeblag > 0;
 
@@ -1508,7 +1624,7 @@ export const CariHareketPage: React.FC = () => {
         onFirst={navInfo.firstId ? handleNavFirst : undefined}
         onPrev={navInfo.prevId ? handleNavPrev : undefined}
         onNext={navInfo.nextId ? handleNavNext : undefined}
-        onLast={navInfo.lastId ? handleNavLast : undefined}
+        onLast={handleNavLast}
         onPrint={handlePrint}
         onRefresh={handleRefresh}
         onClear={handleNewRecord}
@@ -2179,18 +2295,12 @@ export const CariHareketPage: React.FC = () => {
                                   disabled={isRecordLocked}
                                   autoComplete="off"
                                   data-custom-enter="true"
+                                  data-decimal="true"
                                   value={line.meblag}
                                   onFocus={() => setActiveGridRowIdx(idx)}
-                                  onChange={(e) => handleLineMeblagChange(idx, e.target.value)}
-                                  onBlur={() => {
-                                    if (line.meblag) {
-                                      handleLineMeblagChange(idx, formatMiktar(line.meblag));
-                                    }
-                                  }}
-                                  onKeyDown={(e) => {
-                                    blockNonNumericKeys(e);
-                                    handleMiktarKeyDown(e, idx);
-                                  }}
+                                  onChange={(e) => handleMiktarInputChange(e, idx)}
+                                  onBlur={() => handleMiktarInputBlur(idx)}
+                                  onKeyDown={(e) => handleMiktarKeyDown(e, idx)}
                                   style={{
                                     border: "none",
                                     outline: "none",

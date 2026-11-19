@@ -34,7 +34,8 @@ export function formatWithThousandDot(val: string | number | undefined | null): 
     if (s.includes(".")) {
       const [intPart, decPart] = s.split(".");
       const formattedInt = intPart.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-      return decPart ? `${formattedInt},${decPart}` : formattedInt;
+      const formattedDec = decPart && decPart.length === 1 ? `${decPart}0` : decPart;
+      return formattedDec ? `${formattedInt},${formattedDec}` : formattedInt;
     }
     return s.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   }
