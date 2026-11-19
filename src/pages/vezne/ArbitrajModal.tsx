@@ -3042,6 +3042,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
       {/* ─── 1) DÖVİZ / PARA SEÇİM MODALI (LOOKUP MODAL) ────────────────────────────────── */}
       <LookupModal<ArbitrajCurrencyItem>
         show={lookupType === "currency"}
+        selectOnDoubleClick={true}
         onHide={() => {
           setLookupType(null);
           let rIdx = activeLookupLineIndexRef.current;

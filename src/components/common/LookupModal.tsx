@@ -192,8 +192,21 @@ function LookupModalContent<T extends Record<string, any>>({
     }
   }, [selectedIndex]);
 
+  const normalizedTitle = (title || "").toLocaleLowerCase("tr-TR");
+  const isProductSelection =
+    normalizedTitle.includes("ürün") ||
+    normalizedTitle.includes("urun") ||
+    normalizedTitle.includes("para") ||
+    normalizedTitle.includes("döviz") ||
+    normalizedTitle.includes("doviz") ||
+    normalizedTitle.includes("maden") ||
+    normalizedTitle.includes("iskonto") ||
+    normalizedTitle.includes("stok kart");
+
   const isDoubleClickMode = Boolean(
-    selectOnDoubleClick || (title && title.toLowerCase().includes("üretici firma"))
+    selectOnDoubleClick ||
+    normalizedTitle.includes("üretici firma") ||
+    isProductSelection
   );
 
   // Single click: Select row (confirm immediately only if not in double-click mode and no renderDetail)
@@ -495,7 +508,15 @@ function LookupModalContent<T extends Record<string, any>>({
                         color: customRowStyle?.color,
                         ...customRowStyle,
                       }}
-                      title={isDisabled ? "Bu ürün bu tabloda seçilemez" : onEdit ? "Seçmek için çift tıklayın, düzenlemek için sağ tıklayın" : undefined}
+                      title={
+                        isDisabled
+                          ? "Bu ürün bu tabloda seçilemez"
+                          : onEdit
+                          ? "Seçmek için çift tıklayın, düzenlemek için sağ tıklayın"
+                          : isDoubleClickMode
+                          ? "Seçmek için çift tıklayın veya Enter'a basın"
+                          : undefined
+                      }
                     >
                       <td
                         className="text-center small"
@@ -549,8 +570,13 @@ function LookupModalContent<T extends Record<string, any>>({
         )}
       </Modal.Body>
       <Modal.Footer className="py-2 bg-light d-flex justify-content-between align-items-center">
-        <span className="small text-muted">
+        <span className="small text-muted d-flex align-items-center">
           Toplam: {filteredItems.length} kayıt {filteredItems.length > gosterimSiniri && `(İlk ${gosterimSiniri} listeleniyor)`}{footerInfo ? <> {footerInfo}</> : null}
+          {isDoubleClickMode && (
+            <span className="badge bg-secondary-subtle text-secondary border ms-2 fw-normal" style={{ fontSize: "11px" }}>
+              🖱️ Çift Tıklama veya Enter ile Seçim
+            </span>
+          )}
         </span>
         <div className="d-flex gap-2 align-items-center">
           {onAddNew && (

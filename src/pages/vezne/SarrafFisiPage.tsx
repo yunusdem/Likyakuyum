@@ -11275,6 +11275,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       {/* Ürün Seç Modalı */}
       <LookupModal<UrunItem>
         show={showUrunModal}
+        selectOnDoubleClick={true}
         initialSearchTerm={urunSearchTerm}
         onHide={() => {
           setShowUrunModal(false);
@@ -11442,6 +11443,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       {/* Ödeme Tablosu: Para / İskonto / Döviz Seçim Modalı */}
       <LookupModal<any>
         show={showOdemeParaIskontoModal}
+        selectOnDoubleClick={true}
         searchByCodeOnly={false}
         initialSearchTerm={odemeLookupSearchTerm}
         onHide={() => {
@@ -11544,6 +11546,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       {/* Ödeme Tablosu: Cari Para (Para / Döviz) Seçim Modalı */}
       <LookupModal<UrunItem>
         show={showOdemeParaModal}
+        selectOnDoubleClick={true}
         searchByCodeOnly={true}
         onHide={() => {
           setShowOdemeParaModal(false);

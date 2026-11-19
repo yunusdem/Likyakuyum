@@ -9857,6 +9857,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       {/* İskonto Seçim Modalı (LookupModal) */}
       <LookupModal<IskontoItem>
         show={showIskontoModal}
+        selectOnDoubleClick={true}
         onHide={() => {
           setShowIskontoModal(false);
           setIskontoSearchTerm("");
@@ -9886,6 +9887,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       {/* Barkodlu Altın / Özel Ürün Seçim Modalı (LookupModal) */}
       <LookupModal
         show={showProductLookup}
+        selectOnDoubleClick={true}
         onHide={() => {
           setShowProductLookup(false);
           setProductSearchTerm("");
@@ -9945,6 +9947,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       {/* Ödeme / Para ve İskonto Seçim Modalı */}
       <LookupModal
         show={showOdemeUrunModal}
+        selectOnDoubleClick={true}
         searchByCodeOnly={false}
         onHide={() => {
           setShowOdemeUrunModal(false);

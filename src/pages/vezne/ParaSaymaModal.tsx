@@ -18,6 +18,7 @@ export interface ParaSaymaModalProps {
   onCountsChange: (newCounts: Record<string, Record<number, number>>) => void;
   tlKurusSayisi?: number;
   dovizKurusSayisi?: number;
+  style?: React.CSSProperties;
 }
 
 // Varsayılan kupür listeleri (veritabanında tanımlı banknot yoksa fallback)
@@ -40,6 +41,7 @@ export const ParaSaymaModal: React.FC<ParaSaymaModalProps> = ({
   onCountsChange,
   tlKurusSayisi = 2,
   dovizKurusSayisi = 2,
+  style,
 }) => {
   const [selectedCurrencyIndex, setSelectedCurrencyIndex] = useState<number>(0);
   const [dbKupurMap, setDbKupurMap] = useState<Record<string, number[]>>({});
@@ -208,6 +210,7 @@ export const ParaSaymaModal: React.FC<ParaSaymaModalProps> = ({
       onHide={onClose}
       centered
       backdrop="static"
+      style={style || { zIndex: 1070 }}
       dialogClassName="modal-para-sayma-dialog"
       contentClassName="p-0 border-0 shadow-2xl rounded-2 overflow-hidden"
     >

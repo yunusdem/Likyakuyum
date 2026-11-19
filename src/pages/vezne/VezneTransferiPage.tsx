@@ -23,6 +23,7 @@ import {
   IconPrinter,
   IconAlertTriangle,
   IconChevronDown,
+  IconX,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
@@ -192,7 +193,19 @@ interface TransferGridRow {
   miktar: number | string;
 }
 
-export const VezneTransferiPage: React.FC = () => {
+export interface VezneTransferiPageProps {
+  isModal?: boolean;
+  onClose?: () => void;
+  forcedMode?: "kayit" | "duzeltme";
+  initialVezneId?: number;
+}
+
+export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
+  isModal = false,
+  onClose,
+  forcedMode,
+  initialVezneId,
+}) => {
   const { user } = useAuth();
   // Tarih değiştirme yetkisi yoksa tarih alanı kilitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
   const kYetki = useKullaniciYetkisi();
@@ -201,8 +214,8 @@ export const VezneTransferiPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const queryId = searchParams.get("id") || searchParams.get("transferId");
-  const isDuzeltmeMode = location.pathname.includes("duzeltme");
+  const queryId = isModal ? null : (searchParams.get("id") || searchParams.get("transferId"));
+  const isDuzeltmeMode = forcedMode ? (forcedMode === "duzeltme") : location.pathname.includes("duzeltme");
 
   // Notifications
   const [notification, setNotification] = useState<{
@@ -414,7 +427,9 @@ export const VezneTransferiPage: React.FC = () => {
         setIzlemeRows(izlemeRes.rows || []);
 
         if (!queryId) {
-          const uv = getUserVezne(vCols);
+          const uv = initialVezneId
+            ? vCols.find((v) => v.id === initialVezneId) || getUserVezne(vCols)
+            : getUserVezne(vCols);
           if (uv) {
             setAlanVezneId(uv.id);
             setAlanVezneKod(uv.kod);
@@ -434,7 +449,9 @@ export const VezneTransferiPage: React.FC = () => {
         setParaList(paralar.map((p) => ({ id: p.id, kod: p.kod.trim(), ad: p.ad.trim() })));
 
         if (!queryId) {
-          const uv = getUserVezne(vezneler);
+          const uv = initialVezneId
+            ? vezneler.find((v) => v.id === initialVezneId) || getUserVezne(vezneler)
+            : getUserVezne(vezneler);
           if (uv) {
             setAlanVezneId(uv.id);
             setAlanVezneKod(uv.kod);
@@ -557,7 +574,7 @@ export const VezneTransferiPage: React.FC = () => {
       verenVezneInputRef.current?.select();
     }, 100);
 
-    if (queryId) {
+    if (queryId && !isModal) {
       navigate(location.pathname, { replace: true });
     }
   }, [getUserVezne, vezneList, queryId, navigate, location.pathname]);
@@ -1099,7 +1116,7 @@ export const VezneTransferiPage: React.FC = () => {
       setLines([createEmptyRow(1)]);
       setActiveRowIndex(0);
 
-      if (queryId) {
+      if (queryId && !isModal) {
         navigate(location.pathname, { replace: true });
       }
 
@@ -1191,6 +1208,15 @@ export const VezneTransferiPage: React.FC = () => {
       if (isF5) {
         e.preventDefault();
         e.stopPropagation();
+      }
+
+      if (isModal && e.key === "Escape" && onClose) {
+        if (!showVerenVezneModal && !showParaModal && !showSearchModal && !showParaSayModal && !showPrintModal && !showDeleteConfirmModal) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+          return;
+        }
       }
 
       if (showVerenVezneModal || showParaModal || showSearchModal || showParaSayModal || showPrintModal || showDeleteConfirmModal) {
@@ -1324,6 +1350,18 @@ export const VezneTransferiPage: React.FC = () => {
                 #{transferId}
               </Badge>
             ) : null}
+            {isModal && onClose && (
+              <Button
+                variant="outline-danger"
+                size="sm"
+                onClick={onClose}
+                className="d-flex align-items-center gap-1 fw-bold ms-1"
+                style={{ height: "28px", fontSize: "11.5px" }}
+                title="Pencereyi Kapat (ESC)"
+              >
+                <IconX size={15} /> Kapat
+              </Button>
+            )}
           </div>
         }
       />
@@ -1743,6 +1781,7 @@ export const VezneTransferiPage: React.FC = () => {
         show={showDeleteConfirmModal}
         onHide={() => setShowDeleteConfirmModal(false)}
         centered
+        style={{ zIndex: 1070 }}
       >
         <Modal.Header closeButton className="bg-danger text-white py-2 px-3">
           <Modal.Title className="fs-6 d-flex align-items-center gap-2">
@@ -1784,6 +1823,7 @@ export const VezneTransferiPage: React.FC = () => {
         onHide={() => setShowPrintModal(false)}
         size="lg"
         centered
+        style={{ zIndex: 1070 }}
       >
         <Modal.Header closeButton className="bg-light py-2 px-3">
           <div className="d-flex align-items-center justify-content-between w-100 me-2 flex-wrap gap-2">

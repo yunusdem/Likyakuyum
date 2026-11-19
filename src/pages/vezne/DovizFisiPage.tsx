@@ -36,6 +36,8 @@ import {
   IconArrowsExchange,
   IconPrinter,
   IconBuildingBank,
+  IconArrowsLeftRight,
+  IconCash,
 } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { yerelGun } from "../../utils/fisTarihi";
@@ -54,6 +56,7 @@ import { IstatistikSecimModal } from "./IstatistikSecimModal";
 import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "./MusteriSecimModal";
 import { KurListesiModal } from "./KurListesiModal";
 import { VezneBakiyeModal } from "./VezneBakiyeModal";
+import { VezneTransferiPage } from "./VezneTransferiPage";
 import { CashDeskService } from "../../services/cashDeskService";
 import { kullaniciVeznesi } from "../../utils/kullaniciVeznesi";
 import { FastLookupCache } from "../../services/fastLookupCache";
@@ -893,6 +896,7 @@ export const DovizFisiPage: React.FC = () => {
   const [showIstatistikModal, setShowIstatistikModal] = useState<boolean>(false);
   const [showKurListesiModal, setShowKurListesiModal] = useState<boolean>(false);
   const [showVezneBakiyeModal, setShowVezneBakiyeModal] = useState<boolean>(false);
+  const [showVezneTransferModal, setShowVezneTransferModal] = useState<boolean>(false);
   const [showBankaTlHesabiModal, setShowBankaTlHesabiModal] = useState<boolean>(false);
   const [bankaAciklama, setBankaAciklama] = useState<string>("");
   const [bankaDagitimSatirlari, setBankaDagitimSatirlari] = useState<Array<{ bankaId: number; bankaAdi: string; tutar: number; aciklama: string }>>([]);
@@ -6954,6 +6958,18 @@ export const DovizFisiPage: React.FC = () => {
               <strong className="text-dark" style={{ fontSize: "11.5px" }}>{vezneKod || "01"}</strong>
               {vezneAd && <span className="text-muted ms-1" style={{ fontSize: "11px" }}>({vezneAd})</span>}
             </div>
+
+            {/* Vezne Transfer Kayıt Butonu */}
+            <Button
+              size="sm"
+              variant="outline-primary"
+              className="px-2 py-0 d-inline-flex align-items-center gap-1 fw-bold shadow-2xs ms-1"
+              style={{ fontSize: "11px", height: "26px", backgroundColor: "#f0f9ff" }}
+              onClick={() => setShowVezneTransferModal(true)}
+              title="G- Vezne Transferi Kayıt Aç"
+            >
+              <IconArrowsLeftRight size={13} className="text-primary" /> Vezne Transfer Kayıt
+            </Button>
           </div>
         }
         onPrint={handleOpenPrintPreview}
@@ -7321,26 +7337,6 @@ export const DovizFisiPage: React.FC = () => {
                           style={{ height: "30px", borderColor: "#cbd5e1" }}
                           onClick={() => {
                             const val = cariKod.trim();
-                            if (val) {
-                              const { cariler, totalCount } = findMatchingCustomers("kod", val);
-                              if (totalCount === 1 && cariler.length === 1) {
-                                const single = cariler[0];
-                                handleSelectCustomer({
-                                  type: "registered",
-                                  id: single.id,
-                                  kod: single.kod,
-                                  unvan: single.ad || (single as any).unvan || "",
-                                  vergiKimlikNo: single.vergiKimlikNo || "",
-                                  adres: single.adres || "",
-                                  telefon: single.telefon || "",
-                                  raw: single,
-                                });
-                                lastFocusedCariKodRef.current = single.kod || "";
-                                unvanRef.current?.focus();
-                                unvanRef.current?.select();
-                                return;
-                              }
-                            }
                             lastModalCallerRef.current = "cariKod";
                             setCariSearchTerm(val);
                             setCariSearchField("kod");
@@ -7449,38 +7445,6 @@ export const DovizFisiPage: React.FC = () => {
                           onClick={() => {
                             const raw = unvan.trim();
                             const term = isAnonymousCustomerName(raw) ? "" : raw;
-                            if (term) {
-                              const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("unvan", term);
-                              if (totalCount === 1) {
-                                if (cariler.length === 1) {
-                                  const single = cariler[0];
-                                  handleSelectCustomer({
-                                    type: "registered",
-                                    id: single.id,
-                                    kod: single.kod,
-                                    unvan: single.ad || (single as any).unvan || "",
-                                    vergiKimlikNo: single.vergiKimlikNo || "",
-                                    adres: single.adres || "",
-                                    telefon: single.telefon || "",
-                                    raw: single,
-                                  });
-                                } else if (kayitsizlar.length === 1) {
-                                  const singleK = kayitsizlar[0];
-                                  handleSelectCustomer({
-                                    type: "unregistered",
-                                    id: null,
-                                    kod: "",
-                                    unvan: singleK.ad || singleK.unvan || "",
-                                    vergiKimlikNo: singleK.vergiKimlikNo || "",
-                                    adres: singleK.adres || "",
-                                    telefon: singleK.telefon || "",
-                                    raw: singleK,
-                                  });
-                                }
-                                tipSelectRef.current?.focus();
-                                return;
-                              }
-                            }
                             lastModalCallerRef.current = "unvan";
                             setCariSearchTerm(term);
                             setCariSearchField("unvan");
@@ -8096,22 +8060,6 @@ export const DovizFisiPage: React.FC = () => {
                             className="p-0 px-1 text-secondary text-decoration-none"
                             onClick={() => {
                               const term = (row.paraKodu || "").trim();
-                              if (term) {
-                                const matched = paraList.filter((p) => {
-                                  const k = (p.kod || "").toUpperCase().trim();
-                                  if (k === "TL" || k === "TRY" || k === "TRL") return false;
-                                  return (p.kod || "").toLowerCase().includes(term.toLowerCase()) || (p.ad || "").toLowerCase().includes(term.toLowerCase());
-                                });
-                                if (matched.length === 1) {
-                                  lastModalCallerRef.current = null;
-                                  lastParaModalRowIndexRef.current = null;
-                                  handleSelectCurrency(row.id, matched[0]);
-                                  const targetIsPZ = isDovizOrZiynetItem(matched[0].kod, matched[0].ad, matched[0].urunTipi);
-                                  const targetCol = targetIsPZ && userDovizZiynetGirisSekli === 0 ? "adet" : "miktar";
-                                  focusCell(idx, targetCol, "select");
-                                  return;
-                                }
-                              }
                               lastModalCallerRef.current = "paraGrid";
                               lastParaModalRowIndexRef.current = idx;
                               setParaModalRowId(row.id);
@@ -8569,6 +8517,9 @@ export const DovizFisiPage: React.FC = () => {
                 </Button>
                 <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => { fetchVezneBalances(vezneId); setShowVezneBakiyeModal(true); }}>
                   F5) Vezne
+                </Button>
+                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold d-inline-flex align-items-center gap-1" style={{ fontSize: "11.5px" }} onClick={() => setShowVezneTransferModal(true)} title="G- Vezne Transferi Kayıt">
+                  <IconArrowsLeftRight size={14} className="text-primary" /> Vezne Transfer Kayıt
                 </Button>
                 <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowBankaTlHesabiModal(true)} title="Banka TL Hesabı (Shift+F5)">
                   Shift+F5) Banka TL Hesabı
@@ -9477,6 +9428,7 @@ export const DovizFisiPage: React.FC = () => {
       {/* Para / Currency Lookup Modal */}
       <LookupModal<ParaItem>
         show={showParaModal}
+        selectOnDoubleClick={true}
         onHide={() => {
           setShowParaModal(false);
           setParaModalRowId(null);
@@ -10183,6 +10135,43 @@ export const DovizFisiPage: React.FC = () => {
         bakiyeler={vezneBakiyeler}
         tlKurusSayisi={tlKurusSayisi}
       />
+
+      {/* G- Vezne Transferi Kayıt Modalı */}
+      {showVezneTransferModal && (
+        <Modal
+          show={showVezneTransferModal}
+          onHide={() => {
+            setShowVezneTransferModal(false);
+            loadLookupsAndList();
+            if (vezneId) fetchVezneBalances(vezneId);
+          }}
+          dialogClassName="modal-95w"
+          size="xl"
+          centered
+          backdrop="static"
+          keyboard={false}
+          style={{ zIndex: 1055 }}
+        >
+          <Modal.Header closeButton className="py-2 px-3 bg-light border-bottom">
+            <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2 mb-0">
+              <IconCash size={18} className="text-primary" />
+              <span>G- Vezne Transferi Kayıt</span>
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body className="p-3" style={{ maxHeight: "calc(90vh - 65px)", overflowY: "auto", backgroundColor: "#f8fafc" }}>
+            <VezneTransferiPage
+              isModal={true}
+              forcedMode="kayit"
+              initialVezneId={vezneId}
+              onClose={() => {
+                setShowVezneTransferModal(false);
+                loadLookupsAndList();
+                if (vezneId) fetchVezneBalances(vezneId);
+              }}
+            />
+          </Modal.Body>
+        </Modal>
+      )}
 
       {/* Shift+F5) Banka TL Hesabı Modalı */}
       <BankaTlHesabiModal
