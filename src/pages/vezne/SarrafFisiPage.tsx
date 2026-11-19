@@ -152,32 +152,61 @@ const createEmptyOdemeRow = (satirNo: number): OdemeRow => ({
   adet: "", miktar: "", milyem: "", refMilyem: "", hasGram: "", kur: "", tutar: "", urunTipi: 0,
 });
 
+export const normStr = (str?: string | null): string => {
+  if (!str) return "";
+  return String(str)
+    .trim()
+    .replace(/İ/g, "I")
+    .replace(/ı/g, "i")
+    .replace(/I/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/Ğ/g, "g")
+    .replace(/ç/g, "c")
+    .replace(/Ç/g, "c")
+    .replace(/ö/g, "o")
+    .replace(/Ö/g, "o")
+    .replace(/ş/g, "s")
+    .replace(/Ş/g, "s")
+    .replace(/ü/g, "u")
+    .replace(/Ü/g, "u")
+    .toUpperCase();
+};
+
 export const isZiynetProduct = (urun?: { urunTipi?: number | string | null; kod?: string; ad?: string; mamulTipi?: string } | null): boolean => {
   if (!urun) return false;
 
-  // 1. Ürün tanımlarından gelen urunTipi 1 (Altın) veya 2 (Gümüş) ise KESİNLİKLE Ziynet değildir!
+  // 1. Ürün tanımlarından gelen urunTipi tanımlı ise KESİNLİKLE önceliklidir!
   if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
     const tipNum = Number(urun.urunTipi);
-    if (tipNum === 1 || tipNum === 2) return false;
-    if (tipNum === 3) return true;
+    if (tipNum === 1) return false; // Tip 1: Altın -> Adı veya kodu ne olursa olsun KESİNLİKLE Ziynet değildir!
+    if (tipNum === 2) return false; // Tip 2: Gümüş -> KESİNLİKLE Ziynet değildir!
+    if (tipNum === 3) return true;  // Tip 3: Ziynet -> KESİNLİKLE Ziynet!
   }
 
   const k = (urun.kod || "").trim().toUpperCase();
   const n = (urun.ad || (urun as any).mamulTipi || "").trim().toUpperCase();
 
-  // 2. Kesinlikle Ziynet olmayan ürünler (Has Külçe, Hurda, Bilezik, Gümüş vb.)
+  // 2. Döviz kodları ise Ziynet değildir
+  const dovizCodes = ["TL", "TRY", "TRL", "USD", "EUR", "GBP", "CHF", "AUD", "CAD", "JPY", "SAR", "AED", "RUB", "KWD", "NOK", "DKK", "SEK"];
+  if (dovizCodes.includes(k)) return false;
+
+  // 3. Gümüş ise Ziynet değildir
+  if (k.includes("GUMUS") || k.includes("GÜMÜŞ") || n.includes("GÜMÜŞ") || n.includes("GUMUS")) {
+    return false;
+  }
+
+  // 4. Kesinlikle Ziynet olmayan ürünler (Has Külçe, Hurda, Bilezik vb.)
   if (
     k === "24" || k === "HAS" || k === "24AYAR" || k === "KULCE" || k === "KÜLÇE" ||
     k.includes("KULCE") || k.includes("KÜLÇE") || n.includes("KÜLÇE") || n.includes("KULCE") ||
     k.includes("HURDA") || n.includes("HURDA") ||
     k.includes("BILEZIK") || k.includes("BİLEZİK") || n.includes("BİLEZİK") || n.includes("BILEZIK") ||
-    k.includes("GUMUS") || k.includes("GÜMÜŞ") || n.includes("GÜMÜŞ") || n.includes("GUMUS") ||
-    n.includes("HAS ALTIN")
+    n.includes("HAS ALTIN") || k === "HAS ALTIN"
   ) {
     return false;
   }
 
-  // 3. Ziynet anahtar kelimeleri ve kodları (Çeyrek, Yarım, Tam, Ata, Cumhuriyet, Gremse, Reşat, Hamit, Ziynet vb.)
+  // 5. Yalnızca urunTipi 1, 2, 3 olarak belirlenmemiş ürünlerde fallback anahtar kelime kontrolü
   const ziynetKeywords = [
     "ÇEYREK", "CEYREK",
     "YARIM",
@@ -203,40 +232,67 @@ export const isZiynetProduct = (urun?: { urunTipi?: number | string | null; kod?
   return false;
 };
 
-export const isCurrencyItem = (item?: { kod?: string; ad?: string; urunTipi?: number; hasOrani?: number; alisMilyem?: number; hasAlisKatsayisi?: number } | null): boolean => {
+export const isCurrencyItem = (item?: { kod?: string; ad?: string; urunTipi?: number | string | null; hasOrani?: number; alisMilyem?: number; hasAlisKatsayisi?: number } | null): boolean => {
   if (!item) return false;
   const k = (item.kod || "").trim().toUpperCase();
   const a = (item.ad || "").trim().toUpperCase();
-  if (k === "TL" || k === "TRY" || k === "TRL" || a.includes("TÜRK LİRASI")) return true;
+
+  // Kesinlikle Altın, Gümüş veya Ziynet olanlar Döviz olamaz
+  if (k.includes("GUMUS") || k.includes("GÜMÜŞ") || a.includes("GÜMÜŞ") || a.includes("GUMUS")) return false;
+  if (
+    k === "24" || k === "HAS" || k === "24AYAR" || k.includes("KULCE") || k.includes("KÜLÇE") ||
+    a.includes("KÜLÇE") || a.includes("KULCE") || k.includes("HURDA") || a.includes("HURDA") ||
+    k.includes("BILEZIK") || k.includes("BİLEZİK") || a.includes("BİLEZİK") || a.includes("BILEZIK") ||
+    a.includes("HAS ALTIN") || k === "HAS ALTIN" || k.includes("AYAR") || a.includes("AYAR")
+  ) {
+    return false;
+  }
+  if (isZiynetProduct(item)) return false;
+
+  if (k === "TL" || k === "TRY" || k === "TRL" || a.includes("TÜRK LİRASI") || a.includes("TURK LIRASI")) return true;
   const dovizCodes = ["USD", "EUR", "GBP", "CHF", "AUD", "CAD", "JPY", "SAR", "AED", "RUB", "KWD", "NOK", "DKK", "SEK"];
   const dovizNames = ["DOLAR", "DOVIZ", "DÖVİZ", "EURO", "AVRO", "POUND", "STERLİN", "STERLIN", "FRANK", "FRANG", "RİYAL", "RIYAL", "RUBLE", "YEN"];
   if (dovizCodes.includes(k) || dovizNames.some((d) => a.includes(d))) return true;
-  const hasMilyemData = (Number(item.hasOrani) > 0) || (Number(item.alisMilyem) > 0) || (Number(item.hasAlisKatsayisi) > 0);
-  if (hasMilyemData) return false;
+
   return false;
 };
 
 export const resolveEffectiveUrunTipi = (item?: { kod?: string; ad?: string; urunTipi?: number | string | null; hasOrani?: number; alisMilyem?: number; hasAlisKatsayisi?: number; mamulTipi?: string } | null): number => {
   if (!item) return 1;
-  // 1. Döviz kontrolü (USD, EUR vb.)
-  if (isCurrencyItem(item as any)) return 0;
-  // 2. Ürün tanımlarındaki doğrudan tip (1: Altın, 2: Gümüş, 3: Ziynet)
+
+  // 1. Ürün kartında urunTipi doğrudan tanımlı ise (1: Altın, 2: Gümüş, 3: Ziynet) KESİNLİKLE KULLANILIR:
   if (item.urunTipi !== undefined && item.urunTipi !== null && String(item.urunTipi).trim() !== "") {
     const t = Number(item.urunTipi);
-    if (t === 1) return 1;
-    if (t === 2) return 2;
-    if (t === 3) return 3;
+    if (t === 1) return 1; // Altın (Tipi Altın tanımlanmışsa adı ne olursa olsun Altındır)
+    if (t === 2) return 2; // Gümüş
+    if (t === 3) return 3; // Ziynet
+    if (t === 0) {
+      if (isCurrencyItem(item as any)) return 0;
+      if (isZiynetProduct(item)) return 3;
+      return 0;
+    }
   }
 
-  // 3. Gümüş kontrolü
+  // 2. Tanımsız urunTipi için fallback:
   const k = (item.kod || "").trim().toUpperCase();
   const a = (item.ad || (item as any).mamulTipi || "").trim().toUpperCase();
-  if (k.includes("GUMUS") || k.includes("GÜMÜŞ") || a.includes("GÜMÜŞ") || a.includes("GUMUS")) return 2;
 
-  // 4. Ziynet kontrolü
-  if (isZiynetProduct(item)) return 3;
+  // Gümüş kontrolü
+  if (k.includes("GUMUS") || k.includes("GÜMÜŞ") || a.includes("GÜMÜŞ") || a.includes("GUMUS")) {
+    return 2;
+  }
 
-  // 5. Varsayılan Altın (1)
+  // Döviz kontrolü (USD, EUR, TL vb.)
+  if (isCurrencyItem(item as any)) {
+    return 0;
+  }
+
+  // Ziynet kontrolü
+  if (isZiynetProduct(item)) {
+    return 3;
+  }
+
+  // Varsayılan Altın (1)
   return 1;
 };
 
@@ -252,41 +308,17 @@ export const isOdemeRowParaOrZiynet = (urun?: { urunTipi?: number | string | nul
   return isZiynetProduct(urun as any);
 };
 
-export const getUrunTipiInfo = (urun?: { urunTipi?: number; kod?: string; ad?: string; mamulTipi?: string } | null): {
+export const getUrunTipiInfo = (urun?: { urunTipi?: number | string | null; kod?: string; ad?: string; mamulTipi?: string } | null): {
   label: "Ziynet" | "Altın" | "Döviz" | "Gümüş";
   bg: string;
   textColor?: string;
   isBorder?: boolean;
 } => {
   if (!urun) return { label: "Altın", bg: "warning", textColor: "dark" };
-
-  // 1. Ürün Tanımları sayfasındaki urunTipi (0: Döviz, 1: Altın, 2: Gümüş, 3: Ziynet)
-  if (urun.urunTipi !== undefined && urun.urunTipi !== null && String(urun.urunTipi).trim() !== "") {
-    const tipNum = Number(urun.urunTipi);
-    if (tipNum === 3) return { label: "Ziynet", bg: "danger", textColor: "white" };
-    if (tipNum === 1) return { label: "Altın", bg: "warning", textColor: "dark" };
-    if (tipNum === 2) return { label: "Gümüş", bg: "secondary", textColor: "white" };
-    if (tipNum === 0) return { label: "Döviz", bg: "info", textColor: "white" };
-  }
-
-  // 2. Fallback (eğer ürün tanımında urunTipi hiç tanımlanmamışsa):
-  if (isZiynetProduct(urun)) {
-    return { label: "Ziynet", bg: "danger", textColor: "white" };
-  }
-
-  const k = (urun.kod || "").trim().toUpperCase();
-  const n = (urun.ad || (urun as any).mamulTipi || "").trim().toUpperCase();
-
-  if (k.includes("GUMUS") || k.includes("GÜMÜŞ") || n.includes("GÜMÜŞ") || n.includes("GUMUS")) {
-    return { label: "Gümüş", bg: "secondary", textColor: "white" };
-  }
-
-  const dovizCodes = ["TL", "TRY", "TRL", "USD", "EUR", "GBP", "CHF", "AUD", "CAD", "JPY", "SAR", "AED", "RUB", "KWD", "NOK", "DKK", "SEK"];
-  const dovizNames = ["DOLAR", "DOVIZ", "DÖVİZ", "EURO", "AVRO", "LİRA", "POUND", "STERLİN", "FRANK", "RİYAL", "RUBLE", "YEN"];
-  if (dovizCodes.includes(k) || dovizNames.some((d) => n.includes(d))) {
-    return { label: "Döviz", bg: "info", textColor: "white" };
-  }
-
+  const effTipi = resolveEffectiveUrunTipi(urun as any);
+  if (effTipi === 3) return { label: "Ziynet", bg: "danger", textColor: "white" };
+  if (effTipi === 2) return { label: "Gümüş", bg: "secondary", textColor: "white" };
+  if (effTipi === 0) return { label: "Döviz", bg: "info", textColor: "white" };
   return { label: "Altın", bg: "warning", textColor: "dark" };
 };
 
@@ -360,8 +392,7 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
   const isKurFixed = isTL || isKart || isIskonto;
   const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
   const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi });
-  const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (dovizZiynetGirisSekli === 0 && Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
-  const isZiynet = (effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi })) && !hasMilyemOrHas;
+  const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
   const isPara = isDoviz || isTL || isIskonto || isKart;
   const isParaOrZiynet = isPara || isZiynet;
 
@@ -560,8 +591,7 @@ const sabitTutariKoru = (r: GridRow, kur: number | string, hesaplanan: number | 
 const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false, dovizZiynetGirisSekli: number = 0): GridRow => {
   const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
   const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.urunKodu, ad: r.urunAdi });
-  const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (dovizZiynetGirisSekli === 0 && Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
-  const isZiynet = (effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi })) && !hasMilyemOrHas;
+  const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
   const isParaOrZiynet = isDoviz || isZiynet;
 
   // Ziynet ve Para işlemlerinde milyem / has / işçilik pasif; tutar = adet (veya miktar) * kur
@@ -1500,10 +1530,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
               let newKur = line.kur;
               let defaultRowKur = 0;
-              if (isGumus) {
-                newKur = newGumus || gumusHasKuru || line.kur;
-                defaultRowKur = Number(newKur) || Number(newGumus) || Number(gumusHasKuru) || 0;
-              } else if (isAltin) {
+              if (isGumus || isAltin) {
                 newKur = newHas || altinHasKuru || line.kur;
                 defaultRowKur = Number(newKur) || Number(newHas) || Number(altinHasKuru) || 0;
               } else {
@@ -1543,10 +1570,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               const odemeTip: 0 | 1 = tip === 0 ? 1 : 0;
               let newKur = oRow.kur;
               let defaultOdemeKur = 0;
-              if (isGumus) {
-                newKur = newGumus || gumusHasKuru || oRow.kur;
-                defaultOdemeKur = Number(newKur) || Number(newGumus) || Number(gumusHasKuru) || 0;
-              } else if (isAltin) {
+              if (isGumus || isAltin) {
                 newKur = newHas || altinHasKuru || oRow.kur;
                 defaultOdemeKur = Number(newKur) || Number(newHas) || Number(altinHasKuru) || 0;
               } else {
@@ -3475,9 +3499,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             return mik > 0 || tut > 0 || ad > 0 || hg > 0;
           })
           .map((o, i) => {
-            const hasMilyemOrHas = (Number(o.milyem) > 0) || (Number(o.hasGram) > 0) || (Number(o.miktar) > 0 && (o.adet === "" || o.adet === null || o.adet === undefined));
             const effTipi = resolveEffectiveUrunTipi({ urunTipi: o.urunTipi, kod: o.paraKodu, ad: o.paraAdi });
-            const isZiynet = (effTipi === 3 || isZiynetProduct({ urunTipi: o.urunTipi, kod: o.paraKodu, ad: o.paraAdi })) && !hasMilyemOrHas;
+            const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: o.urunTipi, kod: o.paraKodu, ad: o.paraAdi });
             const isDoviz = effTipi === 0 || isCurrencyItem({ kod: o.paraKodu, ad: o.paraAdi });
             const isTL = (o.paraKodu?.toUpperCase() === "TL") || (o.paraKodu?.toUpperCase() === "TRY");
             const isPZ = (isDoviz || isZiynet || isTL);
@@ -3487,7 +3510,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             const isGumus = effTipi === 2 || (o.paraKodu && (o.paraKodu.toUpperCase().includes("GUMUS") || o.paraKodu.toUpperCase().includes("GÜMÜŞ")));
             const isGold = (!isPZ && !isGumus) || effTipi === 1;
             const defaultHeaderKur = parseDecimal(altinHasKuru) || 1;
-            const effKur = parseDecimal(o.kur) > 0 ? parseDecimal(o.kur) : ((isGold || isGumus) ? defaultHeaderKur : 1);
+            const effKur = (isGold || isGumus)
+              ? (parseDecimal(altinHasKuru) > 0 ? parseDecimal(altinHasKuru) : (parseDecimal(o.kur) || defaultHeaderKur))
+              : (parseDecimal(o.kur) > 0 ? parseDecimal(o.kur) : 1);
             const effTut = parseDecimal(o.tutar) > 0 ? parseDecimal(o.tutar) : (effectiveMik * effKur);
             const posKarti = kartlar[o.id];
             return {
@@ -3557,9 +3582,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         kullaniciId: Number(user?.id) || 1,
         yazdirilanBelgeTipi: 0,
         satirlar: validLines.map((l, i) => {
-          const effectiveUrunTipi = (l.urunTipi !== undefined && l.urunTipi !== null && String(l.urunTipi).trim() !== "")
-            ? Number(l.urunTipi)
-            : (isZiynetProduct({ urunTipi: l.urunTipi, kod: l.urunKodu, ad: l.urunAdi }) ? 3 : 1);
+          const effectiveUrunTipi = resolveEffectiveUrunTipi({ urunTipi: l.urunTipi, kod: l.urunKodu, ad: l.urunAdi });
           const isGoldOrSilver = effectiveUrunTipi === 1 || effectiveUrunTipi === 2;
           const isPZ = effectiveUrunTipi === 0 || effectiveUrunTipi === 3;
           const adVal = parseDecimal(l.adet);
@@ -3582,7 +3605,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             iscilikKdvTutari: isPZ ? null : (parseDecimal(l.iscilikKdvTutari) || null),
             iscilikHesaplamaSekli: isPZ ? 0 : (l.iscilikHesaplamaSekli !== undefined && l.iscilikHesaplamaSekli !== null && !isNaN(Number(l.iscilikHesaplamaSekli)) ? Number(l.iscilikHesaplamaSekli) : 0),
             aciklama: l.aciklama || null,
-            kur: (parseDecimal(l.kur) > 0 ? parseDecimal(l.kur) : (isGoldOrSilver ? (parseDecimal(altinHasKuru) || 0) : 0)),
+            kur: isGoldOrSilver
+              ? (parseDecimal(altinHasKuru) > 0 ? parseDecimal(altinHasKuru) : (parseDecimal(l.kur) || 0))
+              : (parseDecimal(l.kur) > 0 ? parseDecimal(l.kur) : 0),
             tutar: parseDecimal(l.tutar) || 0,
             urunTipi: effectiveUrunTipi,
             karat: l.karat && parseDecimal(l.karat) > 0 ? parseDecimal(l.karat) : null,
@@ -4651,18 +4676,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const isGumus = effTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS");
     const isAltin = !isZiynet && !isPara && !isGumus;
 
-    // Sadece Altın seçilmiş ise: direk has kurunu almış olur
-    if (isAltin) {
-      const topHas = Number(altinHasKuru) || 0;
+    // Sadece Altın ve Gümüş seçilmiş ise: direk Has Kuru bölümündeki sayıyı (altinHasKuru) alır
+    if (isAltin || isGumus) {
+      const topHas = parseDecimal(altinHasKuru);
       if (topHas > 0) return topHas;
       return getHasKurForTip(islemTip);
-    }
-
-    // Sadece Gümüş seçilmiş ise: direk gümüş has kurunu almış olur
-    if (isGumus) {
-      const topGumus = Number(gumusHasKuru) || 0;
-      if (topGumus > 0) return topGumus;
-      return getGumusKurForTip(islemTip);
     }
 
     // Ziynet veya Döviz: KESİNLİKLE otomatik has kuru değil kendi kurunu alır (Anlık Fiyat Listesindeki kendi kuru)
@@ -4673,13 +4691,50 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     );
 
     if (!curKur && isZiynet) {
+      const nCode = normStr(code);
+      const nName = normStr(name);
       curKur = kurSatirlar.find((k) => {
-        const kKod = (k.kod || "").toUpperCase().trim();
-        const kAd = (k.ad || "").toUpperCase().trim();
-        if (code && (kKod === code || kKod.includes(code) || code.includes(kKod))) return true;
-        if (name && (kAd === name || kAd.includes(name) || name.includes(kAd))) return true;
+        const kKod = normStr(k.kod);
+        const kAd = normStr(k.ad);
+        if (nCode && (kKod === nCode || kKod.includes(nCode) || nCode.includes(kKod))) return true;
+        if (nName && (kAd === nName || kAd.includes(nName) || nName.includes(kAd))) return true;
         return false;
       });
+
+      if (!curKur) {
+        const checkTokens = (tokens: string[]) =>
+          kurSatirlar.find((k) => {
+            const kTarget = normStr(`${k.kod || ""} ${k.ad || ""}`);
+            return tokens.every((tok) => kTarget.includes(tok));
+          });
+
+        const targetStr = `${nCode} ${nName}`;
+        if (targetStr.includes("YENI") && (targetStr.includes("CEYREK") || targetStr.includes("ÇEYREK"))) {
+          curKur = checkTokens(["YENI", "CEYREK"]);
+        } else if (targetStr.includes("ESKI") && (targetStr.includes("CEYREK") || targetStr.includes("ÇEYREK"))) {
+          curKur = checkTokens(["ESKI", "CEYREK"]);
+        } else if (targetStr.includes("CEYREK") || targetStr.includes("ÇEYREK")) {
+          curKur = checkTokens(["CEYREK"]);
+        } else if (targetStr.includes("YENI") && targetStr.includes("YARIM")) {
+          curKur = checkTokens(["YENI", "YARIM"]);
+        } else if (targetStr.includes("ESKI") && targetStr.includes("YARIM")) {
+          curKur = checkTokens(["ESKI", "YARIM"]);
+        } else if (targetStr.includes("YARIM")) {
+          curKur = checkTokens(["YARIM"]);
+        } else if (targetStr.includes("YENI") && (targetStr.includes("TAM") || targetStr.includes("ZIYNET"))) {
+          curKur = checkTokens(["YENI", "TAM"]) || checkTokens(["YENI", "ZIYNET"]);
+        } else if (targetStr.includes("ESKI") && (targetStr.includes("TAM") || targetStr.includes("ZIYNET"))) {
+          curKur = checkTokens(["ESKI", "TAM"]) || checkTokens(["ESKI", "ZIYNET"]);
+        } else if (targetStr.includes("ATA") || targetStr.includes("CUMHURIYET")) {
+          curKur = checkTokens(["ATA"]) || checkTokens(["CUMHURIYET"]);
+        } else if (targetStr.includes("GREMSE") || targetStr.includes("KRAMSE")) {
+          curKur = checkTokens(["GREMSE"]);
+        } else if (targetStr.includes("RESAT")) {
+          curKur = checkTokens(["RESAT"]);
+        } else if (targetStr.includes("HAMIT")) {
+          curKur = checkTokens(["HAMIT"]);
+        }
+      }
     }
 
     if (curKur) {
@@ -4688,6 +4743,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         : (curKur.efektifSatis !== null && curKur.efektifSatis !== undefined && Number(curKur.efektifSatis) > 0 ? curKur.efektifSatis : (curKur.dovizSatis && Number(curKur.dovizSatis) > 0 ? curKur.dovizSatis : (curKur.efektifAlis || curKur.dovizAlis || 0)));
       if (Number(rate) > 0) return Number(rate);
     }
+
+    // Ürün kartında tanımlı fiyat/kur varsa onu dene:
+    const itemSatis = Number((urun as any).satisFiyati || (urun as any).satisKuru) || 0;
+    const itemAlis = Number((urun as any).alisFiyati || (urun as any).alisKuru) || 0;
+    if (islemTip === 0 && itemAlis > 0) return itemAlis;
+    if (islemTip === 1 && itemSatis > 0) return itemSatis;
+    if (itemSatis > 0) return itemSatis;
+    if (itemAlis > 0) return itemAlis;
 
     // Ziynet veya Döviz bulunamadıysa KESİNLİKLE HAS KURU DÖNMEZ, 0 döner
     return 0;
@@ -4709,37 +4772,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const isGumus = effTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS");
     const isAltin = !isZiynet && !isPara && !isGumus;
 
-    // Sadece Altın ise: Altın Has Kuru
-    if (isAltin) {
-      const topHas = Number(altinHasKuru) || 0;
+    // Sadece Altın ve Gümüş ise: Has Kuru
+    if (isAltin || isGumus) {
+      const topHas = parseDecimal(altinHasKuru);
       if (topHas > 0) {
         return { alis: topHas, satis: topHas, ref: topHas };
       }
       const has = getHasKurAlisSatis();
       return { alis: has.alis, satis: has.satis, ref: tip === 0 ? has.alis : has.satis };
-    }
-
-    // Sadece Gümüş ise: Gümüş Has Kuru
-    if (isGumus) {
-      const gumusItem = kurSatirlar.find((k) =>
-        ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS"].includes((k.kod || "").toUpperCase().trim()) ||
-        (k.ad && ["HAS GÜMÜŞ", "GÜMÜŞ", "GUMUS"].includes(k.ad.toUpperCase().trim()))
-      );
-      if (gumusItem) {
-        const ea = Number(gumusItem.efektifAlis) || 0;
-        const es = Number(gumusItem.efektifSatis) || 0;
-        const da = Number(gumusItem.dovizAlis) || 0;
-        const ds = Number(gumusItem.dovizSatis) || 0;
-        const alis = ea > 0 ? ea : da;
-        const satis = es > 0 ? es : ds;
-        if (alis > 0 || satis > 0) {
-          const finalAlis = alis > 0 ? alis : satis;
-          const finalSatis = satis > 0 ? satis : alis;
-          return { alis: finalAlis, satis: finalSatis, ref: tip === 0 ? finalAlis : finalSatis };
-        }
-      }
-      const gKuru = Number(gumusHasKuru) || 0;
-      return { alis: gKuru, satis: gKuru, ref: gKuru };
     }
 
     // Ziynet veya Döviz: KESİNLİKLE otomatik has kuru değil kendi kurunu alır (Anlık Fiyat Listesindeki bu ürüne ait kur satırı)
@@ -4750,13 +4790,50 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     );
 
     if (!curKur && isZiynet) {
+      const nCode = normStr(code);
+      const nName = normStr(name);
       curKur = kurSatirlar.find((k) => {
-        const kKod = (k.kod || "").toUpperCase().trim();
-        const kAd = (k.ad || "").toUpperCase().trim();
-        if (code && (kKod === code || kKod.includes(code) || code.includes(kKod))) return true;
-        if (name && (kAd === name || kAd.includes(name) || name.includes(kAd))) return true;
+        const kKod = normStr(k.kod);
+        const kAd = normStr(k.ad);
+        if (nCode && (kKod === nCode || kKod.includes(nCode) || nCode.includes(kKod))) return true;
+        if (nName && (kAd === nName || kAd.includes(nName) || nName.includes(kAd))) return true;
         return false;
       });
+
+      if (!curKur) {
+        const checkTokens = (tokens: string[]) =>
+          kurSatirlar.find((k) => {
+            const kTarget = normStr(`${k.kod || ""} ${k.ad || ""}`);
+            return tokens.every((tok) => kTarget.includes(tok));
+          });
+
+        const targetStr = `${nCode} ${nName}`;
+        if (targetStr.includes("YENI") && (targetStr.includes("CEYREK") || targetStr.includes("ÇEYREK"))) {
+          curKur = checkTokens(["YENI", "CEYREK"]);
+        } else if (targetStr.includes("ESKI") && (targetStr.includes("CEYREK") || targetStr.includes("ÇEYREK"))) {
+          curKur = checkTokens(["ESKI", "CEYREK"]);
+        } else if (targetStr.includes("CEYREK") || targetStr.includes("ÇEYREK")) {
+          curKur = checkTokens(["CEYREK"]);
+        } else if (targetStr.includes("YENI") && targetStr.includes("YARIM")) {
+          curKur = checkTokens(["YENI", "YARIM"]);
+        } else if (targetStr.includes("ESKI") && targetStr.includes("YARIM")) {
+          curKur = checkTokens(["ESKI", "YARIM"]);
+        } else if (targetStr.includes("YARIM")) {
+          curKur = checkTokens(["YARIM"]);
+        } else if (targetStr.includes("YENI") && (targetStr.includes("TAM") || targetStr.includes("ZIYNET"))) {
+          curKur = checkTokens(["YENI", "TAM"]) || checkTokens(["YENI", "ZIYNET"]);
+        } else if (targetStr.includes("ESKI") && (targetStr.includes("TAM") || targetStr.includes("ZIYNET"))) {
+          curKur = checkTokens(["ESKI", "TAM"]) || checkTokens(["ESKI", "ZIYNET"]);
+        } else if (targetStr.includes("ATA") || targetStr.includes("CUMHURIYET")) {
+          curKur = checkTokens(["ATA"]) || checkTokens(["CUMHURIYET"]);
+        } else if (targetStr.includes("GREMSE") || targetStr.includes("KRAMSE")) {
+          curKur = checkTokens(["GREMSE"]);
+        } else if (targetStr.includes("RESAT")) {
+          curKur = checkTokens(["RESAT"]);
+        } else if (targetStr.includes("HAMIT")) {
+          curKur = checkTokens(["HAMIT"]);
+        }
+      }
     }
 
     if (curKur) {
@@ -4771,6 +4848,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const finalSatis = satis > 0 ? satis : alis;
         return { alis: finalAlis, satis: finalSatis, ref: tip === 0 ? finalAlis : finalSatis };
       }
+    }
+
+    // Ürün kartında tanımlı fiyat/kur varsa:
+    const itemSatis = Number((urun as any).satisFiyati || (urun as any).satisKuru) || 0;
+    const itemAlis = Number((urun as any).alisFiyati || (urun as any).alisKuru) || 0;
+    if (itemAlis > 0 || itemSatis > 0) {
+      const a = itemAlis > 0 ? itemAlis : itemSatis;
+      const s = itemSatis > 0 ? itemSatis : itemAlis;
+      return { alis: a, satis: s, ref: tip === 0 ? a : s };
     }
 
     // Ziynet veya Döviz bulunamadıysa KESİNLİKLE HAS KURU DÖNMEZ, 0 döner
@@ -4809,10 +4895,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     // Sadece Altın ve Gümüş direk has kurunu alır. Ziynet ve Döviz kesinlikle kendi kurunu alır.
     let finalKur = 0;
-    if (isAltin) {
-      finalKur = Number(altinHasKuru) > 0 ? Number(altinHasKuru) : getHasKurForTip(tip);
-    } else if (isGumus) {
-      finalKur = Number(gumusHasKuru) > 0 ? Number(gumusHasKuru) : getGumusKurForTip(tip);
+    if (isAltin || isGumus) {
+      finalKur = parseDecimal(altinHasKuru) > 0 ? parseDecimal(altinHasKuru) : getHasKurForTip(tip);
     } else {
       finalKur = autoKur > 0 ? autoKur : 0;
     }
@@ -4844,7 +4928,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         iscilikTutari: isParaOrZiynet ? "" : r.iscilikTutari,
         hasGram: isParaOrZiynet ? "" : r.hasGram,
         urunTipi: resolvedUrunTipi,
-        kur: finalKur > 0 ? finalKur : (r.kur || ""),
+        kur: finalKur > 0 ? finalKur : "",
       };
       // e-Banka: miktar boşsa banka tutarının kalanından (docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF20).
       // Altın tipinde tutar = gram × kur (recomputeRow): gram kura bölünür, milyeme bölünmez (eskiden bölünüyordu,
@@ -4871,7 +4955,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           }
         }
       }
-      const hesaplanan = recomputeRow(updated, finalKur, ebDengeAlani, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
+      const hesaplanan = recomputeRow(updated, (isAltin || isGumus) ? finalKur : 0, ebDengeAlani, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
       return ebSabitTutar !== null && parseDecimal(hesaplanan.tutar) > 0
         ? { ...hesaplanan, tutar: ebSabitTutar, ebSabit: { miktar: parseDecimal(hesaplanan.miktar), adet: parseDecimal(hesaplanan.adet), kur: parseDecimal(hesaplanan.kur), tutar: ebSabitTutar } }
         : hesaplanan;
@@ -4899,10 +4983,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     // Sadece Altın ve Gümüş direk has kurunu alır. Ziynet ve Döviz kesinlikle kendi kurunu alır.
     let finalKur = 0;
-    if (isAltin) {
-      finalKur = Number(altinHasKuru) > 0 ? Number(altinHasKuru) : getHasKurForTip(odemeTip);
-    } else if (isGumus) {
-      finalKur = Number(gumusHasKuru) > 0 ? Number(gumusHasKuru) : getGumusKurForTip(odemeTip);
+    if (isAltin || isGumus) {
+      finalKur = parseDecimal(altinHasKuru) > 0 ? parseDecimal(altinHasKuru) : getHasKurForTip(odemeTip);
     } else {
       finalKur = autoKur > 0 ? autoKur : 0;
     }
@@ -4934,9 +5016,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         refMilyem,
         hasGram: isParaOrZiynet ? "" : r.hasGram,
         urunTipi: resolvedUrunTipi,
-        kur: isTL ? "" : (finalKur > 0 ? finalKur : (r.kur || "")),
+        kur: isTL ? "" : (finalKur > 0 ? finalKur : ""),
       };
-      return recomputeOdemeRow(updated, finalKur, undefined, userDovizZiynetGirisSekli);
+      return recomputeOdemeRow(updated, (isAltin || isGumus) ? finalKur : 0, undefined, userDovizZiynetGirisSekli);
     }));
     odemeFocusedInitialValRef.current[rowId] = (item.kod || "").trim();
     setInvalidOdemeRowIds((prev) => {
@@ -5242,10 +5324,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
         let rowKur = parseDecimal(r.kur);
         if (rowKur <= 0) {
-          if (isGold) {
+          if (isGold || isGumus) {
             rowKur = hasKuruVal > 0 ? hasKuruVal : getHasKurForTip(odemeTip);
-          } else if (isGumus) {
-            rowKur = gumusHasKuruVal > 0 ? gumusHasKuruVal : getGumusKurForTip(odemeTip);
           } else if (foundUrun) {
             const autoKur = getKurForProduct(foundUrun, odemeTip);
             if (autoKur > 0) rowKur = autoKur;
@@ -5315,8 +5395,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const code = (r.urunKodu || "").toUpperCase().trim();
         const name = (r.urunAdi || "").toUpperCase().trim();
         const isGumus = effTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS");
-        // Sadece Altın ise Has Kuru ile güncellenir (Ziynet, Döviz ve Gümüş kesinlikle etkilenmez)
-        if (!isPara && !isZiynet && !isGumus) {
+        // Sadece Altın ve Gümüş ise Has Kuru ile güncellenir (Ziynet ve Döviz kesinlikle etkilenmez)
+        if (!isPara && !isZiynet) {
           const updated = { ...r, kur: newKur };
           return recomputeRow(updated, newKur, undefined, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
         }
@@ -5329,11 +5409,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const isKart = r.odemeAraciTuru === 2;
         const isIskonto = Boolean(r.iskontoId);
         const isPara = effTipi === 0 || isTL || isKart || isIskonto;
-        const code = (r.paraKodu || "").toUpperCase().trim();
-        const name = (r.paraAdi || "").toUpperCase().trim();
-        const isGumus = effTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS");
-        // Sadece Altın ise Has Kuru ile güncellenir (Ziynet, Döviz ve Gümüş kesinlikle etkilenmez)
-        if (!isPara && !isZiynet && !isGumus) {
+        // Sadece Altın ve Gümüş ise Has Kuru ile güncellenir (Ziynet ve Döviz kesinlikle etkilenmez)
+        if (!isPara && !isZiynet) {
           const updated = { ...r, kur: newKur };
           return recomputeOdemeRow(updated, newKur, undefined, userDovizZiynetGirisSekli);
         }
@@ -5499,7 +5576,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
       const isPara = effTipi === 0 || isCurrencyItem({ kod: r.urunKodu, ad: r.urunAdi, urunTipi: r.urunTipi });
       const isGumus = effTipi === 2 || (r.urunKodu && (r.urunKodu.toUpperCase().includes("GUMUS") || r.urunKodu.toUpperCase().includes("GÜMÜŞ")));
-      const curRowDefaultKur = (isZiynet || isPara) ? 0 : (isGumus ? (Number(gumusHasKuru) || 0) : (Number(altinHasKuru) || 0));
+      const curRowDefaultKur = (isZiynet || isPara) ? 0 : (Number(altinHasKuru) || 0);
       return recomputeRow({ ...r, refMilyem: nextRefMilyem, [field]: val }, curRowDefaultKur, field, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
     }));
     if (pendingWarnMsg) {
@@ -5560,7 +5637,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
       const isPara = effTipi === 0 || isCurrencyItem({ kod: r.urunKodu, ad: r.urunAdi, urunTipi: r.urunTipi });
       const isGumus = effTipi === 2 || (r.urunKodu && (r.urunKodu.toUpperCase().includes("GUMUS") || r.urunKodu.toUpperCase().includes("GÜMÜŞ")));
-      const curRowDefaultKur = (isZiynet || isPara) ? 0 : (isGumus ? (Number(gumusHasKuru) || 0) : (Number(altinHasKuru) || 0));
+      const curRowDefaultKur = (isZiynet || isPara) ? 0 : (Number(altinHasKuru) || 0);
 
       let finalFieldVal: any = sanitizedValue;
       if (field === "milyem") {
@@ -5679,7 +5756,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
       const isPara = isOdemeRowParaOrZiynet(r);
       const isGumus = effTipi === 2 || (r.paraKodu && (r.paraKodu.toUpperCase().includes("GUMUS") || r.paraKodu.toUpperCase().includes("GÜMÜŞ")));
-      const curOdemeDefaultKur = (isZiynet || isPara) ? 0 : (isGumus ? (Number(gumusHasKuru) || 0) : (Number(altinHasKuru) || 0));
+      const curOdemeDefaultKur = (isZiynet || isPara) ? 0 : (Number(altinHasKuru) || 0);
       return recomputeOdemeRow({ ...r, refMilyem: nextRefMilyem, [field]: val }, curOdemeDefaultKur, field, userDovizZiynetGirisSekli);
     }));
     if (pendingWarnMsg) {
@@ -5730,7 +5807,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
       const isPara = isOdemeRowParaOrZiynet(r);
       const isGumus = effTipi === 2 || (r.paraKodu && (r.paraKodu.toUpperCase().includes("GUMUS") || r.paraKodu.toUpperCase().includes("GÜMÜŞ")));
-      const curOdemeDefaultKur = (isZiynet || isPara) ? 0 : (isGumus ? (Number(gumusHasKuru) || 0) : (Number(altinHasKuru) || 0));
+      const curOdemeDefaultKur = (isZiynet || isPara) ? 0 : (Number(altinHasKuru) || 0);
 
       let effectiveVal: any = sanitizedValue;
       if (field === "kur" && (isTL || isKart)) {
@@ -6808,6 +6885,17 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           }
           return;
         }
+        const exactMatch = urunList.find((u) => (u.kod || "").trim().toLowerCase() === val.toLowerCase());
+        if (exactMatch) {
+          lastModalCallerRef.current = null;
+          lastKalemModalRowIdRef.current = null;
+          applyProductToRow(rowId, exactMatch);
+          const effT = resolveEffectiveUrunTipi({ urunTipi: exactMatch.urunTipi, kod: exactMatch.kod, ad: exactMatch.ad });
+          const isPZ = effT === 0 || isZiynetProduct(exactMatch);
+          const targetCol = isPZ ? (userDovizZiynetGirisSekli === 1 ? "miktar" : "adet") : "miktar";
+          requestAnimationFrame(() => focusGridCell(rowId, targetCol, "select"));
+          return;
+        }
         const matches = urunList.filter((u) => {
           const t = val.toLowerCase();
           return (
@@ -6827,7 +6915,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           applyProductToRow(rowId, matches[0]);
           const effT = resolveEffectiveUrunTipi({ urunTipi: matches[0].urunTipi, kod: matches[0].kod, ad: matches[0].ad });
           const isPZ = effT === 0 || isZiynetProduct(matches[0]);
-          const targetCol = isPZ ? (userDovizZiynetGirisSekli === 1 ? "miktar" : "adet") : "adet";
+          const targetCol = isPZ ? (userDovizZiynetGirisSekli === 1 ? "miktar" : "adet") : "miktar";
           requestAnimationFrame(() => focusGridCell(rowId, targetCol, "select"));
           return;
         } else {
@@ -8565,10 +8653,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           const isAltin = (!isPara && !isZiynet && !isGumus) || effTipi === 1;
 
                           let curKur = 0;
-                          if (isGumus) {
-                            curKur = isDuzeltmeMode ? (Number(r.kur) || Number(gumusHasKuru) || newGumusKuru) : newGumusKuru;
-                          } else if (isAltin) {
-                            curKur = isDuzeltmeMode ? (Number(r.kur) || Number(altinHasKuru) || newHasKuru) : newHasKuru;
+                          if (isGumus || isAltin) {
+                            curKur = isDuzeltmeMode ? (Number(r.kur) || Number(altinHasKuru) || newHasKuru) : (Number(altinHasKuru) || newHasKuru);
                           } else {
                             const autoKur = getKurForProduct(found, newTip);
                             curKur = isDuzeltmeMode ? (Number(r.kur) || autoKur) : (autoKur > 0 ? autoKur : Number(r.kur) || 0);
@@ -8578,9 +8664,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           const updated = {
                             ...r,
                             kur: curKur > 0 ? curKur : r.kur,
-                            milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
+                            milyem: (isPara || isZiynet) ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                           };
-                          return recomputeRow(updated, curKur, undefined, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
+                          return recomputeRow(updated, (isAltin || isGumus) ? curKur : 0, undefined, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
                         }));
 
                         const odemeTip: 0 | 1 = newTip === 0 ? 1 : 0;
@@ -8601,10 +8687,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           const isAltin = (!isPara && !isZiynet && !isGumus) || effTipi === 1;
 
                           let curKur = 0;
-                          if (isGumus) {
-                            curKur = isDuzeltmeMode ? (Number(r.kur) || Number(gumusHasKuru) || odemeGumusKuru) : odemeGumusKuru;
-                          } else if (isAltin) {
-                            curKur = isDuzeltmeMode ? (Number(r.kur) || Number(altinHasKuru) || odemeHasKuru) : odemeHasKuru;
+                          if (isGumus || isAltin) {
+                            curKur = isDuzeltmeMode ? (Number(r.kur) || Number(altinHasKuru) || odemeHasKuru) : (Number(altinHasKuru) || odemeHasKuru);
                           } else {
                             const autoKur = getKurForProduct(found, odemeTip);
                             curKur = isDuzeltmeMode ? (Number(r.kur) || autoKur) : (autoKur > 0 ? autoKur : Number(r.kur) || 0);
@@ -8614,9 +8698,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           const updated = {
                             ...r,
                             kur: isTL ? "" : (curKur > 0 ? curKur : r.kur),
-                            milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
+                            milyem: (isPara || isZiynet) ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                           };
-                          return recomputeOdemeRow(updated, curKur, undefined, userDovizZiynetGirisSekli);
+                          return recomputeOdemeRow(updated, (isAltin || isGumus) ? curKur : 0, undefined, userDovizZiynetGirisSekli);
                         }));
                       }}
                       onKeyDown={(e) => {
@@ -8651,10 +8735,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             const isAltin = (!isPara && !isZiynet && !isGumus) || effTipi === 1;
 
                             let curKur = 0;
-                            if (isGumus) {
-                              curKur = isDuzeltmeMode ? (Number(r.kur) || Number(gumusHasKuru) || newGumusKuru) : newGumusKuru;
-                            } else if (isAltin) {
-                              curKur = isDuzeltmeMode ? (Number(r.kur) || Number(altinHasKuru) || newHasKuru) : newHasKuru;
+                            if (isGumus || isAltin) {
+                              curKur = isDuzeltmeMode ? (Number(r.kur) || Number(altinHasKuru) || newHasKuru) : (Number(altinHasKuru) || newHasKuru);
                             } else {
                               const autoKur = getKurForProduct(found, newTip);
                               curKur = isDuzeltmeMode ? (Number(r.kur) || autoKur) : (autoKur > 0 ? autoKur : Number(r.kur) || 0);
@@ -8664,9 +8746,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             const updated = {
                               ...r,
                               kur: curKur > 0 ? curKur : r.kur,
-                              milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
+                              milyem: (isPara || isZiynet) ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                             };
-                            return recomputeRow(updated, curKur, undefined, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
+                            return recomputeRow(updated, (isAltin || isGumus) ? curKur : 0, undefined, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
                           }));
 
                           const odemeTip: 0 | 1 = newTip === 0 ? 1 : 0;
@@ -8687,10 +8769,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             const isAltin = (!isPara && !isZiynet && !isGumus) || effTipi === 1;
 
                             let curKur = 0;
-                            if (isGumus) {
-                              curKur = isDuzeltmeMode ? (Number(r.kur) || Number(gumusHasKuru) || odemeGumusKuru) : odemeGumusKuru;
-                            } else if (isAltin) {
-                              curKur = isDuzeltmeMode ? (Number(r.kur) || Number(altinHasKuru) || odemeHasKuru) : odemeHasKuru;
+                            if (isGumus || isAltin) {
+                              curKur = isDuzeltmeMode ? (Number(r.kur) || Number(altinHasKuru) || odemeHasKuru) : (Number(altinHasKuru) || odemeHasKuru);
                             } else {
                               const autoKur = getKurForProduct(found, odemeTip);
                               curKur = isDuzeltmeMode ? (Number(r.kur) || autoKur) : (autoKur > 0 ? autoKur : Number(r.kur) || 0);
@@ -8700,9 +8780,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             const updated = {
                               ...r,
                               kur: isTL ? "" : (curKur > 0 ? curKur : r.kur),
-                              milyem: (found as any).urunTipi === 0 ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
+                              milyem: (isPara || isZiynet) ? "" : (autoMilyem !== "" ? autoMilyem : r.milyem),
                             };
-                            return recomputeOdemeRow(updated, curKur, undefined, userDovizZiynetGirisSekli);
+                            return recomputeOdemeRow(updated, (isAltin || isGumus) ? curKur : 0, undefined, userDovizZiynetGirisSekli);
                           }));
                           return;
                         }
@@ -11222,8 +11302,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         filterFn={(item, term) => {
           const t = (term || "").toLowerCase().trim();
           if (!t) return true;
-          const isZiynet = item.urunTipi === 3 || isZiynetProduct(item);
-          const typeLabel = isZiynet ? "ziynet sarrafiye ceyrek yarim tam ata cumhuriyet" : item.urunTipi === 0 ? "para doviz döviz" : item.urunTipi === 1 ? "altin altın hurda maden" : item.urunTipi === 2 ? "gumus gümüş" : "";
+          const effTipi = resolveEffectiveUrunTipi(item);
+          const typeLabel = effTipi === 3 ? "ziynet sarrafiye ceyrek yarim tam ata cumhuriyet" : effTipi === 0 ? "para doviz döviz" : effTipi === 1 ? "altin altın hurda maden" : effTipi === 2 ? "gumus gümüş" : "";
           return (
             (item.kod || "").toLowerCase().includes(t) ||
             (item.ad || "").toLowerCase().includes(t) ||

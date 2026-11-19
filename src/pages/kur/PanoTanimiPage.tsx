@@ -39,6 +39,12 @@ import { ProductDefinitionService, ProductItem } from "../../services/productDef
 import { FontSelectDropdown } from "../settings/UserDefinitionsPage";
 import { useAuth } from "../../context/AuthContext";
 import { onlyDecimal, blockNonNumericKeys } from "../../utils/numericInput";
+import {
+  PANO_TEMPLATES,
+  resolvePanoTheme,
+  DEFAULT_PANO_TEMPLATE_ID,
+  PanoTheme,
+} from "../../utils/panoThemes";
 
 interface StyleProperties {
   fontFamily: string;
@@ -116,15 +122,20 @@ export const PanoTanimiPage: React.FC = () => {
     tarihSaatOzellikleri: "font:Inter, sans-serif;size:14;bold:1;color:#fbbf24;bgColor:transparent",
     baslikOzellikleri: "font:Inter, sans-serif;size:16;bold:1;color:#60a5fa;bgColor:transparent",
     satirOzellikleri: "font:Fira Code, monospace;size:18;bold:1;color:#ffffff;bgColor:transparent",
-    zeminRengi: localStorage.getItem("pano_active_theme_bg") || "#0f172a",
+    zeminRengi: localStorage.getItem("pano_active_theme_bg") || "#161920",
     boslukSayisi: 10,
-    htmlDosyaAdi: "Pano_Dikey.html",
+    htmlDosyaAdi: DEFAULT_PANO_TEMPLATE_ID,
     kodAlaniGenisligi: 60,
     kurAlaniGenisligi: 40,
     satirlar: [],
   });
 
   const [useHtmlFile, setUseHtmlFile] = useState<boolean>(true);
+
+  // Active resolved theme
+  const activeTheme = useMemo(() => {
+    return resolvePanoTheme(form.htmlDosyaAdi);
+  }, [form.htmlDosyaAdi]);
 
   // Modals
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
@@ -197,7 +208,7 @@ export const PanoTanimiPage: React.FC = () => {
           satirOzellikleri: "font:Fira Code, monospace;size:18;bold:1;color:#ffffff;bgColor:transparent",
           zeminRengi: initialBg,
           boslukSayisi: 10,
-          htmlDosyaAdi: "Pano_Dikey.html",
+          htmlDosyaAdi: DEFAULT_PANO_TEMPLATE_ID,
           kodAlaniGenisligi: 60,
           kurAlaniGenisligi: 40,
           satirlar: initialLines,
@@ -247,6 +258,9 @@ export const PanoTanimiPage: React.FC = () => {
       // 1. Immediately store in localStorage so PanoPage syncs instantly
       if (merged.zeminRengi) {
         localStorage.setItem("pano_active_theme_bg", merged.zeminRengi);
+      }
+      if (merged.htmlDosyaAdi) {
+        localStorage.setItem("pano_active_template", merged.htmlDosyaAdi);
       }
       const appearanceData = {
         zeminRengi: merged.zeminRengi,
@@ -305,10 +319,28 @@ export const PanoTanimiPage: React.FC = () => {
     });
   }, []);
 
+  // Theme selection handler
+  const handleSelectTheme = (theme: PanoTheme) => {
+    setForm((prev) => {
+      const updated = {
+        ...prev,
+        htmlDosyaAdi: theme.id,
+        zeminRengi: theme.containerBg,
+      };
+      localStorage.setItem("pano_active_template", theme.id);
+      localStorage.setItem("pano_active_theme_bg", theme.containerBg);
+      autoSaveAppearance({ htmlDosyaAdi: theme.id, zeminRengi: theme.containerBg });
+      return updated;
+    });
+    setUseHtmlFile(true);
+    setAlertInfo({ type: "success", message: `Pano şablonu '${theme.name}' olarak belirlendi.` });
+    setTimeout(() => setAlertInfo(null), 3000);
+  };
+
   // Reset form to new Pano (Tüm her yer temizlenir)
   const handleNew = () => {
     setCurrentIndex(-1);
-    setUseHtmlFile(false);
+    setUseHtmlFile(true);
     setForm({
       panoId: 0,
       panoNo: "",
@@ -321,9 +353,9 @@ export const PanoTanimiPage: React.FC = () => {
       tarihSaatOzellikleri: "font:Inter, sans-serif;size:14;bold:1;color:#fbbf24;bgColor:transparent",
       baslikOzellikleri: "font:Inter, sans-serif;size:16;bold:1;color:#38bdf8;bgColor:transparent",
       satirOzellikleri: "font:Fira Code, monospace;size:18;bold:1;color:#ffffff;bgColor:transparent",
-      zeminRengi: "#000000",
+      zeminRengi: "#161920",
       boslukSayisi: 0,
-      htmlDosyaAdi: "",
+      htmlDosyaAdi: DEFAULT_PANO_TEMPLATE_ID,
       kodAlaniGenisligi: 60,
       kurAlaniGenisligi: 40,
       satirlar: [],
@@ -651,38 +683,41 @@ export const PanoTanimiPage: React.FC = () => {
                 </Col>
               </Row>
 
-              {/* Row 2: HTML Dosya with Lookup Button */}
+              {/* Pano Tasarım Şablonu (Tema) - Dürbün İkonu ile Seçim */}
               <Row className="g-2 align-items-center">
                 <Col xs={12} sm={4}>
-                  <div className="d-flex align-items-center gap-2">
-                    <FormCheck
-                      type="checkbox"
-                      id="htmlFileToggle"
-                      checked={useHtmlFile}
-                      onChange={(e) => setUseHtmlFile(e.target.checked)}
-                      className="mb-0"
-                    />
-                    <Form.Label htmlFor="htmlFileToggle" className="fw-semibold small mb-0 user-select-none" style={{ cursor: "pointer" }}>
-                      HTML Dosya
-                    </Form.Label>
-                  </div>
+                  <Form.Label className="fw-semibold small mb-0 d-flex align-items-center gap-1.5">
+                    <IconPalette size={16} className="text-primary" />
+                    <span>Pano Tasarım Şablonu (Tema)</span>
+                  </Form.Label>
                 </Col>
                 <Col xs={12} sm={8}>
                   <InputGroup size="sm">
+                    <InputGroup.Text className="p-1 bg-white border-end-0">
+                      <div
+                        className="d-flex rounded overflow-hidden"
+                        style={{ width: "24px", height: "16px", border: "1px solid rgba(0,0,0,0.2)" }}
+                        title={activeTheme.name}
+                      >
+                        {activeTheme.previewColors.map((c, i) => (
+                          <span key={i} style={{ width: "25%", height: "100%", backgroundColor: c }} />
+                        ))}
+                      </div>
+                    </InputGroup.Text>
                     <Form.Control
                       type="text"
-                      value={form.htmlDosyaAdi}
-                      disabled={!useHtmlFile}
-                      onChange={(e) => setForm({ ...form, htmlDosyaAdi: e.target.value })}
-                      placeholder="Pano_Dikey.html"
-                      className="bg-white font-monospace"
+                      readOnly
+                      value={activeTheme.name}
+                      onClick={() => setShowHtmlModal(true)}
+                      placeholder="Tema / Şablon Seçiniz..."
+                      className="bg-white fw-bold text-dark border-start-0"
+                      style={{ cursor: "pointer" }}
                     />
                     <Button
                       variant="outline-secondary"
                       type="button"
-                      disabled={!useHtmlFile}
                       onClick={() => setShowHtmlModal(true)}
-                      title="HTML Şablon Dosyaları Seç"
+                      title="Pano Tasarım Şablonu (Tema) Seç"
                       className="d-flex align-items-center justify-content-center px-2.5 bg-light border-start-0"
                       style={{ borderColor: "#ced4da" }}
                     >
@@ -1353,40 +1388,92 @@ export const PanoTanimiPage: React.FC = () => {
         }}
       />
 
-      {/* 3. HTML File Chooser Modal */}
-      <Modal show={showHtmlModal} onHide={() => setShowHtmlModal(false)} centered>
-        <Modal.Header closeButton className="bg-light py-2">
+      {/* 3. HTML File / Theme Template Chooser Modal */}
+      <Modal show={showHtmlModal} onHide={() => setShowHtmlModal(false)} centered size="lg">
+        <Modal.Header closeButton className="bg-light py-2.5">
           <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2">
-            <IconFolderOpen size={20} className="text-primary" />
-            <span>HTML Pano Şablonu Seç</span>
+            <IconPalette size={20} className="text-primary" />
+            <span>Pano Tasarım Şablonu (Tema) Seçimi</span>
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-3">
-          <p className="small text-muted mb-2">Pano gösterimi için hazırlanmış HTML şablon dosyasını seçiniz:</p>
-          <div className="d-flex flex-column gap-2">
-            {[
-              { name: "Pano_Dikey.html", desc: "Dikey ekranlar için yüksek çözünürlüklü dijital pano tasarımı" },
-              { name: "Pano_Yatay.html", desc: "TV & geniş ekranlar için 16:9 yatay döviz panosu tasarımı" },
-              { name: "Pano_Vitrin.html", desc: "Mağaza dış vitrini için yüksek kontrastlı sarrafiye tasarımı" },
-              { name: "Pano_Kompakt.html", desc: "Mini vezne ve müşteri bilgilendirme panosu" },
-            ].map((tmpl) => (
-              <Card
-                key={tmpl.name}
-                className={`border shadow-2xs hover-border-primary cursor-pointer p-2.5 ${form.htmlDosyaAdi === tmpl.name ? "border-primary bg-primary-subtle" : "bg-white"}`}
-                onClick={() => {
-                  setForm({ ...form, htmlDosyaAdi: tmpl.name });
-                  setShowHtmlModal(false);
-                }}
-              >
-                <div className="d-flex align-items-center justify-content-between">
-                  <div className="fw-bold font-monospace text-primary small">{tmpl.name}</div>
-                  {form.htmlDosyaAdi === tmpl.name && <IconCheck size={16} className="text-primary" />}
-                </div>
-                <div className="text-muted small mt-1" style={{ fontSize: "11px" }}>{tmpl.desc}</div>
-              </Card>
-            ))}
+          <p className="small text-muted mb-3">
+            Canlı döviz panosu (TV / vitrin ekranı) için kullanmak istediğiniz görsel tasarım şablonunu seçiniz:
+          </p>
+          <div className="d-flex flex-column gap-2.5">
+            {PANO_TEMPLATES.map((tmpl) => {
+              const isSelected = activeTheme.id === tmpl.id;
+              return (
+                <Card
+                  key={tmpl.id}
+                  className={`border shadow-xs hover-border-primary cursor-pointer p-3 transition-all ${
+                    isSelected ? "border-primary bg-primary-subtle" : "bg-white"
+                  }`}
+                  style={{ borderWidth: isSelected ? "2px" : "1px", cursor: "pointer" }}
+                  onClick={() => {
+                    handleSelectTheme(tmpl);
+                    setShowHtmlModal(false);
+                  }}
+                >
+                  <div className="d-flex align-items-center justify-content-between">
+                    <div className="d-flex align-items-center gap-2.5">
+                      <div
+                        className="d-flex rounded overflow-hidden shadow-xs flex-shrink-0"
+                        style={{ width: "36px", height: "24px", border: "1px solid rgba(0,0,0,0.2)" }}
+                      >
+                        {tmpl.previewColors.map((c, i) => (
+                          <span key={i} style={{ width: "25%", height: "100%", backgroundColor: c }} />
+                        ))}
+                      </div>
+                      <div>
+                        <div className="d-flex align-items-center gap-2">
+                          <span className="fw-bold text-dark">{tmpl.name}</span>
+                          {tmpl.isDefault && (
+                            <Badge bg="secondary-subtle" text="secondary" className="border">
+                              Varsayılan
+                            </Badge>
+                          )}
+                          <Badge bg={tmpl.badgeBg} text={tmpl.badgeBg === "light" ? "dark" : "white"}>
+                            {tmpl.tag}
+                          </Badge>
+                        </div>
+                        <div className="text-muted small mt-1" style={{ fontSize: "11.5px" }}>
+                          {tmpl.description}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      {isSelected ? (
+                        <div className="text-primary d-flex align-items-center gap-1 fw-bold small flex-shrink-0 ms-2">
+                          <IconCheck size={20} strokeWidth={2.5} />
+                          <span>Seçili</span>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          className="px-3 py-1 fw-semibold small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectTheme(tmpl);
+                            setShowHtmlModal(false);
+                          }}
+                        >
+                          Seç
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         </Modal.Body>
+        <Modal.Footer className="bg-light py-2">
+          <Button variant="secondary" size="sm" onClick={() => setShowHtmlModal(false)}>
+            Kapat
+          </Button>
+        </Modal.Footer>
       </Modal>
     </div>
   );
