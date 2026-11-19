@@ -29,7 +29,6 @@ import {
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { VezneTransferiService } from "../../services/vezneTransferiService";
 import { CompanyService } from "../../services/companyService";
-import useERPAutoFocus from "../../hooks/useERPAutoFocus";
 import {
   parseDecimal,
   formatMiktar,
@@ -91,9 +90,26 @@ export const KasaHareketPage: React.FC = () => {
   const [showParaLookup, setShowParaLookup] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Modal arama başlangıç değerleri
+  const [hesapInitialSearch, setHesapInitialSearch] = useState("");
+  const [vezneInitialSearch, setVezneInitialSearch] = useState("");
+  const [paraInitialSearch, setParaInitialSearch] = useState("");
+
+  // Input metin değerleri
+  const [hesapInputVal, setHesapInputVal] = useState("");
+  const [vezneInputVal, setVezneInputVal] = useState("");
+  const [paraInputVal, setParaInputVal] = useState("");
+
   const hasAutoSelectedRef = useRef(false);
-  const meblagRef = useRef<HTMLInputElement | null>(null);
+  const tarihRef = useRef<HTMLInputElement | null>(null);
+  const tipRef = useRef<HTMLSelectElement | null>(null);
+  const hesapInputRef = useRef<HTMLInputElement | null>(null);
   const aciklamaRef = useRef<HTMLInputElement | null>(null);
+  const meblagRef = useRef<HTMLInputElement | null>(null);
+  const paraRef = useRef<HTMLInputElement | null>(null);
+  const vezneInputRef = useRef<HTMLInputElement | null>(null);
+  const kdvOraniRef = useRef<HTMLInputElement | null>(null);
+  const kdvTutariRef = useRef<HTMLInputElement | null>(null);
 
   // Canlı Tarih/Saat
   const [currentDateTime, setCurrentDateTime] = useState<string>("");
@@ -110,8 +126,6 @@ export const KasaHareketPage: React.FC = () => {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  useERPAutoFocus({ dependencies: [hesapHareketiId] });
 
   const showNotif = (type: "success" | "danger" | "warning" | "info", msg: string) => {
     setNotification({ type, message: msg });
@@ -215,6 +229,7 @@ export const KasaHareketPage: React.FC = () => {
     setHesapId(h.hesapId);
     setHesapKod(h.kod || "");
     setHesapAd(h.ad || "");
+    setHesapInputVal(h.kod || "");
     setHesapBakiye(h.bakiye || 0);
     const oran = h.kdvOrani ?? 0;
     setKdvOrani(formatMiktar(oran));
@@ -245,11 +260,154 @@ export const KasaHareketPage: React.FC = () => {
         setParaId(hasPara.id);
         setParaKod(hasPara.kod);
         setParaAd(hasPara.ad);
+        setParaInputVal(hasPara.kod);
       }
     }
 
-    setTimeout(() => meblagRef.current?.focus(), 50);
+    setTimeout(() => aciklamaRef.current?.focus(), 50);
   }, [lookups.paralar, meblag]);
+
+  // Hesap koduna yazıp Enter'a basıldığında arama ve modal açma mantığı
+  const handleHesapKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (hesapInputVal || "").trim().toLowerCase();
+      // Boş ise veya değiştirilmemiş ise modal açma, direkt Açıklama alanına geç
+      if (!val || (hesapId && val === (hesapKod || "").trim().toLowerCase())) {
+        aciklamaRef.current?.focus();
+        aciklamaRef.current?.select();
+        return;
+      }
+      const exact = hesapList.find((h) => (h.kod || "").toLowerCase() === val);
+      if (exact) {
+        handleSelectHesap(exact);
+        return;
+      }
+      const matches = hesapList.filter((h) =>
+        (h.kod || "").toLowerCase().includes(val) ||
+        (h.ad || "").toLowerCase().includes(val)
+      );
+      if (matches.length === 1) {
+        handleSelectHesap(matches[0]);
+        return;
+      }
+      setHesapInitialSearch(hesapInputVal.trim());
+      setShowHesapLookup(true);
+    } else if (e.key === "F4") {
+      e.preventDefault();
+      setHesapInitialSearch(hesapInputVal.trim());
+      setShowHesapLookup(true);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      aciklamaRef.current?.focus();
+      aciklamaRef.current?.select();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      tipRef.current?.focus();
+    }
+  };
+
+  // Para koduna yazıp Enter'a basıldığında arama ve modal açma mantığı
+  const handleParaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (paraInputVal || "").trim().toLowerCase();
+      // Boş ise veya değiştirilmemiş ise modal açma, direkt KDV Oranı alanına geç
+      if (!val || (paraId && val === (paraKod || "").trim().toLowerCase())) {
+        kdvOraniRef.current?.focus();
+        kdvOraniRef.current?.select();
+        return;
+      }
+      const exact = lookups.paralar.find((p) => (p.kod || "").toLowerCase() === val);
+      if (exact) {
+        setParaId(exact.id);
+        setParaKod(exact.kod);
+        setParaAd(exact.ad);
+        setParaInputVal(exact.kod);
+        kdvOraniRef.current?.focus();
+        kdvOraniRef.current?.select();
+        return;
+      }
+      const matches = lookups.paralar.filter((p) =>
+        (p.kod || "").toLowerCase().includes(val) ||
+        (p.ad || "").toLowerCase().includes(val)
+      );
+      if (matches.length === 1) {
+        setParaId(matches[0].id);
+        setParaKod(matches[0].kod);
+        setParaAd(matches[0].ad);
+        setParaInputVal(matches[0].kod);
+        kdvOraniRef.current?.focus();
+        kdvOraniRef.current?.select();
+        return;
+      }
+      setParaInitialSearch(paraInputVal.trim());
+      setShowParaLookup(true);
+    } else if (e.key === "F4") {
+      e.preventDefault();
+      setParaInitialSearch(paraInputVal.trim());
+      setShowParaLookup(true);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      kdvOraniRef.current?.focus();
+      kdvOraniRef.current?.select();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      meblagRef.current?.focus();
+      meblagRef.current?.select();
+    }
+  };
+
+  // Vezne koduna yazıp Enter'a basıldığında arama ve modal açma mantığı
+  const handleVezneKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const val = (vezneInputVal || "").trim().toLowerCase();
+      if (!val) {
+        setVezneInitialSearch("");
+        setShowVezneLookup(true);
+        return;
+      }
+      const exact = vezneList.find((v) => (v.kod || "").toLowerCase() === val);
+      if (exact) {
+        setVezneId(exact.id);
+        setVezneKod(exact.kod);
+        setVezneAd(exact.ad);
+        setVezneInputVal(exact.kod);
+        fetchVezneBakiyeler(exact.id);
+        kdvOraniRef.current?.focus();
+        kdvOraniRef.current?.select();
+        return;
+      }
+      const matches = vezneList.filter((v) =>
+        (v.kod || "").toLowerCase().includes(val) ||
+        (v.ad || "").toLowerCase().includes(val)
+      );
+      if (matches.length === 1) {
+        setVezneId(matches[0].id);
+        setVezneKod(matches[0].kod);
+        setVezneAd(matches[0].ad);
+        setVezneInputVal(matches[0].kod);
+        fetchVezneBakiyeler(matches[0].id);
+        kdvOraniRef.current?.focus();
+        kdvOraniRef.current?.select();
+        return;
+      }
+      setVezneInitialSearch(vezneInputVal.trim());
+      setShowVezneLookup(true);
+    } else if (e.key === "F4") {
+      e.preventDefault();
+      setVezneInitialSearch(vezneInputVal.trim());
+      setShowVezneLookup(true);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      kdvOraniRef.current?.focus();
+      kdvOraniRef.current?.select();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      paraRef.current?.focus();
+    }
+  };
 
   // ─── Veri Yükleme ────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -278,6 +436,7 @@ export const KasaHareketPage: React.FC = () => {
             const defaultPara = hasAltin || lks.paralar[0];
             setParaKod(defaultPara.kod);
             setParaAd(defaultPara.ad);
+            setParaInputVal(defaultPara.kod);
             return defaultPara.id;
           }
           return prev;
@@ -293,6 +452,7 @@ export const KasaHareketPage: React.FC = () => {
           if (defaultVezne) {
             setVezneKod(defaultVezne.kod);
             setVezneAd(defaultVezne.ad);
+            setVezneInputVal(defaultVezne.kod);
             fetchVezneBakiyeler(defaultVezne.id);
             return defaultVezne.id;
           }
@@ -308,6 +468,15 @@ export const KasaHareketPage: React.FC = () => {
     loadAll();
   }, [loadAll]);
 
+  // Sayfa ilk açılınca her zaman doğrudan İşlem Türü bölümündeki alana odaklan
+  useEffect(() => {
+    tipRef.current?.focus();
+    const timer = setTimeout(() => {
+      tipRef.current?.focus();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, []);
+
   // ─── Hareket Seçimi ──────────────────────────────────────────────────────────
   const handleSelectHareket = useCallback((h: HesapHareketiItem) => {
     setHesapHareketiId(h.hesapHareketiId);
@@ -317,12 +486,15 @@ export const KasaHareketPage: React.FC = () => {
     setHesapId(h.hesapId);
     setHesapKod(h.hesapKod || "");
     setHesapAd(h.hesapAd || "");
+    setHesapInputVal(h.hesapKod || "");
     setVezneId(h.vezneId);
     setVezneKod(h.vezneKod || "");
     setVezneAd(h.vezneAd || "");
+    setVezneInputVal(h.vezneKod || "");
     setParaId(h.paraId);
     setParaKod(h.paraKodu || "");
     setParaAd(h.paraAdi || "");
+    setParaInputVal(h.paraKodu || "");
     setMeblag(h.meblag !== undefined && h.meblag !== null ? formatMiktar(h.meblag) : "");
     const oNum = h.kdvOrani ?? 0;
     setKdvOrani(formatMiktar(oNum));
@@ -348,6 +520,9 @@ export const KasaHareketPage: React.FC = () => {
     if (h.vezneId) {
       fetchVezneBakiyeler(h.vezneId);
     }
+    setTimeout(() => {
+      tipRef.current?.focus();
+    }, 50);
   }, [hesapList, fetchVezneBakiyeler]);
 
   // ─── Yeni Kayıt Modu (F4 / Yeni) ───────────────────────────────────────────
@@ -359,15 +534,20 @@ export const KasaHareketPage: React.FC = () => {
     setHesapId(null);
     setHesapKod("");
     setHesapAd("");
+    setHesapInputVal("");
     setHesapBakiye(0);
     setKdvOrani("0");
     setKdvTutari("0");
     setMeblag("");
     setEklemeZamani(null);
     setGuncellemeZamani(null);
+    if (paraKod) {
+      setParaInputVal(paraKod);
+    }
     if (vezneId) {
       fetchVezneBakiyeler(vezneId);
     }
+    setTimeout(() => tipRef.current?.focus(), 50);
   }, [vezneId, fetchVezneBakiyeler]);
 
   // URL'de ?id= parametresi varsa sadece ilk yüklemede çek
@@ -477,10 +657,12 @@ export const KasaHareketPage: React.FC = () => {
       // Kayıt sayfasında kayıt olduktan hemen sonra formu tamamen temizle
       if (!isEditPage) {
         handleNew();
+        setTimeout(() => tipRef.current?.focus(), 50);
       } else {
         setHesapHareketiId(saved.hesapHareketiId);
         setAciklama(saved.aciklama || defaultAciklama);
         navigate(`?id=${saved.hesapHareketiId}`, { replace: true });
+        setTimeout(() => tipRef.current?.focus(), 50);
       }
 
       return saved;
@@ -523,23 +705,23 @@ export const KasaHareketPage: React.FC = () => {
   // ─── Kayıtlar Arası Gezinme (Düzeltme Modu) ──────────────────────────────────
   const currentIndex = hareketList.findIndex((h) => Number(h.hesapHareketiId) === Number(hesapHareketiId));
 
-  const handleFirst = () => {
+  const handleFirst = useCallback(() => {
     if (hareketList.length > 0) {
       handleSelectHareket(hareketList[0]);
     } else {
       showNotif("info", "Kayıtlı kasa hareketi bulunamadı.");
     }
-  };
+  }, [hareketList, handleSelectHareket]);
 
-  const handleLast = () => {
+  const handleLast = useCallback(() => {
     if (hareketList.length > 0) {
       handleSelectHareket(hareketList[hareketList.length - 1]);
     } else {
       showNotif("info", "Kayıtlı kasa hareketi bulunamadı.");
     }
-  };
+  }, [hareketList, handleSelectHareket]);
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     if (hareketList.length === 0) {
       showNotif("info", "Kayıtlı kasa hareketi bulunamadı.");
       return;
@@ -553,9 +735,9 @@ export const KasaHareketPage: React.FC = () => {
       return;
     }
     handleSelectHareket(hareketList[currentIndex - 1]);
-  };
+  }, [hareketList, currentIndex, handleSelectHareket]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (hareketList.length === 0) {
       showNotif("info", "Kayıtlı kasa hareketi bulunamadı.");
       return;
@@ -569,7 +751,69 @@ export const KasaHareketPage: React.FC = () => {
       return;
     }
     handleSelectHareket(hareketList[currentIndex + 1]);
-  };
+  }, [hareketList, currentIndex, handleSelectHareket]);
+
+  // Klavye kısayolları ve gezinme (F1..F4, PageUp/PageDown, Alt+Sol/Sağ ok)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Modallar açıkken genel kısayolları çalıştırma
+      if (
+        showHareketLookup ||
+        showHesapLookup ||
+        showVezneLookup ||
+        showParaLookup ||
+        showDeleteConfirm
+      ) {
+        return;
+      }
+
+      if (e.key === "F1") {
+        e.preventDefault();
+        handleSave();
+      } else if (e.key === "F2" && isEditPage && hesapHareketiId) {
+        e.preventDefault();
+        setShowDeleteConfirm(true);
+      } else if (e.key === "F3") {
+        e.preventDefault();
+        setShowHareketLookup(true);
+      } else if (e.key === "F4" && !isEditPage) {
+        e.preventDefault();
+        handleNew();
+      } else if (isEditPage) {
+        // Düzeltme sayfasında kayıtlar arasında gezinme
+        if (e.key === "PageUp" || (e.altKey && e.key === "ArrowLeft")) {
+          e.preventDefault();
+          handlePrev();
+        } else if (e.key === "PageDown" || (e.altKey && e.key === "ArrowRight")) {
+          e.preventDefault();
+          handleNext();
+        } else if ((e.ctrlKey || e.altKey) && e.key === "Home") {
+          e.preventDefault();
+          handleFirst();
+        } else if ((e.ctrlKey || e.altKey) && e.key === "End") {
+          e.preventDefault();
+          handleLast();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [
+    showHareketLookup,
+    showHesapLookup,
+    showVezneLookup,
+    showParaLookup,
+    showDeleteConfirm,
+    isEditPage,
+    hesapHareketiId,
+    handleSave,
+    handleNew,
+    handlePrev,
+    handleNext,
+    handleFirst,
+    handleLast,
+  ]);
 
   // ─── Lookup Kolonları ────────────────────────────────────────────────────────
   const hareketLookupColumns: LookupColumn<HesapHareketiItem>[] = [
@@ -583,7 +827,7 @@ export const KasaHareketPage: React.FC = () => {
       width: "130px",
       align: "right",
       render: (it) => (
-        <span className="fw-semibold">
+        <span className="font-monospace fw-semibold text-end d-block">
           {Number(it.meblag || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {it.paraKodu || ""}
         </span>
       ),
@@ -598,14 +842,14 @@ export const KasaHareketPage: React.FC = () => {
 
   const hesapLookupColumns: LookupColumn<HesapItem>[] = [
     { header: "Hesap Kodu", width: "130px", render: (it) => <span className="font-monospace fw-bold text-primary">{it.kod}</span> },
-    { header: "Hesap Adı", render: (it) => it.ad },
-    { header: "KDV Oranı", width: "90px", align: "right", render: (it) => `%${Number(it.kdvOrani || 0)}` },
+    { header: "Hesap Adı", render: (it) => <span className="fw-medium">{it.ad}</span> },
+    { header: "KDV Oranı", width: "90px", align: "right", render: (it) => <span className="font-monospace text-end d-block">%{Number(it.kdvOrani || 0)}</span> },
     {
       header: "Bakiye",
       width: "130px",
       align: "right",
       render: (it) => (
-        <span className={`fw-semibold ${Number(it.bakiye || 0) < 0 ? "text-danger" : "text-success"}`}>
+        <span className={`font-monospace text-end d-block fw-semibold ${Number(it.bakiye || 0) < 0 ? "text-danger" : "text-success"}`}>
           {Number(it.bakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
         </span>
       ),
@@ -613,13 +857,13 @@ export const KasaHareketPage: React.FC = () => {
   ];
 
   const vezneColumns: LookupColumn<VezneItem>[] = [
-    { header: "Kod", render: (i) => i.kod, width: "80px" },
-    { header: "Ad", render: (i) => i.ad },
+    { header: "Vezne Kodu", render: (i) => <span className="font-monospace fw-bold text-primary">{i.kod}</span>, width: "100px" },
+    { header: "Vezne Adı", render: (i) => <span className="fw-medium">{i.ad}</span> },
   ];
 
   const paraColumns: LookupColumn<{ id: number; kod: string; ad: string }>[] = [
-    { header: "Kod", render: (i) => i.kod, width: "80px" },
-    { header: "Ad", render: (i) => i.ad },
+    { header: "Para Kodu", render: (i) => <span className="font-monospace fw-bold text-success">{i.kod}</span>, width: "100px" },
+    { header: "Para Adı", render: (i) => <span className="fw-medium">{i.ad}</span> },
   ];
 
   return (
@@ -640,6 +884,14 @@ export const KasaHareketPage: React.FC = () => {
         .kasa-hareket-table.table-hover tbody tr.table-primary:hover > th {
           background-color: #eff6ff !important;
           color: #1e40af !important;
+        }
+        .kasa-hareket-page .form-control-sm,
+        .kasa-hareket-page .form-select-sm,
+        .kasa-hareket-page .btn-sm {
+          padding-top: 0.2rem;
+          padding-bottom: 0.2rem;
+          font-size: 0.8125rem;
+          min-height: 28px;
         }
       `}</style>
 
@@ -666,6 +918,20 @@ export const KasaHareketPage: React.FC = () => {
         onNext={handleNext}
         onLast={handleLast}
         modeText={hesapHareketiId ? `Düzenleme: #${hesapHareketiId} ${hesapAd}` : "Yeni Hareket Modu"}
+        centerContent={
+          <div className="d-flex align-items-center gap-1.5 px-3 py-1 bg-white rounded border shadow-2xs text-nowrap">
+            <IconBuildingBank size={18} className="text-primary flex-shrink-0" />
+            <span className="text-secondary small fw-semibold">Vezne:</span>
+            <span className="fw-bold text-dark font-monospace" style={{ fontSize: "14px" }}>
+              {vezneAd ? `${vezneKod ? vezneKod + " - " : ""}${vezneAd}` : "Ana Vezne"}
+            </span>
+            {mevcutVezneBakiye > 0 && (
+              <Badge bg="primary-subtle" className="text-primary border border-primary-subtle font-monospace ms-1 px-1.5 py-0.5">
+                Bakiye: {formatMiktar(mevcutVezneBakiye)} {paraKod}
+              </Badge>
+            )}
+          </div>
+        }
         rightContent={
           <div className="d-flex align-items-center gap-2">
             {hesapHareketiId && (
@@ -703,23 +969,29 @@ export const KasaHareketPage: React.FC = () => {
       )}
 
       {/* 2. Kasa Hareketi Formu */}
-      <Card className="border shadow-sm mb-3 w-100 bg-white">
-        <Card.Body className="p-3">
-          <Row className="g-3">
-            {/* ─── SOL SÜTUN: Temel Bilgiler ─── */}
-            <Col lg={6} md={12}>
+      <Card className="border shadow-sm mb-2 w-100 bg-white">
+        <Card.Body className="py-2.5 px-3">
+          <Row className="g-2">
+            <Col lg={6} md={8} sm={12}>
               {/* İşlem Tarihi */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
+              <Form.Group as={Row} className="align-items-center g-1" style={{ marginBottom: "4px" }}>
+                <Form.Label column style={{ width: "98px", flex: "0 0 98px", maxWidth: "98px", fontSize: "11.5px", whiteSpace: "nowrap" }} className="fw-bold text-secondary text-start py-0 pe-1 ps-0 text-nowrap">
                   İşlem Tarihi <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "200px" }}>
+                  <div style={{ maxWidth: "145px" }}>
                     <Form.Control
+                      ref={tarihRef}
                       type="date"
                       size="sm"
                       value={tarih}
                       onChange={(e) => setTarih(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === "ArrowDown") {
+                          e.preventDefault();
+                          tipRef.current?.focus();
+                        }
+                      }}
                       disabled={!tarihYetkisi}
                       title={tarihYetkisi ? undefined : "Tarih değiştirme yetkiniz yok"}
                       className="font-monospace"
@@ -729,16 +1001,29 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* İşlem Türü (Giriş / Çıkış) */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
+              <Form.Group as={Row} className="align-items-center g-1" style={{ marginBottom: "4px" }}>
+                <Form.Label column style={{ width: "98px", flex: "0 0 98px", maxWidth: "98px", fontSize: "11.5px", whiteSpace: "nowrap" }} className="fw-bold text-secondary text-start py-0 pe-1 ps-0 text-nowrap">
                   İşlem Türü <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "200px" }}>
+                  <div style={{ maxWidth: "145px" }}>
                     <Form.Select
+                      id="islemTuruSelect"
+                      ref={tipRef}
+                      autoFocus
                       size="sm"
                       value={tip}
                       onChange={(e) => setTip(Number(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          hesapInputRef.current?.focus();
+                          hesapInputRef.current?.select();
+                        } else if (e.key === "ArrowUp" && e.altKey) {
+                          e.preventDefault();
+                          tarihRef.current?.focus();
+                        }
+                      }}
                       className="fw-semibold"
                     >
                       <option value={1}>Kasadan Çıkış</option>
@@ -749,56 +1034,92 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* Hesap Seçimi */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
+              <Form.Group as={Row} className="align-items-center g-1" style={{ marginBottom: "4px" }}>
+                <Form.Label column style={{ width: "98px", flex: "0 0 98px", maxWidth: "98px", fontSize: "11.5px", whiteSpace: "nowrap" }} className="fw-bold text-secondary text-start py-0 pe-1 ps-0 text-nowrap">
                   Hesap Seçimi <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "200px" }}>
+                  <div style={{ maxWidth: "145px" }}>
                     <InputGroup size="sm">
                       <Form.Control
+                        id="hesapKodInput"
+                        ref={hesapInputRef}
                         type="text"
-                        readOnly
-                        placeholder=""
-                        value={hesapKod ? `${hesapKod} - ${hesapAd}` : hesapAd}
-                        className="fw-bold bg-light"
+                        placeholder="Hesap kodu yazın..."
+                        value={hesapInputVal}
+                        onChange={(e) => {
+                          setHesapInputVal(e.target.value);
+                          if (!e.target.value.trim()) {
+                            setHesapId(null);
+                            setHesapKod("");
+                            setHesapAd("");
+                            setHesapBakiye(0);
+                          }
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={handleHesapKeyDown}
+                        className="fw-bold font-monospace"
                       />
                       <Button
                         variant="outline-secondary"
-                        onClick={() => setShowHesapLookup(true)}
-                        title="Hesap Listesinden Seç (F3)"
+                        onClick={() => {
+                          setHesapInitialSearch(hesapInputVal.trim());
+                          setShowHesapLookup(true);
+                        }}
+                        title="Hesap Listesinden Seç (F4 / Dürbün)"
                       >
-                        <IconBinoculars size={16} />
+                        <IconBinoculars size={15} />
                       </Button>
                     </InputGroup>
+                    {hesapAd && (
+                      <div className="text-truncate fw-medium" style={{ fontSize: "11px", marginTop: "2px", lineHeight: "1.2" }} title={hesapAd}>
+                        <span className="text-muted">{hesapAd}</span> {hesapBakiye !== 0 && (
+                          <span className={`ms-1 fw-bold ${hesapBakiye < 0 ? "text-danger" : "text-success"}`}>
+                            ({Number(hesapBakiye).toLocaleString("tr-TR", { minimumFractionDigits: 2 })})
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </Col>
               </Form.Group>
 
               {/* Açıklama */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
+              <Form.Group as={Row} className="align-items-center g-1" style={{ marginBottom: "4px" }}>
+                <Form.Label column style={{ width: "98px", flex: "0 0 98px", maxWidth: "98px", fontSize: "11.5px", whiteSpace: "nowrap" }} className="fw-bold text-secondary text-start py-0 pe-1 ps-0 text-nowrap">
                   Açıklama :
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "200px" }}>
+                  <div style={{ maxWidth: "185px" }}>
                     <Form.Control
+                      ref={aciklamaRef}
                       type="text"
                       size="sm"
                       value={aciklama}
                       onChange={(e) => setAciklama(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === "ArrowDown") {
+                          e.preventDefault();
+                          meblagRef.current?.focus();
+                          meblagRef.current?.select();
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          hesapInputRef.current?.focus();
+                          hesapInputRef.current?.select();
+                        }
+                      }}
                     />
                   </div>
                 </Col>
               </Form.Group>
 
               {/* Gramaj / Meblağ & Para Birimi Seçici */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
+              <Form.Group as={Row} className="align-items-center g-1" style={{ marginBottom: "4px" }}>
+                <Form.Label column style={{ width: "98px", flex: "0 0 98px", maxWidth: "98px", fontSize: "11.5px", whiteSpace: "nowrap" }} className="fw-bold text-secondary text-start py-0 pe-1 ps-0 text-nowrap">
                   Gramaj / Meblağ <span className="text-danger">*</span> :
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "200px" }}>
+                  <div style={{ maxWidth: "185px" }}>
                     <InputGroup size="sm">
                       <Form.Control
                         ref={meblagRef}
@@ -806,7 +1127,24 @@ export const KasaHareketPage: React.FC = () => {
                         inputMode="decimal"
                         value={meblag}
                         onChange={(e) => handleMeblagChange(e.target.value)}
-                        onKeyDown={(e) => handleDotToCommaKeyDown(e, handleMeblagChange)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            paraRef.current?.focus();
+                            paraRef.current?.select();
+                          } else if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            kdvOraniRef.current?.focus();
+                            kdvOraniRef.current?.select();
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            aciklamaRef.current?.focus();
+                            aciklamaRef.current?.select();
+                          } else {
+                            handleDotToCommaKeyDown(e, handleMeblagChange);
+                          }
+                        }}
+                        onFocus={(e) => e.target.select()}
                         onBlur={() => {
                           const num = parseDecimal(meblag);
                           if (!isNaN(num) && num !== 0) {
@@ -814,82 +1152,46 @@ export const KasaHareketPage: React.FC = () => {
                           }
                         }}
                         className="fw-bold font-monospace text-primary text-end allow-full-width"
-                        style={{ minWidth: "60px", flex: "1 1 auto" }}
+                        style={{ minWidth: "55px", flex: "1 1 auto" }}
                       />
-                      {/* Açılır Para Birimi Kutusu (Kısa ve aşağı oku kaldırılmış) */}
-                      <Form.Select
-                        size="sm"
-                        value={paraId ?? ""}
+                      {/* Yazılabilir Para Birimi Kutusu */}
+                      <Form.Control
+                        ref={paraRef}
+                        type="text"
+                        placeholder="Para"
+                        value={paraInputVal}
                         onChange={(e) => {
-                          const val = e.target.value;
-                          if (!val) {
+                          const val = e.target.value.toUpperCase();
+                          setParaInputVal(val);
+                          if (!val.trim()) {
                             setParaId(null);
-                            setParaKod("TL");
-                          } else {
-                            const pId = Number(val);
-                            const matched = lookups.paralar.find((p) => p.id === pId);
-                            if (matched) {
-                              setParaId(matched.id);
-                              setParaKod(matched.kod);
-                            }
+                            setParaKod("");
+                            setParaAd("");
                           }
                         }}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={handleParaKeyDown}
                         style={{
-                          width: "54px",
-                          maxWidth: "54px",
-                          minWidth: "54px",
+                          width: "50px",
+                          maxWidth: "50px",
+                          minWidth: "50px",
                           fontWeight: "bold",
-                          backgroundImage: "none",
-                          appearance: "none",
-                          WebkitAppearance: "none",
                           textAlign: "center",
-                          paddingLeft: "3px",
-                          paddingRight: "3px",
+                          textTransform: "uppercase",
+                          paddingLeft: "2px",
+                          paddingRight: "2px",
                         }}
                         className="bg-light font-monospace text-center flex-shrink-0"
-                      >
-                        {lookups.paralar.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.kod}
-                          </option>
-                        ))}
-                      </Form.Select>
-                      <Button
-                        variant="outline-secondary"
-                        onClick={() => setShowParaLookup(true)}
-                        title="Para Birimi Ara"
-                      >
-                        <IconBinoculars size={15} />
-                      </Button>
-                    </InputGroup>
-                  </div>
-                </Col>
-              </Form.Group>
-            </Col>
-
-            {/* ─── SAĞ SÜTUN: Finansal Bilgiler & Vezne ─── */}
-            <Col lg={6} md={12}>
-              {/* Vezne Seçimi */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
-                  Vezne <span className="text-danger">*</span> :
-                </Form.Label>
-                <Col>
-                  <div style={{ maxWidth: "200px" }}>
-                    <InputGroup size="sm">
-                      <Form.Control
-                        type="text"
-                        readOnly
-                        placeholder=""
-                        value={vezneKod ? `${vezneKod} - ${vezneAd}` : vezneAd}
-                        className="fw-semibold bg-light"
                       />
                       <Button
                         variant="outline-secondary"
-                        onClick={() => setShowVezneLookup(true)}
-                        title="Vezne Seç"
+                        onClick={() => {
+                          setParaInitialSearch(paraInputVal.trim());
+                          setShowParaLookup(true);
+                        }}
+                        title="Para Birimi Ara (F4 / Dürbün)"
                       >
-                        <IconBinoculars size={16} />
+                        <IconBinoculars size={14} />
                       </Button>
                     </InputGroup>
                   </div>
@@ -897,19 +1199,33 @@ export const KasaHareketPage: React.FC = () => {
               </Form.Group>
 
               {/* KDV Oranı (%) & KDV Tutarı */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
+              <Form.Group as={Row} className="align-items-center g-1" style={{ marginBottom: "4px" }}>
+                <Form.Label column style={{ width: "98px", flex: "0 0 98px", maxWidth: "98px", fontSize: "11.5px", whiteSpace: "nowrap" }} className="fw-bold text-secondary text-start py-0 pe-1 ps-0 text-nowrap">
                   KDV Oranı (%) :
                 </Form.Label>
                 <Col>
-                  <div className="d-flex align-items-center gap-2" style={{ maxWidth: "200px" }}>
+                  <div className="d-flex align-items-center gap-1.5" style={{ maxWidth: "185px" }}>
                     <Form.Control
+                      ref={kdvOraniRef}
                       type="text"
                       inputMode="decimal"
                       size="sm"
                       value={kdvOrani}
                       onChange={(e) => handleKdvOraniChange(e.target.value)}
-                      onKeyDown={(e) => handleDotToCommaKeyDown(e, handleKdvOraniChange)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === "ArrowDown") {
+                          e.preventDefault();
+                          kdvTutariRef.current?.focus();
+                          kdvTutariRef.current?.select();
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          paraRef.current?.focus();
+                          paraRef.current?.select();
+                        } else {
+                          handleDotToCommaKeyDown(e, handleKdvOraniChange);
+                        }
+                      }}
+                      onFocus={(e) => e.target.select()}
                       onBlur={() => {
                         const num = parseDecimal(kdvOrani);
                         if (!isNaN(num)) {
@@ -917,16 +1233,29 @@ export const KasaHareketPage: React.FC = () => {
                         }
                       }}
                       className="font-monospace text-end"
-                      style={{ maxWidth: "55px" }}
+                      style={{ width: "45px", maxWidth: "45px" }}
                     />
-                    <span className="small fw-bold text-secondary flex-shrink-0">Tutar:</span>
+                    <span className="fw-semibold text-secondary flex-shrink-0" style={{ fontSize: "11.5px" }}>Tutar:</span>
                     <Form.Control
+                      ref={kdvTutariRef}
                       type="text"
                       inputMode="decimal"
                       size="sm"
                       value={kdvTutari}
                       onChange={(e) => handleKdvTutariChange(e.target.value)}
-                      onKeyDown={(e) => handleDotToCommaKeyDown(e, handleKdvTutariChange)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleSave();
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          kdvOraniRef.current?.focus();
+                          kdvOraniRef.current?.select();
+                        } else {
+                          handleDotToCommaKeyDown(e, handleKdvTutariChange);
+                        }
+                      }}
+                      onFocus={(e) => e.target.select()}
                       onBlur={() => {
                         const num = parseDecimal(kdvTutari);
                         if (!isNaN(num)) {
@@ -934,19 +1263,19 @@ export const KasaHareketPage: React.FC = () => {
                         }
                       }}
                       className="font-monospace text-end bg-light fw-semibold"
-                      style={{ maxWidth: "95px" }}
+                      style={{ flex: "1 1 auto", maxWidth: "90px" }}
                     />
                   </div>
                 </Col>
               </Form.Group>
 
               {/* Genel Toplam (Meblağ + KDV) */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
+              <Form.Group as={Row} className="align-items-center g-1" style={{ marginBottom: "4px" }}>
+                <Form.Label column style={{ width: "98px", flex: "0 0 98px", maxWidth: "98px", fontSize: "11.5px", whiteSpace: "nowrap" }} className="fw-bold text-secondary text-start py-0 pe-1 ps-0 text-nowrap">
                   Toplam Tutar :
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "200px" }}>
+                  <div style={{ maxWidth: "185px" }}>
                     <Form.Control
                       type="text"
                       size="sm"
@@ -955,23 +1284,6 @@ export const KasaHareketPage: React.FC = () => {
                       className="fw-bold font-monospace bg-light text-end"
                     />
                   </div>
-                </Col>
-              </Form.Group>
-
-              {/* Değişiklik Takip Switch */}
-              <Form.Group as={Row} className="mb-2 align-items-center g-2">
-                <Form.Label column style={{ width: "125px", flex: "0 0 125px", maxWidth: "125px" }} className="small fw-bold text-secondary text-start">
-                  Değişiklik Takibi :
-                </Form.Label>
-                <Col>
-                  <Form.Check
-                    type="switch"
-                    id="logTakip"
-                    label="Log Kaydı Tutulsun"
-                    checked={degisiklikTakipVar}
-                    onChange={(e) => setDegisiklikTakipVar(e.target.checked)}
-                    className="small fw-semibold text-secondary"
-                  />
                 </Col>
               </Form.Group>
             </Col>
@@ -1006,6 +1318,7 @@ export const KasaHareketPage: React.FC = () => {
       {/* Hesap Lookup Modalı */}
       <LookupModal<HesapItem>
         show={showHesapLookup}
+        initialSearchTerm={hesapInitialSearch}
         title="Hesap Kartı Seçiniz"
         columns={hesapLookupColumns}
         items={hesapList}
@@ -1019,13 +1332,18 @@ export const KasaHareketPage: React.FC = () => {
         onSelect={(selected) => {
           handleSelectHesap(selected);
           setShowHesapLookup(false);
+          setTimeout(() => aciklamaRef.current?.focus(), 50);
         }}
-        onHide={() => setShowHesapLookup(false)}
+        onHide={() => {
+          setShowHesapLookup(false);
+          setTimeout(() => hesapInputRef.current?.focus(), 50);
+        }}
       />
 
       {/* Vezne Lookup Modalı */}
       <LookupModal<VezneItem>
         show={showVezneLookup}
+        initialSearchTerm={vezneInitialSearch}
         title="Vezne Seçiniz"
         columns={vezneColumns}
         items={vezneList}
@@ -1037,15 +1355,21 @@ export const KasaHareketPage: React.FC = () => {
           setVezneId(selected.id);
           setVezneKod(selected.kod);
           setVezneAd(selected.ad);
+          setVezneInputVal(selected.kod);
           fetchVezneBakiyeler(selected.id);
           setShowVezneLookup(false);
+          setTimeout(() => kdvOraniRef.current?.focus(), 50);
         }}
-        onHide={() => setShowVezneLookup(false)}
+        onHide={() => {
+          setShowVezneLookup(false);
+          setTimeout(() => vezneInputRef.current?.focus(), 50);
+        }}
       />
 
       {/* Para/Birim Lookup Modalı */}
       <LookupModal<{ id: number; kod: string; ad: string }>
         show={showParaLookup}
+        initialSearchTerm={paraInitialSearch}
         title="Para / Gramaj Birimi Seçiniz"
         columns={paraColumns}
         items={lookups.paralar}
@@ -1057,9 +1381,20 @@ export const KasaHareketPage: React.FC = () => {
           setParaId(selected.id);
           setParaKod(selected.kod);
           setParaAd(selected.ad);
+          setParaInputVal(selected.kod);
           setShowParaLookup(false);
+          setTimeout(() => {
+            kdvOraniRef.current?.focus();
+            kdvOraniRef.current?.select();
+          }, 50);
         }}
-        onHide={() => setShowParaLookup(false)}
+        onHide={() => {
+          setShowParaLookup(false);
+          setTimeout(() => {
+            paraRef.current?.focus();
+            paraRef.current?.select();
+          }, 50);
+        }}
       />
 
       {/* Silme Onay Modalı */}
