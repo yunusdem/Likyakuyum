@@ -3016,8 +3016,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         if (userVezneId) {
           uv = (vezneler as VezneItem[]).find((v) => v.id === userVezneId);
         }
+        if (!uv && (user as any)?.vezneId) {
+          uv = (vezneler as VezneItem[]).find((v) => v.id === Number((user as any).vezneId));
+        }
         if (!uv) {
           uv = getUserVezne(vezneler as VezneItem[], user?.cashierCode);
+        }
+        if (!uv && vezneler.length > 0) {
+          uv = (vezneler as VezneItem[])[0];
         }
         if (uv) {
           setVezneId(uv.id); setVezneKod(uv.kod); setVezneAd(uv.ad);
@@ -7743,6 +7749,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   // Yazdır / Önizleme Modalı Açma (Önizlemeli)
   const openPrintPreview = useCallback(() => {
     const validLines = lines.filter((l) => parseDecimal(l.miktar) > 0 || parseDecimal(l.adet) > 0 || (l.urunKodu && l.urunKodu.trim() !== ""));
+    if (!validLines.length) {
+      showNotif("warning", "Fişte herhangi bir veri bulunmamaktadır. Boş fiş yazdırılamaz!");
+      return;
+    }
     const baseBelgeNo = fisNo || (fisId ? String(fisId) : (seriNo ? `${seriNo}-TEKLİF` : "TEKLİF"));
     const baseSeriNo = seriNo || "";
     setPrintSnapshot({
@@ -7922,7 +7932,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const handleDirectPrintF9 = useCallback(async () => {
     const validLines = lines.filter((l) => (l.urunId > 0 || (l.urunKodu && l.urunKodu.trim() !== "")) && (parseDecimal(l.miktar) > 0 || parseDecimal(l.adet) > 0));
     if (!validLines.length) {
-      showNotif("warning", "Yazdırılacak geçerli ürün satırı bulunamadı.");
+      showNotif("warning", "Fişte herhangi bir veri bulunmamaktadır. Boş fiş yazdırılamaz!");
       return;
     }
 
@@ -8494,19 +8504,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               {tip === 0 ? "ALIŞ" : "SATIŞ"}
             </div>
 
-            {!isDuzeltmeMode && (
-              <Button
-                variant="outline-primary"
-                size="sm"
-                className="py-0 px-2 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs"
-                style={{ fontSize: "11.5px", height: "26px" }}
-                onClick={() => setShowBankaTlHesabiModal(true)}
-                title="Banka TL Hesabı ve Dağıtımı (Shift+F5)"
-              >
-                <IconBuildingBank size={14} />
-                <span>Banka TL (Shift+F5)</span>
-              </Button>
-            )}
+            {/* Vezne: Giriş yapan kullanıcının veznesi */}
+            <div
+              className="d-inline-flex align-items-center gap-1 px-2 py-0.5 rounded border bg-white shadow-2xs font-monospace ms-1"
+              style={{ fontSize: "11.5px", height: "26px", cursor: "default" }}
+              title="Giriş yapan kullanıcının veznesi (Değiştirilemez)"
+            >
+              <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
+              <strong className="text-dark" style={{ fontSize: "11.5px" }}>{vezneKod || "01"}</strong>
+              {vezneAd && <span className="text-muted ms-1" style={{ fontSize: "11px" }}>({vezneAd})</span>}
+            </div>
           </div>
         }
         rightContent={
@@ -8522,48 +8529,6 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
               <span className="opacity-40">|</span>
               <span>EUR: <strong className="text-dark">{fmtBakiye("EUR")}</strong></span>
             </div>
-
-            {/* Vezne: Sınırsız yetkili yönetici vezne seçebilir; sınırsız yetkili olmayan kullanıcılar kendi veznesini pasif görür */}
-            {user?.isSysAdmin ? (
-              <div
-                className="d-flex align-items-center gap-1 px-2 py-0.5 rounded border bg-white shadow-2xs font-monospace"
-                style={{ fontSize: "11px", height: "28px" }}
-              >
-                <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
-                <select
-                  className="form-select form-select-sm border-0 p-0 fw-bold text-dark bg-transparent font-monospace"
-                  style={{ fontSize: "11px", height: "22px", width: "auto", minWidth: "55px", cursor: "pointer" }}
-                  value={vezneId}
-                  onChange={async (e) => {
-                    const vId = Number(e.target.value);
-                    setVezneId(vId);
-                    const vz = vezneList.find((v) => v.id === vId);
-                    if (vz) {
-                      setVezneKod(vz.kod);
-                      setVezneAd(vz.ad);
-                    }
-                    const bak = await SarrafFisService.getVezneBakiye(vId).catch(() => []);
-                    setBakiyeler(bak);
-                  }}
-                  title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
-                >
-                  {vezneList.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.kod} - {v.ad}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div
-                className="d-flex align-items-center gap-1 px-2 py-0.5 rounded border bg-white shadow-2xs font-monospace opacity-75"
-                style={{ fontSize: "11px", height: "28px", cursor: "not-allowed" }}
-                title="Kullanıcı kartınıza ait vezne (Değiştirilemez)"
-              >
-                <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
-                <strong className="text-dark" style={{ fontSize: "11px" }}>{vezneKod || "01"}</strong>
-              </div>
-            )}
 
             {/* Zaman: Fiş Düzeltme modunda düzenlenebilir, Kayıt modunda sadece gösterilir ve değiştirilemez */}
             {isDuzeltmeMode ? (
@@ -11054,6 +11019,15 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 >
                   <Badge bg="dark" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F8</Badge>
                   <span className="fw-bold text-dark">Detay</span>
+                </span>
+                <span
+                  className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
+                  style={{ fontSize: "11.5px", cursor: "pointer" }}
+                  onClick={() => setShowBankaTlHesabiModal(true)}
+                  title="Banka TL Hesabı ve Dağıtımı (Shift+F5)"
+                >
+                  <Badge bg="primary" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>Shift+F5</Badge>
+                  <span className="fw-bold text-dark">Banka TL Hesabı</span>
                 </span>
                 <span
                   className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"

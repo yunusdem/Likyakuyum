@@ -154,21 +154,28 @@ export const CariHareketPage: React.FC = () => {
   const applyUserVezne = useCallback(
     (list: VezneItem[]) => {
       if (!list || list.length === 0) return;
-      const target = String(user?.cashierCode || "").trim().toLowerCase();
-
       let matched: VezneItem | undefined;
-      if (target) {
-        // 1. Check exact match on id or kod
-        matched = list.find(
-          (v) =>
-            String(v.id).toLowerCase() === target ||
-            v.kod.toLowerCase() === target
-        );
 
-        // 2. Check if numeric comparison matches (e.g. "01" vs 1)
-        if (!matched && !isNaN(Number(target))) {
-          const targetNum = Number(target);
-          matched = list.find((v) => v.id === targetNum);
+      const uVezneId = user?.vezneId ? Number(user.vezneId) : 0;
+      if (uVezneId > 0) {
+        matched = list.find((v) => v.id === uVezneId);
+      }
+
+      if (!matched) {
+        const target = String(user?.cashierCode || "").trim().toLowerCase();
+        if (target) {
+          // 1. Check exact match on id or kod
+          matched = list.find(
+            (v) =>
+              String(v.id).toLowerCase() === target ||
+              v.kod.toLowerCase() === target
+          );
+
+          // 2. Check if numeric comparison matches (e.g. "01" vs 1)
+          if (!matched && !isNaN(Number(target))) {
+            const targetNum = Number(target);
+            matched = list.find((v) => v.id === targetNum);
+          }
         }
       }
 
@@ -1629,6 +1636,20 @@ export const CariHareketPage: React.FC = () => {
         onRefresh={handleRefresh}
         onClear={handleNewRecord}
         disabled={isSaving}
+        centerContent={
+          <div className="d-flex align-items-center gap-2">
+            {/* Vezne: Giriş yapan kullanıcının veznesi */}
+            <div
+              className="d-inline-flex align-items-center gap-1 px-2.5 py-0.5 rounded border bg-white shadow-2xs font-monospace"
+              style={{ fontSize: "11.5px", height: "26px", cursor: "default" }}
+              title="Giriş yapan kullanıcının veznesi (Değiştirilemez)"
+            >
+              <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
+              <strong className="text-dark" style={{ fontSize: "11.5px" }}>{vezneKod || "01"}</strong>
+              {vezneAd && <span className="text-muted ms-1" style={{ fontSize: "11px" }}>({vezneAd})</span>}
+            </div>
+          </div>
+        }
       />
 
       {/* Kayıt başka bir kullanıcıya aitse kilitli uyarı bandı */}
@@ -1680,69 +1701,13 @@ export const CariHareketPage: React.FC = () => {
         <Col xs={12} lg={7} xl={7}>
           <Card className="border shadow-sm h-100 bg-white">
             <Card.Body className="p-3">
-              {/* Row 1: Vezne */}
-              <Form.Group as={Row} className="mb-2.5 align-items-center g-1">
-                <Form.Label column style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }} className="small fw-semibold text-secondary text-start text-nowrap">
-                  Vezne
-                </Form.Label>
-                <Col>
-                  {user?.isSysAdmin ? (
-                    <Form.Select
-                      size="sm"
-                      value={vezneId}
-                      disabled={isRecordLocked}
-                      onChange={(e) => {
-                        const vId = Number(e.target.value);
-                        setVezneId(vId);
-                        const vz = vezneList.find((v) => v.id === vId);
-                        if (vz) {
-                          setVezneKod(vz.kod);
-                          setVezneAd(vz.ad);
-                        }
-                      }}
-                      style={{ maxWidth: "280px" }}
-                      className="fw-bold"
-                      title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
-                    >
-                      {vezneList.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.kod} - {v.ad}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  ) : (
-                    <div className="d-flex gap-1" style={{ maxWidth: "280px" }}>
-                      <div style={{ width: "90px", flexShrink: 0 }}>
-                        <Form.Control
-                          type="text"
-                          readOnly
-                          disabled
-                          value={vezneKod}
-                          title="Vezne giriş yapan kullanıcıya aittir ve değiştirilemez."
-                          className="bg-light text-secondary fw-semibold font-monospace small"
-                          style={{ cursor: "not-allowed" }}
-                        />
-                      </div>
-                      <Form.Control
-                        type="text"
-                        readOnly
-                        disabled
-                        value={vezneAd}
-                        className="bg-light text-muted small"
-                        style={{ cursor: "not-allowed" }}
-                      />
-                    </div>
-                  )}
-                </Col>
-              </Form.Group>
-
-              {/* Row 2: Cari Kod */}
+              {/* Row 1: Cari Kod */}
               <Form.Group as={Row} className="mb-2.5 align-items-center g-1">
                 <Form.Label column style={{ width: "88px", flex: "0 0 88px", maxWidth: "88px" }} className="small fw-semibold text-secondary text-start text-nowrap">
                   Kod
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "280px", position: "relative" }}>
+                  <div style={{ maxWidth: "140px", position: "relative" }}>
                     <CodeLookupInput
                       id="cariKodInput"
                       value={cariKod}
@@ -1908,7 +1873,7 @@ export const CariHareketPage: React.FC = () => {
                   Tarih
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "280px" }}>
+                  <div style={{ maxWidth: "140px" }}>
                     <Form.Control
                       ref={tarihInputRef}
                       id="tarihInput"
@@ -1940,7 +1905,7 @@ export const CariHareketPage: React.FC = () => {
                   Hareket tipi
                 </Form.Label>
                 <Col>
-                  <div style={{ maxWidth: "280px" }}>
+                  <div style={{ maxWidth: "140px" }}>
                     <Form.Select
                       ref={hareketTipiRef}
                       value={hareketTipi}

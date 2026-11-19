@@ -1327,6 +1327,11 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         } catch { }
       }
 
+      if ((user as any)?.vezneId) {
+        const uv = list.find((v) => v.id === Number((user as any).vezneId));
+        if (uv) return uv;
+      }
+
       if (user?.cashierCode) {
         const target = String(user.cashierCode).toLowerCase().trim();
         const uv = list.find(
@@ -5941,8 +5946,8 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
 
   // F9: Doğrudan Fiş Yazdırma (Önizlemesiz ve Chrome dialogsuz)
   const handleDirectPrintF9 = async () => {
-    if (validItems.length === 0) {
-      showWarning("Yazdırılacak geçerli ürün satırı bulunamadı.");
+    if (!validItems || validItems.length === 0) {
+      showWarning("Fişte herhangi bir veri bulunmamaktadır. Boş fiş yazdırılamaz!");
       return;
     }
     const previewSatirlar: PerakendeFaturaSatiriItem[] = validItems.map((r, idx) => {
@@ -6032,8 +6037,17 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   // Toolbar Yazdır / İncele: Fiş / Fatura Önizleme Modalı Aç
   const handleOpenPrintPreview = () => {
     if (printedFatura) {
+      const hasLines = printedFatura.satirlar && printedFatura.satirlar.length > 0;
+      if (!hasLines) {
+        showWarning("Fişte herhangi bir veri bulunmamaktadır. Boş fiş yazdırılamaz!");
+        return;
+      }
       setIsPendingDirectPrint(false);
       setShowPrintModal(true);
+      return;
+    }
+    if (!validItems || validItems.length === 0) {
+      showWarning("Fişte herhangi bir veri bulunmamaktadır. Boş fiş yazdırılamaz!");
       return;
     }
     const previewSatirlar: PerakendeFaturaSatiriItem[] = validItems.map((r, idx) => {
@@ -7575,19 +7589,16 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                   : "e-Fatura"}
             </Badge>
 
-            {!isDuzeltmeMode && (
-              <Button
-                variant="outline-primary"
-                size="sm"
-                className="py-0 px-2 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs ms-1"
-                style={{ fontSize: "11.5px", height: "26px" }}
-                onClick={() => setShowBankaTlHesabiModal(true)}
-                title="Banka TL Hesabı ve Dağıtımı (Shift+F5)"
-              >
-                <IconBuildingBank size={14} />
-                <span>Banka TL (Shift+F5)</span>
-              </Button>
-            )}
+            {/* Vezne: Giriş yapan kullanıcının veznesi */}
+            <div
+              className="d-inline-flex align-items-center gap-1 px-2 py-0.5 rounded border bg-white shadow-2xs font-monospace ms-1"
+              style={{ fontSize: "11.5px", height: "26px", cursor: "default" }}
+              title="Giriş yapan kullanıcının veznesi (Değiştirilemez)"
+            >
+              <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
+              <strong className="text-dark" style={{ fontSize: "11.5px" }}>{selectedVezne?.kod || user?.cashierCode || "01"}</strong>
+              {selectedVezne?.ad && <span className="text-muted ms-1" style={{ fontSize: "11px" }}>({selectedVezne.ad})</span>}
+            </div>
           </div>
         }
         rightContent={
@@ -7657,47 +7668,6 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         style={{ fontSize: "12px" }}
       >
         <div className="d-flex align-items-center flex-wrap gap-2">
-          {/* Vezne: Sınırsız yetkili yönetici vezne seçebilir; sınırsız yetkili olmayan kullanıcılar kendi veznesini pasif görür */}
-          <div className="d-flex align-items-center gap-1">
-            <span className="fw-bold text-primary" style={{ minWidth: 45 }}>
-              VEZNE
-            </span>
-            {user?.isSysAdmin ? (
-              <select
-                className="form-select form-select-sm fw-bold bg-white text-dark"
-                style={{ width: "auto", minWidth: "120px", fontSize: "12px", cursor: "pointer", height: "30px" }}
-                value={selectedVezne?.id || 1}
-                onChange={(e) => {
-                  const vId = Number(e.target.value);
-                  const vz = vezneler.find((v) => v.id === vId);
-                  if (vz) setSelectedVezne(vz);
-                }}
-                title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
-              >
-                {vezneler.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.kod} - {v.ad}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  value={selectedVezne?.kod || user?.cashierCode || "01"}
-                  readOnly
-                  disabled
-                  className="form-control form-control-sm text-center fw-bold bg-light"
-                  style={{ width: 60, fontSize: "12px", cursor: "not-allowed" }}
-                  title="Kullanıcı kartınıza ait vezne (Değiştirilemez)"
-                />
-                {selectedVezne?.ad && (
-                  <span className="text-muted small ms-1 d-none d-md-inline">({selectedVezne.ad})</span>
-                )}
-              </>
-            )}
-          </div>
-
           {/* Fatura No */}
           <div className="d-flex align-items-center gap-1">
             <span className="fw-bold text-secondary" style={{ minWidth: 65 }}>

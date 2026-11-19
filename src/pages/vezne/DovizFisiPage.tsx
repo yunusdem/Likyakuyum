@@ -5903,7 +5903,7 @@ export const DovizFisiPage: React.FC = () => {
     if (validLines.length === 0) {
       setNotification({
         type: "warning",
-        message: "Yazdırılacak geçerli döviz satırı bulunamadı.",
+        message: "Fişte herhangi bir veri bulunmamaktadır. Boş fiş yazdırılamaz!",
       });
       return;
     }
@@ -6123,6 +6123,14 @@ export const DovizFisiPage: React.FC = () => {
       : [];
 
     const previewLines = [...mappedMain, ...mappedArb];
+
+    if (previewLines.length === 0) {
+      setNotification({
+        type: "warning",
+        message: "Fişte herhangi bir veri bulunmamaktadır. Boş fiş yazdırılamaz!",
+      });
+      return;
+    }
 
     setPrintSnapshot({
       fisId,
@@ -6936,19 +6944,16 @@ export const DovizFisiPage: React.FC = () => {
                 <IconArrowsExchange size={14} /> ARBİTRAJ
               </Badge>
             )}
-            {!isDuzeltmeMode && (
-              <Button
-                variant="outline-primary"
-                size="sm"
-                className="py-0 px-2 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs ms-1"
-                style={{ fontSize: "11.5px", height: "26px" }}
-                onClick={() => setShowBankaTlHesabiModal(true)}
-                title="Banka TL Hesabı ve Dağıtımı (Shift+F5)"
-              >
-                <IconBuildingBank size={14} />
-                <span>Banka TL (Shift+F5)</span>
-              </Button>
-            )}
+            {/* Vezne: Giriş yapan kullanıcının veznesi */}
+            <div
+              className="d-inline-flex align-items-center gap-1 px-2 py-0.5 rounded border bg-white shadow-2xs font-monospace ms-1"
+              style={{ fontSize: "11.5px", height: "26px", cursor: "default" }}
+              title="Giriş yapan kullanıcının veznesi (Değiştirilemez)"
+            >
+              <span className="text-primary fw-bold" style={{ fontSize: "10.5px" }}>VEZNE:</span>
+              <strong className="text-dark" style={{ fontSize: "11.5px" }}>{vezneKod || "01"}</strong>
+              {vezneAd && <span className="text-muted ms-1" style={{ fontSize: "11px" }}>({vezneAd})</span>}
+            </div>
           </div>
         }
         onPrint={handleOpenPrintPreview}
@@ -7072,54 +7077,7 @@ export const DovizFisiPage: React.FC = () => {
                     backgroundColor: activeFisThemeBg,
                   }}
                 >
-                  {/* Vezne: Sınırsız yetkili yönetici vezne seçebilir; sınırsız yetkili olmayan kullanıcılar kendi veznesini pasif görür */}
-                  <div className="d-flex flex-row align-items-center gap-2">
-                    <label
-                      className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
-                    >
-                      Vezne
-                    </label>
-                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      {user?.isSysAdmin ? (
-                        <Form.Select
-                          size="sm"
-                          value={vezneId}
-                          disabled={isLocked}
-                          onChange={async (e) => {
-                            const vId = Number(e.target.value);
-                            setVezneId(vId);
-                            const vz = vezneList.find((v) => v.id === vId);
-                            if (vz) {
-                              setVezneKod(vz.kod);
-                              setVezneAd(vz.ad);
-                            }
-                            await fetchVezneBalances(vId);
-                          }}
-                          className="fw-bold"
-                          style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
-                          title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
-                        >
-                          {vezneList.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.kod} - {v.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      ) : (
-                        <input
-                          type="text"
-                          readOnly
-                          disabled
-                          value={`${vezneKod || "01"} - ${vezneAd || "Ana Vezne"}`}
-                          className="form-control form-control-sm bg-light text-muted fw-semibold"
-                          style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1", cursor: "not-allowed" }}
-                          title="Kullanıcı kartınıza ait vezne (Değiştirilemez)"
-                        />
-                      )}
-                    </div>
-                  </div>
-
+                  {/* Tarih / Saat */}
                   <div className="d-flex flex-row align-items-center gap-2">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
@@ -7134,8 +7092,8 @@ export const DovizFisiPage: React.FC = () => {
                         disabled={!isDuzeltmeMode || isLocked || !kYetki.tarihDegistirme}
                         value={tarih}
                         onChange={(e) => setTarih(e.target.value)}
-                        className={`font-monospace px-2 py-1 ${!isDuzeltmeMode ? "bg-light text-muted" : ""}`}
-                        style={{ width: "130px", flexShrink: 0, height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
+                        className={`font-monospace px-1.5 py-1 ${!isDuzeltmeMode ? "bg-light text-muted" : ""}`}
+                        style={{ width: "120px", flexShrink: 0, height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
                         title={!isDuzeltmeMode ? "Kayıt anında otomatik (anlık) tarih alınır" : "Fiş Tarihi (Düzenlenebilir)"}
                       />
                       <Form.Control
@@ -7600,54 +7558,7 @@ export const DovizFisiPage: React.FC = () => {
                     backgroundColor: activeFisThemeBg,
                   }}
                 >
-                  {/* Vezne: Sınırsız yetkili yönetici vezne seçebilir; sınırsız yetkili olmayan kullanıcılar kendi veznesini pasif görür */}
-                  <div className="d-flex flex-row align-items-center gap-2">
-                    <label
-                      className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
-                    >
-                      Vezne
-                    </label>
-                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      {user?.isSysAdmin ? (
-                        <Form.Select
-                          size="sm"
-                          value={vezneId}
-                          disabled={isLocked}
-                          onChange={async (e) => {
-                            const vId = Number(e.target.value);
-                            setVezneId(vId);
-                            const vz = vezneList.find((v) => v.id === vId);
-                            if (vz) {
-                              setVezneKod(vz.kod);
-                              setVezneAd(vz.ad);
-                            }
-                            await fetchVezneBalances(vId);
-                          }}
-                          className="fw-bold"
-                          style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
-                          title="Sistem yöneticisi: İstediğiniz vezneyi seçebilirsiniz"
-                        >
-                          {vezneList.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.kod} - {v.ad}
-                            </option>
-                          ))}
-                        </Form.Select>
-                      ) : (
-                        <input
-                          type="text"
-                          readOnly
-                          disabled
-                          value={`${vezneKod || "01"} - ${vezneAd || "Ana Vezne"}`}
-                          className="form-control form-control-sm bg-light text-muted fw-semibold"
-                          style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1", cursor: "not-allowed" }}
-                          title="Kullanıcı kartınıza ait vezne (Değiştirilemez)"
-                        />
-                      )}
-                    </div>
-                  </div>
-
+                  {/* Belge no */}
                   <div className="d-flex flex-row align-items-center gap-2">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"

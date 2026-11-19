@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Modal, Button, Form, Spinner } from "react-bootstrap";
-import { IconPrinter, IconX, IconBrandWhatsapp } from "@tabler/icons-react";
+import { IconPrinter, IconX, IconBrandWhatsapp, IconAlertTriangle } from "@tabler/icons-react";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
@@ -92,7 +92,13 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
       .catch(() => {});
   }, [show]);
 
+  const isFisEmpty = !props.lines || props.lines.length === 0;
+
   const handleWhatsAppPdfShare = useCallback(async () => {
+    if (isFisEmpty) {
+      alert("Boş fiş paylaşılamaz! Fişte veri bulunmamaktadır.");
+      return;
+    }
     setIsSharingPdf(true);
     const docNo = props.belgeNo || props.seriNo || (props.fisId ? `DOV-${props.fisId}` : "doviz_fisi");
     const cached = pdfBlobRef.current;
@@ -196,6 +202,10 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
   };
 
   const handleBrowserPrint = useCallback(() => {
+    if (isFisEmpty) {
+      alert("Boş fiş yazdırılamaz! Fişte veri bulunmamaktadır.");
+      return;
+    }
     if (!fis) return;
     const fisler = Array.isArray(fis) ? fis : [fis];
     const fullHtml = fisler.map((f) => f.html).join("<div style='page-break-after:always;height:0;'></div>");
@@ -251,6 +261,10 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
   }, [fis]);
 
   const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
+    if (isFisEmpty) {
+      alert("Boş fiş yazdırılamaz! Fişte veri bulunmamaktadır.");
+      return;
+    }
     if (!hazir || isPrinting) return;
     setIsPrinting(true);
     try {
@@ -387,7 +401,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
               variant="outline-primary"
               size="sm"
               onClick={handleBrowserPrint}
-              disabled={!fis || isPrinting}
+              disabled={!fis || isPrinting || isFisEmpty}
               className="px-2.5 fw-bold"
               title="Google Chrome / Tarayıcı Önizleme Penceresi ile Yazdır"
             >
@@ -399,7 +413,7 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
               variant="success"
               size="sm"
               onClick={handleWhatsAppPdfShare}
-              disabled={!fis || isPrinting || isSharingPdf}
+              disabled={!fis || isPrinting || isSharingPdf || isFisEmpty}
               className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
               style={{
                 backgroundColor: "#25D366",
@@ -422,6 +436,12 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
       </Modal.Header>
 
       <Modal.Body className="p-3" style={{ backgroundColor: "#525659", overflow: "auto" }}>
+        {isFisEmpty && (
+          <div className="alert alert-warning py-2 px-3 mb-3 d-flex align-items-center" role="alert">
+            <IconAlertTriangle size={18} className="me-2 text-warning flex-shrink-0" />
+            <div><strong>Uyarı:</strong> Fişte herhangi bir veri veya döviz kalemi bulunmamaktadır. Boş fiş yazdırılamaz.</div>
+          </div>
+        )}
         <SablonluFisOnizleme fis={fis} hata={hata} />
       </Modal.Body>
 
@@ -436,13 +456,13 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
             variant="outline-primary"
             size="sm"
             onClick={handleBrowserPrint}
-            disabled={!fis || isPrinting}
+            disabled={!fis || isPrinting || isFisEmpty}
             title="Google Chrome / Tarayıcı Yazdırma Penceresi"
           >
             <IconPrinter size={14} className="me-1" />
             Tarayıcıdan Yazdır
           </Button>
-          <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting} className="d-flex align-items-center gap-1 px-4 fw-bold shadow-xs">
+          <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting || isFisEmpty} className="d-flex align-items-center gap-1 px-4 fw-bold shadow-xs">
             {isPrinting ? (
               <>
                 <Spinner as="span" animation="border" size="sm" className="me-1" />

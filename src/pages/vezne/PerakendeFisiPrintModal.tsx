@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Modal, Button, Form, Spinner } from "react-bootstrap";
-import { IconPrinter, IconX, IconReceipt, IconFileText, IconBrandWhatsapp } from "@tabler/icons-react";
+import { IconPrinter, IconX, IconReceipt, IconFileText, IconBrandWhatsapp, IconAlertTriangle } from "@tabler/icons-react";
 import { PerakendeFaturaModel } from "../../services/perakendeService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { VezneItem } from "../../services/cashDeskService";
@@ -46,7 +46,13 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
       .catch(() => {});
   }, [show, printType, fatura?.faturaId]);
 
+  const isFisEmpty = !fatura?.satirlar || fatura.satirlar.length === 0;
+
   const handleWhatsAppPdfShare = useCallback(async () => {
+    if (isFisEmpty) {
+      alert("Boş fiş paylaşılamaz! Fişte veri bulunmamaktadır.");
+      return;
+    }
     setIsSharingPdf(true);
     const docNo = fatura?.faturaNo || (fatura?.faturaId ? `PRF-${fatura.faturaId}` : "perakende_fisi");
     const cached = pdfBlobRef.current;
@@ -152,6 +158,10 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   };
 
   const handleBrowserPrint = useCallback(() => {
+    if (isFisEmpty) {
+      alert("Boş fiş yazdırılamaz! Fişte veri bulunmamaktadır.");
+      return;
+    }
     if (!fis) return;
     const fisler = Array.isArray(fis) ? fis : [fis];
     const fullHtml = fisler.map((f) => f.html).join("<div style='page-break-after:always;height:0;'></div>");
@@ -202,6 +212,10 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
   }, [fis, printType]);
 
   const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
+    if (isFisEmpty) {
+      alert("Boş fiş yazdırılamaz! Fişte veri bulunmamaktadır.");
+      return;
+    }
     if (!hazir || isPrinting) return;
     setIsPrinting(true);
     try {
@@ -343,7 +357,7 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
               variant="outline-primary"
               size="sm"
               onClick={handleBrowserPrint}
-              disabled={!fis || isPrinting}
+              disabled={!fis || isPrinting || isFisEmpty}
               className="px-2.5 fw-bold"
               title="Google Chrome / Tarayıcı Önizleme Penceresi ile Yazdır"
             >
@@ -355,7 +369,7 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
               variant="success"
               size="sm"
               onClick={handleWhatsAppPdfShare}
-              disabled={!fis || isPrinting || isSharingPdf}
+              disabled={!fis || isPrinting || isSharingPdf || isFisEmpty}
               className="d-inline-flex align-items-center justify-content-center p-0 rounded-circle shadow-xs"
               style={{
                 backgroundColor: "#25D366",
@@ -378,6 +392,12 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
       </Modal.Header>
 
       <Modal.Body className="p-4 bg-light overflow-auto" style={{ maxHeight: "calc(85vh - 110px)" }}>
+        {isFisEmpty && (
+          <div className="alert alert-warning py-2 px-3 mb-3 d-flex align-items-center" role="alert">
+            <IconAlertTriangle size={18} className="me-2 text-warning flex-shrink-0" />
+            <div><strong>Uyarı:</strong> Fişte herhangi bir veri veya ürün satırı bulunmamaktadır. Boş fiş yazdırılamaz.</div>
+          </div>
+        )}
         <SablonluFisOnizleme fis={fis} hata={hata} />
       </Modal.Body>
 
@@ -391,13 +411,13 @@ export const PerakendeFisiPrintModal: React.FC<PerakendeFisiPrintModalProps> = (
             variant="outline-primary"
             size="sm"
             onClick={handleBrowserPrint}
-            disabled={!fis || isPrinting}
+            disabled={!fis || isPrinting || isFisEmpty}
             title="Google Chrome / Tarayıcı Yazdırma Penceresi"
           >
             <IconPrinter size={14} className="me-1" />
             Tarayıcıdan Yazdır
           </Button>
-          <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting}>
+          <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting || isFisEmpty}>
             {isPrinting ? (
               <>
                 <Spinner as="span" animation="border" size="sm" className="me-1" />

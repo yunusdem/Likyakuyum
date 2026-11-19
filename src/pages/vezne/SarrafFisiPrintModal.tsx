@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Modal, Button, Form, Spinner } from "react-bootstrap";
-import { IconPrinter, IconX, IconReceipt, IconFileText, IconBrandWhatsapp } from "@tabler/icons-react";
+import { IconPrinter, IconX, IconReceipt, IconFileText, IconBrandWhatsapp, IconAlertTriangle } from "@tabler/icons-react";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
 import { useAuth } from "../../context/AuthContext";
@@ -217,8 +217,14 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
     }).catch(() => {});
   };
 
+  const isFisEmpty = !props.satirlar || props.satirlar.length === 0;
+
   // Tarayıcı üzerinden yerel yazdırma (Google Chrome Ctrl+P penceresi)
   const handleBrowserPrint = useCallback(() => {
+    if (isFisEmpty) {
+      alert("Boş fiş yazdırılamaz! Fişte veri bulunmamaktadır.");
+      return;
+    }
     if (!fis) return;
     const fisler = Array.isArray(fis) ? fis : [fis];
     const fullHtml = fisler.map((f) => f.html).join("<div style='page-break-after:always;height:0;'></div>");
@@ -269,6 +275,10 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
   }, [fis, fisTuruBaslik, printType]);
 
   const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
+    if (isFisEmpty) {
+      alert("Boş fiş yazdırılamaz! Fişte veri bulunmamaktadır.");
+      return;
+    }
     if (!hazir || isPrinting) return;
     setIsPrinting(true);
     try {
@@ -407,7 +417,7 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
               variant="outline-primary"
               size="sm"
               onClick={handleBrowserPrint}
-              disabled={!fis || isPrinting}
+              disabled={!fis || isPrinting || isFisEmpty}
               className="px-2.5 fw-bold"
               title="Google Chrome / Tarayıcı Önizleme Penceresi ile Yazdır"
             >
@@ -415,7 +425,7 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
               Tarayıcı
             </Button>
 
-            <Button variant="success" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting} className="px-3 fw-bold">
+            <Button variant="success" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting || isFisEmpty} className="px-3 fw-bold">
               {isPrinting ? (
                 <>
                   <Spinner as="span" animation="border" size="sm" className="me-1" />
@@ -456,6 +466,12 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
       </Modal.Header>
 
       <Modal.Body className="p-3 bg-secondary bg-opacity-10" style={{ maxHeight: "75vh", overflow: "auto" }}>
+        {isFisEmpty && (
+          <div className="alert alert-warning py-2 px-3 mb-3 d-flex align-items-center" role="alert">
+            <IconAlertTriangle size={18} className="me-2 text-warning flex-shrink-0" />
+            <div><strong>Uyarı:</strong> Fişte herhangi bir veri veya kalem bulunmamaktadır. Boş fiş yazdırılamaz.</div>
+          </div>
+        )}
         <SablonluFisOnizleme fis={fis} hata={hata} />
       </Modal.Body>
 
@@ -473,13 +489,13 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
               variant="outline-primary"
               size="sm"
               onClick={handleBrowserPrint}
-              disabled={!fis || isPrinting}
+              disabled={!fis || isPrinting || isFisEmpty}
               title="Google Chrome / Tarayıcı Yazdırma Penceresi"
             >
               <IconPrinter size={14} className="me-1" />
               Tarayıcıdan Yazdır
             </Button>
-            <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting}>
+            <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting || isFisEmpty}>
               {isPrinting ? (
                 <>
                   <Spinner as="span" animation="border" size="sm" className="me-1" />
