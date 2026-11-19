@@ -411,6 +411,7 @@ export const CariHareketPage: React.FC = () => {
   // Modals
   const [showCariModal, setShowCariModal] = useState<boolean>(false);
   const [showParaModal, setShowParaModal] = useState<boolean>(false);
+  const [paraSearchTerm, setParaSearchTerm] = useState<string>("");
   const [activeParaLineIndex, setActiveParaLineIndex] = useState<number | null>(null);
   const [activeGridRowIdx, setActiveGridRowIdx] = useState<number | null>(0);
 
@@ -870,21 +871,9 @@ export const CariHareketPage: React.FC = () => {
       return updated;
     });
 
-    // Show suggestions from the first letter typed
-    if (val.trim().length > 0) {
-      const term = val.trim().toLowerCase();
-      const filtered = paraList.filter(
-        (p) =>
-          p.kod.toLowerCase().includes(term) ||
-          p.ad.toLowerCase().includes(term)
-      );
-      setSmbSuggestItems(filtered);
-      setActiveSmbSuggestIdx(index);
-      setSelectedSuggestIdx(0);
-    } else {
-      setSmbSuggestItems([]);
-      setActiveSmbSuggestIdx(null);
-    }
+    // Kullanıcı talebi: smb bölümünde döviz seçerken yazınca altında öneriler çıkmasın
+    setSmbSuggestItems([]);
+    setActiveSmbSuggestIdx(null);
   };
 
   const handleLineMeblagChange = (index: number, val: string) => {
@@ -952,23 +941,17 @@ export const CariHareketPage: React.FC = () => {
     }
   };
 
-  // Cari Kod Input & Suggestions (anında canlı eşleşme ve yükleme)
+  // Cari Kod Input (yazarken altta öneri çıkmaz, tam kod girilirse eşleşir)
   const handleCariKodChange = (val: string) => {
     cariKodEditedRef.current = true;
     setCariKod(val);
     const cleanVal = val.trim();
     if (cleanVal.length > 0) {
       const term = cleanVal.toLowerCase();
-      const matched = cariList.filter(
-        (c) =>
-          c.kod.toLowerCase().includes(term) ||
-          c.ad.toLowerCase().includes(term)
-      );
-      setCariSuggestItems(matched.slice(0, 10));
-      setShowCariSuggest(matched.length > 0);
-      setSelectedCariSuggestIdx(0);
+      setCariSuggestItems([]);
+      setShowCariSuggest(false);
 
-      // CANLI: Eğer girilen kod tam olarak bir cari kartla eşleşiyorsa beklemeden ad ve bakiyeyi yükle
+      // CANLI: Eğer girilen kod tam olarak bir cari kartla eşleşiyorsa ad ve bakiyeyi yükle
       const exactMatch = cariList.find((c) => c.kod.toLowerCase() === term);
       if (exactMatch) {
         setCariKartId(exactMatch.id);
@@ -1030,29 +1013,6 @@ export const CariHareketPage: React.FC = () => {
   };
 
   const handleCariKodKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (showCariSuggest && cariSuggestItems.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedCariSuggestIdx((prev) => Math.min(cariSuggestItems.length - 1, prev + 1));
-        return;
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedCariSuggestIdx((prev) => Math.max(0, prev - 1));
-        return;
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const item = cariSuggestItems[selectedCariSuggestIdx] || cariSuggestItems[0];
-        if (item) {
-          handleSelectCariSuggest(item);
-        }
-        setShowCariSuggest(false);
-        return;
-      } else if (e.key === "Escape") {
-        setShowCariSuggest(false);
-        return;
-      }
-    }
-
     if (e.key === "ArrowDown") {
       e.preventDefault();
       cariAdInputRef.current?.focus();
@@ -1071,11 +1031,10 @@ export const CariHareketPage: React.FC = () => {
     if (e.key === "Enter") {
       e.preventDefault();
       setShowCariSuggest(false);
-      const val = cariKod.trim().toLowerCase();
-      const isUntouched = !cariKodEditedRef.current || (val && val === initialCariKodRef.current);
+      const val = (cariKod || "").trim().toLowerCase();
 
-      if (!val || isUntouched) {
-        // Boş ise veya düzenleme yapılmamışsa modal açmadan sonrakine geç
+      // Boşsa geçsin
+      if (!val) {
         if (cariKartId) {
           focusNextAfterCari();
         } else {
@@ -1085,17 +1044,21 @@ export const CariHareketPage: React.FC = () => {
         return;
       }
 
-      // Düzenleme yapılmışsa:
+      // Zaten dolu veya tam kod girilmişse geçsin
       const exact = cariList.find((c) => c.kod.toLowerCase() === val);
+      const isUntouched = !cariKodEditedRef.current || (val && val === initialCariKodRef.current);
+
       if (exact) {
         handleSelectCari(exact);
         return;
       }
-      const matches = cariList.filter((c) => (c.kod || "").toLowerCase().includes(val) || (c.ad || "").toLowerCase().includes(val));
-      if (matches.length === 1) {
-        handleSelectCari(matches[0]);
+
+      if (isUntouched && cariKartId) {
+        focusNextAfterCari();
         return;
       }
+
+      // Değilse modalda arasın
       setCariSearchTerm(cariKod.trim());
       setShowCariModal(true);
     }
@@ -1154,43 +1117,31 @@ export const CariHareketPage: React.FC = () => {
     if (e.key === "Enter") {
       e.preventDefault();
 
-      const val = cariAd.trim().toLowerCase();
-      const isUntouched = !cariAdEditedRef.current || (val && val === initialCariAdRef.current);
+      const val = (cariAd || "").trim().toLowerCase();
 
-      if (!val || isUntouched) {
-        // Boş ise veya düzenleme yapılmamışsa modal açmadan sonrakine geç
+      // Boşsa geçsin
+      if (!val) {
         focusNextAfterCari();
         return;
       }
 
-      // 1. Birebir tam eşleşme kontrolü
+      // Zaten dolu veya tam ad girilmişse geçsin
       const exactMatch = cariList.find((c) => c.ad && c.ad.toLowerCase() === val);
+      const isUntouched = !cariAdEditedRef.current || (val && val === initialCariAdRef.current);
+
       if (exactMatch) {
         handleSelectCari(exactMatch);
         return;
       }
 
-      // Eğer mevcut seçili cari ile eşleşiyorsa sonrakine geç
-      if (cariKartId && cariList.some((c) => c.id === cariKartId && (c.ad || "").toLowerCase().includes(val))) {
+      if (isUntouched && cariKartId) {
         focusNextAfterCari();
         return;
       }
 
-      // 2. Kısmi eşleşme kontrolü (ad veya kod içerenler)
-      const matches = cariList.filter((c) => {
-        const ad = (c.ad || "").toLowerCase();
-        const kod = (c.kod || "").toLowerCase();
-        return ad.includes(val) || kod.includes(val);
-      });
-
-      if (matches.length === 1) {
-        // Tek kayıt varsa seçmeli
-        handleSelectCari(matches[0]);
-      } else {
-        // Birden fazla kayıt varsa (veya hiç kayıt yoksa) modal açmalı
-        setCariSearchTerm(cariAd.trim());
-        setShowCariModal(true);
-      }
+      // Değilse modalda arasın
+      setCariSearchTerm(cariAd.trim());
+      setShowCariModal(true);
     }
   };
 
@@ -1238,44 +1189,13 @@ export const CariHareketPage: React.FC = () => {
         miktarInputRefs.current[idx]?.focus();
         miktarInputRefs.current[idx]?.select();
       }, 50);
-
-      // Focus the Miktar input for this row (do not open new row until amount is entered)
-      setTimeout(() => {
-        miktarInputRefs.current[idx]?.focus();
-        miktarInputRefs.current[idx]?.select();
-      }, 50);
     }
+    setShowParaModal(false);
     setActiveParaLineIndex(null);
   };
 
   // Keyboard navigation
   const handleSmbKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
-    // If suggestions dropdown is visible
-    if (activeSmbSuggestIdx === idx && smbSuggestItems.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedSuggestIdx((prev) => (prev + 1) % smbSuggestItems.length);
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedSuggestIdx((prev) => (prev - 1 + smbSuggestItems.length) % smbSuggestItems.length);
-        return;
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        const itemToSelect = smbSuggestItems[selectedSuggestIdx] || smbSuggestItems[0];
-        if (itemToSelect) {
-          handleSelectSuggestPara(idx, itemToSelect);
-          return;
-        }
-      }
-      if (e.key === "Escape") {
-        setActiveSmbSuggestIdx(null);
-        return;
-      }
-    }
-
     if (e.key === "ArrowDown") {
       if (idx < lines.length - 1) {
         e.preventDefault();
@@ -1310,22 +1230,20 @@ export const CariHareketPage: React.FC = () => {
     if (e.key === "F4") {
       e.preventDefault();
       setActiveParaLineIndex(idx);
+      setParaSearchTerm((lines[idx]?.paraKodu || "").trim());
       setShowParaModal(true);
       return;
     }
 
     if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
       e.preventDefault();
-      const val = lines[idx].paraKodu.trim().toUpperCase();
-      const isUntouched = !smbEditedRef.current[idx] || (val && val === (initialSmbRef.current[idx] || "").trim().toUpperCase());
+      const val = (lines[idx]?.paraKodu || "").trim().toUpperCase();
 
+      // Boşsa geçsin
       if (!val) {
-        // Boş SMB: Eğer yukarıda zaten doldurulmuş satır(lar) varsa, bu satırı temizle ve Cari Tipi'ne ilerle
         const hasFilledRow = lines.some((l, i) => i !== idx && (l.paraId > 0 || l.paraKodu.trim() !== "") && parseDecimal(l.meblag) > 0);
-        if (hasFilledRow) {
-          if (idx === lines.length - 1 && lines.length > 1) {
-            setLines((prev) => prev.filter((_, i) => i !== idx));
-          }
+        if (hasFilledRow && idx === lines.length - 1 && lines.length > 1) {
+          setLines((prev) => prev.filter((_, i) => i !== idx));
           if (cariTipi === 1) {
             cariTipiAlacakRef.current?.focus();
           } else {
@@ -1333,50 +1251,31 @@ export const CariHareketPage: React.FC = () => {
           }
           return;
         } else {
-          // Boş ise modal açmadan doğrudan Miktar'a geç
           miktarInputRefs.current[idx]?.focus();
           miktarInputRefs.current[idx]?.select();
-          setActiveSmbSuggestIdx(null);
           return;
         }
       }
 
-      if (isUntouched) {
-        // Düzenleme yapılmadan gelinmişse modal açmamalı, Miktar'a geçmeli
+      // Zaten dolu ise veya tam eşleşiyorsa geçsin
+      const exactMatch = paraList.find((p) => p.kod.toUpperCase() === val || (p.ad && p.ad.toUpperCase() === val));
+      const isUntouched = !smbEditedRef.current[idx] || (val && val === (initialSmbRef.current[idx] || "").trim().toUpperCase());
+
+      if (exactMatch) {
+        handleSelectSuggestPara(idx, exactMatch);
+        return;
+      }
+
+      if (isUntouched && lines[idx].paraId > 0) {
         miktarInputRefs.current[idx]?.focus();
         miktarInputRefs.current[idx]?.select();
-        setActiveSmbSuggestIdx(null);
         return;
       }
 
-      // Düzenleme yapılmışsa:
-      const matched = paraList.find((p) => p.kod.toUpperCase() === val || (p.ad && p.ad.toUpperCase() === val));
-      if (matched) {
-        handleSelectSuggestPara(idx, matched);
-        setActiveSmbSuggestIdx(null);
-        return;
-      } else if (smbSuggestItems.length > 0) {
-        handleSelectSuggestPara(idx, smbSuggestItems[0]);
-        setActiveSmbSuggestIdx(null);
-        return;
-      }
-
-      const matches = paraList.filter((p) => {
-        const kod = (p.kod || "").toUpperCase();
-        const ad = (p.ad || "").toUpperCase();
-        return kod.includes(val) || ad.includes(val);
-      });
-
-      if (matches.length === 1) {
-        handleSelectSuggestPara(idx, matches[0]);
-        setActiveSmbSuggestIdx(null);
-        return;
-      }
-
-      // Birden fazla kayıt veya eşleşme yoksa modal açmalı
+      // Dolu/geçerli değilse Enter'a basınca modalda arasın
       setActiveParaLineIndex(idx);
+      setParaSearchTerm(val);
       setShowParaModal(true);
-      setActiveSmbSuggestIdx(null);
       return;
     } else if (e.key === "Backspace" && !lines[idx].paraKodu && lines.length > 1) {
       // Empty row backspace: delete line and focus previous row's Miktar
@@ -1778,9 +1677,8 @@ export const CariHareketPage: React.FC = () => {
                           const term = (cariKod || "").trim().toLowerCase();
                           if (term && (!cariKartId || !cariList.some((c) => c.id === cariKartId && c.kod.toLowerCase() === term))) {
                             const exact = cariList.find((c) => c.kod.toLowerCase() === term);
-                            const fallback = exact || (cariSuggestItems.length > 0 ? cariSuggestItems[0] : null) || cariList.find((c) => c.kod.toLowerCase().startsWith(term));
-                            if (fallback) {
-                              handleSelectCari(fallback);
+                            if (exact) {
+                              handleSelectCari(exact);
                             }
                           }
                         }, 250);
@@ -1792,72 +1690,6 @@ export const CariHareketPage: React.FC = () => {
                       placeholder=""
                       data-custom-enter="true"
                     />
-
-                    {/* Cari Kod Autocomplete Dropdown */}
-                    {showCariSuggest && cariSuggestItems.length > 0 && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: "100%",
-                          left: 0,
-                          width: "320px",
-                          zIndex: 1050,
-                          maxHeight: "220px",
-                          overflowY: "auto",
-                          backgroundColor: "#ffffff",
-                          border: "1px solid #7f9db9",
-                          borderRadius: "4px",
-                          boxShadow: "0 6px 16px rgba(0,0,0,0.18)",
-                        }}
-                      >
-                        <div
-                          style={{
-                            padding: "4px 8px",
-                            fontSize: "11px",
-                            fontWeight: "bold",
-                            backgroundColor: "#f8fafc",
-                            borderBottom: "1px solid #e2e8f0",
-                            color: "#64748b",
-                            display: "flex",
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <span>Eşleşen Cari Kartlar ({cariSuggestItems.length})</span>
-                          <span style={{ fontSize: "10px", fontWeight: "normal" }}>Seçmek için tıklayın</span>
-                        </div>
-                        {cariSuggestItems.map((c, cIdx) => {
-                          const isSelected = cIdx === selectedCariSuggestIdx;
-                          return (
-                            <div
-                              key={c.id}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                handleSelectCariSuggest(c);
-                              }}
-                              style={{
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                backgroundColor: isSelected ? "#bae6fd" : "#ffffff",
-                                color: isSelected ? "#0369a1" : "#1e293b",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                borderBottom: "1px solid #f1f5f9",
-                                gap: "8px",
-                              }}
-                              onMouseEnter={() => setSelectedCariSuggestIdx(cIdx)}
-                            >
-                              <span style={{ fontFamily: "monospace", fontWeight: "bold", fontSize: "12px", minWidth: "65px" }}>
-                                {c.kod}
-                              </span>
-                              <span style={{ fontSize: "12px", flexGrow: 1, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {c.ad}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 </Col>
               </Form.Group>
@@ -1885,15 +1717,8 @@ export const CariHareketPage: React.FC = () => {
                           const term = (cariAd || "").trim().toLowerCase();
                           if (term && (!cariKartId || !cariList.some((c) => c.id === cariKartId && c.ad.toLowerCase() === term))) {
                             const exact = cariList.find((c) => c.ad && c.ad.toLowerCase() === term);
-                            const matches = cariList.filter((c) => {
-                              const ad = (c.ad || "").toLowerCase();
-                              const kod = (c.kod || "").toLowerCase();
-                              return ad.includes(term) || kod.includes(term);
-                            });
                             if (exact) {
                               handleSelectCari(exact);
-                            } else if (matches.length === 1) {
-                              handleSelectCari(matches[0]);
                             }
                           }
                         }}
@@ -2181,6 +2006,7 @@ export const CariHareketPage: React.FC = () => {
                                       e.stopPropagation();
                                       setActiveGridRowIdx(idx);
                                       setActiveParaLineIndex(idx);
+                                      setParaSearchTerm((line.paraKodu || "").trim());
                                       setShowParaModal(true);
                                     }}
                                     title={isRecordLocked ? undefined : "Para Birimi Seç"}
@@ -2229,69 +2055,6 @@ export const CariHareketPage: React.FC = () => {
                                       </svg>
                                     </div>
                                   </button>
-
-                                  {/* SMB Autocomplete Dropdown */}
-                                  {activeSmbSuggestIdx === idx && smbSuggestItems.length > 0 && (
-                                    <div
-                                      style={{
-                                        position: "absolute",
-                                        top: "100%",
-                                        left: 0,
-                                        width: "260px",
-                                        zIndex: 1050,
-                                        maxHeight: "190px",
-                                        overflowY: "auto",
-                                        backgroundColor: "#ffffff",
-                                        border: "1px solid #7f9db9",
-                                        borderRadius: "3px",
-                                        boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          padding: "3px 8px",
-                                          fontSize: "10px",
-                                          fontWeight: "bold",
-                                          backgroundColor: "#f8fafc",
-                                          borderBottom: "1px solid #e2e8f0",
-                                          color: "#64748b",
-                                        }}
-                                      >
-                                        Kayıtlı Para Birimleri ({smbSuggestItems.length})
-                                      </div>
-                                      {smbSuggestItems.map((p, pIdx) => {
-                                        const isSelected = pIdx === selectedSuggestIdx;
-                                        return (
-                                          <div
-                                            key={p.id}
-                                            onMouseDown={(e) => {
-                                              e.preventDefault();
-                                              handleSelectSuggestPara(idx, p);
-                                            }}
-                                            style={{
-                                              padding: "5px 10px",
-                                              fontSize: "12px",
-                                              cursor: "pointer",
-                                              backgroundColor: isSelected ? "#e0f2fe" : "#ffffff",
-                                              color: isSelected ? "#0369a1" : "#1e293b",
-                                              display: "flex",
-                                              alignItems: "center",
-                                              justifyContent: "space-between",
-                                              borderBottom: "1px solid #f1f5f9",
-                                            }}
-                                            onMouseEnter={() => setSelectedSuggestIdx(pIdx)}
-                                          >
-                                            <span style={{ fontFamily: "monospace", fontWeight: "bold" }}>
-                                              {p.kod}
-                                            </span>
-                                            <span style={{ fontSize: "11px", color: "#64748b" }}>
-                                              {p.ad}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
                                 </div>
                               </td>
 
@@ -2720,6 +2483,7 @@ export const CariHareketPage: React.FC = () => {
           setShowParaModal(false);
           setActiveParaLineIndex(null);
         }}
+        initialSearchTerm={paraSearchTerm}
         title="Para Birimi / SMB Seçimi"
         selectOnDoubleClick={true}
         items={paraList}
