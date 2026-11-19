@@ -3,6 +3,9 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 
+/** TL'nin PARA_ID'si (services/rapor/raporOrtak.ts TL_PARA_SQL ile aynı ifade; rapor modülüne bağımlılık kurmamak için burada). */
+const TL_PARA_SQL = `ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID), 1)`;
+
 export interface TodvzCariHareketEntity {
   CARI_HAREKET_ID: number;
   CARI_KART_ID: number;
@@ -1569,24 +1572,28 @@ export class CariHareketSqlRepository {
 
           UNION ALL
 
-          -- 4. Döviz Fişi Satırı (Sadece Cari Kartı seçilmiş olanlar)
-          SELECT 
+          -- 4-5. Döviz Fişi: YALNIZ bankadan ödenen fiş, bankanın carisine yazılır — Cari Bakiye Raporu (CARBAK1) ve eski programın
+          --      cari bakiye raporuyla aynı kapsam (services/rapor/kaynak.ts cariHareketleriSql). Fişte seçilen cari kart müşterinin
+          --      kimliğidir; işlem veznede nakit kapanır, cariye borç / alacak yazmaz. (19.11.2026: önceden cari kartı seçilmiş her
+          --      fiş iki bacakla cariye yazılıyor, bakiye eski programdakinden farklı çıkıyordu — yönetici kararı: rapora eşitlendi.)
+          -- 4. Döviz bacağı: satırdaki banka hesabı bu cari ise
+          SELECT
             FS.[PARA_ID],
             CASE WHEN F.[TIP] = 0 THEN FS.[MIKTAR] ELSE 0.0 END AS [BORC],
-            CASE WHEN F.[TIP] = 1 THEN FS.[MIKTAR] ELSE 0.0 END AS [ALACAK]
+            CASE WHEN F.[TIP] = 0 THEN 0.0 ELSE FS.[MIKTAR] END AS [ALACAK]
           FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
             INNER JOIN [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK) ON FS.[FIS_ID] = F.[FIS_ID]
-          WHERE F.[CARI_KART_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
+          WHERE FS.[BANKA_HESABI_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
 
           UNION ALL
 
-          -- 5. Döviz Fişi TL Karşılığı (Sadece Cari Kartı seçilmiş olanlar)
-          SELECT 
-            1 AS [PARA_ID],
-            CASE WHEN F.[TIP] = 1 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [BORC],
+          -- 5. TL karşılığı: fişin banka hesabı bu cari ise
+          SELECT
+            ${TL_PARA_SQL} AS [PARA_ID],
+            CASE WHEN F.[TIP] = 0 THEN 0.0 ELSE F.[ODEME_TUTARI] END AS [BORC],
             CASE WHEN F.[TIP] = 0 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [ALACAK]
           FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
-          WHERE F.[CARI_KART_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
+          WHERE F.[BANKA_HESABI_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0 AND ISNULL(F.[ODEME_TUTARI], 0) <> 0
 
           UNION ALL
 

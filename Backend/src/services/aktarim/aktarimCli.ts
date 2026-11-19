@@ -21,8 +21,8 @@ export interface CliBaglanti {
 }
 
 /** Tek bağlantılı, zaman aşımsız havuz (aktarım tek işlemde ve uzun sürebilir). */
-export const cliHavuzu = async (b: CliBaglanti): Promise<sql.ConnectionPool> =>
-  new sql.ConnectionPool({
+export const cliHavuzu = async (b: CliBaglanti): Promise<sql.ConnectionPool> => {
+  const pool = new sql.ConnectionPool({
     server: b.server,
     port: b.port || 1433,
     database: "master",
@@ -32,7 +32,11 @@ export const cliHavuzu = async (b: CliBaglanti): Promise<sql.ConnectionPool> =>
     pool: { max: 1, min: 0, idleTimeoutMillis: 5000 },
     connectionTimeout: 15000,
     requestTimeout: 0,
-  }).connect();
+  });
+  // Bağlantı koparsa sürücünün havuzda yaydığı 'error' dinleyicisiz kalıp betiği yığın dökümüyle düşürmesin; çalışan komut kendi hatasını alır
+  pool.on("error", () => undefined);
+  return pool.connect();
+};
 
 export class IncelemeEngeli extends Error {
   constructor(public readonly engeller: Engel[]) {

@@ -82,6 +82,21 @@ export const planHazirla = async (
 ): Promise<{ plan: AktarimPlani; engeller: Engel[] }> => {
   const plan = planOlustur(kaynakDb, hedefDb, await semaOku(pool, kaynakDb), await semaOku(pool, hedefDb), planSecenekleri);
   const engeller = [...plan.engeller];
+  // Motor yalnız dbo şemasını okur: başka şemada dolu tablo varsa sessizce atlanmasın (19.11.2026 denetimi)
+  const disSema = (await new sql.Request(pool).query(`
+    SELECT s.name AS SEMA, t.name AS TABLO, SUM(p.rows) AS SATIR
+    FROM ${q(kaynakDb)}.sys.tables t
+    JOIN ${q(kaynakDb)}.sys.schemas s ON s.schema_id = t.schema_id
+    JOIN ${q(kaynakDb)}.sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
+    WHERE t.is_ms_shipped = 0 AND s.name <> 'dbo'
+    GROUP BY s.name, t.name HAVING SUM(p.rows) > 0`)).recordset as { SEMA: string; TABLO: string; SATIR: number }[];
+  for (const t of disSema) {
+    engeller.push({
+      kod: "KAYIP_TABLO",
+      seviye: "ENGEL",
+      mesaj: `${t.SEMA}.${t.TABLO} tablosu (${t.SATIR} satır) dbo şemasında değil; aktarım yalnız dbo tablolarını taşır, veri kaybolur. Bu tablo için kural eklenmeli.`,
+    });
+  }
   for (const d of plan.denetimler) {
     const nSatir = Number((await new sql.Request(pool).query(d.sorgu)).recordset[0]?.N) || 0;
     if (nSatir > 0) engeller.push({ kod: d.kod, seviye: d.seviye, mesaj: `${d.mesaj} (${nSatir} satır)` });

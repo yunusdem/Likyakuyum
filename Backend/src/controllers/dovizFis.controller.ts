@@ -124,11 +124,9 @@ export class DovizFisController {
    */
   public static getDebugInfo = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = DovizFisController.getDbContext(req);
-    const { getDbPool, getActivePool } = await import("../config/mssql.config.js");
-    let pool = await getActivePool();
-    if (!pool) {
-      pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-    }
+    // İsteğin kendi firmasının havuzu: getActivePool() süreçteki İLK bağlı havuzu verir (çok firmalı sunucuda başka firmanın veritabanı)
+    const { getDbPool } = await import("../config/mssql.config.js");
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
 
     // 1. Foreign keys on TODVZ_FIS, TODVZ_FIS_SATIRI, TODVZ_VEZNE_BAKIYE
     let foreignKeys: any[] = [];
@@ -403,18 +401,16 @@ export class DovizFisController {
    */
   public static getKayitsizMusteriler = asyncHandler(async (req: Request, res: Response) => {
     const dbContext = DovizFisController.getDbContext(req);
-    const { getDbPool, getActivePool } = await import("../config/mssql.config.js");
-    let pool = await getActivePool();
-    if (!pool) {
-      pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-    }
+    // İsteğin kendi firmasının havuzu: getActivePool() süreçteki İLK bağlı havuzu verir (çok firmalı sunucuda başka firmanın veritabanı)
+    const { getDbPool } = await import("../config/mssql.config.js");
+    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
 
     try {
       const result = await pool.request().query(`
         SELECT TOP 300
           KAYITSIZ_MUSTERI_ID AS id,
-          UNVAN AS ad,
-          UNVAN AS unvan,
+          RTRIM(AD) AS ad,
+          RTRIM(AD) AS unvan,
           VERGI_KIMLIK_NO AS vergiKimlikNo,
           ADRES AS adres,
           TELEFON AS telefon

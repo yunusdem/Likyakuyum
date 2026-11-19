@@ -30,6 +30,7 @@ const GRUP_ADI: Record<string, string> = {
   KULLANICI: "Kullanıcılar",
   KIMLIK: "Kimlik sayaçları",
   SEMA: "Şema",
+  GORUNUM: "Eski programın gösterdiği (belge tutarı / bakiye)",
   EK: "e-Döviz işaretleri / çift",
 };
 const yerelZaman = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("tr-TR") : "-");

@@ -5,6 +5,7 @@ import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
 import { FisDurbunFiltre, FisDurbunKolonlari, durbunFiltresiVar, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
+import { fisKmvKodu } from "../utils/kmv.utils.js";
 
 /** Döviz fişi dürbünü: ürün = para birimi (fiş satırı), tip Alış / Satış / Arbitraj */
 export const DOVIZ_DURBUN_KOLONLARI: FisDurbunKolonlari = {
@@ -1644,7 +1645,8 @@ export class DovizFisSqlRepository {
       procReq.input("YUVARLAMA", sql.Decimal(18, 4), yuvarlama);
       procReq.input("ODEME_TUTARI", sql.Decimal(18, 4), finalOdemeTutari);
       procReq.input("BANKA_HESABI_ID", sql.Int, toValidId(dto.bankaHesabiId));
-      procReq.input("KMV_UYGULAMA_SEKLI", sql.TinyInt, dto.kmvUygulamaSekli || 0);
+      // Fişe görünümün okuduğu kodlamayla yazılır (kura dahil → 1); ayrıntı utils/kmv.utils.ts
+      procReq.input("KMV_UYGULAMA_SEKLI", sql.TinyInt, fisKmvKodu(dto.kmvUygulamaSekli));
       procReq.input("EPOSTA", sql.VarChar(100), cleanEposta);
       procReq.input("MERKEZ_USD_KURU", sql.Decimal(18, 6), parseSafeDecimal(dto.merkezUsdKuru, 1.0));
       procReq.input("GISE_USD_KURU", sql.Decimal(18, 6), parseSafeDecimal(dto.giseUsdKuru, 1.0));
