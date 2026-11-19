@@ -133,7 +133,7 @@ export class ParaSqlRepository {
       ad: (entity.AD || "").trim(),
       pariteIslemi: entity.PARITE_ISLEMI ?? 0,
       siraNo: entity.SIRA_NO ?? 0,
-      bagliParaKodu: entity.BAGLI_PARA_KODU ? entity.BAGLI_PARA_KODU.trim() : null,
+      bagliParaKodu: entity.BAGLI_PARA_KODU && entity.BAGLI_PARA_KODU.trim() ? entity.BAGLI_PARA_KODU.trim() : "HAS",
       gramaj: entity.GRAMAJ ?? 0,
       hasOrani: entity.HAS_ORANI ?? 0,
       iscilik: entity.ISCILIK ?? 0,
@@ -162,6 +162,12 @@ export class ParaSqlRepository {
   public static async findAll(dbContext?: { dbServer?: string; dbName?: string }): Promise<ParaModel[]> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+      // Boş olan bağlı para kodlarını otomatik HAS olarak güncelle
+      await pool.request().query(`
+        UPDATE [dbo].[TODVZ_PARA] 
+        SET [BAGLI_PARA_KODU] = 'HAS' 
+        WHERE [BAGLI_PARA_KODU] IS NULL OR LTRIM(RTRIM([BAGLI_PARA_KODU])) = ''
+      `).catch(() => {});
       const query = `
         SELECT 
           [PARA_ID],
@@ -325,7 +331,8 @@ export class ParaSqlRepository {
       request.input("AD", sql.VarChar(200), (data.ad || "").trim().slice(0, 200));
       request.input("PARITE_ISLEMI", sql.TinyInt, toInt(data.pariteIslemi, 0));
       request.input("SIRA_NO", sql.Int, calculatedSiraNo);
-      request.input("BAGLI_PARA_KODU", sql.VarChar(5), toNullableString(data.bagliParaKodu, 5));
+      const effectiveBagliParaCreate = (data.bagliParaKodu && data.bagliParaKodu.trim()) ? data.bagliParaKodu.trim().slice(0, 5) : "HAS";
+      request.input("BAGLI_PARA_KODU", sql.VarChar(5), effectiveBagliParaCreate);
       request.input("GRAMAJ", sql.Float, toFloat(data.gramaj, 0));
       request.input("HAS_ORANI", sql.Float, toFloat(data.hasOrani, 0));
       request.input("ISCILIK", sql.Float, toFloat(data.iscilik, 0));
@@ -439,7 +446,8 @@ export class ParaSqlRepository {
       request.input("AD", sql.VarChar(200), (data.ad || "").trim().slice(0, 200));
       request.input("PARITE_ISLEMI", sql.TinyInt, toInt(data.pariteIslemi, 0));
       request.input("SIRA_NO", sql.Int, toInt(data.siraNo, 0));
-      request.input("BAGLI_PARA_KODU", sql.VarChar(5), toNullableString(data.bagliParaKodu, 5));
+      const effectiveBagliParaUpdate = (data.bagliParaKodu && data.bagliParaKodu.trim()) ? data.bagliParaKodu.trim().slice(0, 5) : "HAS";
+      request.input("BAGLI_PARA_KODU", sql.VarChar(5), effectiveBagliParaUpdate);
       request.input("GRAMAJ", sql.Float, toFloat(data.gramaj, 0));
       request.input("HAS_ORANI", sql.Float, toFloat(data.hasOrani, 0));
       request.input("ISCILIK", sql.Float, toFloat(data.iscilik, 0));

@@ -39,6 +39,7 @@ import {
   KurRowItem,
   StoredKurDateItem,
 } from "../../services/kurService";
+import { ProductDefinitionService, ProductItem } from "../../services/productDefinitionService";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { KurKaynakService } from "../../services/kurKaynakService";
 import { printReportTable } from "../../utils/printReport";
@@ -273,6 +274,22 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         if (res) setCompanyDefinitions(res);
       })
       .catch((err) => console.error("Firma tanımları yüklenemedi:", err));
+  }, []);
+
+  // Ürün tanımlarını yükleme (Bağlı Para Kodu, Katsayılar ve Ürün Tipi)
+  const [productsList, setProductsList] = useState<ProductItem[]>([]);
+  const productsListRef = useRef<ProductItem[]>([]);
+  productsListRef.current = productsList;
+
+  useEffect(() => {
+    ProductDefinitionService.getProducts()
+      .then((res) => {
+        if (res && Array.isArray(res)) {
+          setProductsList(res);
+          productsListRef.current = res;
+        }
+      })
+      .catch((err) => console.error("Ürün tanımları yüklenemedi:", err));
   }, []);
 
   const kurDecimals =
@@ -1329,35 +1346,38 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       .catch(() => undefined);
   }, []);
 
-  const handleAutoCalculateGoldRates = () => {
+  const handleAutoCalculateGoldRates = async () => {
     try {
       setAlertError(null);
       setAlertSuccess(null);
 
-      // 1. Listedeki HAS altın satırını bul (kod === 'HAS' veya adı HAS ALTIN)
-      let hasRowIdx = rows.findIndex((r) => r.kod?.trim().toUpperCase() === "HAS");
-      if (hasRowIdx === -1) {
-        hasRowIdx = rows.findIndex(
-          (r) =>
-            r.ad?.trim().toUpperCase() === "HAS ALTIN" ||
-            r.ad?.trim().toUpperCase() === "HAS" ||
-            r.kod?.trim().toUpperCase().startsWith("HAS")
-        );
-      }
-      if (hasRowIdx === -1) {
-        hasRowIdx = rows.findIndex(
-          (r) =>
-            r.kod?.trim().toUpperCase().includes("HAS") ||
-            r.ad?.trim().toUpperCase().includes("HAS")
-        );
+      // Ürün tanımlarını al ([A- Ürün Tanımları] sayfasındaki Bağlı Para Kodu, Katsayılar ve Ürün Tipi)
+      let products = productsListRef.current;
+      if (!products || products.length === 0) {
+        try {
+          products = (await ProductDefinitionService.getProducts()) || [];
+          setProductsList(products);
+          productsListRef.current = products;
+        } catch {
+          products = [];
+        }
       }
 
-      if (hasRowIdx === -1) {
-        setAlertError("Listede HAS altın (kod: HAS) bulunamadı. Lütfen ürün tanımlarını kontrol ediniz.");
-        return;
-      }
+      const productsById = new Map<number, ProductItem>();
+      const productsByKod = new Map<string, ProductItem>();
+      products.forEach((p) => {
+        if (p.id) productsById.set(p.id, p);
+        if (p.kod) productsByKod.set(p.kod.trim().toUpperCase(), p);
+      });
 
-      // 2. HAS Fiyatlarını al (rawInputs veya row nesnesinden)
+      // Çarpan / Katsayı dönüştürücü:
+      // Değer 10'dan büyükse (ör: 916, 585, 995, 1000) -> 1000'e bölünür (0.916, 0.585)
+      // Değer 10 veya altındaysa (ör: 1.605, 0.916) -> doğrudan katsayı olarak kullanılır
+      const getMultiplier = (val: number | null | undefined): number | null => {
+        if (val === null || val === undefined || isNaN(val) || val <= 0) return null;
+        return val > 10 ? val / 1000 : val;
+      };
+
       const getVal = (rowIdx: number, col: EditableCol, fallback?: number | null): number | null => {
         const raw = rawInputs[getCellKey(rowIdx, col)];
         if (raw !== undefined && raw !== null && raw.trim() !== "") {
@@ -1370,66 +1390,180 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         return null;
       };
 
-      const hasRow = rows[hasRowIdx];
-      const hasEfektifAlis = getVal(hasRowIdx, "efektifAlis", hasRow.efektifAlis);
-      const hasEfektifSatis = getVal(hasRowIdx, "efektifSatis", hasRow.efektifSatis);
-      const hasDovizAlis = getVal(hasRowIdx, "dovizAlis", hasRow.dovizAlis);
-      const hasDovizSatis = getVal(hasRowIdx, "dovizSatis", hasRow.dovizSatis);
-
-      const baseAlisEfektif = hasEfektifAlis ?? hasDovizAlis;
-      const baseSatisEfektif = hasEfektifSatis ?? hasDovizSatis;
-      const baseAlisDoviz = hasDovizAlis ?? hasEfektifAlis;
-      const baseSatisDoviz = hasDovizSatis ?? hasEfektifSatis;
-
-      if (!baseAlisEfektif && !baseSatisEfektif && !baseAlisDoviz && !baseSatisDoviz) {
-        setAlertError("Lütfen önce Kayıtlı HAS altın için Alış veya Satış fiyatı giriniz.");
-        return;
-      }
-
-      // Çarpan / Katsayı dönüştürücü:
-      // Değer 10'dan büyükse (ör: 916, 585, 995, 1000) -> 1000'e bölünür (0.916, 0.585)
-      // Değer 10 veya altındaysa (ör: 1.605, 0.916) -> doğrudan katsayı olarak kullanılır
-      const getMultiplier = (val: number | null | undefined): number | null => {
-        if (val === null || val === undefined || isNaN(val) || val <= 0) return null;
-        return val > 10 ? val / 1000 : val;
-      };
-
       const updatedRows = [...rows];
       const updatedRawInputs = { ...rawInputs };
 
-      // HAS satırını güncel girilen fiyatlarla güncelle
-      const currentHasRow = { ...hasRow };
-      if (hasEfektifAlis) currentHasRow.efektifAlis = hasEfektifAlis;
-      if (hasEfektifSatis) currentHasRow.efektifSatis = hasEfektifSatis;
-      if (hasDovizAlis) currentHasRow.dovizAlis = hasDovizAlis;
-      if (hasDovizSatis) currentHasRow.dovizSatis = hasDovizSatis;
-      updatedRows[hasRowIdx] = currentHasRow;
-
+      // USD kuru (parite hesabı için)
       const usdRow = updatedRows.find((r) => r.kod.trim().toUpperCase() === "USD");
       const usdRate = usdRow ? usdRow.efektifAlis || usdRow.dovizAlis : null;
 
-      const effAlisBase = baseAlisEfektif || (baseSatisEfektif ? baseSatisEfektif * 0.985 : 0);
-      const effSatisBase = baseSatisEfektif || (baseAlisEfektif ? baseSatisEfektif * 1.015 : 0);
-      const dovAlisBase = baseAlisDoviz || effAlisBase;
-      const dovSatisBase = baseSatisDoviz || effSatisBase;
+      // Baz para birimlerinin kurlarını önbelleğe alıp yönetelim
+      // Key: bagliParaKodu (örn. "HAS", "HAS GUMUS", "GUMUS", vb.)
+      const baseRatesCache = new Map<
+        string,
+        { baseRowIdx: number; effAlisBase: number; effSatisBase: number } | null
+      >();
+
+      const getBaseRates = (
+        targetKod: string
+      ): { baseRowIdx: number; effAlisBase: number; effSatisBase: number } | null => {
+        const normTarget = targetKod.trim().toUpperCase();
+        if (baseRatesCache.has(normTarget)) {
+          return baseRatesCache.get(normTarget) || null;
+        }
+
+        let baseRowIdx = updatedRows.findIndex(
+          (b) => (b.kod || "").trim().toUpperCase() === normTarget
+        );
+        if (baseRowIdx === -1) {
+          baseRowIdx = updatedRows.findIndex(
+            (b) => (b.ad || "").trim().toUpperCase() === normTarget
+          );
+        }
+        if (baseRowIdx === -1 && normTarget === "HAS") {
+          baseRowIdx = updatedRows.findIndex(
+            (b) =>
+              (b.kod || "").trim().toUpperCase().startsWith("HAS") ||
+              (b.ad || "").trim().toUpperCase().startsWith("HAS")
+          );
+        }
+        if (
+          baseRowIdx === -1 &&
+          (normTarget.includes("GUMUS") || normTarget.includes("GÜMÜŞ"))
+        ) {
+          baseRowIdx = updatedRows.findIndex(
+            (b) =>
+              (b.kod || "").trim().toUpperCase().includes("GUMUS") ||
+              (b.ad || "").trim().toUpperCase().includes("GUMUS") ||
+              (b.kod || "").trim().toUpperCase().includes("GÜMÜŞ") ||
+              (b.ad || "").trim().toUpperCase().includes("GÜMÜŞ")
+          );
+        }
+
+        if (baseRowIdx === -1) {
+          baseRatesCache.set(normTarget, null);
+          return null;
+        }
+
+        const baseRow = updatedRows[baseRowIdx];
+        const baseEfAlis =
+          getVal(baseRowIdx, "efektifAlis", baseRow.efektifAlis) ??
+          getVal(baseRowIdx, "dovizAlis", baseRow.dovizAlis);
+        const baseEfSatis =
+          getVal(baseRowIdx, "efektifSatis", baseRow.efektifSatis) ??
+          getVal(baseRowIdx, "dovizSatis", baseRow.dovizSatis);
+
+        if (!baseEfAlis && !baseEfSatis) {
+          baseRatesCache.set(normTarget, null);
+          return null;
+        }
+
+        const effAlisBase = baseEfAlis || (baseEfSatis ? baseEfSatis * 0.985 : 0);
+        const effSatisBase = baseEfSatis || (baseEfAlis ? baseEfAlis * 1.015 : 0);
+
+        // Baz satırın kendi hücrelerini güncel tut
+        const currentBaseRow = { ...baseRow };
+        if (baseEfAlis) currentBaseRow.efektifAlis = baseEfAlis;
+        if (baseEfSatis) currentBaseRow.efektifSatis = baseEfSatis;
+        updatedRows[baseRowIdx] = currentBaseRow;
+
+        const result = { baseRowIdx, effAlisBase, effSatisBase };
+        baseRatesCache.set(normTarget, result);
+        return result;
+      };
 
       let calculatedCount = 0;
+      const missingBases = new Set<string>();
+      const missingRatesBases = new Set<string>();
 
       updatedRows.forEach((r, idx) => {
-        // HAS altın satırının kendisini atla
-        if (idx === hasRowIdx) return;
+        const itemCode = (r.kod || "").trim().toUpperCase();
+        const itemName = (r.ad || "").trim().toUpperCase();
 
-        // Sadece Ürün Tipi Altın (1) ve Ziynet (3) olan ürünler hesaplanır
-        const rawUrunTipi = r.urunTipi !== undefined && r.urunTipi !== null ? r.urunTipi : (r as any).URUN_TIPI;
-        const isAltin = rawUrunTipi !== undefined && rawUrunTipi !== null && (Number(rawUrunTipi) === 1 || Number(rawUrunTipi) === 3);
+        // 1. [A- Ürün Tanımları] sayfasından bu ürünü eşleştir
+        const prod = productsById.get(r.paraId) || productsByKod.get(itemCode);
 
-        if (!isAltin) {
+        // Ürün Tipi: 0: Döviz, 1: Altın, 2: Gümüş, 3: Ziynet
+        const rawUrunTipi =
+          prod?.urunTipi !== undefined && prod?.urunTipi !== null
+            ? prod.urunTipi
+            : r.urunTipi !== undefined && r.urunTipi !== null
+            ? r.urunTipi
+            : (r as any).URUN_TIPI;
+
+        const urunTipiNum =
+          rawUrunTipi !== undefined && rawUrunTipi !== null ? Number(rawUrunTipi) : null;
+
+        // KESİNLİKLE DÖVİZ HARİÇ:
+        // Döviz olan ürünler (urunTipi === 0 veya döviz para birimi kodları) KESİNLİKLE hesaplanmaz!
+        const isCurrency =
+          urunTipiNum === 0 ||
+          isTlCurrency(r.kod, r.ad) ||
+          [
+            "TL",
+            "TRY",
+            "USD",
+            "EUR",
+            "GBP",
+            "CHF",
+            "SAR",
+            "AUD",
+            "CAD",
+            "JPY",
+            "RUB",
+            "SEK",
+            "NOK",
+            "DKK",
+            "AED",
+            "KWD",
+          ].includes(itemCode);
+
+        if (isCurrency || urunTipiNum === 0) {
+          return; // Dövizler kesinlikle hesaplanmaz!
+        }
+
+        // Sadece Altın (1), Gümüş (2) ve Ziynet (3) hesaplanır
+        const isEligible = urunTipiNum === 1 || urunTipiNum === 2 || urunTipiNum === 3;
+        if (!isEligible && urunTipiNum !== null) {
           return;
         }
 
-        // 1. Alış Has ve Satış Has değerleri kontrolü
+        // 2. [A- Ürün Tanımları] sayfasındaki Bağlı Para Kodu (Statik değil, ürün kartında ne tanımlıysa o)
+        let bagliParaKod = (prod?.bagliParaKodu || r.bagliParaKodu || "").trim().toUpperCase();
+        if (!bagliParaKod) {
+          bagliParaKod = urunTipiNum === 2 ? "HAS" : "HAS";
+        }
+
+        // Eğer bu satırın kendi kodu bağlı para kodu ile aynı ise (ör: HAS'ın bağlı parası HAS),
+        // kendisi ana baz fiyattır, kendisinden hesaplanmaz.
+        if (itemCode === bagliParaKod) {
+          return;
+        }
+
+        // 3. Bağlı para biriminin tablodaki kurunu bul
+        const baseRates = getBaseRates(bagliParaKod);
+        if (!baseRates) {
+          const existsInTable = updatedRows.some(
+            (b) =>
+              (b.kod || "").trim().toUpperCase() === bagliParaKod ||
+              (b.ad || "").trim().toUpperCase() === bagliParaKod
+          );
+          if (!existsInTable) {
+            missingBases.add(bagliParaKod);
+          } else {
+            missingRatesBases.add(bagliParaKod);
+          }
+          return;
+        }
+
+        const { effAlisBase, effSatisBase } = baseRates;
+
+        // 4. Katsayı / Milyem tespiti:
+        // Öncelik: Ürün kartında kayıtlı hasAlisKatsayisi / hasSatisKatsayisi veya hasOrani / gramaj
         const rawAlis =
-          r.hasAlisKatsayisi !== null && r.hasAlisKatsayisi !== undefined && Number(r.hasAlisKatsayisi) > 0
+          prod?.hasAlisKatsayisi !== null && prod?.hasAlisKatsayisi !== undefined && Number(prod.hasAlisKatsayisi) > 0
+            ? Number(prod.hasAlisKatsayisi)
+            : r.hasAlisKatsayisi !== null && r.hasAlisKatsayisi !== undefined && Number(r.hasAlisKatsayisi) > 0
             ? Number(r.hasAlisKatsayisi)
             : (r as any).HAS_ALIS_KATSAYISI !== null && (r as any).HAS_ALIS_KATSAYISI !== undefined && Number((r as any).HAS_ALIS_KATSAYISI) > 0
             ? Number((r as any).HAS_ALIS_KATSAYISI)
@@ -1437,6 +1571,8 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             ? Number((r as any).alisMilyem)
             : (r as any).ALIS_MILYEM !== null && (r as any).ALIS_MILYEM !== undefined && Number((r as any).ALIS_MILYEM) > 0
             ? Number((r as any).ALIS_MILYEM)
+            : prod?.hasOrani !== null && prod?.hasOrani !== undefined && Number(prod.hasOrani) > 0
+            ? Number(prod.hasOrani)
             : r.hasOrani !== null && r.hasOrani !== undefined && Number(r.hasOrani) > 0
             ? Number(r.hasOrani)
             : (r as any).HAS_ORANI !== null && (r as any).HAS_ORANI !== undefined && Number((r as any).HAS_ORANI) > 0
@@ -1446,7 +1582,9 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             : null;
 
         const rawSatis =
-          r.hasSatisKatsayisi !== null && r.hasSatisKatsayisi !== undefined && Number(r.hasSatisKatsayisi) > 0
+          prod?.hasSatisKatsayisi !== null && prod?.hasSatisKatsayisi !== undefined && Number(prod.hasSatisKatsayisi) > 0
+            ? Number(prod.hasSatisKatsayisi)
+            : r.hasSatisKatsayisi !== null && r.hasSatisKatsayisi !== undefined && Number(r.hasSatisKatsayisi) > 0
             ? Number(r.hasSatisKatsayisi)
             : (r as any).HAS_SATIS_KATSAYISI !== null && (r as any).HAS_SATIS_KATSAYISI !== undefined && Number((r as any).HAS_SATIS_KATSAYISI) > 0
             ? Number((r as any).HAS_SATIS_KATSAYISI)
@@ -1454,6 +1592,8 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             ? Number((r as any).satisMilyem)
             : (r as any).SATIS_MILYEM !== null && (r as any).SATIS_MILYEM !== undefined && Number((r as any).SATIS_MILYEM) > 0
             ? Number((r as any).SATIS_MILYEM)
+            : prod?.hasOrani !== null && prod?.hasOrani !== undefined && Number(prod.hasOrani) > 0
+            ? Number(prod.hasOrani)
             : r.hasOrani !== null && r.hasOrani !== undefined && Number(r.hasOrani) > 0
             ? Number(r.hasOrani)
             : (r as any).HAS_ORANI !== null && (r as any).HAS_ORANI !== undefined && Number((r as any).HAS_ORANI) > 0
@@ -1468,9 +1608,9 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         if (alisMult === null && satisMult !== null) alisMult = satisMult;
         if (satisMult === null && alisMult !== null) satisMult = alisMult;
 
-        // Otomatik altın katsayısı tespiti (Hiçbir altın boş geçilmez)
+        // Katsayı ürün kartında boşsa isim ve koddan standart tespit
         if (alisMult === null || satisMult === null) {
-          const norm = ((r.kod || "") + " " + (r.ad || ""))
+          const norm = (itemCode + " " + itemName)
             .toUpperCase()
             .replace(/İ/g, "I")
             .replace(/ı/g, "i")
@@ -1485,11 +1625,12 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             .replace(/Ö/g, "O")
             .replace(/ö/g, "o");
 
-          let defMult = 0.916; // Standart 22 ayar
+          let defMult = urunTipiNum === 2 ? 0.925 : 0.916; // Standart 22 ayar veya 925 gümüş
           if (
             norm.includes("24") ||
             norm.includes("995") ||
             norm.includes("999") ||
+            norm.includes("1000") ||
             norm.includes("KULCE") ||
             norm.includes("HAS")
           ) {
@@ -1537,8 +1678,8 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
               : norm.includes("8")
               ? 0.333
               : 0.916;
-          } else if (norm.includes("GUMUS") || norm.includes("SILVER") || norm.includes("925")) {
-            defMult = 0.015;
+          } else if (norm.includes("925") || norm.includes("GUMUS") || norm.includes("SILVER")) {
+            defMult = 0.925;
           }
 
           if (alisMult === null) alisMult = defMult;
@@ -1548,22 +1689,19 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         const newRow = { ...r };
         let isRowUpdated = false;
 
+        // Efektif Alış hesaplama (Bağlı Para Efektif Alış * Alış Katsayısı)
         // Sadece Efektif Alış ve Efektif Satış hesaplanır (Döviz Alış ve Döviz Satış kesinlikle hesaplanmaz / değiştirilmez)
-        if (alisMult !== null && alisMult > 0) {
-          if (effAlisBase > 0) {
-            newRow.efektifAlis = Number((effAlisBase * alisMult).toFixed(kurDecimals));
-            updatedRawInputs[getCellKey(idx, "efektifAlis")] = newRow.efektifAlis.toFixed(kurDecimals);
-            isRowUpdated = true;
-          }
+        if (alisMult !== null && alisMult > 0 && effAlisBase > 0) {
+          newRow.efektifAlis = Number((effAlisBase * alisMult).toFixed(kurDecimals));
+          updatedRawInputs[getCellKey(idx, "efektifAlis")] = newRow.efektifAlis.toFixed(kurDecimals);
+          isRowUpdated = true;
         }
 
-        // Satış hesaplama: (Satış Has / 1000) * HAS Efektif Satış
-        if (satisMult !== null && satisMult > 0) {
-          if (effSatisBase > 0) {
-            newRow.efektifSatis = Number((effSatisBase * satisMult).toFixed(kurDecimals));
-            updatedRawInputs[getCellKey(idx, "efektifSatis")] = newRow.efektifSatis.toFixed(kurDecimals);
-            isRowUpdated = true;
-          }
+        // Efektif Satış hesaplama (Bağlı Para Efektif Satış * Satış Katsayısı)
+        if (satisMult !== null && satisMult > 0 && effSatisBase > 0) {
+          newRow.efektifSatis = Number((effSatisBase * satisMult).toFixed(kurDecimals));
+          updatedRawInputs[getCellKey(idx, "efektifSatis")] = newRow.efektifSatis.toFixed(kurDecimals);
+          isRowUpdated = true;
         }
 
         // Parite hesaplama (USD varsa)
@@ -1582,17 +1720,29 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       });
 
       if (calculatedCount === 0) {
-        setAlertError("Hesaplanacak altın ürünü bulunamadı.");
+        if (missingBases.size > 0) {
+          setAlertError(`Bağlı para birimi listede bulunamadı: ${Array.from(missingBases).join(", ")}. Lütfen [A- Ürün Tanımları] sayfasını kontrol ediniz.`);
+        } else if (missingRatesBases.size > 0) {
+          setAlertError(`Bağlı para birimleri için alış/satış fiyatı girilmemiş: ${Array.from(missingRatesBases).join(", ")}. Lütfen önce bu para birimlerine fiyat giriniz.`);
+        } else {
+          setAlertError("Hesaplanacak altın, ziynet veya gümüş ürünü bulunamadı.");
+        }
         return;
       }
 
       setRows(updatedRows);
       setRawInputs(updatedRawInputs);
       setIsDirty(true);
-      setStatusText("Altın kurları hesaplandı (Kaydedilmedi)");
+      setStatusText("Altın, gümüş ve ziynet kurları bağlı para birimlerine göre hesaplandı (Kaydedilmedi)");
+
+      let msg = `${calculatedCount} adet ürünün (altın, gümüş, ziynet) Efektif Alış/Satış kurları [A- Ürün Tanımları] sayfasındaki bağlı para kodlarına göre başarıyla hesaplandı.`;
+      if (missingRatesBases.size > 0) {
+        msg += ` (${Array.from(missingRatesBases).join(", ")} fiyatı girilmediği için bunlara bağlı ürünler hesaplanamadı)`;
+      }
+      setAlertSuccess(msg);
     } catch (err: any) {
-      console.error("Altın kurları hesaplama hatası:", err);
-      setAlertError("Altın kurları hesaplanırken bir hata oluştu: " + (err?.message || ""));
+      console.error("Kurları hesaplama hatası:", err);
+      setAlertError("Kurlar hesaplanırken bir hata oluştu: " + (err?.message || ""));
     }
   };
 
@@ -2431,10 +2581,10 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
                   color: "#713f12",
                 }}
                 onClick={handleAutoCalculateGoldRates}
-                title="F12: HAS altın fiyatına göre Efektif Alış ve Efektif Satış altın kurlarını otomatik hesaplar"
+                title="F12: Tanımlı bağlı para birimlerine göre Altın, Gümüş ve Ziynet Efektif Alış/Satış kurlarını otomatik hesaplar (Dövizler hariç)"
               >
                 <IconCalculator size={14} className="text-warning-emphasis" />
-                <span>F12)Altın Hesapla</span>
+                <span>F12)Kur Hesapla</span>
               </Button>
             )}
 
@@ -2728,7 +2878,7 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
             >
               <div className="d-flex align-items-center gap-2">
                 <IconSparkles size={15} className="text-warning" />
-                <span>Altın Kurlarını Hesapla</span>
+                <span>Kur Hesapla (Altın, Gümüş, Ziynet)</span>
               </div>
               <span className="text-muted font-monospace" style={{ fontSize: "10px" }}>F12</span>
             </button>

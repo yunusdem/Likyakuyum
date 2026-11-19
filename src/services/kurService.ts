@@ -11,6 +11,7 @@ export interface KurRowItem {
   efektifAlis: number | null;
   efektifSatis: number | null;
   parite: number | null;
+  bagliParaKodu?: string | null;
   hasOrani?: number | null;
   hasAlisKatsayisi?: number | null;
   hasSatisKatsayisi?: number | null;

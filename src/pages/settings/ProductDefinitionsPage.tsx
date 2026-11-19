@@ -226,7 +226,7 @@ const initialFormState: ProductFormData = {
   ad: "",
   pariteIslemi: 0,
   siraNo: "" as any,
-  bagliParaKodu: null,
+  bagliParaKodu: "HAS",
   gramaj: "" as any,
   hasOrani: "" as any,
   iscilik: "" as any,
@@ -290,6 +290,7 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [showLookupModal, setShowLookupModal] = useState<boolean>(false);
   const [showParaLookupModal, setShowParaLookupModal] = useState<boolean>(false);
+  const [paraLookupSearchTerm, setParaLookupSearchTerm] = useState<string>("");
   const [paraList, setParaList] = useState<LookupItem[]>([]);
   const [kurSatirlar, setKurSatirlar] = useState<KurRowItem[]>([]);
   const kurSatirlarRef = useRef<KurRowItem[]>([]);
@@ -392,7 +393,7 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
       ad: item.ad,
       pariteIslemi: item.pariteIslemi,
       siraNo: item.siraNo,
-      bagliParaKodu: item.bagliParaKodu || "",
+      bagliParaKodu: (item.bagliParaKodu && item.bagliParaKodu.trim()) ? item.bagliParaKodu.trim() : "HAS",
       gramaj: item.gramaj,
       hasOrani: item.hasOrani,
       iscilik: item.iscilik,
@@ -507,6 +508,41 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
     }
   };
 
+  const handleBagliParaEnter = () => {
+    const rawVal = (formData.bagliParaKodu || "").trim();
+    if (!rawVal) {
+      setParaLookupSearchTerm("");
+      setShowParaLookupModal(true);
+      return;
+    }
+
+    const searchItems = paraList.length > 0
+      ? paraList
+      : products.map((p) => ({ id: p.id, kod: p.kod, ad: p.ad }));
+
+    const cleanTerm = rawVal.toLowerCase();
+    const matches = searchItems.filter((item) => {
+      const k = (item.kod || "").toLowerCase();
+      const a = (item.ad || "").toLowerCase();
+      return k.includes(cleanTerm) || a.includes(cleanTerm) || String(item.id) === cleanTerm;
+    });
+
+    if (matches.length === 1) {
+      handleInputChange("bagliParaKodu", matches[0].kod);
+    } else if (matches.length > 1) {
+      const exactCodeMatch = matches.find((m) => (m.kod || "").trim().toLowerCase() === cleanTerm);
+      if (exactCodeMatch && cleanTerm.length >= 2 && matches.filter((m) => (m.kod || "").trim().toLowerCase() === cleanTerm).length === 1) {
+        handleInputChange("bagliParaKodu", exactCodeMatch.kod);
+      } else {
+        setParaLookupSearchTerm(rawVal);
+        setShowParaLookupModal(true);
+      }
+    } else {
+      setParaLookupSearchTerm(rawVal);
+      setShowParaLookupModal(true);
+    }
+  };
+
   // Unified save handler for creating new and updating existing records
   const handleSave = async () => {
     setAlertError(null);
@@ -545,8 +581,17 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
     const satisHas = parseFloat(String(formData.hasSatisKatsayisi)) || 0;
     const effectiveHasOrani = alisHas > 0 ? alisHas : (satisHas > 0 ? satisHas : (parseFloat(String(formData.hasOrani)) || 0));
 
+    const effectiveBagliParaKodu = (formData.bagliParaKodu && formData.bagliParaKodu.trim())
+      ? formData.bagliParaKodu.trim()
+      : "HAS";
+
+    if (!formData.bagliParaKodu || !formData.bagliParaKodu.trim()) {
+      setFormData((prev) => ({ ...prev, bagliParaKodu: "HAS" }));
+    }
+
     const payload: ProductFormData = {
       ...formData,
+      bagliParaKodu: effectiveBagliParaKodu,
       kod: formData.kod.trim(),
       ad: formData.ad.trim(),
       siraNo: cleanSiraNo,
@@ -932,13 +977,23 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
                               value={formData.bagliParaKodu || ""}
                               onFocus={(e) => e.target.select()}
                               onChange={(e) => handleInputChange("bagliParaKodu", e.target.value.toUpperCase())}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleBagliParaEnter();
+                                }
+                              }}
                               className="font-monospace"
                             />
                             <Button
                               variant="outline-primary"
                               tabIndex={-1}
                               onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => setShowParaLookupModal(true)}
+                              onClick={() => {
+                                setParaLookupSearchTerm(formData.bagliParaKodu || "");
+                                setShowParaLookupModal(true);
+                              }}
                               title="Para Birimi Seç (Dürbün)"
                               className="d-flex align-items-center px-2 flex-shrink-0"
                             >
@@ -1407,6 +1462,7 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
             ? paraList
             : products.map((p) => ({ id: p.id, kod: p.kod, ad: p.ad }))
         }
+        initialSearchTerm={paraLookupSearchTerm}
         searchPlaceholder="Para kodu veya tanımı ile ara..."
         filterFn={(item, term) => {
           const t = term.toLowerCase();

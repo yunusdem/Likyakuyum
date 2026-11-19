@@ -2844,6 +2844,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     setActiveRowIndex(0);
     setOdemeRows([createEmptyOdemeRow(1)]);
     setActiveOdemeRowIndex(0);
+    setTimeout(() => {
+      islemRef.current?.focus();
+    }, 100);
   }, [getDefaultStatistic, kurSatirlar]);
 
   const handleNew = useCallback(() => {
@@ -2851,6 +2854,9 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       navigate(location.pathname, { replace: true });
     }
     resetForm();
+    setTimeout(() => {
+      islemRef.current?.focus();
+    }, 150);
   }, [location.search, location.pathname, navigate, resetForm]);
 
   // Load lookups & user's default vezne & load initial record on first load (Instant Load with FastLookupCache)
@@ -3724,7 +3730,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       } else {
         showNotif("success", `Fiş ${result.yeniKayit ? "kaydedildi" : "güncellendi"} — ${result.fisNo || result.sarrafFisiId}`);
       }
-      if (await ebFis.kaydedildi(result.sarrafFisiId)) return;
+      if (await ebFis.kaydedildi(result.sarrafFisiId)) {
+        setTimeout(() => islemRef.current?.focus(), 100);
+        return;
+      }
       if (isDuzeltmeMode) {
         // Düzeltme sayfasında (F1 Kaydet veya F10 Kaydet/Yazdır) aynı fişte kalınır, fiş ID korunur ve güncel fiş yüklenir, sayfa asla sıfırlanmaz
         const savedId = result.sarrafFisiId || fisId;
@@ -3742,6 +3751,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       setBakiyeler(bak);
       const fl = await SarrafFisService.getFisList({ limit: 200 }).catch(() => fisList);
       setFisList(fl);
+
+      // Fiş kaydedildikten sonra kesinlikle İşlem bölümündeki alış/satış seçimine odaklan
+      const focusIslem = () => {
+        if (islemRef.current) {
+          islemRef.current.focus();
+        }
+      };
+      setTimeout(focusIslem, 50);
+      setTimeout(focusIslem, 150);
+      setTimeout(focusIslem, 300);
     } catch (e: any) {
       const errMsg = e?.message || "Kayıt hatası";
       showNotif("danger", errMsg);
