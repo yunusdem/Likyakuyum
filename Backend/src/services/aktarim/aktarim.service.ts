@@ -18,6 +18,8 @@ import { AktarimPlani, DOKUNULMAZ_TABLOLAR, SABLON_KALIR_TABLOLARI } from "./akt
 import { n, q } from "./aktarimSema.js";
 import { DogrulamaRaporu, dogrula, veritabanlariniDogrula } from "./aktarimDogrulama.js";
 import { CiftRolu, CiftSecenekleri, ciftKontrolleri, digerVeritabaniKurali } from "./aktarimCift.js";
+import { SonKontrolOzeti, aktarimBildirimi, sonKontrol, sonKontrolOzeti } from "./aktarimSonKontrol.js";
+import { firmaDbIleCalistir } from "../admin/firmaBaglanti.service.js";
 import { ciftSecenekleri, standartEkAdimlar } from "./aktarimCli.js";
 
 /**
@@ -183,6 +185,10 @@ export interface AktarimRaporu {
   kullaniciEslemesi: number;
   yapan: string;
   zaman: string;
+  /** COMMIT'ten sonra, işlem dışında yapılan kontrolün hükmü (tamlık + doğru yer); ayrıntısı dogrulama.json */
+  sonKontrol?: SonKontrolOzeti | null;
+  /** Bildirim e-postası gönderildi mi (SMTP ayarlı değilse false) */
+  bildirim?: boolean;
 }
 
 const jsonOku = <T>(y: AktarimYukleme, yuklemeId: string, ad: string): T | null => {
@@ -281,6 +287,9 @@ export const firmaKullanimi = async (pool: sql.ConnectionPool, firmaDb: string, 
 const firmaKodlari = async (): Promise<Map<number, string>> => new Map((await FirmaService.listele()).map((f) => [f.firmaId, f.firmaKodu]));
 
 export class AktarimService {
+  /** Firmanın kendi SQL girişiyle (uygulamanın o firma için kullandığı bağlantı) sorgu; aktarım sonrası "doğru yer" kontrolü kullanır. */
+  public static firmaIleOku: <T>(firmaId: number, is: (pool: sql.ConnectionPool) => Promise<T>) => Promise<T> = firmaDbIleCalistir;
+
   // ---------------------------------------------------------------- yükleme (Faz 1)
   public static async yuklemeBaslat(firmaId: number, girdi: { dosyaAdi: string; boyut: number }): Promise<YuklemeBilgisi> {
     await aktarilabilirFirma(firmaId);
@@ -505,6 +514,30 @@ export class AktarimService {
           logger.warn(`[AKTARIM] firma ${firmaId}: aktarım tamamlandı, merkez kullanıcı eşlemesi yapılamadı: ${err?.message}`);
         }
 
+        // AKTARIM SONRASI KONTROL — COMMIT'ten sonra, işlem dışında: yedekle baştan sona yeniden karşılaştırma (yazılan kalıcı mı)
+        // + doğru yer (firma kimliği, firmanın kendi girişiyle okuma). Sonuç dogrulama.json'a ("Aktarım sonrası kontrol") yazılır.
+        ilerle(is, "SON_KONTROL", 97, "Aktarım sonrası kontrol: yedekle yeniden karşılaştırma ve doğru firma");
+        try {
+          const son = await sonKontrol(pool, {
+            kaynakDb: gecici,
+            hedefDb: firma.dbName,
+            cift,
+            firma: { firmaKodu: firma.firmaKodu, unvan: firma.unvan, vknTckn: firma.vknTckn ?? null },
+            firmaIleOku: (f) => AktarimService.firmaIleOku(firmaId, f),
+          });
+          y.dosyaYaz(yuklemeId, "dogrulama.json", JSON.stringify(son));
+          rapor.sonKontrol = sonKontrolOzeti(son);
+          rapor.bildirim = await aktarimBildirimi({
+            firmaId, firmaKodu: firma.firmaKodu, unvan: firma.unvan, hedefDb: firma.dbName, dosyaAdi: b.dosyaAdi, eskiDb: ozet.yedek.dbAdi, yapan: yapan.kullaniciAdi,
+            ozet: rapor.sonKontrol,
+            notlar: rapor.aktarim.notlar.slice(0, 8),
+            farklar: son.kontroller.filter((k) => k.durum === "FARK").slice(0, 10).map((k) => `${k.tablo ? k.tablo + ": " : ""}${k.ad}${k.ayrinti ? " — " + k.ayrinti : ""}`),
+          });
+        } catch (err: any) {
+          logger.warn(`[AKTARIM] firma ${firmaId}: aktarım tamamlandı, aktarım sonrası kontrol çalıştırılamadı: ${err?.message}`);
+        }
+        y.dosyaYaz(yuklemeId, "rapor.json", JSON.stringify(rapor));
+
         await AdminLogSqlRepository.islemLogu({
           adminId: yapan.adminId,
           islem: "VERI_AKTARILDI",
@@ -516,11 +549,12 @@ export class AktarimService {
             eskiDb: ozet.yedek.dbAdi,
             satir: rapor.aktarim.tablolar.reduce((x, t) => x + t.yazilan, 0),
             dogrulamaFark: rapor.dogrulama?.ozet.fark ?? null,
+            sonKontrol: rapor.sonKontrol?.metin ?? null,
             cift: rapor.cift ? { es: rapor.cift.esHedefDb, rol: rapor.cift.rol } : null,
             onYedek,
           },
         }).catch(() => undefined);
-        ilerle(is, "BITTI", 100, rapor.dogrulama?.basarili ? "Aktarım tamamlandı; doğrulama: kaynakla birebir aynı" : "Aktarım tamamlandı");
+        ilerle(is, "BITTI", 100, rapor.sonKontrol ? `Aktarım tamamlandı — aktarım sonrası kontrol: ${rapor.sonKontrol.metin}` : rapor.dogrulama?.basarili ? "Aktarım tamamlandı; doğrulama: kaynakla birebir aynı" : "Aktarım tamamlandı");
       } catch (err: any) {
         if (rapor.basarili) {
           // COMMIT'ten sonraki bir yan adım: aktarım geçerli, iş başarılı kalır
@@ -531,6 +565,7 @@ export class AktarimService {
         rapor.hata = String(err?.message || err).slice(0, 1000);
         if (err instanceof AktarimEngeli) rapor.engeller.push(...err.engeller);
         if (err instanceof AktarimDogrulamaHatasi) rapor.dogrulama = err.dogrulama as unknown as DogrulamaRaporu;
+        rapor.bildirim = await aktarimBildirimi({ firmaId, firmaKodu: firma.firmaKodu, unvan: firma.unvan, hedefDb: firma.dbName, dosyaAdi: b.dosyaAdi, yapan: yapan.kullaniciAdi, hata: rapor.hata }).catch(() => false);
         await AdminLogSqlRepository.islemLogu({ adminId: yapan.adminId, islem: "VERI_AKTARIM_HATA", hedefTur: "FIRMA", hedefId: firmaId, yeni: { yuklemeId, hata: rapor.hata } }).catch(() => undefined);
         throw err;
       } finally {
@@ -553,10 +588,16 @@ export class AktarimService {
         const { engeller, gecici } = await geciciHazirla(pool, b, is);
         if (engeller.some((e) => e.seviye === "ENGEL")) throw new Error(engeller.map((e) => e.mesaj).join(" | "));
         ilerle(is, "DOGRULA", 30, "Kaynak ile firma veritabanı karşılaştırılıyor");
-        const r = await veritabanlariniDogrula(pool, gecici, firma.dbName, { ekKontroller: (bg) => ciftKontrolleri(bg, { kaynakDb: gecici, hedefDb: firma.dbName, cift: null }) });
+        const r = await sonKontrol(pool, {
+          kaynakDb: gecici,
+          hedefDb: firma.dbName,
+          cift: null,
+          firma: { firmaKodu: firma.firmaKodu, unvan: firma.unvan, vknTckn: firma.vknTckn ?? null },
+          firmaIleOku: (f) => AktarimService.firmaIleOku(firmaId, f),
+        });
         y.dosyaYaz(yuklemeId, "dogrulama.json", JSON.stringify(r));
         await AdminLogSqlRepository.islemLogu({ adminId: yapan.adminId, islem: "VERI_AKTARIM_DOGRULANDI", hedefTur: "FIRMA", hedefId: firmaId, yeni: { yuklemeId, basarili: r.basarili, fark: r.ozet.fark } });
-        ilerle(is, "BITTI", 100, r.basarili ? "Doğrulama: fark yok" : `Doğrulama: ${r.ozet.fark} fark`);
+        ilerle(is, "BITTI", 100, `Aktarım sonrası kontrol: ${sonKontrolOzeti(r).metin}`);
       } finally {
         await geciciSil(pool, geciciDbAdi(yuklemeId)).catch(() => undefined);
         await pool.close().catch(() => undefined);

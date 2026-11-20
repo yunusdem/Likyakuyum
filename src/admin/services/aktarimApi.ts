@@ -112,6 +112,9 @@ export interface DogrulamaRaporu {
 
 export interface AktarimRaporu {
   basarili: boolean;
+  /** COMMIT'ten sonra yapılan kontrolün hükmü: tamlık + doğru yer (ayrıntı: "Aktarım sonrası kontrol") */
+  sonKontrol?: { basarili: boolean; yuzde: number; dogruYer: boolean; firmaGirisiyleOkundu: boolean; metin: string } | null;
+  bildirim?: boolean;
   hata: string | null;
   engeller: Engel[];
   aktarim: {

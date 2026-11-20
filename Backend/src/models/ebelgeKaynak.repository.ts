@@ -40,6 +40,8 @@ export function kaynakSecim(k: any): { secilebilir: boolean; engel: string | nul
   else if (Number(k.eskiDurum || 0) !== 0) engel = `Kaynak sistemde işlem kaydı var (durum ${k.eskiDurum}). ICE durumunu kontrol edin.`;
   else if (k.eskiHata?.trim()) engel = `Kaynak sistem hata açıklaması: ${k.eskiHata.trim()}`;
   else if (k.kaynak !== 'DOVIZ' && k.eskiEttn) engel = 'Kaynak faturada ETTN mevcut. Yeniden göndermeden önce ICE durumunu kontrol edin.';
+  // Gönderilmiş belge (bizden ya da veri aktarımında "eski programla gönderildi" işaretli): sonuç belli, doğrulama gerekmez
+  else if (k.durum === 'GONDERILDI') engel = 'Belge gönderilmiş; yeniden gönderilemez.';
   else if (!['GONDERILMEDI', 'HATA'].includes(k.durum)) engel = 'Belge daha önce işleme alınmış. Gönderim sonucu doğrulanmalıdır.';
   return { secilebilir: !engel, engel };
 }

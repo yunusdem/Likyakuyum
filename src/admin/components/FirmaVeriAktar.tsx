@@ -32,6 +32,7 @@ const GRUP_ADI: Record<string, string> = {
   SEMA: "Şema",
   GORUNUM: "Eski programın gösterdiği (belge tutarı / bakiye)",
   EK: "e-Döviz işaretleri / çift",
+  YER: "Doğru yer (firma kimliği / firmanın kendi girişi)",
 };
 const yerelZaman = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("tr-TR") : "-");
 const sayi = (n: number | null | undefined) => (n === null || n === undefined ? "-" : n.toLocaleString("tr-TR"));
@@ -235,7 +236,15 @@ const RaporPaneli: React.FC<{ r: AktarimRaporu }> = ({ r }) => (
         {sayi(r.aktarim?.tablolar.reduce((x, t) => x + t.yazilan, 0))} satır, {Math.round((r.aktarim?.sureMs || 0) / 1000)} sn.
         {r.dogrulama?.basarili ? " Doğrulama: kaynakla birebir aynı." : ""}
       </Alert>
-    ) : (
+    ) : null}
+    {r.basarili && r.sonKontrol ? (
+      <Alert variant={r.sonKontrol.basarili && r.sonKontrol.dogruYer ? "success" : "danger"} className="py-2 small mb-2">
+        <strong>Aktarım sonrası kontrol: </strong>
+        {r.sonKontrol.metin}
+        {r.bildirim ? " · Bildirim e-postası gönderildi." : ""}
+      </Alert>
+    ) : null}
+    {r.basarili ? null : (
       <Alert variant="danger" className="py-2 small mb-2">
         Aktarım yapılmadı, firma veritabanı değişmedi: {r.hata}
       </Alert>
@@ -570,7 +579,7 @@ const FirmaVeriAktar: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
           {rapor.dogrulama && (
             <>
               <hr />
-              <DogrulamaPaneli rapor={rapor.dogrulama} baslik="Sonradan doğrulama" />
+              <DogrulamaPaneli rapor={rapor.dogrulama} baslik="Aktarım sonrası kontrol (yazılan kalıcı mı, doğru firmada mı)" />
             </>
           )}
         </div>

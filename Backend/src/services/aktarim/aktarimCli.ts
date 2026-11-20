@@ -6,6 +6,7 @@ import { DogrulamaRaporu, dogrula, veritabanlariniDogrula } from "./aktarimDogru
 import { Engel, IncelemeOzeti, geciciAc, geciciSil, incele, setSec, sunucuAnaSurumu, yedekBasligi, yedekEngelleri } from "./aktarimInceleme.js";
 import { AktarimPlani } from "./aktarimPlani.js";
 import { CiftRolu, CiftSecenekleri, ciftAdimlari, ciftKontrolleri, digerVeritabaniKurali, eDovizIsaretle } from "./aktarimCift.js";
+import { sonKontrol } from "./aktarimSonKontrol.js";
 
 /**
  * Veri aktarımı — komut satırı çekirdeği (docs/VERITABANI_TASIMA_YOL_HARITASI.md, K10).
@@ -96,6 +97,8 @@ export interface VeriAktarSonucu {
   aktarim: AktarimSonucu;
   dogrulama: DogrulamaRaporu;
   cift: CiftSecenekleri | null;
+  /** COMMIT'ten sonra, işlem dışında: yedekle yeniden karşılaştırma + doğru yer (firma kimliği, veritabanı durumu) */
+  sonKontrol: DogrulamaRaporu | null;
 }
 
 /** Çift seçeneklerini incelemeden tamamlar (eşin eski adı, rol). */
@@ -147,7 +150,9 @@ export const veriAktarKomutu = async (pool: sql.ConnectionPool, g: VeriAktarGird
         return rapor as unknown as { basarili: boolean };
       },
     });
-    return { inceleme: ozet, aktarim, dogrulama: rapor!, cift };
+    // Aktarım sonrası kontrol: geçici kaynak silinmeden, COMMIT'ten sonra
+    const son = await sonKontrol(pool, { kaynakDb: geciciDb, hedefDb: g.hedefDb, cift }).catch(() => null);
+    return { inceleme: ozet, aktarim, dogrulama: rapor!, cift, sonKontrol: son };
   });
   if (g.rapor) fs.writeFileSync(g.rapor, JSON.stringify(sonuc, null, 2), "utf8");
   return sonuc;
@@ -162,8 +167,8 @@ export interface DogrulaGirdisi {
 
 export const dogrulaKomutu = async (pool: sql.ConnectionPool, g: DogrulaGirdisi): Promise<DogrulamaRaporu> => {
   if (!g.kaynakYedek && !g.kaynakDb) throw new Error("Kaynak gerekli: --kaynak-yedek <dosya.bak> ya da --kaynak-db <ad>.");
-  const calis = (kaynakDb: string) =>
-    veritabanlariniDogrula(pool, kaynakDb, g.hedefDb, { ekKontroller: (b) => ciftKontrolleri(b, { kaynakDb, hedefDb: g.hedefDb, cift: null }) });
+  // Aktarım sonrası kontrolle aynı: tam karşılaştırma + doğru yer (firma kimliği, veritabanı durumu)
+  const calis = (kaynakDb: string) => sonKontrol(pool, { kaynakDb, hedefDb: g.hedefDb, cift: null });
   const rapor = g.kaynakYedek ? await yedekleCalis(pool, g.kaynakYedek, (geciciDb) => calis(geciciDb)) : await calis(g.kaynakDb!);
   if (g.rapor) fs.writeFileSync(g.rapor, JSON.stringify(rapor, null, 2), "utf8");
   return rapor;

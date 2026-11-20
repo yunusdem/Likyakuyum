@@ -23,7 +23,7 @@ import { KolonBilgisi, Sema, kolonBul, n, q, semaOku, tabloBul, tamAd, tipTanimi
 export type KontrolDurumu = "TAMAM" | "FARK" | "UYARI" | "BILGI";
 
 export interface DogrulamaKontrolu {
-  grup: "SATIR_SAYISI" | "ICERIK" | "DOLULUK" | "SAYISAL_TOPLAM" | "E_DOVIZ" | "KULLANICI" | "KIMLIK" | "SEMA" | "GORUNUM" | "EK";
+  grup: "SATIR_SAYISI" | "ICERIK" | "DOLULUK" | "SAYISAL_TOPLAM" | "E_DOVIZ" | "KULLANICI" | "KIMLIK" | "SEMA" | "GORUNUM" | "EK" | "YER";
   tablo: string | null;
   ad: string;
   durum: KontrolDurumu;
