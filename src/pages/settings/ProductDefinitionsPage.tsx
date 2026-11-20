@@ -226,7 +226,7 @@ const initialFormState: ProductFormData = {
   ad: "",
   pariteIslemi: 0,
   siraNo: "" as any,
-  bagliParaKodu: "HAS",
+  bagliParaKodu: "", // boşsa kayıtta türe göre (bkz. bagliParaVarsayilani) (ortak alan denetimi 19.11.2026, #47)
   gramaj: "" as any,
   hasOrani: "" as any,
   iscilik: "" as any,
@@ -393,7 +393,7 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
       ad: item.ad,
       pariteIslemi: item.pariteIslemi,
       siraNo: item.siraNo,
-      bagliParaKodu: (item.bagliParaKodu && item.bagliParaKodu.trim()) ? item.bagliParaKodu.trim() : "HAS",
+      bagliParaKodu: (item.bagliParaKodu && item.bagliParaKodu.trim()) ? item.bagliParaKodu.trim() : "",
       gramaj: item.gramaj,
       hasOrani: item.hasOrani,
       iscilik: item.iscilik,
@@ -581,12 +581,22 @@ export const ProductDefinitionsPage: React.FC<ProductDefinitionsPageProps> = ({
     const satisHas = parseFloat(String(formData.hasSatisKatsayisi)) || 0;
     const effectiveHasOrani = alisHas > 0 ? alisHas : (satisHas > 0 ? satisHas : (parseFloat(String(formData.hasOrani)) || 0));
 
+    // Boş bağlı para kodu türe göre doldurulur: altın / ziynet → HAS, gümüş → gümüş taban satırı, döviz → boş (önceden her türe HAS) (ortak alan denetimi 19.11.2026, #47)
+    const bagliParaVarsayilani = (): string => {
+      const tip = Number(formData.urunTipi ?? 0);
+      if (tip === 1 || tip === 3) return "HAS";
+      if (tip !== 2) return "";
+      const kodu = (p: ProductItem) => String(p.kod || "").trim();
+      const taban = products.find((p) => Number(p.urunTipi) === 2 && (Number(p.hasOrani) === 1 || Number(p.hasOrani) === 1000) && kodu(p) !== formData.kod.trim())
+        || products.find((p) => ["GUMUS", "GÜMÜŞ"].includes(kodu(p).toUpperCase()) && kodu(p) !== formData.kod.trim());
+      return taban ? kodu(taban) : "";
+    };
     const effectiveBagliParaKodu = (formData.bagliParaKodu && formData.bagliParaKodu.trim())
       ? formData.bagliParaKodu.trim()
-      : "HAS";
+      : bagliParaVarsayilani();
 
-    if (!formData.bagliParaKodu || !formData.bagliParaKodu.trim()) {
-      setFormData((prev) => ({ ...prev, bagliParaKodu: "HAS" }));
+    if ((!formData.bagliParaKodu || !formData.bagliParaKodu.trim()) && effectiveBagliParaKodu) {
+      setFormData((prev) => ({ ...prev, bagliParaKodu: effectiveBagliParaKodu }));
     }
 
     const payload: ProductFormData = {

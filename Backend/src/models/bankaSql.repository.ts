@@ -1,3 +1,4 @@
+import { KendiKayit, kendiKayitKosulu } from "../utils/kendiKayit.js";
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
@@ -199,6 +200,18 @@ export class BankaSqlRepository {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await this.ensureTables(pool);
 
+    // Sarraf fişi Hesap satırının bankası ödeme satırının CARI_KART_ID'sindedir; eski şemada kolon (ya da tablo) yoksa o kaynak bakiyeye girmez
+    // (listFisBankaSatirlari ile aynı koruma; kolonsuz veritabanında banka listesi "Invalid column name" veriyordu — ortak alan denetimi 19.11.2026, #12)
+    const sarrafKaynak = (await pool.request().query(`
+      SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_ODEME_SATIRI') IS NULL OR OBJECT_ID('dbo.TODVZ_SARRAF_FISI') IS NULL
+        OR COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'CARI_KART_ID') IS NULL THEN 0 ELSE 1 END AS V`)).recordset[0]?.V;
+    const sarrafBanka = (tip: number) => sarrafKaynak ? `ISNULL((
+          SELECT SUM(os.TUTAR)
+          FROM TODVZ_ODEME_SATIRI os
+          JOIN TODVZ_SARRAF_FISI sf ON os.SARRAF_FISI_ID = sf.SARRAF_FISI_ID
+          WHERE (os.CARI_KART_ID = b.BANKA_ID OR os.POS_CIHAZI_ID = b.BANKA_ID) AND os.ODEME_ARACI_TURU = 3 AND sf.TIP = ${tip}
+        ), 0)` : "0";
+
     let query = `
       SELECT 
         b.BANKA_ID,
@@ -221,12 +234,7 @@ export class BankaSqlRepository {
           FROM TODVZ_BANKA_HAREKET h
           JOIN TODVZ_BANKA_HAREKET_SATIRI s ON s.BANKA_HAREKET_ID = h.BANKA_HAREKET_ID
           WHERE h.BANKA_ID = b.BANKA_ID AND h.IPTAL = 0 AND h.ISLEM_TIPI IN (0, 2)
-        ), 0) + ISNULL((
-          SELECT SUM(os.TUTAR)
-          FROM TODVZ_ODEME_SATIRI os
-          JOIN TODVZ_SARRAF_FISI sf ON os.SARRAF_FISI_ID = sf.SARRAF_FISI_ID
-          WHERE (os.CARI_KART_ID = b.BANKA_ID OR os.POS_CIHAZI_ID = b.BANKA_ID) AND os.ODEME_ARACI_TURU = 3 AND sf.TIP = 1
-        ), 0) + ISNULL((
+        ), 0) + ${sarrafBanka(1)} + ISNULL((
           SELECT SUM(fo.TUTAR)
           FROM TODVZ_FATURA_ODEME fo
           JOIN TODVZ_FATURA fat ON fo.FATURA_ID = fat.FATURA_ID
@@ -237,12 +245,7 @@ export class BankaSqlRepository {
           FROM TODVZ_BANKA_HAREKET h
           JOIN TODVZ_BANKA_HAREKET_SATIRI s ON s.BANKA_HAREKET_ID = h.BANKA_HAREKET_ID
           WHERE h.BANKA_ID = b.BANKA_ID AND h.IPTAL = 0 AND h.ISLEM_TIPI IN (1, 3)
-        ), 0) + ISNULL((
-          SELECT SUM(os.TUTAR)
-          FROM TODVZ_ODEME_SATIRI os
-          JOIN TODVZ_SARRAF_FISI sf ON os.SARRAF_FISI_ID = sf.SARRAF_FISI_ID
-          WHERE (os.CARI_KART_ID = b.BANKA_ID OR os.POS_CIHAZI_ID = b.BANKA_ID) AND os.ODEME_ARACI_TURU = 3 AND sf.TIP = 0
-        ), 0) + ISNULL((
+        ), 0) + ${sarrafBanka(0)} + ISNULL((
           SELECT SUM(fo.TUTAR)
           FROM TODVZ_FATURA_ODEME fo
           JOIN TODVZ_FATURA fat ON fo.FATURA_ID = fat.FATURA_ID
@@ -458,6 +461,7 @@ export class BankaSqlRepository {
       search?: string;
       limit?: number;
       durbun?: FisDurbunFiltre;
+      kendi?: KendiKayit | null;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<BankaHareketModel[]> {
@@ -546,6 +550,8 @@ export class BankaSqlRepository {
       durbunParametreleriniBagla(req, k.parametreler);
     }
 
+    const kendiKosul = kendiKayitKosulu(req, "h", filter?.kendi); // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
+    if (kendiKosul) query += ` AND ${kendiKosul}`;
     query += durbunVar ? ` ORDER BY h.TARIH DESC, h.BANKA_HAREKET_ID DESC` : ` ORDER BY h.TARIH ASC, h.BANKA_HAREKET_ID ASC`;
 
     const res = await req.query(query);

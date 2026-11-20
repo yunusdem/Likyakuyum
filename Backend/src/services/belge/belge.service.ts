@@ -70,6 +70,47 @@ export class BelgeService {
     return { pdf, belgeNo, sablon, kaynak: "SABLON", onizleme: !gonderildi, tarih };
   }
 
+  /**
+   * Ekrandaki döviz fişinin önizleme / WhatsApp PDF'i için resmî belge (karar G2, POST /belge/pdf/onizleme):
+   * fiş kayıtlı, ETTN'li ve GİB'e gönderilmişse ICE PDF'i (/belge/pdf ile aynı servis) döner.
+   * `gonderildi` true, `pdf` null: ICE'den alınamadı, çağıran şablonla filigransız çizer; `gonderildi` false: "ÖNİZLEME" filigranlı.
+   * ETTN istemciden gelirse fişe ait olduğu görünümde doğrulanır; gelmezse fişin kayıtlı ETTN'i kullanılır
+   * (ortak alan denetimi 19.11.2026, #43).
+   */
+  static async dovizOnizlemeIce(
+    g: { fisId?: unknown; ettn?: unknown; guid?: unknown; lines?: unknown },
+    kullanici: string,
+    ctx?: DbContext,
+  ): Promise<{ gonderildi: boolean; pdf: Buffer | null; belgeNo: string }> {
+    const yok = { gonderildi: false, pdf: null, belgeNo: "" };
+    const fisId = Number(g.fisId) || 0;
+    if (!Number.isInteger(fisId) || fisId <= 0) return yok;
+    const ilkSatir = Array.isArray(g.lines) ? (g.lines[0] as Record<string, unknown> | undefined) : undefined;
+    // dovizFisVerisi'nin ETTN sırası: ettn, guid; ekran anlık görüntüsünde satırın ETTN'i
+    const istemci = [g.ettn, g.guid, ilkSatir?.ettn].map((v) => String(v ?? "").trim()).find(Boolean) || "";
+    let ettn = "";
+    let belgeNo = "";
+    if (istemci) {
+      const b = await BelgeSqlRepository.fisDetay({ fisId, ettn: istemci }, ctx).catch(() => null);
+      ettn = String(b?.ETTN || "").trim();
+      belgeNo = String(b?.BELGE_NO || "").trim().toUpperCase();
+    }
+    if (!ettn) {
+      const k = await BelgeSqlRepository.dovizFisKimligi(fisId, ctx);
+      ettn = String(k?.ettn || "").trim();
+      belgeNo = String(k?.belgeNo || "").trim().toUpperCase();
+    }
+    if (!ettn) return yok;
+    const giden = await EbelgeSqlRepository.getGiden(ettn, ctx).catch(() => null);
+    if (String(giden?.gonderimDurumu || "") !== "GONDERILDI") return { ...yok, belgeNo };
+    try {
+      return { gonderildi: true, pdf: await EbelgeKaynakService.dovizPdf(ettn, kullanici, ctx), belgeNo };
+    } catch (e: any) {
+      logger.warn(`Belge önizleme: ICE PDF alınamadı (${belgeNo || ettn}), şablonla üretiliyor. ${e?.message || e}`);
+      return { gonderildi: true, pdf: null, belgeNo };
+    }
+  }
+
   /** Üretilmiş PDF'in kopyasını arşivdeki yerine yazar; hata indirmeyi durdurmaz. */
   static async kopyala(s: { pdf: Buffer; belgeNo: string; tarih: string; sablon: BelgeSablonModel }, ctx?: DbContext): Promise<string | null> {
     try {

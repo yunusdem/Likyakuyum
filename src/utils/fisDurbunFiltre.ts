@@ -3,6 +3,7 @@
  * Tarih aralığı yerel saatle hesaplanır (UTC günü 00:00–03:00 arası dünü verirdi).
  */
 import { yerelGun } from "./fisTarihi";
+import { parseDecimal } from "./numericInput";
 
 export interface FisDurbunFiltreDegeri {
   baslangic: string;
@@ -53,13 +54,15 @@ export function varsayilanDurbunFiltresi(simdi: Date = new Date()): FisDurbunFil
   return { baslangic, bitis, vezneId: "", urunId: "", urun: "", tip: "", cari: "", tutarMin: "", tutarMax: "", belgeNo: "" };
 }
 
-/** "1.234,50" / "1234.5" / "1234,5" → 1234.5; geçersizse undefined */
+/**
+ * "1.234,50" / "1234.5" / "1234,5" → 1234.5; "1.000" → 1000; geçersizse undefined.
+ * Fiş ekranlarının tutar kutusuyla aynı kural (numericInput.parseDecimal: tek nokta + 3 hane binliktir); önceden "1.000" 1 okunuyordu
+ * (ortak alan denetimi 19.11.2026, #52). Sunucudaki tutarOku (Backend/src/utils/fisDurbunFiltre.ts) aynı kuralı uygular.
+ */
 export function tutarMetniOku(v: string): number | undefined {
-  let s = (v || "").trim().replace(/\s/g, "");
-  if (!s) return undefined;
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
-  if (!/^-?\d+(\.\d+)?$/.test(s)) return undefined;
-  const n = Number(s);
+  const s = (v || "").trim().replace(/\s/g, "");
+  if (!s || !/^-?[\d.,]+$/.test(s) || !/\d/.test(s)) return undefined;
+  const n = parseDecimal(s);
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -76,6 +79,9 @@ export function durbunSorguParametreleri(f: FisDurbunFiltreDegeri, arama?: strin
   if (bas && bit && bas > bit) [bas, bit] = [bit, bas];
   if (bas) p.drbBas = bas;
   if (bit) p.drbBit = bit;
+  // "Tümü" (tarih sınırı yok): yine dürbün isteği olduğu bilinsin; yoksa sunucu filtresiz eski dalına düşüp eski tavanla
+  // (ör. en eski 1001 / 250) sessizce kesiyordu (ortak alan denetimi 19.11.2026, #36)
+  if (!bas && !bit) p.drbTum = 1;
   if (/^\d+$/.test(f.vezneId) && Number(f.vezneId) > 0) p.drbVezne = Number(f.vezneId);
   if (/^\d+$/.test(f.urunId) && Number(f.urunId) > 0) p.drbUrunId = Number(f.urunId);
   if (f.urun.trim()) p.drbUrun = f.urun.trim();
@@ -93,6 +99,23 @@ export function durbunSorguParametreleri(f: FisDurbunFiltreDegeri, arama?: strin
 /** Sunucu sınırı: bu kadar kayıt gösterilir, bir fazlası istenir; fazlası gelirse "daraltın" bilgisi verilir */
 export const DURBUN_SINIRI = 1000;
 
-export function sinirUygula<T>(liste: T[], sinir: number = DURBUN_SINIRI): { liste: T[]; tasti: boolean } {
-  return liste.length > sinir ? { liste: liste.slice(0, sinir), tasti: true } : { liste, tasti: false };
+/** Sunucunun dürbün kesme sırası için yeni→eski karşılaştırıcı: tarih büyükten küçüğe, eşitse kimlik büyükten küçüğe (#36) */
+export function yeniOnceKarsilastirici<T>(tarih: (x: T) => unknown, kimlik: (x: T) => unknown): (a: T, b: T) => number {
+  return (a, b) => {
+    const ta = String(tarih(a) ?? "");
+    const tb = String(tarih(b) ?? "");
+    if (ta !== tb) return tb < ta ? -1 : 1;
+    return (Number(kimlik(b)) || 0) - (Number(kimlik(a)) || 0);
+  };
+}
+
+/**
+ * Sınırı uygular. yeniOnce (yeni→eski karşılaştırıcı) verilirse sınır aşımında en yeni `sinir` kayıt kalır ve liste
+ * gösterim sırasını korur; eskiden yeniye sıralı listede baştan kesmek en yeni fişi düşürüyordu (ortak alan denetimi 19.11.2026, #36).
+ */
+export function sinirUygula<T>(liste: T[], sinir: number = DURBUN_SINIRI, yeniOnce?: (a: T, b: T) => number): { liste: T[]; tasti: boolean } {
+  if (liste.length <= sinir) return { liste, tasti: false };
+  if (!yeniOnce) return { liste: liste.slice(0, sinir), tasti: true };
+  const kalan = new Set([...liste].sort(yeniOnce).slice(0, sinir));
+  return { liste: liste.filter((x) => kalan.has(x)), tasti: true };
 }

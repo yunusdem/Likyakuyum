@@ -30,8 +30,12 @@ export async function gibeGonderildiMi(pool: sql.ConnectionPool, evrakTuru: numb
       SELECT @G AS G;
     `);
     return Number(r.recordset?.[0]?.G) === 1;
-  } catch {
-    return false;
+  } catch (e: any) {
+    // Tablo yokluğu (e-Belge hiç kurulmamış firma) beklenen durumdur: gönderilmemiş sayılır. Başka her hata (bağlantı, zaman aşımı,
+    // kilit…) gönderilmemiş sayılırsa GİB'e gitmiş fiş silinebiliyordu; silme durdurulur (ortak alan denetimi 19.11.2026, #50)
+    const no = Number(e?.number ?? e?.originalError?.info?.number);
+    if (no === 208) return false;
+    throw ApiError.unprocessable(`Fişin GİB gönderim durumu okunamadı; güvenlik için işlem durduruldu. Biraz sonra yeniden deneyin. (${e?.message || e})`);
   }
 }
 

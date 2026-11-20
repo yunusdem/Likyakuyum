@@ -71,6 +71,14 @@ export async function belgeTablolari(pool: sql.ConnectionPool): Promise<BelgeTab
 export const ISCILIK_KAYDI = (a: string) =>
   `(${a}.ACIKLAMA LIKE 'Sarraf Fişi İşçilik - %' OR ${a}.ACIKLAMA LIKE 'Döviz Fişi İşçilik - %' OR ${a}.ACIKLAMA LIKE 'Perakende Fişi İşçilik - %')`;
 
+/**
+ * Fişin kasa hesabına kendi yazdığı, nakit olmayan kayıtlar: işçilik kayıtları (ISCILIK_KAYDI) + sarraf fişinin havale / hesap ödemesi
+ * ("Sarraf Fişi Ödeme - Fiş No: … (Satır n)"; VEZNE_ID'li TL yazılır ama para bankaya gider, vezne bakiyesi güncellenmez). Vezne hareketlerine ve kasa
+ * defterine girmez; hesabın kendi raporlarında (hareket listesi, ekstre, bakiye) görünür. `a` = TODVZ_HESAP_HAREKETI takma adı.
+ * (ortak alan denetimi 19.11.2026, #11: havale tutarı vezneye nakit giriş görünüyordu)
+ */
+export const FIS_KAYDI = (a: string) => `(${ISCILIK_KAYDI(a)} OR ${a}.ACIKLAMA LIKE 'Sarraf Fişi Ödeme - %')`;
+
 /** Vezne hareketi belge tipleri — eski BELGE_TIPI kodlarıyla aynı */
 export const VEZNE_BELGE: Record<number, string> = { 0: "Fiş", 1: "Transfer", 2: "Cari", 3: "Hesap", 4: "Dekont", 5: "Sarraf", 6: "Perakende", 7: "Ürün tanımı", 8: "Bakiye düzeltme", 9: "Ticari" };
 /** Fiş niteliğindeki vezne belgeleri (alış / satış tipi taşır): döviz fişi, sarraf fişi, perakende fişi, ticari fiş */
@@ -122,7 +130,7 @@ const URUN_PARASI = `COALESCE(U1.PARA_ID, U2.PARA_ID, U3.PARA_ID, U4.PARA_ID, U5
  * Kurallar (eski görünümle ve uygulamanın vezne bakiyesi güncellemesiyle aynı):
  *  - Döviz fişi: iptal edilmemiş; satırda banka hesabı varsa satır vezneye girmez; başlıkta banka hesabı varsa TL ödeme ayağı vezneye girmez.
  *  - Nakit cari hareket (HAREKET_TIPI 0): alacak giriş, borç çıkış. Kasa hesap hareketi: giriş / çıkış + KDV her zaman TL'ye ayrı satır
- *    (fişlerin işçilik kayıtları hariç — ISCILIK_KAYDI).
+ *    (fişlerin işçilik ve havale / hesap ödemesi kayıtları hariç — FIS_KAYDI).
  *  - Emanet dekontu (TIP 0 alma / 1 verme): yalnız satır tipi dekont tipiyle aynı olan satırlar; alma giriş, verme çıkış. Virman dekontunun (TIP 2) iki satırı
  *    eski listedeki gibi "E.A." giriş + "E.V." çıkış olarak görünür; net etkisi sıfırdır.
  *  - Sarraf fişi: ürün satırı — ürün birimi Adet (BIRIM 0) ise ADET, değilse MİKTAR; alışta giriş, satışta çıkış. Vezneden yapılan ödeme satırı
@@ -192,11 +200,12 @@ export function vezneHareketleriSql(d: BelgeTablolari, tipFiltresi = false): str
        FROM dbo.TODVZ_VEZNE_TRANSFERI T JOIN dbo.TODVZ_VEZNE_TRANSFERI_SATIRI TS ON TS.VEZNE_TRANSFERI_ID=T.VEZNE_TRANSFERI_ID`,
       `SELECT 1, T.VEZNE_TRANSFERI_ID, TS.SATIR_NO, 0, T.VEREN_VEZNE_ID, T.TARIH, NULL, TS.PARA_ID, 0, TS.MIKTAR, 0, LTRIM(RTRIM(ISNULL(T.REF_NO,''))+' '+RTRIM(ISNULL(T.ACIKLAMA,''))), NULL, ${bos}
        FROM dbo.TODVZ_VEZNE_TRANSFERI T JOIN dbo.TODVZ_VEZNE_TRANSFERI_SATIRI TS ON TS.VEZNE_TRANSFERI_ID=T.VEZNE_TRANSFERI_ID`);
+    // Fişin kendi yazdığı işçilik ve havale / hesap ödemesi kayıtları nakit değildir (ortak alan denetimi 19.11.2026, #11)
     if (d.kasa) parcalar.push(
       `SELECT 3, KH.HESAP_HAREKETI_ID, 0, 0, KH.VEZNE_ID, KH.TARIH, NULL, KH.PARA_ID, CASE WHEN KH.TIP=0 THEN KH.MEBLAG ELSE 0 END, CASE WHEN KH.TIP=0 THEN 0 ELSE KH.MEBLAG END, 0, RTRIM(ISNULL(KH.ACIKLAMA,'')), NULL, ${bos}
-       FROM dbo.TODVZ_HESAP_HAREKETI KH WHERE NOT ${ISCILIK_KAYDI("KH")}`,
+       FROM dbo.TODVZ_HESAP_HAREKETI KH WHERE NOT ${FIS_KAYDI("KH")}`,
       `SELECT 3, KH.HESAP_HAREKETI_ID, 0, 2, KH.VEZNE_ID, KH.TARIH, NULL, ${TL_PARA_SQL}, CASE WHEN KH.TIP=0 THEN KH.KDV ELSE 0 END, CASE WHEN KH.TIP=0 THEN 0 ELSE KH.KDV END, 0, 'KDV — '+RTRIM(ISNULL(KH.ACIKLAMA,'')), NULL, ${bos}
-       FROM dbo.TODVZ_HESAP_HAREKETI KH WHERE ISNULL(KH.KDV,0)>0 AND NOT ${ISCILIK_KAYDI("KH")}`);
+       FROM dbo.TODVZ_HESAP_HAREKETI KH WHERE ISNULL(KH.KDV,0)>0 AND NOT ${FIS_KAYDI("KH")}`);
     if (d.dekont) parcalar.push(
       `SELECT 4, D.CARI_DEKONT_ID, DS.SATIR_NO, 0, D.VEZNE_ID, D.TARIH, NULL, DS.PARA_ID, CASE WHEN DS.TIP=0 THEN DS.MEBLAG ELSE 0 END, CASE WHEN DS.TIP=1 THEN DS.MEBLAG ELSE 0 END,
          DS.KUR, CASE WHEN DS.TIP=0 THEN 'E.A. ' ELSE 'E.V. ' END+RTRIM(ISNULL(DC.AD,'')), NULL, ${bos}
@@ -230,7 +239,8 @@ export const CARI_EVRAK: Record<number, string> = { 1: "Virman dekontu", 2: "Dö
  *  - Virman dekontu (TIP 2, iptal edilmemiş): satır tipi 0 → borçlu cari borç, 1 → alacaklı cari alacak. Emanet alma / verme cariyi etkilemez.
  *  - Döviz fişi bankadan ödendiyse (başlıkta banka hesabı = bir cari kart): TL ödeme tutarı o cariye — alışta alacak, satışta borç.
  *    Satırda banka hesabı varsa satırın dövizi o cariye — alışta borç, satışta alacak. Fişin müşteri carisi bakiyeyi etkilemez.
- *  - Sarraf fişi cari ödemesi (ISLEME_YERI 1): satışta borç, alışta alacak; meblağ ödeme satırının parası ve miktarıdır.
+ *  - Sarraf fişi cari ödemesi (ISLEME_YERI 1 ya da ODEME_ARACI_TURU 1; havale / hesap ve POS satırları hariç): satışta borç, alışta alacak;
+ *    meblağ ödeme satırının parası ve miktarıdır.
  *  - Perakende fişi cari ödemesi (ödeme aracı cari, uygulamaya özgü): satışta borç, alışta alacak; ödeme satırındaki cari, para ve miktar.
  */
 export function cariHareketleriSql(d: BelgeTablolari): string {
@@ -252,11 +262,16 @@ export function cariHareketleriSql(d: BelgeTablolari): string {
     `SELECT 1, D.CARI_DEKONT_ID, DS.SATIR_NO, CASE WHEN DS.TIP=0 THEN D.BORCLU_ID ELSE D.ALACAKLI_ID END, D.TARIH, D.EKLEME_ZAMANI, D.VEZNE_ID, DS.PARA_ID, 0, CASE WHEN DS.TIP=0 THEN 0 ELSE 1 END, DS.MEBLAG,
        RTRIM(ISNULL(D.ACIKLAMA,'')), CAST(D.CARI_DEKONT_ID AS varchar(20))
      FROM dbo.TODVZ_CARI_DEKONT D JOIN dbo.TODVZ_CARI_DEKONT_SATIRI DS ON DS.CARI_DEKONT_ID=D.CARI_DEKONT_ID WHERE D.TIP=2 AND D.IPTAL_TARIHI IS NULL`);
+  // Yalnız gerçek cari ödemesi: işleme yeri 1 (eski program + uygulama) ya da ödeme aracı 1 (Cari; 28.09.2026 öncesi uygulama kayıtlarında işleme yeri
+  // ekrandan geldiği için 1 olmayabilir). Havale / Hesap (ödeme aracı 3, işleme yeri 2) satırının CARI_KART_ID'si banka kimliğidir, POS'unki (2) cihaz →
+  // cariye girmez. Koşul OS.CARI_KART_ID'yi WHERE'de kullanmaz: kolonu olmayan veritabanında (göç 034 öncesi) rapor açılmıyordu.
+  // (ortak alan denetimi 19.11.2026, #12, #13)
   if (d.sarraf) parcalar.push(
     `SELECT 3, SF.SARRAF_FISI_ID, OS.SATIR_NO, ${d.odemeCari ? "COALESCE(OS.CARI_KART_ID, SF.CARI_KART_ID)" : "SF.CARI_KART_ID"}, SF.TARIH, SF.EKLEME_ZAMANI, SF.VEZNE_ID, OS.PARA_ID, 0,
        CASE WHEN SF.TIP=1 THEN 0 ELSE 1 END, ISNULL(NULLIF(OS.MIKTAR, 0), OS.TUTAR), ${sarrafAciklama}, RTRIM(ISNULL(SF.FIS_NO,''))
      FROM dbo.TODVZ_SARRAF_FISI SF JOIN dbo.TODVZ_ODEME_SATIRI OS ON OS.SARRAF_FISI_ID=SF.SARRAF_FISI_ID
-     WHERE (OS.ISLEME_YERI=1 OR OS.ODEME_ARACI_TURU=1 OR OS.CARI_KART_ID IS NOT NULL) AND OS.PARA_ID IS NOT NULL AND ${d.odemeCari ? "COALESCE(OS.CARI_KART_ID, SF.CARI_KART_ID)" : "SF.CARI_KART_ID"} IS NOT NULL`);
+     WHERE (OS.ISLEME_YERI=1 OR OS.ODEME_ARACI_TURU=1) AND ISNULL(OS.ODEME_ARACI_TURU,0) NOT IN (2,3) AND ISNULL(OS.ISLEME_YERI,0) NOT IN (2,3)
+       AND OS.PARA_ID IS NOT NULL AND ${d.odemeCari ? "COALESCE(OS.CARI_KART_ID, SF.CARI_KART_ID)" : "SF.CARI_KART_ID"} IS NOT NULL`);
   if (d.perakende) parcalar.push(
     `SELECT ${d.fisKaynagi ? "CASE WHEN ISNULL(F.FIS_KAYNAGI,0)=1 THEN 5 ELSE 4 END" : "4"}, F.FATURA_ID, O.SATIR_NO, O.CARI_KART_ID, ${YEREL_GUN("F.TARIH")}, F.EKLEME_ZAMANI, F.VEZNE_ID, O.PARA_ID, 0, CASE WHEN F.FATURA_TIPI=1 THEN 0 ELSE 1 END,
        ${FATURA_ODEME_MIKTARI}, ${faturaAciklama}, RTRIM(ISNULL(F.FATURA_NO,''))

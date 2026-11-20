@@ -157,7 +157,8 @@ export const yetkiProfilden = (u: any): KullaniciYetkisi => {
     kurTolerans,
     milyemYetkisi,
     milyemTolerans,
-    giseKuruDisinda: evet(u.canBeOutsideCounterRate),
+    // Yönetici gişe aralığına çekilmez (sunucudaki yetkiSatirdan gibi) (ortak alan denetimi 19.11.2026, #21)
+    giseKuruDisinda: isAdmin || evet(u.canBeOutsideCounterRate),
     sapmaUyarisiYok: evet(u.noDeviationWarning),
     masakUyarisi: evet(u.hasMasakWarning),
     calismaAlani: evet(u.hasWorkspacePerm),
@@ -400,6 +401,24 @@ export interface KurDenetimi {
 const yuzde = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
 
 /**
+ * "Gişe kuru dışında olabilir" işaretsizse kur gişe alış–satış aralığının dışına çıkamaz (Var yetkisinde de,
+ * docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2). d6b2769dd bu kuralı silmişti; kullanıcı kararıyla (19.11.2026) engel değil,
+ * aralığın sınırına çekme. Aralık dışındaysa sınır değeri, içindeyse (ya da kural işlemiyorsa) undefined döner.
+ * pay: kayıt anındaki canlı kur güncellemesi için yüzde pay (yalnız sunucuda). (ortak alan denetimi 19.11.2026, #21)
+ */
+const giseAraligindaTut = (y: KullaniciYetkisi, gise: GiseKuru | null | undefined, kur: number, pay = 0, basamak = 4): number | undefined => {
+  if (y.yonetici || y.giseKuruDisinda) return undefined;
+  const alis = Number(gise?.alis) || 0;
+  const satis = Number(gise?.satis) || 0;
+  if (!(alis > 0) || !(satis > 0)) return undefined;
+  const min = Math.min(alis, satis);
+  const max = Math.max(alis, satis);
+  if (kur < min * (1 - pay / 100) - 1e-9) return Number(min.toFixed(basamak));
+  if (kur > max * (1 + pay / 100) + 1e-9) return Number(max.toFixed(basamak));
+  return undefined;
+};
+
+/**
  * Girilen kur, kullanıcının kur yetkisine ve gişe kuruna göre geçerli mi. Gişe kuru bilinmiyorsa denetlenmez.
  * pay: sunucuda, ekranın yüklediği kur ile kayıt anındaki kur arasındaki canlı güncelleme farkı için yüzde pay.
  */
@@ -411,13 +430,18 @@ export const kurDenetle = (y: KullaniciYetkisi, gise: GiseKuru | null | undefine
   const fark = Math.abs(sapma) > 1e-9;
   if (!fark) return { hata: null, sapma, uyari: null };
 
-  // 1. Yok: Kuru değiştiremez (gişe kuruna yuvarla)
+  // 1. Yok: Kuru değiştiremez. Fark canlı kur payı içindeyse (ekranın yüklediği kur, kayıt anına kadar kur kaynağı gişe kurunu
+  // güncellemiş olabilir) kura dokunulmaz; dışındaysa gişe kuruna çekilir. Pay yok sayılınca "Yok" yetkili kasiyerin hemen her
+  // fişinde sunucu kuru değiştiriyordu. (ortak alan denetimi 19.11.2026, #6)
   if (y.kurYetkisi === "Yok") {
+    if (Math.abs(sapma) <= pay + 1e-9) return { hata: null, sapma: 0, uyari: null };
     return { hata: null, sinirKur: ref, sapma: 0, uyari: null };
   }
 
-  // 2. Var: İstediğini yazar
+  // 2. Var: İstediğini yazar; "Gişe kuru dışında olabilir" işaretsizse gişe alış–satış aralığına çekilir (#21)
   if (y.kurYetkisi === "Var") {
+    const sinirKur = giseAraligindaTut(y, gise, k, pay);
+    if (sinirKur !== undefined) return { hata: null, sinirKur, sapma, uyari: null };
     return { hata: null, sapma, uyari: y.sapmaUyarisiYok ? null : `${etiket} gişe kurundan %${yuzde(sapma)} farklı (gişe ${ref}).` };
   }
 
@@ -452,18 +476,17 @@ export const kurDenetle = (y: KullaniciYetkisi, gise: GiseKuru | null | undefine
 
   // 4. Yüzde: Kuru maksimum bu yüzde kadar değiştirebilir (örn: yüzde 1, kur 100 ise 99–101). Aralık dışındaysa o sınıra yuvarlar.
   if (y.kurYetkisi === "Yüzde" || y.kurYetkisi === "Limitli") {
+    let sinirKur: number | undefined;
     if (Math.abs(sapma) > y.kurTolerans + pay + 1e-9) {
       const alt = parseFloat((ref * (1 - y.kurTolerans / 100)).toFixed(4));
       const ust = parseFloat((ref * (1 + y.kurTolerans / 100)).toFixed(4));
-      const sinirKur = k < alt ? alt : ust;
       // Kullanıcı talebi: Bu uyarıyı vermesin, direk yuvarlasın o değere
-      return {
-        hata: null,
-        sinirKur,
-        sapma,
-        uyari: null,
-      };
+      sinirKur = k < alt ? alt : ust;
     }
+    // Tolerans içindeki (ya da toleransa çekilen) kur gişe alış–satış aralığını da aşamaz (işaretsizse) (#21)
+    const araliktaki = giseAraligindaTut(y, gise, sinirKur ?? k, pay);
+    if (araliktaki !== undefined) sinirKur = araliktaki;
+    if (sinirKur !== undefined) return { hata: null, sinirKur, sapma, uyari: null };
     return { hata: null, sapma, uyari: y.sapmaUyarisiYok ? null : `${etiket} gişe kurundan %${yuzde(sapma)} farklı (gişe ${ref}).` };
   }
 
@@ -476,6 +499,7 @@ export const kurDenetle = (y: KullaniciYetkisi, gise: GiseKuru | null | undefine
  * - "Var": girilen değeri olduğu gibi döner (serbest)
  * - "Esnek": [min(alis, satis), max(alis, satis)] aralığı dışındaysa sınıra çeker
  * - "Yüzde": Gişe kuru ± tolerans% aralığı dışındaysa sınıra çeker (örn: %1, ref 100 => 102 yazarsa 101, 50 yazarsa 99)
+ * - Var / Yüzde: "Gişe kuru dışında olabilir" işaretsizse ayrıca gişe alış–satış aralığına çeker (#21)
  */
 export const kurDegeriniSinirla = (
   y: KullaniciYetkisi,
@@ -496,8 +520,11 @@ export const kurDegeriniSinirla = (
     };
   }
 
-  // 2. Var: İstediğini yazar
+  // 2. Var: İstediğini yazar; "Gişe kuru dışında olabilir" işaretsizse gişe alış–satış aralığına çekilir
+  // (kurDenetle ile aynı kural; ekran girişte çeker) (ortak alan denetimi 19.11.2026, #21)
   if (y.kurYetkisi === "Var") {
+    const aralik = giseAraligindaTut(y, gise, k, 0, basamak);
+    if (aralik !== undefined) return { kur: aralik, degisti: true, mesaj: `Kur gişe alış–satış aralığının dışında olamaz; ${aralik} değerine getirildi.` };
     return { kur: k, degisti: false };
   }
 
@@ -532,25 +559,28 @@ export const kurDegeriniSinirla = (
   if (y.kurYetkisi === "Yüzde" || y.kurYetkisi === "Limitli") {
     const ref = Number(gise?.kur) || Number(gise?.alis) || Number(gise?.satis) || 0;
     const tolerans = Number(y.kurTolerans) || 0;
+    let sonuc: { kur: number; degisti: boolean; mesaj?: string } = { kur: k, degisti: false };
     if (ref > 0 && tolerans > 0) {
       const alt = Number((ref * (1 - tolerans / 100)).toFixed(basamak));
       const ust = Number((ref * (1 + tolerans / 100)).toFixed(basamak));
       if (k < alt) {
-        return {
+        sonuc = {
           kur: alt,
           degisti: true,
           mesaj: `Kur %${tolerans} toleransının altında. Alt sınıra (${alt}) getirildi.`,
         };
-      }
-      if (k > ust) {
-        return {
+      } else if (k > ust) {
+        sonuc = {
           kur: ust,
           degisti: true,
           mesaj: `Kur %${tolerans} toleransının üzerinde. Üst sınıra (${ust}) getirildi.`,
         };
       }
     }
-    return { kur: k, degisti: false };
+    // Toleransın içindeki kur da gişe alış–satış aralığını aşamaz (işaretsizse) (ortak alan denetimi 19.11.2026, #21)
+    const aralik = giseAraligindaTut(y, gise, sonuc.kur, 0, basamak);
+    if (aralik !== undefined) return { kur: aralik, degisti: true, mesaj: `Kur gişe alış–satış aralığının dışında olamaz; ${aralik} değerine getirildi.` };
+    return sonuc;
   }
 
   return { kur: k, degisti: false };
@@ -583,7 +613,10 @@ export const milyemDenetle = (
   const ref = Number(refMilyem) || 0;
   const m = Number(girilen) || 0;
   if (!(ref > 0) || !(m > 0)) return { hata: null, sapma: 0, uyari: null };
-  const sapma = ((m - ref) / ref) * 100;
+  // Birim farkı sapma sayılmaz: kayıtlı fiş milyemi binde (930), ürün tanımı ondalık (0,93) gelir; ikisi de orana çevrilip karşılaştırılır.
+  // Önceden açılan eski fiş, milyemi değişmediği hâlde "milyem değiştirme yetkiniz yok" diye kaydedilemiyordu (ortak alan denetimi 20.11.2026)
+  const oran = (v: number) => (v > 1 ? (v <= 100 ? v / 100 : v / 1000) : v);
+  const sapma = ((oran(m) - oran(ref)) / oran(ref)) * 100;
   const fark = Math.abs(sapma) > 1e-9;
   if (!fark) return { hata: null, sapma, uyari: null };
 
@@ -759,15 +792,22 @@ const GUMUS_KODLARI = ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS", "GMS"];
 
 /**
  * Sarraf satırı gişe kuru (SarrafFisiPage getKurForProduct ile aynı):
- * Altın ve gümüş satırlarında kur her zaman fişteki Has Kuru'dur (asla ürünün adet/satış fiyatı tablosundaki kuru alınmaz).
- * Döviz veya Ziynet ise ürünün kendi kur satırı kullanılır.
+ * Altın ve gümüş satırlarında kur her zaman fişteki Has Kuru'dur (asla ürünün adet/satış fiyatı tablosundaki kuru alınmaz);
+ * fişte Has Kuru yoksa kur listesindeki HAS. Döviz veya Ziynet ise ürünün kendi kur satırı kullanılır.
+ * Gümüş: ön yüz gümüşü de başlık Has Kuru ile fiyatlayıp gönderiyor (f7cd89c62); sunucu gümüş has kurunu gişe sayınca her
+ * gümüş satırının kurunu sessizce değiştiriyordu. Aynı uca kaydeden Hızlı Satış ise gümüşü gümüş kuruyla (GMS) fiyatlar
+ * (hizliSatisHesap urunKuru): girilen kur (girilen) gümüş kuruna Has Kuru'ndan yakınsa o kurla denetlenir — yoksa Hızlı Satış'ın
+ * gümüş satırı altın kuruna çekilirdi. (ortak alan denetimi 19.11.2026, #34)
+ * Fişin başlık kuru tek değerdir, gişe alış–satış aralığı değildir: o yolda alis/satis boş döner ("Gişe kuru dışında olabilir"
+ * kuralı başlık kurundan alınan satıra uygulanmaz; Esnek / Yüzde yine başlık kurunu esas alır). (#21)
  */
 export const sarrafGiseKuru = (
   kurlar: KurSatiri[],
   urun: KurSatiri | null | undefined,
   tip: number,
   fiHasKuru?: number,
-  fiGumusKuru?: number
+  fiGumusKuru?: number,
+  girilen?: number
 ): GiseKuru | null => {
   if (!urun) return null;
   const kod = buyuk(urun.kod);
@@ -785,18 +825,20 @@ export const sarrafGiseKuru = (
   const isZiynet = urunTipi === 3;
   const isPara = urunTipi === 0;
 
-  // Gümüş: Fişteki gümüş has kuru veya kur listesindeki gümüş has kuru
-  if (gumus) {
-    if (fiGumusKuru && fiGumusKuru > 0) return { kur: fiGumusKuru, alis: fiGumusKuru, satis: fiGumusKuru };
-    return satir(kurlar.find((k) => GUMUS_KODLARI.includes(buyuk(k.kod))));
-  }
-
-  // Altın (urunTipi === 1 veya ziynet/döviz/gümüş harici):
-  // Sarraf fişinde altın kalemleri her zaman Has Kuru ile işlem görür!
+  // Altın (urunTipi === 1 veya ziynet/döviz harici) ve gümüş:
+  // Sarraf fişinde altın ve gümüş kalemleri her zaman Has Kuru ile işlem görür! (#34)
   const isAltin = urunTipi === 1 || (!isZiynet && !isPara && !gumus);
-  if (isAltin) {
-    if (fiHasKuru && fiHasKuru > 0) return { kur: fiHasKuru, alis: fiHasKuru, satis: fiHasKuru };
-    return satir(kurlar.find((k) => HAS_KODLARI.includes(buyuk(k.kod))));
+  if (isAltin || gumus) {
+    const has = fiHasKuru && fiHasKuru > 0
+      ? { kur: fiHasKuru, alis: null, satis: null }
+      : satir(kurlar.find((k) => HAS_KODLARI.includes(buyuk(k.kod))));
+    if (!gumus) return has;
+    const gumusKuru = fiGumusKuru && fiGumusKuru > 0
+      ? { kur: fiGumusKuru, alis: null, satis: null }
+      : satir(kurlar.find((k) => GUMUS_KODLARI.includes(buyuk(k.kod))));
+    const k = Number(girilen) || 0;
+    if (gumusKuru && (!has || (k > 0 && Math.abs(k - gumusKuru.kur) < Math.abs(k - has.kur)))) return gumusKuru;
+    return has;
   }
 
   // Sadece Ziynet veya Döviz ise ürünün anlık fiyat listesindeki kendi kuru denetlenir

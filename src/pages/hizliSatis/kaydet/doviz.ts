@@ -1,5 +1,5 @@
 import { DovizFisService, SaveDovizFisPayload } from "../../../services/dovizFisService";
-import { dovizFisHtml } from "../../../utils/belgeSablon/fisCikti";
+import { dovizFisleriHtml } from "../../../utils/belgeSablon/fisCikti";
 import { dovizSatir, urunKuru, yuvarla2 } from "../../../../Backend/src/services/hizliSatis/hizliSatisHesap";
 import { fisiBas, odemeVeyaNakit, simdi } from "./ortak";
 import type { KaydetBaglami, KaydetSonucu } from "./tipler";
@@ -81,6 +81,10 @@ export async function dovizKaydet(b: KaydetBaglami): Promise<KaydetSonucu> {
   const t = b.veri.tanim || {};
   const usd = urunKuru(b.veri.kurlar, { kod: "USD", urunTipi: 0 }, b.tip);
   const satirlar = yuk.satirlar;
+  // Kayıt dönüşü (findById) satırları SATIR_NO sırasıyla, her satırın kendi seri / belge no ve ETTN'iyle gelir.
+  // Döviz ekranı gibi her satır ayrı fiş basılır; satırın numarası yoksa dovizFisleriHtml fiş numarasından sırayla türetir
+  // (ortak alan denetimi 19.11.2026, #41)
+  const kayitliSatirlar: any[] = Array.isArray(r?.satirlar) && r.satirlar.length === satirlar.length ? r.satirlar : [];
   const snap = {
     fisId: id,
     tip: b.tip,
@@ -98,7 +102,10 @@ export async function dovizKaydet(b: KaydetBaglami): Promise<KaydetSonucu> {
     detayCariTipi: "",
     vezneKod: b.veri.vezne?.kod || "",
     istatistikKodu: b.istatistik?.kod || "",
-    lines: satirlar.map((l) => ({ paraKodu: l.paraKodu, paraAdi: l.paraAdi, miktar: l.miktar, kur: l.kur, tutar: l.tutar, bmv: l.bmv, kmv: l.kmv, kmvOrani: l.kmvOrani, komisyon: l.komisyon })),
+    lines: satirlar.map((l, i) => ({
+      paraKodu: l.paraKodu, paraAdi: l.paraAdi, miktar: l.miktar, kur: l.kur, tutar: l.tutar, bmv: l.bmv, kmv: l.kmv, kmvOrani: l.kmvOrani, komisyon: l.komisyon,
+      seriNo: kayitliSatirlar[i]?.seriNo || undefined, belgeNo: kayitliSatirlar[i]?.belgeNo || undefined, ettn: kayitliSatirlar[i]?.ettn || undefined,
+    })),
     toplamTutar: yuk.toplamTutar,
     odemeTutari: yuk.odemeTutari,
     bsmvTutari: yuvarla2(satirlar.reduce((a, l) => a + (l.bmv || 0), 0)),
@@ -109,7 +116,7 @@ export async function dovizKaydet(b: KaydetBaglami): Promise<KaydetSonucu> {
     kurKurusSayisi: Number(t.KUR_KURUS_SAYISI) || 4,
     tlKurusSayisi: Math.max(2, Number(t.TL_KURUS_SAYISI) || 2),
   };
-  const baski = await fisiBas(b, "doviz", () => dovizFisHtml(snap), `Doviz_Fisi_${no}`);
+  const baski = await fisiBas(b, "doviz", () => dovizFisleriHtml(snap), `Doviz_Fisi_${no}`);
   if (baski) uyarilar.push(baski);
   return { fisId: id, fisNo: no, uyarilar };
 }

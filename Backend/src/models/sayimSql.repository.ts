@@ -41,16 +41,20 @@ export interface SaveSayimFisiPayload {
   satirlar?: SayimSatirDto[];
 }
 
+/** Oturumdaki firmanın veritabanı. Önceden getDbPool() parametresiz çağrılıyordu: süreçteki İLK bağlı havuz dönüyor, bulutta
+ *  sayım başka firmanın veritabanına yazılıp oradan okunabiliyordu (ortak alan denetimi 20.11.2026). */
+export type SayimDbContext = { dbServer?: string; dbName?: string };
+
 export class SayimSqlRepository {
-  static async getNextFisNo(): Promise<string> {
-    return this.generateNextFisNo();
+  static async getNextFisNo(ctx?: SayimDbContext): Promise<string> {
+    return this.generateNextFisNo(ctx);
   }
 
   /**
    * Çakışmayan, sıralı ve güncel bir sonraki sayım fiş numarasını üretir (Örn: SYM-20260920-0001)
    */
-  static async generateNextFisNo(): Promise<string> {
-    const pool = await getDbPool();
+  static async generateNextFisNo(ctx?: SayimDbContext): Promise<string> {
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     const today = new Date();
     const y = today.getFullYear();
     const m = String(today.getMonth() + 1).padStart(2, "0");
@@ -105,8 +109,8 @@ export class SayimSqlRepository {
   /**
    * Sayım fişini ve tüm satırlarını SODVZ_SAYIM_FISI_KAYDET ve SODVZ_SAYIM_SATIR_EKLE prosedürleri ile kaydeder
    */
-  static async saveSayimFisi(payload: SaveSayimFisiPayload): Promise<{ sayimFisiId: number; fisNo: string }> {
-    const pool = await getDbPool();
+  static async saveSayimFisi(payload: SaveSayimFisiPayload, ctx?: SayimDbContext): Promise<{ sayimFisiId: number; fisNo: string }> {
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
 
     // Tarih ve saat formatlama
     const today = new Date();
@@ -135,7 +139,7 @@ export class SayimSqlRepository {
       //    Eğer fisNo boş ise veya gönderilen fisNo zaten başka bir fişte kullanılmışsa -> otomatik yeni fiş numarası ata
       if (!effectiveSayimFisiId) {
         if (!effectiveFisNo) {
-          effectiveFisNo = await SayimSqlRepository.generateNextFisNo();
+          effectiveFisNo = await SayimSqlRepository.generateNextFisNo(ctx);
         } else {
           const dupReq = pool.request();
           dupReq.input("dupFisNo", sql.VarChar(50), effectiveFisNo);
@@ -143,7 +147,7 @@ export class SayimSqlRepository {
             `SELECT TOP 1 SAYIM_FISI_ID FROM dbo.TODVZ_SAYIM_FISI WHERE FIS_NO = @dupFisNo;`
           );
           if (dupRes.recordset && dupRes.recordset.length > 0) {
-            effectiveFisNo = await SayimSqlRepository.generateNextFisNo();
+            effectiveFisNo = await SayimSqlRepository.generateNextFisNo(ctx);
           }
         }
       }
@@ -228,8 +232,8 @@ export class SayimSqlRepository {
   /**
    * Sayım fişini ve bağlı satırlarını siler (SODVZ_SAYIM_FISI_SIL)
    */
-  static async deleteSayimFisi(sayimFisiId: number): Promise<boolean> {
-    const pool = await getDbPool();
+  static async deleteSayimFisi(sayimFisiId: number, ctx?: SayimDbContext): Promise<boolean> {
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     try {
       const req = pool.request();
       req.input("SAYIM_FISI_ID", sql.Int, sayimFisiId);
@@ -245,8 +249,8 @@ export class SayimSqlRepository {
   /**
    * Tüm kayıtlı sayım fişlerini listeler
    */
-  static async listSayimFisleri(limit = 100): Promise<any[]> {
-    const pool = await getDbPool();
+  static async listSayimFisleri(limit = 100, ctx?: SayimDbContext): Promise<any[]> {
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     try {
       const req = pool.request();
       req.input("LIMIT", sql.Int, limit);
@@ -283,8 +287,8 @@ export class SayimSqlRepository {
   /**
    * Fiş numarasına veya ID'ye göre fiş ve satır detaylarını getirir
    */
-  static async getSayimFisiById(idOrFisNo: string | number): Promise<any | null> {
-    const pool = await getDbPool();
+  static async getSayimFisiById(idOrFisNo: string | number, ctx?: SayimDbContext): Promise<any | null> {
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     try {
       const isPureNumber = typeof idOrFisNo === "number" || (/^\d+$/.test(String(idOrFisNo)) && !String(idOrFisNo).startsWith("SYM-"));
       const numId = isPureNumber ? parseInt(String(idOrFisNo), 10) : null;

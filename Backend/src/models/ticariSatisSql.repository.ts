@@ -1,3 +1,4 @@
+import { KendiKayit, kendiKayitKosulu } from "../utils/kendiKayit.js";
 import sql from "mssql";
 import { EVRAK_TURU_PERAKENDE, gibeGonderildiyseEngelle } from "./ebelgeGonderimKilidi.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -544,7 +545,7 @@ export class TicariSatisSqlRepository {
   }
 
   /** Ticari Satış Listesi (T16) */
-  static async liste(f: { baslangic?: string | null; bitis?: string | null; arama?: string | null; eBelgeDurumu?: number | null; stokKartId?: number | null; durbun?: FisDurbunFiltre; limit?: number | null } = {}, ctx?: DbBaglam) {
+  static async liste(f: { baslangic?: string | null; bitis?: string | null; arama?: string | null; eBelgeDurumu?: number | null; stokKartId?: number | null; durbun?: FisDurbunFiltre; kendi?: KendiKayit | null; limit?: number | null } = {}, ctx?: DbBaglam) {
     const pool = await TicariStokSqlRepository.havuz(ctx);
     const req = pool.request();
     const kosul: string[] = [`ISNULL(F.FIS_KAYNAGI, 0) = ${FIS_KAYNAGI_TICARI}`];
@@ -565,6 +566,7 @@ export class TicariSatisSqlRepository {
       durbunParametreleriniBagla(req, k.parametreler);
     }
     const ust = durbunVar ? `TOP (${durbunLimiti(f.limit, 1001, 1001, true)}) ` : "";
+    { const kk = kendiKayitKosulu(req, "F", f.kendi); if (kk) kosul.push(kk); } // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
     const r = await req.query(`
       SELECT ${ust}F.FATURA_ID, F.FATURA_NO, F.TARIH, F.SENARYO, F.ALICI_VKN_TCKN, F.ALICI_UNVAN, F.CARI_KART_ID, RTRIM(C.KOD) AS CARI_KOD,
         F.ARA_TOPLAM, F.TOPLAM_KDV, F.ISKONTO_TUTARI, F.GENEL_TOPLAM, ISNULL(F.E_BELGE_DURUMU, 0) AS E_BELGE_DURUMU, F.GIB_STATU_KODU,

@@ -233,6 +233,11 @@ export class EbelgeKaynakService {
   private static async perakendeSenaryo(vkn: string, kullanici: string, ctx?: DbContext): Promise<"TICARIFATURA" | "EARSIVFATURA"> {
     if (vkn === NIHAI_TUKETICI) return "EARSIVFATURA";
     const m = await EbelgeService.mukellefSorgulaCanli(vkn, kullanici, ctx);
+    // Sorgu yapılamadıysa (ICE hatası / ayar yok) sessizce e-Arşiv seçilmez; durup hata verilir (P9)
+    // (ortak alan denetimi 19.11.2026, #31)
+    if (m.sorgulanamadi) {
+      throw ApiError.unprocessable(`Alıcının (${vkn}) e-Fatura mükellefiyeti sorgulanamadı; belge türü belirlenemediği için fiş hazırlanmadı. Biraz sonra yeniden deneyin.${m.mesaj ? ` (${m.mesaj})` : ""}`);
+    }
     return m.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
   }
 
@@ -388,11 +393,14 @@ export class EbelgeKaynakService {
    * Kaynak listesinden fiş silme: GİB'e gitmemiş fiş kendi ekranındaki silme yoluyla (vezne / stok / cari etkisi geri
    * alınarak) silinir; gönderilmiş / kuyruktaki fiş her türde aynı kilitle (ebelgeGonderimKilidi) engellenir.
    */
-  static async sil(k: KaynakKimlik, tur: KaynakSilTuru, kullaniciId: number, ctx?: DbContext): Promise<void> {
+  static async sil(k: KaynakKimlik, tur: KaynakSilTuru, kullaniciId: number, ctx?: DbContext): Promise<{ iadeBekleyenAdet: number; iadeBekleyenTutar: number } | null> {
+    // Sarraf: POS ile tahsil edilmiş çekimler "iade bekliyor" olur; adet / tutar ekrana döner ki kasiyer cihazdan iade etsin (POS K14,
+    // fişin kendi ekranındaki uyarıyla aynı; ortak alan denetimi 20.11.2026)
     if (tur === "sarraf") return SarrafFisService.deleteFis(k.belgeId, kullaniciId, ctx);
-    if (tur === "doviz") { await DovizFisService.deleteFis(k.belgeId, ctx, kullaniciId); return; }
-    if (tur === "perakende") return PerakendeService.deleteInvoice(k.belgeId, ctx);
-    return TicariSatisSqlRepository.sil(k.belgeId, ctx);
+    if (tur === "doviz") { await DovizFisService.deleteFis(k.belgeId, ctx, kullaniciId); return null; }
+    if (tur === "perakende") { await PerakendeService.deleteInvoice(k.belgeId, ctx); return null; }
+    await TicariSatisSqlRepository.sil(k.belgeId, ctx);
+    return null;
   }
 
   static async gonder(k: KaynakKimlik, parmakizi: string, senaryo: string, kullanici: string, ctx?: DbContext, kdvSifir = false) {

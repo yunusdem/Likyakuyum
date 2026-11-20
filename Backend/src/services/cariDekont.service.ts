@@ -1,3 +1,4 @@
+import type { KendiKayit } from "../utils/kendiKayit.js";
 import {
   CariDekontSqlRepository,
   CariDekontModel,
@@ -8,7 +9,7 @@ import type { FisDurbunFiltre } from "../utils/fisDurbunFiltre.js";
 
 export class CariDekontService {
   public static async getDekontList(
-    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; durbun?: FisDurbunFiltre },
+    filter?: { search?: string; tip?: number; vezneId?: number; limit?: number; baslangic?: string | null; durbun?: FisDurbunFiltre; kendi?: KendiKayit | null },
     dbContext?: { dbServer?: string; dbName?: string }
   ) {
     return CariDekontSqlRepository.findAll(filter, dbContext);

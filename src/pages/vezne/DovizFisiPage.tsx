@@ -485,6 +485,8 @@ export const DovizFisiPage: React.FC = () => {
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(() => CompanyService.cachedDefinitions);
   const [printers, setPrinters] = useState<YaziciItem[]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  // Çift kayıt engeli (F1 / F10 / Kaydet art arda): ref anında kilitler, state düğmeyi pasif gösterir (ortak alan denetimi 19.11.2026, #35)
+  const kayitKilidiRef = useRef<boolean>(false);
   const [pendingPrinter, setPendingPrinter] = useState<YaziciItem | null>(null);
   const [pendingCopies, setPendingCopies] = useState<number>(1);
 
@@ -4480,7 +4482,8 @@ export const DovizFisiPage: React.FC = () => {
     focusTipSelect();
   };
 
-  const handleToolbarSave = async (
+  // Asıl kayıt; dışarıdan her zaman çift kayıt kilitli handleToolbarSave ile çağrılır (#35)
+  const handleToolbarSaveIc = async (
     forceMasakApprove = false,
     andDirectPrint = false,
     targetPrinter?: YaziciItem | null,
@@ -5237,6 +5240,20 @@ export const DovizFisiPage: React.FC = () => {
     }
   };
 
+  // Çift kayıt engeli: ilk kayıt (yazdırma dahil) bitene kadar ikinci çağrı yok sayılır; kilit finally'de mutlaka bırakılır
+  // (PerakendeFisiPage isSubmittingRef gibi; ortak alan denetimi 19.11.2026, #35)
+  const handleToolbarSave = async (...args: Parameters<typeof handleToolbarSaveIc>) => {
+    if (kayitKilidiRef.current) return;
+    kayitKilidiRef.current = true;
+    setIsSaving(true);
+    try {
+      await handleToolbarSaveIc(...args);
+    } finally {
+      kayitKilidiRef.current = false;
+      setIsSaving(false);
+    }
+  };
+
   const handleToolbarDelete = async () => {
     if (isRecordLockedByUser) {
       setNotification({
@@ -5779,6 +5796,20 @@ export const DovizFisiPage: React.FC = () => {
     ]
   );
 
+  // Arbitraj modalından doğrudan kayıt da ana kayıtla aynı çift kayıt kilidine bağlı: çift tıklamada iki fiş açılmasın (ortak alan denetimi 19.11.2026, #35)
+  const handleSaveArbitrajKilitli = async (...args: Parameters<typeof handleSaveArbitrajDirectAndPrint>) => {
+    // Kayıt sürerken ikinci basış: hata olarak döner ki arbitraj penceresi "kaydedildi" deyip kapanmasın
+    if (kayitKilidiRef.current) throw new Error("Kayıt sürüyor; lütfen bekleyin.");
+    kayitKilidiRef.current = true;
+    setIsSaving(true);
+    try {
+      return await handleSaveArbitrajDirectAndPrint(...args);
+    } finally {
+      kayitKilidiRef.current = false;
+      setIsSaving(false);
+    }
+  };
+
   const closeAllModals = useCallback(() => {
     setShowDeleteConfirmModal(false);
     setShowKurListesiModal(false);
@@ -5804,6 +5835,7 @@ export const DovizFisiPage: React.FC = () => {
     setBankaDagitimSatirlari(data.bankaSatirlari);
     setVezneNakitTutari(data.vezneTutari);
     if (data.bankaSatirlari.length > 0) {
+      // bankaId pencerenin cari kipinde banka CARİ kartı kimliğidir (BANKA_HESABI_ID → TODVZ_CARI_KART; #14)
       setDetayBankaHesabiId(data.bankaSatirlari[0].bankaId);
       setDetayBankaHesabi(data.bankaSatirlari[0].bankaAdi);
     }
@@ -6903,10 +6935,11 @@ export const DovizFisiPage: React.FC = () => {
       {/* Top ERP Toolbar with Refresh Icon on right and Dynamic Balances */}
       <ERPToolbar
         disableShortcuts={true}
+        disabled={isSaving} // kayıt sürerken Kaydet dahil düğmeler pasif (çift kayıt engeli, #35)
         pageTitle={isDuzeltmeMode ? "F- Döviz Fişi Düzeltme" : "E- Döviz Fişi Kayıt"}
         onNew={isDuzeltmeMode ? undefined : handleToolbarNew}
         hideNew={isDuzeltmeMode}
-        onSave={isRecordLockedByUser ? undefined : handleToolbarSave}
+        onSave={isRecordLockedByUser ? undefined : () => handleToolbarSave()} // tıklama olayı forceMasakApprove sayılıp MASAK onayı ve kur denetimi atlanıyordu (ortak alan denetimi 19.11.2026)
         hideSave={isRecordLockedByUser}
         onSaveAndPrint={isRecordLockedByUser ? undefined : handleTriggerF10}
         onDirectPrint={handleOpenPrintPreview}
@@ -9810,7 +9843,7 @@ export const DovizFisiPage: React.FC = () => {
         fisTip={tip}
         savedArbitraj={savedArbitrajInfo ? (savedArbitrajInfo.result || null) : null}
         initialGelisNedeni={gelisNedeni}
-        onSaveDirect={handleSaveArbitrajDirectAndPrint}
+        onSaveDirect={handleSaveArbitrajKilitli}
         onApplyToFis={handleApplyArbitrajToDovizFis}
         onOpenPrintModal={handleOpenArbitrajPrintModal}
       />
@@ -10175,6 +10208,9 @@ export const DovizFisiPage: React.FC = () => {
         currentVezneAd={vezneAd}
         initialBankaAciklama={bankaAciklama}
         onApply={handleApplyBankaTlHesabi}
+        // BANKA_HESABI_ID cari karta FK'li: TODVZ_BANKA değil, F8'deki banka cari kartları listelenir (KOD 102… / AD …BANK…);
+        // örnek (DEFAULT_BANKALAR) kimlikleri gerçek kart değil, verilmez (ortak alan denetimi 19.11.2026, #14)
+        cariBankalar={lookupData.bankaList === DEFAULT_BANKALAR ? [] : lookupData.bankaList}
       />
 
       {/* F6) TL Hesabı Modalı */}
@@ -10301,7 +10337,8 @@ export const DovizFisiPage: React.FC = () => {
       </Modal>
 
       {/* 2b) Kaydederken MASAK Sınırı Onay Modalı (Sayfa Ortasında: Yine de Kaydedeyim mi / Vazgeç) */}
-      <Modal show={showMasakConfirmModal} onHide={() => setShowMasakConfirmModal(false)} centered>
+      {/* Pencere kapanınca "doğrudan yazdır" bayrağı sıfırlanır: açık kalırsa sonraki F9 önizlemesi kendiliğinden yazdırıyordu (ortak alan denetimi 20.11.2026) */}
+      <Modal show={showMasakConfirmModal} onHide={() => { setShowMasakConfirmModal(false); setIsPendingDirectPrint(false); }} centered>
         <Modal.Header closeButton className="py-2 bg-warning-subtle text-warning-emphasis">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
             <IconAlertTriangle size={20} className="text-warning" />
@@ -10323,7 +10360,7 @@ export const DovizFisiPage: React.FC = () => {
           </div>
         </Modal.Body>
         <Modal.Footer className="py-2 justify-content-center">
-          <Button size="sm" variant="secondary" className="px-3" onClick={() => setShowMasakConfirmModal(false)}>
+          <Button size="sm" variant="secondary" className="px-3" onClick={() => { setShowMasakConfirmModal(false); setIsPendingDirectPrint(false); }}>
             Vazgeç
           </Button>
           <Button
@@ -10332,7 +10369,9 @@ export const DovizFisiPage: React.FC = () => {
             className="fw-bold px-3"
             onClick={() => {
               setShowMasakConfirmModal(false);
-              handleToolbarSave(true, isPendingDirectPrint, pendingPrinter, pendingCopies);
+              const dogrudanYazdir = isPendingDirectPrint;
+              setIsPendingDirectPrint(false);
+              handleToolbarSave(true, dogrudanYazdir, pendingPrinter, pendingCopies);
             }}
           >
             Yine de Kaydet

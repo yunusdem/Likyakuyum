@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi, kendiKayitSuzgeci } from "../services/yetki/fisYetkileri.js";
 import { caprazKurDenetleSunucu } from "../services/yetki/fisIcerikYetkisi.js";
 import { CariDekontService } from "../services/cariDekont.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -28,6 +28,7 @@ export class CariDekontController {
       baslangic: await gunSiniri(req),
       // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
       durbun: fisDurbunFiltresiOku(req.query as Record<string, unknown>),
+      kendi: await kendiKayitSuzgeci(req), // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
     };
     const list = await CariDekontService.getDekontList(filter, dbContext);
     return ApiResponse.ok(res, "Cari dekontlar listelendi.", list);
@@ -74,7 +75,8 @@ export class CariDekontController {
     const u = req.user as any;
     const kullaniciId = u?.userId || u?.id || req.body?.kullaniciId || 1;
     const degisiklikTakipVar = req.body?.degisiklikTakipVar !== false;
-    await kayitErisimi(req, "cariDekont", id);
+    // "Kendi kayıtları" kullanıcısı mevcut kaydı silemez (ortak alan denetimi 19.11.2026, #24)
+    await kayitErisimi(req, "cariDekont", id, { isDelete: true });
     await CariDekontService.deleteDekont(id, kullaniciId, degisiklikTakipVar, dbContext);
     return ApiResponse.ok(res, "Cari dekont başarıyla silindi.", { cariDekontId: id });
   });

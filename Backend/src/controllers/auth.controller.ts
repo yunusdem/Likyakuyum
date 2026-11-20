@@ -6,6 +6,7 @@ import { ResponseMessages } from "../constants/responseMessages.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { env } from "../config/env.config.js";
 import { istemciIp, istemciTarayici } from "../utils/istemci.utils.js";
+import { kullaniciYetkisi, yetkiGerekli } from "../services/yetki/kullaniciYetkisi.js";
 
 export class AuthController {
   public static login = asyncHandler(async (req: Request, res: Response) => {
@@ -72,6 +73,36 @@ export class AuthController {
     };
     const user = await AuthService.getProfile(req.user!.userId, dbContext);
     return ApiResponse.ok(res, "Profil bilgisi başarıyla getirildi.", user);
+  });
+
+  /** Alan değiştirme listesi: yetkisiz kullanıcıya yalnız bulunulan alan (sağ üst rozet ve sekme başlığı için) */
+  public static alanlar = asyncHandler(async (req: Request, res: Response) => {
+    const yetkili = env.KURULUM_MODU ? false : await kullaniciYetkisi(req).then((y) => y.calismaAlani).catch(() => false);
+    const sonuc = await AuthService.alanlar(
+      { firmaId: req.user?.firmaId, dbName: req.user?.dbName, username: req.user!.username },
+      yetkili
+    );
+    return ApiResponse.ok(res, "Alanlar listelendi.", sonuc);
+  });
+
+  /** Alan değiştirme: aynı müşteri noya bağlı başka veritabanına şifresiz geçiş; yanıt ve çerez girişle aynı */
+  public static alanDegistir = asyncHandler(async (req: Request, res: Response) => {
+    await yetkiGerekli(
+      req,
+      (y) => y.calismaAlani,
+      "Alan değiştirmek için kullanıcı kartınızda 'Çalışma alanı işlemleri yetkisi' olmalıdır."
+    );
+    const result = await AuthService.alanDegistir(req.user!, Number(req.body.firmaId), {
+      ip: istemciIp(req),
+      tarayici: istemciTarayici(req),
+    });
+    res.cookie("refreshToken", result.tokens.refreshToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return ApiResponse.ok(res, "Alan değiştirildi.", result);
   });
 
   public static changePassword = asyncHandler(async (req: Request, res: Response) => {

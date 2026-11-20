@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi, kendiKayitSuzgeci } from "../services/yetki/fisYetkileri.js";
 import { KasaService } from "../services/kasa.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -65,6 +65,7 @@ export class KasaController {
       baslangic: await gunSiniri(req),
       // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
       durbun: fisDurbunFiltresiOku(req.query as Record<string, unknown>),
+      kendi: await kendiKayitSuzgeci(req), // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
     };
     const data = await KasaService.listHareketler(filter, dbContext);
     return ApiResponse.ok(res, "Hesap hareketleri listelendi.", data);
@@ -94,7 +95,8 @@ export class KasaController {
     const userObj = req.user as any;
     const kullaniciId = Number(userObj?.userId || userObj?.id) || 1;
     const degisiklikTakipVar = Boolean(req.body?.degisiklikTakipVar);
-    await kayitErisimi(req, "kasaHareket", id);
+    // "Kendi kayıtları" kullanıcısı mevcut kaydı silemez (ortak alan denetimi 19.11.2026, #24)
+    await kayitErisimi(req, "kasaHareket", id, { isDelete: true });
     await KasaService.deleteHareket(id, kullaniciId, degisiklikTakipVar, dbContext);
     return ApiResponse.ok(res, "Hesap hareketi silindi.");
   });

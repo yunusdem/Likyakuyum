@@ -114,6 +114,14 @@ export class UrunStokSqlRepository {
 
     const cariVar = (await pool.request().query("SELECT OBJECT_ID('dbo.TODVZ_CARI_KART') id")).recordset[0]?.id != null;
     const faturaVar = (await pool.request().query("SELECT OBJECT_ID('dbo.TODVZ_FATURA_SATIRI') id")).recordset[0]?.id != null;
+    // KONSINYE / KATALOG eski şemada ve göçsüz (yeni / aktarılan) firmada olmayabilir; yoksa 0 okunur, rapor hata vermez
+    // (ortak alan denetimi 19.11.2026, #26)
+    const ekKolonlar = (await pool.request().query(
+      `SELECT CASE WHEN COL_LENGTH('dbo.${tablo}','KONSINYE') IS NULL THEN 0 ELSE 1 END konsinye,
+              CASE WHEN COL_LENGTH('dbo.${tablo}','KATALOG') IS NULL THEN 0 ELSE 1 END katalog`
+    )).recordset[0] || {};
+    const konsinyeKolon = ekKolonlar.konsinye ? "ISNULL(U.KONSINYE, 0)" : "CAST(0 AS bit)";
+    const katalogKolon = ekKolonlar.katalog ? "ISNULL(U.KATALOG, 0)" : "CAST(0 AS bit)";
 
     const satisApply = faturaVar
       ? `OUTER APPLY (
@@ -134,7 +142,7 @@ export class UrunStokSqlRepository {
         U.${idKolon} URUN_ID, U.TARIH, U.GRUP_KODU, U.URUN_NO, U.BARKOD, ${adKolon} URUN_ADI, U.AYAR, U.URETICI_FIRMA, U.ORJINAL_KOD, U.BANKO,
         U.MIKTAR, ${birimKolon} MIKTAR_BIRIMI, ${hasGramKolon} HAS_GRAM, ${iscilikKolonlari},
         U.MALIYET, U.MALIYET_PARA_KODU, U.SATIS_FIYATI, U.SATIS_PARA_KODU, U.SATILDI,
-        ISNULL(U.KONSINYE, 0) KONSINYE, ISNULL(U.KATALOG, 0) KATALOG,
+        ${konsinyeKolon} KONSINYE, ${katalogKolon} KATALOG,
         SAT.FATURA_ID, SAT.FATURA_NO, SAT.SATIS_TARIHI, SAT.CARI_KART_ID, SAT.MUSTERI, SAT.SATIS_TUTAR, SAT.SATIS_TOPLAM_TUTAR, SAT.FATURA_PARA_ID, SAT.FATURA_KUR
       FROM dbo.${tablo} U
       ${satisApply}

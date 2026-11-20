@@ -422,6 +422,8 @@
     {
       "id": "imza-cizgi",
       "tip": "cizgi",
+      "kosul": "!{{teklif}}",
+      "daralt": true,
       "x1": 0,
       "y1": 356,
       "x2": 209.77,
@@ -432,6 +434,8 @@
     {
       "id": "teslim-eden",
       "tip": "metin",
+      "kosul": "!{{teklif}}",
+      "daralt": true,
       "x": 0,
       "y": 360,
       "g": 104,
@@ -442,6 +446,8 @@
     {
       "id": "teslim-alan",
       "tip": "metin",
+      "kosul": "!{{teklif}}",
+      "daralt": true,
       "x": 105.77,
       "y": 360,
       "g": 104,
@@ -452,6 +458,8 @@
     {
       "id": "imza-sol",
       "tip": "metin",
+      "kosul": "!{{teklif}}",
+      "daralt": true,
       "x": 0,
       "y": 381,
       "g": 104,
@@ -462,6 +470,8 @@
     {
       "id": "imza-sag",
       "tip": "metin",
+      "kosul": "!{{teklif}}",
+      "daralt": true,
       "x": 105.77,
       "y": 381,
       "g": 104,

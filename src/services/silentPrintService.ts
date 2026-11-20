@@ -15,6 +15,7 @@ export interface SilentPrintOptions {
   copies?: number;
   title?: string;
   isPos?: boolean;
+  /** Etkisiz: gizli iframe tarayıcı yedeği kaldırıldı; alan eski çağıranlar derlensin diye duruyor (ortak alan denetimi 19.11.2026, #55) */
   allowBrowserFallback?: boolean;
 }
 
@@ -429,35 +430,7 @@ export async function checkLocalPrintServiceOnline(): Promise<number | null> {
   return null;
 }
 
-/**
- * Modern Chromium Web Printing API (submitPrintJob) ile önizlemesiz doğrudan yazdırma
- */
-async function printViaWebPrintingApi(html: string, printerName?: string | null, title?: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== "undefined" && "printing" in navigator && typeof (navigator as any).printing?.getPrinters === "function") {
-      const printers = await (navigator as any).printing.getPrinters();
-      if (Array.isArray(printers) && printers.length > 0) {
-        let target = printers[0];
-        if (printerName) {
-          const pLower = printerName.toLowerCase();
-          const match = printers.find((p: any) => {
-            const name = (p.cachedAttributes?.().printerName || p.name || p.id || "").toLowerCase();
-            return name && (name.includes(pLower) || pLower.includes(name));
-          });
-          if (match) target = match;
-        }
-        if (target && typeof target.submitPrintJob === "function") {
-          const blob = new Blob([html], { type: "text/html" });
-          await target.submitPrintJob(title || "Likya_Fis", blob, {});
-          return true;
-        }
-      }
-    }
-  } catch (e) {
-    console.debug("Web Printing API submitPrintJob atlandı:", e);
-  }
-  return false;
-}
+// printViaWebPrintingApi (Chromium Web Printing API) kaldırıldı: hiçbir yerden çağrılmıyordu (ortak alan denetimi 19.11.2026, #55)
 
 interface WsPrintResult {
   handled: boolean;
@@ -848,16 +821,8 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
       }
     } catch {}
 
-    // 4. Servise yine ulaşılamadıysa ve tarayıcı yedeğine izin verilmişse:
-    if (options.allowBrowserFallback && html) {
-      printViaHiddenIframe(html, title, isPos);
-      return {
-        success: true,
-        message: "Yerel yazıcı servisine ulaşılamadığı için tarayıcı yazdırma akışı başlatıldı.",
-        fallbackUsed: true,
-      };
-    }
-
+    // Gizli iframe tarayıcı yedeği kaldırıldı (allowBrowserFallback: true veren çağıran yoktu); hata çağırana döner,
+    // önizleme penceresi açık kalıp "Tarayıcıdan Yazdır" düğmesini önerir (ortak alan denetimi 19.11.2026, #55 / #38)
     // Servise ulaşılamadıysa veya yazdırma başarısız olduysa:
     return {
       success: false,
@@ -871,130 +836,6 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
   }
 }
 
-/**
- * Gizli iframe ile yazdırma mekanizması (Kurulumsuz Chromium ve Kiosk baskı)
- */
-function printViaHiddenIframe(htmlContent: string, title: string, isPos: boolean) {
-  let iframe = document.getElementById("likya-silent-print-iframe") as HTMLIFrameElement;
-  if (iframe) {
-    try {
-      document.body.removeChild(iframe);
-    } catch {}
-  }
-
-  iframe = document.createElement("iframe");
-  iframe.id = "likya-silent-print-iframe";
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "none";
-  iframe.style.visibility = "hidden";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow?.document;
-  if (!doc) return;
-
-  doc.open();
-  doc.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>${title}</title>
-        <style>
-          @page {
-            size: ${isPos ? "auto" : "A4 portrait"};
-            margin: ${isPos ? "0mm" : "5mm"} !important;
-          }
-          *, *::before, *::after {
-            box-sizing: border-box !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            color-adjust: exact !important;
-          }
-          html, body {
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            -webkit-font-smoothing: antialiased;
-          }
-          ${isPos ? `
-          .pos-print-root {
-            width: 100%;
-            max-width: 80mm;
-            margin: 0 auto !important;
-            padding: 4px 0 0 0 !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: flex-start !important;
-            box-sizing: border-box !important;
-          }
-          .belge-sablon {
-            margin: 0 auto !important;
-            transform: scale(0.98) !important;
-            transform-origin: top center !important;
-            box-sizing: border-box !important;
-            page-break-inside: avoid !important;
-          }
-          ` : `
-          .belge-sablon {
-            margin: 0 auto !important;
-            box-sizing: border-box !important;
-            page-break-inside: avoid !important;
-          }
-          `}
-          table {
-            border-collapse: collapse;
-            width: 100%;
-          }
-          th, td {
-            padding: 2px;
-          }
-        </style>
-      </head>
-      <body style="margin:0;padding:0;background:#ffffff;">
-        ${isPos ? `<div class="pos-print-root">${htmlContent}</div>` : htmlContent}
-      </body>
-    </html>
-  `);
-  doc.close();
-
-  setTimeout(() => {
-    try {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-    } catch (e) {
-      console.error("Iframe print error:", e);
-    }
-  }, 100);
-}
-
-/**
- * HTML içinden okunabilir temiz metin çıkarır (Out-Printer ve termal donanım yazı tipi için yedek)
- */
-function extractTextFromHtml(html: string): string {
-  try {
-    if (typeof window === "undefined" || !window.DOMParser) return "";
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    const elements = doc.querySelectorAll("div, p, tr, h1, h2, h3, h4, h5, h6");
-    if (elements.length > 0) {
-      const lines: string[] = [];
-      elements.forEach((el) => {
-        const t = (el.textContent || "").trim();
-        if (t && !lines.includes(t)) {
-          lines.push(t);
-        }
-      });
-      return lines.join("\r\n");
-    }
-    return (doc.body.textContent || "").replace(/\n\s*\n/g, "\n").trim();
-  } catch {
-    return "";
-  }
-}
-
+// printViaHiddenIframe ve extractTextFromHtml kaldırıldı: çağıranları yoktu (düz metni yazdir.ts'deki
+// extractPlainTextFromFis üretir, ajan kendi yedeğini kullanır) (ortak alan denetimi 19.11.2026, #55)
 

@@ -10,6 +10,7 @@ import {
   musteriVeritabanlariSchema,
   lisansYukleSchema,
   ilkYoneticiSchema,
+  alanDegistirSchema,
 } from "../schemas/auth.schema.js";
 import { KurulumController } from "../controllers/kurulum.controller.js";
 
@@ -32,5 +33,8 @@ router.post("/ilk-yonetici", authRateLimiter, validate(ilkYoneticiSchema), Kurul
 router.post("/logout", authenticate, AuthController.logout);
 router.get("/me", authenticate, AuthController.getMe);
 router.post("/change-password", authenticate, validate(changePasswordSchema), AuthController.changePassword);
+// Alan değiştirme (sol menünün üstü): aynı müşteri noya bağlı veritabanları arasında şifresiz geçiş, yalnız yetkili kullanıcı
+router.get("/alanlar", authenticate, AuthController.alanlar);
+router.post("/alan-degistir", authenticate, validate(alanDegistirSchema), AuthController.alanDegistir);
 
 export default router;

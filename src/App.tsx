@@ -137,6 +137,7 @@ import { useAuth } from "./context/AuthContext";
 import { getAppBrand } from "./utils/brandHelper";
 import { SistemService } from "./services/sistemService";
 import { CompanyService } from "./services/companyService";
+import { alanliBaslik } from "./components/alan/AlanDegistir";
 
 /** Kök adres: kurulumda (exe) tanıtım sayfası yerine giriş ekranı (tanıtım ve iletişim formu bulut sitesine aittir) */
 const KokSayfa: React.FC = () => {
@@ -175,14 +176,15 @@ const DashboardLayout: React.FC = () => {
   useEffect(() => {
     let active = true;
 
+    // Sekme başlığında bulunulan alanın kodu önde: "R2026 · FİRMA ADI" (components/alan/AlanDegistir.tsx)
     const applyTitle = (titleToApply?: string | null) => {
       const cleanTitle = (titleToApply || "").trim();
       if (cleanTitle) {
-        document.title = cleanTitle;
+        document.title = alanliBaslik(cleanTitle);
       } else if (user?.merkez?.firmaUnvan?.trim()) {
-        document.title = user.merkez.firmaUnvan.trim();
+        document.title = alanliBaslik(user.merkez.firmaUnvan.trim());
       } else if (brand?.fullTitle) {
-        document.title = `${brand.fullTitle} - Bulut Yönetim`;
+        document.title = alanliBaslik(`${brand.fullTitle} - Bulut Yönetim`);
       }
     };
 
@@ -243,7 +245,7 @@ const DashboardLayout: React.FC = () => {
     try {
       const currentStored = (localStorage.getItem("kuyumcu_erp_firma_adi") || firmaUnvani || user?.merkez?.firmaUnvan || "").trim();
       if (currentStored) {
-        document.title = currentStored;
+        document.title = alanliBaslik(currentStored);
       }
     } catch {}
   }, [location.pathname, firmaUnvani, user?.merkez?.firmaUnvan]);

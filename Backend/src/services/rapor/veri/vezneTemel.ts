@@ -7,6 +7,7 @@ import {
 } from "../raporOrtak.js";
 import { FIS_BELGELERI, VEZNE_BELGE, VEZNE_HAREKET_KOLONLARI, belgeTablolari, saatTr, vezneHareketleriSql } from "../kaynak.js";
 import { type ParaGrubu, paraBasliklariEkle, paraGrubunaGoreSirala, paraGrupBilgisi } from "../paraGrup.js";
+import { ISCILIK_SEKLI, sarrafIscilikTutari } from "./analiz.js";
 
 type Sorgu = (pool: sql.ConnectionPool, p: RaporParametreler, t: RaporTanim) => Promise<RaporSonucVeri>;
 type Satir = Record<string, any>;
@@ -282,7 +283,9 @@ export const VEZNE_TEMEL_SORGULARI: Record<string, Sorgu> = {
   async VEZALT1(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     const d = await belgeTablolari(pool);
-    const ISCILIK_SEKLI: Record<number, string> = { 0: "Adet", 1: "Toplam", 2: "Gram" };
+    // İşçilik şekli ve tutarı ALTISC1 ile ortak (analiz.ts: 0 Gram, 1 Adet, 2 Toplam — sarraf fişi ekranındaki gibi); eskiden kodlar ters okunuyordu ve
+    // ISCILIK_TUTARI (göç 021, her veritabanında yok) kullanılmıyordu (ortak alan denetimi 19.11.2026, #29)
+    const itVar = d.sarraf && !!(await pool.request().query(`SELECT CASE WHEN COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI','ISCILIK_TUTARI') IS NULL THEN 0 ELSE 1 END v`)).recordset[0]?.v;
 
     const yeniReq = (paraKolon: string) => {
       const r = pool.request()
@@ -306,7 +309,7 @@ export const VEZNE_TEMEL_SORGULARI: Record<string, Sorgu> = {
           COALESCE(NULLIF(RTRIM(P.AD),''), RTRIM(P.KOD)) cins, RTRIM(P.KOD) paraKod, S.URUN_ID paraId,
           ISNULL(S.ADET,0) adet, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.MILYEM,0) milyem, ISNULL(S.HAS_GRAM,0) hasGram,
           ISNULL(S.ISCILIK_HESAPLAMA_SEKLI,0) sekilKod, ISNULL(S.ISCILIK_MIKTARI,0) iscilikMiktari,
-          ISNULL(S.ISCILIK_HAS_GRAM,0) iscilikHasGram, ISNULL(F.ALTIN_HAS_KURU,0) hasKuru,
+          ISNULL(S.ISCILIK_HAS_GRAM,0) iscilikHasGram, ${itVar ? "ISNULL(S.ISCILIK_TUTARI,0)" : "0"} iscilikTutariKayit, ISNULL(F.ALTIN_HAS_KURU,0) hasKuru,
           ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar, RTRIM(ISNULL(U.AD, '')) kaydeden
         FROM dbo.TODVZ_SARRAF_FISI F
           JOIN dbo.TODVZ_SARRAF_FISI_SATIRI S ON S.SARRAF_FISI_ID=F.SARRAF_FISI_ID
@@ -330,7 +333,7 @@ export const VEZNE_TEMEL_SORGULARI: Record<string, Sorgu> = {
           0 adet, ISNULL(OS.MIKTAR,0) miktar,
           COALESCE(OS.MILYEM, CAST(ROUND(ISNULL(P.HAS_ORANI,0)*1000, 0) AS int)) milyem,
           COALESCE(OS.HAS_GRAM, ISNULL(OS.MIKTAR,0)*ISNULL(P.HAS_ORANI,0)) hasGram,
-          0 sekilKod, 0 iscilikMiktari, 0 iscilikHasGram, ISNULL(F.ALTIN_HAS_KURU,0) hasKuru,
+          0 sekilKod, 0 iscilikMiktari, 0 iscilikHasGram, 0 iscilikTutariKayit, ISNULL(F.ALTIN_HAS_KURU,0) hasKuru,
           ISNULL(OS.KUR,0) kur, ISNULL(OS.TUTAR,0) tutar, RTRIM(ISNULL(U.AD, '')) kaydeden
         FROM dbo.TODVZ_SARRAF_FISI F
           JOIN dbo.TODVZ_ODEME_SATIRI OS ON OS.SARRAF_FISI_ID=F.SARRAF_FISI_ID
@@ -357,9 +360,9 @@ export const VEZNE_TEMEL_SORGULARI: Record<string, Sorgu> = {
         0 adet, ISNULL(S.MIKTAR,0) miktar,
         CAST(ROUND(ISNULL(P.HAS_ORANI,0)*1000, 0) AS int) milyem,
         ISNULL(S.MIKTAR,0) * ISNULL(P.HAS_ORANI,0) hasGram,
-        CASE WHEN ISNULL(S.ISCILIK,0)<>0 THEN 2 ELSE 0 END sekilKod,
+        0 sekilKod,
         ISNULL(S.ISCILIK,0) iscilikMiktari,
-        0 iscilikHasGram, 0 hasKuru, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar,
+        0 iscilikHasGram, 0 iscilikTutariKayit, 0 hasKuru, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar,
         RTRIM(ISNULL(U.AD, '')) kaydeden
       FROM dbo.TODVZ_FIS F
         JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID
@@ -378,17 +381,12 @@ export const VEZNE_TEMEL_SORGULARI: Record<string, Sorgu> = {
     const satirlar = satirlarHam.map((r: any) => ({ ...r, saat: saatTr(r.zaman) }))
       .filter((r: any) => !saatSuz || ((r.saat || "00:00") >= sb && (r.saat || "00:00") <= se))
       .sort((a: any, b: any) => a.vezneKod.localeCompare(b.vezneKod) || new Date(a.tarih).getTime() - new Date(b.tarih).getTime() || (a.saat || "").localeCompare(b.saat || ""))
-      .map((r: any) => {
-        const ihg = Number(r.iscilikHasGram) || 0, hk = Number(r.hasKuru) || 0, im = Number(r.iscilikMiktari) || 0, miktar = Number(r.miktar) || 0;
-        const iscilikVar = ihg !== 0 || im !== 0;
-        let iscilikTutari = 0;
-        if (ihg !== 0 && hk !== 0) {
-          iscilikTutari = ihg * hk;
-        } else if (r.belge === "Döviz fişi" && im !== 0) {
-          iscilikTutari = im * miktar;
-        } else if (im !== 0) {
-          iscilikTutari = r.sekilKod === 1 ? im : (r.sekilKod === 0 ? im * (Number(r.adet) || 1) : im * miktar);
-        }
+      .map(({ iscilikTutariKayit, ...r }: any) => {
+        const ihg = Number(r.iscilikHasGram) || 0, hk = Number(r.hasKuru) || 0, im = Number(r.iscilikMiktari) || 0, miktar = Number(r.miktar) || 0, kayitTl = Number(iscilikTutariKayit) || 0;
+        const iscilikVar = ihg !== 0 || im !== 0 || kayitTl !== 0;
+        // Döviz fişi: satırın ISCILIK alanı birim işçiliktir (× miktar; ALTISC1 dovizIscilikSatiri ile aynı). Sarraf fişi: ALTISC1 ile aynı tutar
+        // (ISCILIK_TUTARI, yoksa işçilik has gramı × has kuru). ISCILIK_MIKTARI birim işçiliktir (milyem / gram), TL'ye çevrilmez (#29)
+        const iscilikTutari = r.belge === "Döviz fişi" ? im * miktar : r.belge === "Sarraf fişi" ? sarrafIscilikTutari(kayitTl, ihg, hk) : 0;
         return {
           ...r,
           vezneBaslik: `${r.vezneKod} — ${r.vezneAd}`,
@@ -397,7 +395,7 @@ export const VEZNE_TEMEL_SORGULARI: Record<string, Sorgu> = {
           miktar,
           milyem: Number(r.milyem) || 0,
           hasGram: Number(r.hasGram) || 0,
-          sekil: iscilikVar ? (ISCILIK_SEKLI[Number(r.sekilKod)] || "Toplam") : "-",
+          sekil: iscilikVar ? (ISCILIK_SEKLI[Number(r.sekilKod)] || "-") : "-",
           iscilikMiktari: iscilikVar ? im : null,
           iscilikHasGram: iscilikVar ? ihg : null,
           hasKuru: hk || null,

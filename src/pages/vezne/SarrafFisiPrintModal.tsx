@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { Modal, Button, Form, Spinner } from "react-bootstrap";
+import { Modal, Button, Form, Spinner, Alert } from "react-bootstrap";
 import { IconPrinter, IconX, IconReceipt, IconFileText, IconBrandWhatsapp, IconAlertTriangle } from "@tabler/icons-react";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter, ResolvedPrinterResult } from "../../utils/printerResolver";
@@ -86,6 +86,8 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
   const [resolvedResult, setResolvedResult] = useState<ResolvedPrinterResult | null>(null);
   const [yaziciHazir, setYaziciHazir] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  // PrinterAgent hatası yutulmaz: pencere açık kalır, mesaj görünür (ortak alan denetimi 19.11.2026, #38)
+  const [yazdirHatasi, setYazdirHatasi] = useState<string | null>(null);
   const isSatis = Number(tip) === 1;
   const isTeklif = !props.fisId;
   const fisTuruBaslik = isSatis
@@ -274,13 +276,14 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
     }
   }, [fis, fisTuruBaslik, printType]);
 
-  const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
+  const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis): Promise<boolean> => {
     if (isFisEmpty) {
       alert("Boş fiş yazdırılamaz! Fişte veri bulunmamaktadır.");
-      return;
+      return false;
     }
-    if (!hazir || isPrinting) return;
+    if (!hazir || isPrinting) return false;
     setIsPrinting(true);
+    setYazdirHatasi(null);
     try {
       const selectedDbPrinter = printers.find(
         (p) =>
@@ -306,22 +309,28 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
       });
       if (res.success) {
         onHide();
-      } else {
-        console.warn("Doğrudan yazdırma uyarısı:", res.message);
-        onHide();
+        return true;
       }
+      // Hata olunca pencere kapanmaz; mesaj gösterilir, "Tarayıcıdan Yazdır" önerilir (ortak alan denetimi 19.11.2026, #38)
+      setYazdirHatasi(res.message || "Fiş yazıcıya gönderilemedi.");
+      return false;
+    } catch (e: any) {
+      setYazdirHatasi(e?.message || "Fiş yazıcıya gönderilemedi.");
+      return false;
     } finally {
       setIsPrinting(false);
     }
   }, [fis, isPrinting, selectedPrinterId, printers, systemPrinters, resolvedResult, printType, onHide, handleBrowserPrint]);
   // Doğrudan yazdırma: fiş hazır olunca yazdır ve kapat; hata olursa pencere açılır, hata görünür.
   const otomatikBasildi = useRef(false);
-  useEffect(() => { if (!show) otomatikBasildi.current = false; }, [show]);
+  useEffect(() => { if (!show) { otomatikBasildi.current = false; setYazdirHatasi(null); } }, [show]);
   useEffect(() => {
     if (!show || !autoPrint || otomatikBasildi.current || !fis) return;
     otomatikBasildi.current = true;
-    handlePrint(fis).finally(() => onHide());
-  }, [show, autoPrint, fis, handlePrint, onHide]);
+    // Başarıda handlePrint kapatır; başarısızlıkta pencere hata ile açılır (#38)
+    // Boş fiş otomatik yazdırılamaz: görünmez pencere açık kalmasın, kapanır (hata kutusu yalnız yazıcı hatasında açılır)
+    void handlePrint(fis).then((basildi) => { if (!basildi && isFisEmpty) onHide(); });
+  }, [show, autoPrint, fis, handlePrint, isFisEmpty, onHide]);
 
   // F8/F10 / Enter Shortcuts inside Print Modal
   useEffect(() => {
@@ -344,7 +353,7 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
   const toplamFisSayisi = Array.isArray(fis) ? fis.length : (fis ? 1 : 0);
 
   return (
-    <Modal show={show && (!autoPrint || !!hata)} onHide={onHide} size="lg" centered className="sarraf-print-modal">
+    <Modal show={show && (!autoPrint || !!hata || !!yazdirHatasi)} onHide={onHide} size="lg" centered className="sarraf-print-modal">
       <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom d-print-none">
         <div className="d-flex align-items-center justify-content-between w-100 me-2 flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2">
@@ -386,7 +395,8 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
                   <optgroup label="🏢 Sistem / Vezne Tanımlı Yazıcılar">
                     {printers.map((p) => (
                       <option key={`db-${p.id}`} value={p.id}>
-                        {p.ad || p.cihazAdi || `Yazıcı #${p.id}`} {p.kopyaSayisi ? `(${p.kopyaSayisi} Kopya)` : ""}
+                        {/* "(N Kopya)" etiketi kaldırıldı: her belge nolu fiş 1 kopya basılır (ortak alan denetimi 19.11.2026, #40) */}
+                        {p.ad || p.cihazAdi || `Yazıcı #${p.id}`}
                       </option>
                     ))}
                   </optgroup>
@@ -471,6 +481,19 @@ export const SarrafFisiPrintModal: React.FC<SarrafFisiPrintModalProps> = (props)
             <IconAlertTriangle size={18} className="me-2 text-warning flex-shrink-0" />
             <div><strong>Uyarı:</strong> Fişte herhangi bir veri veya kalem bulunmamaktadır. Boş fiş yazdırılamaz.</div>
           </div>
+        )}
+        {yazdirHatasi && (
+          <Alert variant="danger" className="mb-3 py-2 small" dismissible onClose={() => (autoPrint ? onHide() : setYazdirHatasi(null))}>
+            <div className="fw-bold">Fiş yazıcıya gönderilemedi.</div>
+            <div>{yazdirHatasi}</div>
+            <div className="mt-1 d-flex align-items-center gap-2 flex-wrap">
+              <span>Yazıcı köprüsünü (PrinterAgent) kontrol edip yeniden deneyin ya da tarayıcıdan yazdırın.</span>
+              <Button variant="outline-danger" size="sm" className="py-0" onClick={handleBrowserPrint} disabled={!fis}>
+                <IconPrinter size={13} className="me-1" />
+                Tarayıcıdan Yazdır
+              </Button>
+            </div>
+          </Alert>
         )}
         <SablonluFisOnizleme fis={fis} hata={hata} />
       </Modal.Body>

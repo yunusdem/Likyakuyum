@@ -156,6 +156,22 @@ export const mssqlConfig = createMssqlConfig();
  * Multi-tenant Connection Pool Cache (Key: server:port:database:user:password)
  */
 const poolCache = new Map<string, Promise<sql.ConnectionPool>>();
+/** Bağlantısı kurulmuş havuzlar (anahtar poolCache ile aynı). Beklemeden bakılır: hâlâ bağlanmaya çalışan havuz beklenmez. */
+const bagliHavuzlar = new Map<string, sql.ConnectionPool>();
+
+/**
+ * Aynı sunucu + veritabanına bağlı hazır bir havuz (başka SQL kullanıcısıyla açılmış olabilir). Başka veritabanının havuzu
+ * ASLA dönmez; bekleyen havuz beklenmez. Önceden burada getActivePool() vardı: bağlanamayan istek kendi bekleyen havuzunu
+ * bekleyip sonsuza kadar takılıyor, önbellekte başka firmanın havuzu varsa o firmanın veritabanına düşüyordu
+ * (ortak alan denetimi 20.11.2026).
+ */
+const ayniVeritabaniHavuzu = (baseKey: string, haricAnahtar?: string): sql.ConnectionPool | null => {
+  for (const [anahtar, havuz] of bagliHavuzlar) {
+    if (anahtar === haricAnahtar || !anahtar.startsWith(`${baseKey}:`)) continue;
+    if (havuz.connected) return havuz;
+  }
+  return null;
+};
 
 export const getActivePool = async (): Promise<sql.ConnectionPool | null> => {
   if (poolCache.size > 0) {
@@ -180,6 +196,7 @@ export const veritabaniHavuzlariniKapat = async (server: string, database: strin
     if (anahtar !== onEk && !anahtar.startsWith(`${onEk}:`)) continue;
     const p = poolCache.get(anahtar);
     poolCache.delete(anahtar);
+    bagliHavuzlar.delete(anahtar);
     try {
       await (await p)?.close();
     } catch {
@@ -231,10 +248,9 @@ export const getDbPool = async (
     dbCredentialsMap.get(`localhost:${targetDb.toLowerCase()}`);
 
   if ((!user || !password) && (!storedCreds || !storedCreds.password)) {
-    const active = await getActivePool();
-    if (active && active.connected) {
-      return active;
-    }
+    // Kimlik bilgisi yoksa yalnız AYNI veritabanının hazır havuzu kullanılır (önceden herhangi bir firmanın havuzu dönüyordu)
+    const active = ayniVeritabaniHavuzu(baseKey);
+    if (active) return active;
   }
 
   const finalUser = (user && user.trim()) || storedCreds?.user || env.DB_USER || "SA";
@@ -255,9 +271,10 @@ export const getDbPool = async (
       try {
         pool = await new sql.ConnectionPool(activeConfig).connect();
       } catch (err: any) {
-        const fallbackPool = await getActivePool();
-        if (fallbackPool && fallbackPool.connected) {
-          logger.info("[MSSQL] Yeni havuz bağlantısı başarısız oldu, mevcut aktif bağlı havuz kullanılıyor.");
+        // Yalnız aynı veritabanının hazır havuzu; kendi bekleyen havuzu (fullCacheKey) ve başka firmanın havuzu hariç
+        const fallbackPool = ayniVeritabaniHavuzu(baseKey, fullCacheKey);
+        if (fallbackPool) {
+          logger.info("[MSSQL] Yeni havuz bağlantısı başarısız oldu, aynı veritabanının bağlı havuzu kullanılıyor.");
           return fallbackPool;
         }
 
@@ -326,6 +343,8 @@ export const getDbPool = async (
         // Ignore trigger errors if table/trigger doesn't exist
       }
 
+      // Bu arada veritabaniHavuzlariniKapat önbellekten silmişse kaydetme (kapanan havuz zaten connected=false olur)
+      if (poolCache.has(fullCacheKey)) bagliHavuzlar.set(fullCacheKey, pool);
       return pool;
     })();
 

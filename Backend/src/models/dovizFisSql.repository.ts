@@ -2992,7 +2992,8 @@ export class DovizFisSqlRepository {
       bankaAciklama: row.BANKA_ACIKLAMA ? String(row.BANKA_ACIKLAMA).trim() : null,
       bsmvTutar: bsmvSum,
       iptal: Boolean(row.IPTAL),
-      gibeGonderildi: await DovizFisSqlRepository.gibeGonderildiMi(pool, id),
+      // Durum okunamazsa fiş yine açılır, gönderilmiş sayılır (silme yolu ayrıca durur) (ortak alan denetimi 19.11.2026, #50)
+      gibeGonderildi: await DovizFisSqlRepository.gibeGonderildiMi(pool, id).catch(() => true),
       iptalTarihi: row.IPTAL_TARIHI ? new Date(row.IPTAL_TARIHI).toISOString() : null,
       kullaniciId: Number(row.KULLANICI_ID || row.EKLEYEN_ID || 0),
       ekleyenId: Number(row.EKLEYEN_ID || row.KULLANICI_ID || 1),
@@ -3118,10 +3119,13 @@ export class DovizFisSqlRepository {
         .catch((e: any) => logger.warn("Döviz fişi işçilik kaydı silinemedi:", e?.message));
     };
 
-    // Fişe ait arbitraj satırlarını temizle
-    await pool.request().input("DEL_ARB_ID", sql.Int, id)
-      .query(`IF OBJECT_ID('dbo.TODVZ_FIS_ARBITRAJ','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_FIS_ARBITRAJ] WHERE FIS_ID = @DEL_ARB_ID`)
-      .catch((e: any) => logger.warn("TODVZ_FIS_ARBITRAJ silme uyarısı:", e?.message));
+    // Fişe ait arbitraj satırları silmeyle aynı işlemde, fiş gerçekten silindikten sonra temizlenir. Önceden işlem dışında ve
+    // yordamdan önce siliniyordu: yordam hata verince fiş kalıyor, arbitraj satırları gidiyordu (ortak alan denetimi 19.11.2026, #48).
+    // TODVZ_FIS_ARBITRAJ'ın TODVZ_FIS'e yabancı anahtarı yok; önce fişin silinmesi engellenmez.
+    const arbitrajSil = `
+      IF @@TRANCOUNT > 0 AND OBJECT_ID('dbo.TODVZ_FIS_ARBITRAJ','U') IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM [dbo].[TODVZ_FIS] WHERE FIS_ID = @FIS_ID)
+        DELETE FROM [dbo].[TODVZ_FIS_ARBITRAJ] WHERE FIS_ID = @FIS_ID;`;
 
     // Eski silme yordamı (SODVZ_FIS_SIL), fiş tarihi firma tanımındaki e-Döviz başlangıç tarihinden (E_DOVIZ_FIS_BASLANGIC_TARIHI_1..4)
     // sonraysa "GİB için hazırlanmış fişi silemezsiniz" der; eski programda e-Döviz döneminde fiş silinmez, yalnız GİB'de iptal edilir.
@@ -3136,15 +3140,16 @@ export class DovizFisSqlRepository {
       const varOlan = (await pool.request().query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_TANIM') AND name IN (${tarihSutunlari.map((t) => `'${t}'`).join(", ")})`))
         .recordset.map((r: any) => String(r.name));
       const cagri = `EXEC [dbo].[SODVZ_FIS_SIL] @FIS_ID = @FIS_ID, @KULLANICI_ID = @KULLANICI_ID, @DEGISIKLIK_TAKIP_VAR = @DEGISIKLIK_TAKIP_VAR, @IPTAL_ET = @IPTAL_ET;`;
-      const sarmal = varOlan.length
-        ? `SET XACT_ABORT ON; BEGIN TRAN;
-          DECLARE @ESKI TABLE (${varOlan.map((t, i) => `t${i} datetime NULL`).join(", ")});
+      // Tarih sütunu yoksa da tek işlem: arbitraj satırları yordamla birlikte silinir / geri alınır (#48). Yordam kendi işlemini
+      // geri alıp hata verirse açık işlem kalmaz; COMMIT yalnız işlem açıksa yapılır (asıl hata mesajı ezilmesin).
+      const sarmal = `SET XACT_ABORT ON; BEGIN TRAN;
+          ${varOlan.length ? `DECLARE @ESKI TABLE (${varOlan.map((t, i) => `t${i} datetime NULL`).join(", ")});
           UPDATE [dbo].[TODVZ_TANIM] SET ${varOlan.map((t) => `${t} = NULL`).join(", ")}
-            OUTPUT ${varOlan.map((t) => `deleted.${t}`).join(", ")} INTO @ESKI;
+            OUTPUT ${varOlan.map((t) => `deleted.${t}`).join(", ")} INTO @ESKI;` : ""}
           ${cagri}
-          UPDATE T SET ${varOlan.map((t, i) => `${t} = E.t${i}`).join(", ")} FROM [dbo].[TODVZ_TANIM] T, @ESKI E;
-          COMMIT;`
-        : cagri;
+          ${arbitrajSil}
+          ${varOlan.length ? `UPDATE T SET ${varOlan.map((t, i) => `${t} = E.t${i}`).join(", ")} FROM [dbo].[TODVZ_TANIM] T, @ESKI E;` : ""}
+          IF @@TRANCOUNT > 0 COMMIT;`;
       try {
         const req = pool.request();
         req.input("FIS_ID", sql.Int, id);
@@ -3153,7 +3158,10 @@ export class DovizFisSqlRepository {
         req.input("IPTAL_ET", sql.Bit, 0);
         await req.query(sarmal);
       } catch (procErr: any) {
-        const msg = procErr?.originalError?.message || procErr?.message || String(procErr);
+        // Yordamın kendi mesajı gösterilir; işlem sayısı uyuşmazlığı (266) / boş COMMIT (3902) ikincil hatalardır
+        const hatalar = [...(Array.isArray(procErr?.precedingErrors) ? procErr.precedingErrors : []), procErr];
+        const asil = hatalar.find((h: any) => ![266, 3902].includes(Number(h?.number ?? h?.originalError?.info?.number))) || procErr;
+        const msg = asil?.originalError?.message || asil?.message || String(procErr);
         logger.error("SODVZ_FIS_SIL error:", procErr);
         throw ApiError.badRequest(msg);
       }
@@ -3174,6 +3182,8 @@ export class DovizFisSqlRepository {
         IF @BH IS NULL AND @O <> 0 INSERT INTO @ETKI (PARA_ID, M) VALUES (1, CASE @T WHEN 1 THEN @O ELSE -@O END);
         UPDATE B SET MIKTAR = B.MIKTAR - E.M FROM [dbo].[TODVZ_VEZNE_BAKIYE] B JOIN (SELECT PARA_ID, SUM(M) M FROM @ETKI GROUP BY PARA_ID) E ON E.PARA_ID = B.PARA_ID WHERE B.VEZNE_ID = @V;
       END;
+      -- Arbitraj satırları aynı işlemde (#48)
+      IF OBJECT_ID('dbo.TODVZ_FIS_ARBITRAJ','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_FIS_ARBITRAJ] WHERE FIS_ID = @ID;
       DELETE FROM [dbo].[TODVZ_FIS_SATIRI] WHERE FIS_ID = @ID;
       DELETE FROM [dbo].[TODVZ_FIS] WHERE FIS_ID = @ID;
       COMMIT TRAN;
@@ -3341,6 +3351,23 @@ export class DovizFisSqlRepository {
   }
 
   /**
+   * Fiş aktarma hedef veritabanı: yalnız TODVZ_TANIM.DIGER_VERITABANI_ADI; istekteki ad hedef olarak kullanılmaz (ortak alan
+   * denetimi 19.11.2026, #49). Ekranın gönderdiği ad tanımla aynıysa sorun yok; farklıysa sessizce başka alana yazılmasın diye
+   * anlaşılır hatayla durulur (Fiş Aktarma ekranında alan seçilebiliyor).
+   */
+  private static aktarmaHedefi(tanim: any, istenen?: string | null): string {
+    const temizle = (v: unknown) => String(v ?? "").trim().replace(/[\[\]]/g, "");
+    const hedef = temizle(tanim?.DIGER_VERITABANI_ADI);
+    const istek = temizle(istenen);
+    if (istek && istek.toLowerCase() !== hedef.toLowerCase()) {
+      throw ApiError.badRequest(
+        `Fiş aktarma hedefi Firma Tanımları'ndaki fiş aktarma alanıdır (${hedef || "tanımlı değil"}); seçilen '${istek}' kullanılamaz. Hedefi Firma Tanımları'ndan değiştirin.`
+      );
+    }
+    return hedef;
+  }
+
+  /**
    * Preview receipts to be transferred based on date range and design/statistic code
    */
   public static async getAktarmaOnizleme(
@@ -3383,7 +3410,9 @@ export class DovizFisSqlRepository {
     const tanimRes = await pool.request().query("SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM]");
     const tanim = tanimRes.recordset?.[0] || {};
 
-    let targetDb = (params.hedefVeritabani || tanim.DIGER_VERITABANI_ADI || "").trim().replace(/[\[\]]/g, "");
+    // Hedef yalnız firma tanımındaki fiş aktarma alanı (DIGER_VERITABANI_ADI); istekteki ad hedef olarak kullanılmaz (farklıysa
+    // reddedilir) — istekten gelen ad başka firmanın veritabanına yazdırabiliyordu (ortak alan denetimi 19.11.2026, #49)
+    let targetDb = DovizFisSqlRepository.aktarmaHedefi(tanim, params.hedefVeritabani);
     if (targetDb && targetDb.toLowerCase() === currentDb) {
       targetDb = "";
     }
@@ -3626,7 +3655,8 @@ export class DovizFisSqlRepository {
     const tanimRes = await pool.request().query("SELECT TOP 1 * FROM [dbo].[TODVZ_TANIM]");
     const tanim = tanimRes.recordset?.[0] || {};
 
-    let targetDb = (payload.hedefVeritabani || tanim.DIGER_VERITABANI_ADI || "").trim().replace(/[\[\]]/g, "");
+    // Hedef yalnız firma tanımındaki fiş aktarma alanı; istekteki ad hedef olarak kullanılmaz (farklıysa reddedilir) (ortak alan denetimi 19.11.2026, #49)
+    let targetDb = DovizFisSqlRepository.aktarmaHedefi(tanim, payload.hedefVeritabani);
     if (!targetDb || (currentDb && targetDb.toLowerCase() === currentDb)) {
       throw new Error("Aktif çalışılan veritabanına fiş aktarımı yapılamaz. Lütfen firmanıza ait farklı bir hedef veritabanı alanı seçiniz.");
     }

@@ -36,6 +36,24 @@ import {
   formatTutarInput,
 } from "../../utils/numericInput";
 
+/**
+ * Fişin kendi yazdığı kasa kaydı (işçilik "… Fişi İşçilik - …", sarraf havale/hesap ödemesi "Sarraf Fişi Ödeme - …"): vezneye yazılmadığı için
+ * buradan düzeltilir/silinirse vezne bakiyesi bozuluyordu; salt okunur, fişinden düzeltilir. Sunucu fisKaynagi döndürür (SQL'de tanır),
+ * açıklamadan tanıma yedek (ortak alan denetimi 19.11.2026, #32)
+ */
+const FIS_KAYIT_ONEKLERI: Array<[RegExp, string]> = [
+  [/^Sarraf Fişi İşçilik - /, "Sarraf Fişi"],
+  [/^Sarraf Fişi Ödeme - /, "Sarraf Fişi"],
+  [/^Döviz Fişi İşçilik - /, "Döviz Fişi"],
+  [/^Perakende Fişi İşçilik - /, "Perakende Fişi"],
+];
+const fisKaynagiBul = (h: HesapHareketiItem): string | null => {
+  const sunucu = (h as HesapHareketiItem & { fisKaynagi?: string | null }).fisKaynagi;
+  if (sunucu) return sunucu;
+  const a = h.aciklama || "";
+  return FIS_KAYIT_ONEKLERI.find(([re]) => re.test(a))?.[1] ?? null;
+};
+
 export const KasaHareketPage: React.FC = () => {
   // Tarih değiştirme yetkisi yoksa tarih alanı kilitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
   const tarihYetkisi = useKullaniciYetkisi().tarihDegistirme;
@@ -68,6 +86,8 @@ export const KasaHareketPage: React.FC = () => {
   const [kdvOrani, setKdvOrani] = useState<number | string>(0);
   const [kdvTutari, setKdvTutari] = useState<number | string>(0);
   const [degisiklikTakipVar, setDegisiklikTakipVar] = useState<boolean>(true);
+  // Seçili kayıt bir fişten oluştuysa o fişin adı (salt okunur; ortak alan denetimi 19.11.2026, #32)
+  const [fisKaynagi, setFisKaynagi] = useState<string | null>(null);
 
   // Read-only denetim alanları
   const [eklemeZamani, setEklemeZamani] = useState<string | null>(null);
@@ -502,6 +522,7 @@ export const KasaHareketPage: React.FC = () => {
     setKdvTutari(formatMiktar(calculatedKdv));
     setEklemeZamani(h.eklemeZamani || null);
     setGuncellemeZamani(h.guncellemeZamani || null);
+    setFisKaynagi(fisKaynagiBul(h));
 
     setHareketList((prev) => {
       if (prev.some((x) => Number(x.hesapHareketiId) === Number(h.hesapHareketiId))) {
@@ -541,6 +562,7 @@ export const KasaHareketPage: React.FC = () => {
     setMeblag("");
     setEklemeZamani(null);
     setGuncellemeZamani(null);
+    setFisKaynagi(null);
     if (paraKod) {
       setParaInputVal(paraKod);
     }
@@ -594,6 +616,10 @@ export const KasaHareketPage: React.FC = () => {
 
   // ─── Kaydet Aksiyonu (F1) ────────────────────────────────────────────────────
   const handleSave = useCallback(async (): Promise<HesapHareketiItem | null> => {
+    if (hesapHareketiId && fisKaynagi) {
+      showNotif("warning", `Bu kasa kaydı ${fisKaynagi}'nden oluştu; burada düzeltilemez. Fişin kendi ekranından düzeltin.`);
+      return null;
+    }
     if (!hesapId) {
       showNotif("warning", "Lütfen bir hesap kartı seçiniz.");
       setShowHesapLookup(true);
@@ -672,11 +698,16 @@ export const KasaHareketPage: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [hesapId, vezneId, paraId, meblag, tip, aciklama, hesapAd, hesapHareketiId, tarih, tarihYetkisi, kdvOrani, kdvTutari, degisiklikTakipVar, isEditPage, handleNew, fetchVezneBakiyeler, navigate]);
+  }, [hesapId, vezneId, paraId, meblag, tip, aciklama, hesapAd, hesapHareketiId, fisKaynagi, tarih, tarihYetkisi, kdvOrani, kdvTutari, degisiklikTakipVar, isEditPage, handleNew, fetchVezneBakiyeler, navigate]);
 
   // ─── Sil / Geri Al Aksiyonu (F2) ─────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
     if (!hesapHareketiId) return;
+    if (fisKaynagi) {
+      setShowDeleteConfirm(false);
+      showNotif("warning", `Bu kasa kaydı ${fisKaynagi}'nden oluştu; burada silinemez. Fişin kendi ekranından silin.`);
+      return;
+    }
     try {
       await KasaService.deleteHareket(hesapHareketiId, degisiklikTakipVar);
       showNotif("success", "Kasa hareketi geri alındı / silindi.");
@@ -700,7 +731,7 @@ export const KasaHareketPage: React.FC = () => {
       showNotif("danger", err?.message || "Hareket silinemedi.");
       setShowDeleteConfirm(false);
     }
-  }, [hesapHareketiId, degisiklikTakipVar, handleNew, vezneId, fetchVezneBakiyeler]);
+  }, [hesapHareketiId, fisKaynagi, degisiklikTakipVar, handleNew, vezneId, fetchVezneBakiyeler]);
 
   // ─── Kayıtlar Arası Gezinme (Düzeltme Modu) ──────────────────────────────────
   const currentIndex = hareketList.findIndex((h) => Number(h.hesapHareketiId) === Number(hesapHareketiId));
@@ -770,7 +801,7 @@ export const KasaHareketPage: React.FC = () => {
       if (e.key === "F1") {
         e.preventDefault();
         handleSave();
-      } else if (e.key === "F2" && isEditPage && hesapHareketiId) {
+      } else if (e.key === "F2" && isEditPage && hesapHareketiId && !fisKaynagi) {
         e.preventDefault();
         setShowDeleteConfirm(true);
       } else if (e.key === "F3") {
@@ -807,6 +838,7 @@ export const KasaHareketPage: React.FC = () => {
     showDeleteConfirm,
     isEditPage,
     hesapHareketiId,
+    fisKaynagi,
     handleSave,
     handleNew,
     handlePrev,
@@ -900,12 +932,15 @@ export const KasaHareketPage: React.FC = () => {
         pageTitle={isEditPage ? "D- Kasa Hareket Düzeltme" : "C- Kasa Hareket Kayıt"}
         pageIcon={<IconCoins size={20} />}
         hideSearch={!isEditPage}
-        hideDelete={!isEditPage}
+        // Fişten oluşan kayıtta kaydet / sil kapalı (ortak alan denetimi 19.11.2026, #32)
+        hideSave={Boolean(fisKaynagi)}
+        hideDelete={!isEditPage || Boolean(fisKaynagi)}
         hideNavigation={!isEditPage}
         disabled={isSaving}
         onSave={handleSave}
         onDelete={() => {
-          if (hesapHareketiId) setShowDeleteConfirm(true);
+          if (fisKaynagi) showNotif("warning", `Bu kasa kaydı ${fisKaynagi}'nden oluştu; burada silinemez. Fişin kendi ekranından silin.`);
+          else if (hesapHareketiId) setShowDeleteConfirm(true);
           else showNotif("warning", "Geri alınacak bir kasa hareketi seçiniz.");
         }}
         onNew={isEditPage ? undefined : handleNew}
@@ -966,6 +1001,16 @@ export const KasaHareketPage: React.FC = () => {
             <span style={{ fontSize: "13px" }}>{notification.message}</span>
           </Alert>
         </div>
+      )}
+
+      {/* Fişten oluşan kayıt: salt okunur uyarısı (ortak alan denetimi 19.11.2026, #32) */}
+      {hesapHareketiId && fisKaynagi && (
+        <Alert variant="warning" className="d-flex align-items-center py-2 px-3 mb-2" style={{ fontSize: "13px" }}>
+          <IconAlertTriangle size={18} className="me-2 flex-shrink-0" />
+          <span>
+            Bu kayıt <strong>{fisKaynagi}</strong>'nden oluştu; Kasa Hareket'ten düzeltilemez ve silinemez. Fişin kendi ekranından düzeltin.
+          </span>
+        </Alert>
       )}
 
       {/* 2. Kasa Hareketi Formu */}

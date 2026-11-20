@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { caprazKurDenetle, kurDegistirilebilir } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
+import { caprazKurDenetle, kurDegistirilebilir, kurDenetle } from "../../../Backend/src/services/yetki/kullaniciYetkiKural";
 import { kurOnayi } from "../../utils/kurYetkiDenetimi";
 import { CompanyService } from "../../services/companyService";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
@@ -1810,6 +1810,31 @@ export const CariEmanetDekontPage: React.FC = () => {
     // Kur yetkisi (gişe kuru = satırın parite kuru) ve çapraz kur kontrolü (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2; sunucu da denetler)
     const kurCinsiDegeri = mutabakatTuru === "capraz" ? kurCinsi || 0 : mutabakatTuru === "has" ? 1 : 2;
     if (mutabakatTuru !== "has") {
+      // Yetki sınırı dışındaki satır kuru sınıra çekilir (kurDenetle sinirKur); baz karşılıklar bu kurdan yeniden hesaplanır.
+      // İki tarafın dengesi değişebileceği için kayıt durur, kullanıcı yeni toplamları görüp yeniden kaydeder (Döviz / Sarraf'taki
+      // kurDegeriniSinirla davranışı; kullanıcı kararı "sınıra çek, tutarı yeniden hesapla"; ortak alan denetimi 19.11.2026, #6)
+      const cekilen = new Map<string, number>();
+      const cekilenYazi: string[] = [];
+      [...validSol, ...validSag].forEach((row, i) => {
+        const kur = parseFloat(String(row.kur).replace(/,/g, ".")) || 1.0;
+        const gise = parseFloat(String(row.giseKuru).replace(/,/g, ".")) || 1.0;
+        if (!(gise > 0 && gise !== 1)) return;
+        const den = kurDenetle(kYetki, { kur: gise }, kur, `${i + 1}. satırın kuru`);
+        if (!den.hata && den.sinirKur !== undefined && den.sinirKur > 0 && Math.abs(den.sinirKur - kur) > 1e-9) {
+          cekilen.set(row.id, den.sinirKur);
+          cekilenYazi.push(`${i + 1}. satır ${kur.toLocaleString("tr-TR", { maximumFractionDigits: 6 })} → ${den.sinirKur.toLocaleString("tr-TR", { maximumFractionDigits: 6 })}`);
+        }
+      });
+      if (cekilen.size > 0) {
+        const uygula = (rows: GridRowState[]) => rows.map((r) => (cekilen.has(r.id) ? { ...r, kur: cekilen.get(r.id) as number } : r));
+        setSolSatirlar(uygula);
+        setSagSatirlar(uygula);
+        setAlertInfo({
+          type: "warning",
+          message: `Kur yetki sınırına çekildi (${cekilenYazi.join("; ")}); tutarlar yeni kurdan hesaplandı. Kontrol edip yeniden kaydedin.`,
+        });
+        return;
+      }
       const kurSatirlari = combinedLines.map((l, i) => ({
         etiket: `${i + 1}. satırın kuru`,
         gise: l.giseKuru > 0 && l.giseKuru !== 1 ? { kur: l.giseKuru } : null,

@@ -644,7 +644,7 @@ export const ebelgeService = {
   },
   async kaynakHazirla(k: EbelgeKaynakKimlik) { return (await apiClient.post<EbelgeKaynakHazir>("/e-belge/kaynak/hazirla",k,{ timeoutMs: 180_000 })).data; },
   /** GİB'e gitmemiş kaynak fişini siler (sunucu gönderilmiş / kuyruktaki fişi her türde reddeder) */
-  async kaynakSil(k: EbelgeKaynakKimlik) { return (await apiClient.post<{ belgeId: number; tur: string }>("/e-belge/kaynak/sil", { evrakTuru: k.evrakTuru, belgeId: k.belgeId, belgeTuru: k.belgeTuru, belgeNo: k.belgeNo }, { timeoutMs: 120_000 })).data; },
+  async kaynakSil(k: EbelgeKaynakKimlik) { return (await apiClient.post<{ belgeId: number; tur: string; iade?: { iadeBekleyenAdet: number; iadeBekleyenTutar: number } | null }>("/e-belge/kaynak/sil", { evrakTuru: k.evrakTuru, belgeId: k.belgeId, belgeTuru: k.belgeTuru, belgeNo: k.belgeNo }, { timeoutMs: 120_000 })).data; },
   async kaynakGonder(k: EbelgeKaynakHazir) { return (await apiClient.post<{ durum: string; mesaj: string }>("/e-belge/kaynak/gonder",k,{ timeoutMs: 300_000 })).data; },
   async dovizDurum(uuid: string) { return (await apiClient.get<any>(`/e-belge/doviz/${encodeURIComponent(uuid)}/durum`)).data; },
   async getDovizPdfBlobUrl(uuid: string) { return ebelgePdfBlobUrl(`/e-belge/doviz/${encodeURIComponent(uuid)}/pdf`); },

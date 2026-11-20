@@ -24,12 +24,14 @@ import { AuthService } from "../services/auth.service.js";
  * kaldırılan kullanıcı jetonu geçerli kaldıkça kartları yönetebiliyor, kendini yeniden yönetici yapabiliyordu.
  */
 const kartYoneticisiMi = async (req: Request, merkez: MerkezBaglam | null): Promise<boolean> => {
+  // Yönetici: merkezde Firma Yöneticisi ya da kartta Sistem Yöneticisi (Y3; fiş / rapor yetkileriyle aynı kaynak, kullaniciYetkisi).
+  // Jetondaki role / isSysAdmin'e bakılmaz: yöneticiliği alınan kullanıcı jetonu geçerli kaldıkça (30 gün) kartları
+  // yönetebiliyordu; kart okunamazsa da yönetici sayılmaz (ortak alan denetimi 19.11.2026, #23)
   if (merkez?.kullanici?.firmaYoneticisi) return true;
-  if ((req.user?.role as string) === "admin" || (req.user as any)?.isSysAdmin) return true;
   try {
     return (await kullaniciYetkisi(req)).yonetici;
   } catch {
-    return (req.user?.role as string) === "admin";
+    return false;
   }
 };
 const kendisiMi = (req: Request, id: string): boolean => !!req.user?.userId && String(req.user.userId) === String(id);
@@ -93,27 +95,30 @@ export class UserController {
     const dbContext = { dbServer: req.user?.dbServer, dbName: req.user?.dbName };
     const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
     const yonetici = await kartYoneticisiMi(req, merkez);
-    if (!yonetici && !kendisiMi(req, req.params.id)) throw ApiError.forbidden(YONETICI_GEREKLI);
-    const girdi = yonetici ? req.body : kendiAlanlari(req.body || {});
+    const kendisi = kendisiMi(req, req.params.id);
+    if (!yonetici && !kendisi) throw ApiError.forbidden(YONETICI_GEREKLI);
+    const girdi: Record<string, any> = { ...(yonetici ? req.body : kendiAlanlari(req.body || {})) };
 
-    // Kullanıcı güncellemesinde şifre doğrulama istenmişse kontrol et
-    if (girdi.verifyPassword) {
-      const isMatched = await UserService.verifyUserPassword(
-        req.params.id,
-        String(girdi.password || ""),
-        dbContext,
-        req.user?.firmaId
-      );
-      if (!isMatched) {
-        throw ApiError.badRequest("Girilen şifre kullanıcı adı ile uyuşmuyor.");
-      }
+    // Şifre alanı (ortak alan denetimi 19.11.2026, #17):
+    //  - Boş (ya da yalnız boşluk) şifre gönderilmemiş sayılır, kayıttaki şifre korunur: yönetici başkasının kartını o kişinin
+    //    şifresini bilmeden kaydedebilir (önceden ekran ve sunucu kartın şifresini istiyordu).
+    //  - Kendi kartında yazılan şifre yalnız doğrulamadır (yönetici olmayan ekranda kaydetmek için şifresini girer): doğru değilse
+    //    400, doğruysa şifre değiştirilmez. Kendi şifresini değiştirmek "Şifre Değiştir" ekranındandır (mevcut şifre ister).
+    //  - Yöneticinin başkasının kartına yazdığı şifre yeni şifredir (merkezde kurala uymalı, ilk girişte değiştirilir).
+    delete girdi.verifyPassword;
+    const sifre = typeof girdi.password === "string" ? girdi.password : "";
+    if (!sifre.trim()) delete girdi.password;
+    if (kendisi && sifre.trim()) {
+      const dogru = await UserService.verifyUserPassword(req.params.id, sifre, dbContext, req.user?.firmaId);
+      if (!dogru) throw ApiError.badRequest("Girilen şifre kullanıcı adı ile uyuşmuyor.");
+      delete girdi.password;
     }
 
     // Kurulumda kart üzerinden şifre değişiminde de şifre kuralı (yeni kullanıcıda uygulanıyordu, kartta tek harf yazılabiliyordu)
     if (env.KURULUM_MODU && String((girdi as any).password || "") !== "") MerkezGirisService.sifreKuraliniDenetle(String((girdi as any).password));
     const eskiKullaniciAdi = merkez ? (await UserService.getUserById(req.params.id, dbContext)).username : "";
     if (merkez) FirmaKullaniciMerkezService.guncellemeOnDenetimi(merkez, eskiKullaniciAdi, girdi);
-    const updatedUser = await UserService.updateUser(req.params.id, girdi, dbContext);
+    const updatedUser = await UserService.updateUser(req.params.id, girdi as any, dbContext);
     if (merkez) {
       await FirmaKullaniciMerkezService.guncellemeSonrasi(merkez, eskiKullaniciAdi, updatedUser, (girdi as any).password || undefined);
     }
@@ -167,6 +172,15 @@ export class UserController {
     const { username, userId, password } = req.body || {};
     if (!password) {
       return ApiResponse.ok(res, "Şifre belirtilmedi.", { matched: false });
+    }
+    // Yalnız kendi hesabı için (ya da kart yöneticisine) açık: her oturumlu kullanıcı başkasının şifresini deneyebiliyordu
+    // (ortak alan denetimi 19.11.2026, #17)
+    const kendiHesabi = userId
+      ? kendisiMi(req, String(userId))
+      : !!username && String(username).trim().toLocaleLowerCase("tr-TR") === String(req.user?.username || "").trim().toLocaleLowerCase("tr-TR");
+    if (!kendiHesabi) {
+      const merkez = await FirmaKullaniciMerkezService.baglam(req.user).catch(() => null);
+      if (!(await kartYoneticisiMi(req, merkez))) throw ApiError.forbidden("Yalnız kendi şifrenizi doğrulayabilirsiniz.");
     }
     const matched = await UserService.verifyUserPassword(
       userId || username,

@@ -70,24 +70,24 @@ export class RaporController {
     const result: any = { ...p, ek, acikModuller: await oturumModulleri(req) };
 
     // Kullanıcının kendi kayıtları / vezne yetkisi:
-    // Sınırsız yetkili (sistem yöneticisi) olmayan kullanıcılar vezne raporlarında yalnız kendi veznesini görebilir
+    // Yönetici (sistem yöneticisi ya da Firma Yöneticisi, Y3) olmayan kullanıcılar vezne menüsünün vezne raporlarında yalnız kendi veznesini görebilir.
+    // VEZANL1 (anlık bakiye) de vezne raporudur; FIRVAR1 / FIRSON1 / KASDEF1 firma geneli raporlardır, kilitlenmez.
+    // Rapor kaynaklarının hiç okumadığı kendiKayitlari / userId / userVezneId bayrakları kaldırıldı. (ortak alan denetimi 19.11.2026, #44)
     const yetkiler = await kullaniciYetkisi(req);
-    if (!yetkiler.yonetici || yetkiler.kendiKayitlari) {
+    if ((!yetkiler.yonetici || yetkiler.kendiKayitlari) && ["VEZHAR1", "VEZHAS1", "VEZALT1", "VEZBAK1", "VEZANL1"].includes(kod)) {
       const u = req.user as any;
       const userId = u?.userId || u?.id || 1;
-      const dbContext = RaporController.getDbContext(req);
-      const userVezneId = await fisVeznesi(userId, dbContext);
-      result.kendiKayitlari = true;
-      result.userId = userId;
-      result.userVezneId = userVezneId;
+      const userVezneId = await fisVeznesi(userId, RaporController.getDbContext(req));
+      result.vezneId = userVezneId ? Number(userVezneId) : -999999;
+      delete result.vezneBaslangic;
+      delete result.vezneBitis;
+      delete result.vezneIdler;
+      delete result.vezneSonId;
+    }
 
-      if (["VEZHAR1", "VEZHAS1", "VEZALT1", "VEZBAK1"].includes(kod)) {
-        result.vezneId = userVezneId ? Number(userVezneId) : -999999;
-        delete result.vezneBaslangic;
-        delete result.vezneBitis;
-        delete result.vezneIdler;
-        delete result.vezneSonId;
-      }
+    // Cari sınırlaması (göç 031) cari raporlarında da uygulanır; yönetici muaf (ortak alan denetimi 19.11.2026, #16)
+    if (!yetkiler.yonetici && (yetkiler.cariSinirlamaTipi === 1 || yetkiler.cariSinirlamaTipi === 2)) {
+      result.cariSinir = { tip: yetkiler.cariSinirlamaTipi, idler: yetkiler.atananCariIdler || [] };
     }
 
     return result;

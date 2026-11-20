@@ -63,6 +63,12 @@ interface BankaTlHesabiModalProps {
   currentVezneKod?: string;
   currentVezneAd?: string;
   onApply: (data: BankaTlHesabiApplyPayload) => void;
+  /**
+   * Verilirse liste TODVZ_BANKA yerine bu banka CARİ kartlarından kurulur ve bankaId cari kart kimliği olur. Döviz fişi bunu
+   * kullanır: TODVZ_FIS.BANKA_HESABI_ID TODVZ_CARI_KART'a FK'li, raporlar onu cari sayar (docs/rapor-denetim.md §3); TODVZ_BANKA
+   * kimliği yazılınca FK hatası ya da ilgisiz cariye yazım oluyordu (ortak alan denetimi 19.11.2026, #14).
+   */
+  cariBankalar?: Array<{ id: number; kod?: string; ad?: string; unvan?: string; iban?: string; bankaAdi?: string; subeAdi?: string }>;
 }
 
 export const BankaTlHesabiModal: React.FC<BankaTlHesabiModalProps> = ({
@@ -78,8 +84,13 @@ export const BankaTlHesabiModal: React.FC<BankaTlHesabiModalProps> = ({
   currentVezneKod,
   currentVezneAd,
   onApply,
+  cariBankalar,
 }) => {
   const [bankalar, setBankalar] = useState<BankaHesapItem[]>([]);
+  // Cari kipte liste prop'tan gelir; ref ile tutulur ki her çizimde yeni dizi yeniden yükleme döngüsü başlatmasın (#14)
+  const cariBankalarRef = useRef(cariBankalar);
+  cariBankalarRef.current = cariBankalar;
+  const cariKip = !!cariBankalar;
   const [vezneler, setVezneler] = useState<VezneItem[]>([]);
   const [seciliVezneId, setSeciliVezneId] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -149,6 +160,24 @@ export const BankaTlHesabiModal: React.FC<BankaTlHesabiModalProps> = ({
 
   // Bankaları yükle
   const fetchBankalar = useCallback(async () => {
+    // Cari kip (Döviz fişi): banka cari kartları, kimlik = CARI_KART_ID (ortak alan denetimi 19.11.2026, #14)
+    if (cariBankalarRef.current) {
+      const list: BankaHesapItem[] = cariBankalarRef.current
+        .filter((c) => Number(c.id) > 0)
+        .map((c) => ({
+          bankaId: Number(c.id),
+          hesapNo: c.kod || "",
+          hesapAdi: c.ad || c.unvan || "",
+          iban: c.iban || null,
+          subeAdi: c.subeAdi || null,
+          bankaAdi: c.bankaAdi || null,
+          eFaturadaGozuksun: false,
+          devir: 0,
+          aktif: true,
+        }));
+      setBankalar(list);
+      return list;
+    }
     try {
       setLoading(true);
       const list = await BankaService.getBankalar({ aktif: true }, true);
@@ -746,8 +775,9 @@ export const BankaTlHesabiModal: React.FC<BankaTlHesabiModalProps> = ({
     }
 
     const payloadSatirlar = validRows.map((r) => {
+      // Cari kipte banka adı yoksa satırdaki ad hesap adının kendisidir; "X - X" yazılmasın (#14)
       const hesapDisplay = r.hesapAdi
-        ? `${r.bankaAdi ? r.bankaAdi + " - " : ""}${r.hesapAdi}`
+        ? `${r.bankaAdi && r.bankaAdi !== r.hesapAdi ? r.bankaAdi + " - " : ""}${r.hesapAdi}`
         : (r.bankaAdi || r.hesapNo || "BANKA");
       return {
         bankaId: r.bankaId,
@@ -786,7 +816,7 @@ export const BankaTlHesabiModal: React.FC<BankaTlHesabiModalProps> = ({
 
   // Dürbün Modal Tablo Kolonları
   const bankaLookupColumns: LookupColumn<BankaHesapItem>[] = useMemo(
-    () => [
+    () => ([
       {
         header: "Hesap No / Kod",
         width: "130px",
@@ -850,8 +880,10 @@ export const BankaTlHesabiModal: React.FC<BankaTlHesabiModalProps> = ({
           </span>
         ),
       },
-    ],
-    []
+    ] as LookupColumn<BankaHesapItem>[])
+      // Cari kipte TODVZ_BANKA bakiyesi yok; 0 TL göstermesin (#14)
+      .filter((c) => !(cariKip && c.header === "Bakiye")),
+    [cariKip]
   );
 
   // Dürbün Filtreleme Fonksiyonu
@@ -1307,7 +1339,7 @@ export const BankaTlHesabiModal: React.FC<BankaTlHesabiModalProps> = ({
           setShowBankaLookup(false);
           setLookupTargetRowId(null);
         }}
-        title="Banka Hesabı Seçimi (TODVZ_BANKA)"
+        title={cariKip ? "Banka Hesabı Seçimi (banka cari kartları)" : "Banka Hesabı Seçimi (TODVZ_BANKA)"}
         searchPlaceholder="Banka Adı, Hesap Adı, Hesap No veya IBAN ile arayın..."
         initialSearchTerm={lookupSearchTerm}
         columns={bankaLookupColumns}

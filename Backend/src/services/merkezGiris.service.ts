@@ -154,6 +154,85 @@ export class MerkezGirisService {
     return firma!;
   }
 
+  /**
+   * Alan değiştirme: oturumdaki firmayla aynı müşteri noya bağlı, çalışabilir durumdaki firmalardan kullanıcının aynı adla
+   * açık (AKTIF) kaydı olanlar. Bulunulan firma her zaman listededir (ilk sırada değil, müşteri no listesindeki yerinde).
+   */
+  public static async kullaniciAlanlari(
+    firmaId: number,
+    kullaniciAdi: string
+  ): Promise<{ firmaId: number; unvan: string; dbName: string }[]> {
+    const mevcut = await FirmaSqlRepository.idIleBul(firmaId);
+    if (!mevcut) return [];
+    const kendisi = { firmaId: mevcut.firmaId, unvan: mevcut.unvan, dbName: mevcut.dbName };
+    const no = musteriNoTemizle(mevcut.musteriNo || "");
+    if (!no) return [kendisi];
+
+    const sonuc: { firmaId: number; unvan: string; dbName: string }[] = [];
+    for (const f of await FirmaSqlRepository.musteriNoIleListele(no)) {
+      if (f.firmaId === firmaId) {
+        sonuc.push(kendisi);
+        continue;
+      }
+      const firma = await FirmaSqlRepository.idIleBul(f.firmaId);
+      if (!firma || firmaEngeli(firma)) continue;
+      const k = await KullaniciSqlRepository.adIleBul(f.firmaId, kullaniciAdi);
+      if (k && k.durum === "AKTIF") sonuc.push({ firmaId: f.firmaId, unvan: f.unvan, dbName: f.dbName });
+    }
+    if (!sonuc.some((x) => x.firmaId === firmaId)) sonuc.unshift(kendisi);
+    return sonuc;
+  }
+
+  /**
+   * Alan değiştirmenin denetimi: hedef firma oturumdaki firmayla aynı müşteri noya bağlı mı, çalışabilir mi, kullanıcının
+   * orada aynı adla açık kaydı var mı. Şifre sorulmaz (kullanıcı kararı); reddedilen her deneme giriş günlüğüne yazılır.
+   */
+  public static async alanFirmaKontrol(
+    mevcutFirmaId: number,
+    hedefFirmaId: number,
+    kullaniciAdi: string,
+    istemci: Istemci
+  ): Promise<MerkezBaglam> {
+    const [mevcut, hedef] = await Promise.all([FirmaSqlRepository.idIleBul(mevcutFirmaId), FirmaSqlRepository.idIleBul(hedefFirmaId)]);
+    const reddet = async (neden: string, hata: ApiError): Promise<never> => {
+      await AdminLogSqlRepository.girisLogu({
+        tur: "KULLANICI",
+        firmaId: hedef ? hedef.firmaId : null,
+        kullaniciAdi,
+        basarili: false,
+        redNedeni: `ALAN_DEGISTIR: ${neden} (${mevcutFirmaId} → ${hedefFirmaId})`,
+        ...istemci,
+      });
+      throw hata;
+    };
+
+    const no = musteriNoTemizle(mevcut?.musteriNo || "");
+    const eslesir = !!hedef && !!no && musteriNoTemizle(hedef.musteriNo || "") === no && hedef.baglantiModu !== "setup";
+    if (!eslesir) return reddet("müşteri no uyuşmuyor", ApiError.forbidden("Seçilen alan bu müşteriye ait değil."));
+    const engel = firmaEngeli(hedef!);
+    if (engel) return reddet(engel, await girisRedHatasi(engel));
+    const kullanici = await KullaniciSqlRepository.adIleBul(hedef!.firmaId, kullaniciAdi);
+    if (!kullanici || kullanici.durum !== "AKTIF") {
+      return reddet(
+        "kullanıcı yok ya da pasif",
+        ApiError.forbidden("Bu alanda aynı adla tanımlı, açık bir kullanıcınız yok. Lütfen firma yöneticinize başvurunuz.")
+      );
+    }
+    return { firma: hedef!, kullanici };
+  }
+
+  /** Alan değiştirme başarılı: hedef firmadaki kullanıcının son girişi ve giriş günlüğü (normal giriş gibi) */
+  public static async alanGecisiKaydet(b: MerkezBaglam, istemci: Istemci): Promise<void> {
+    await KullaniciSqlRepository.girisSonucuYaz(b.kullanici.kullaniciId, true);
+    await AdminLogSqlRepository.girisLogu({
+      tur: "KULLANICI",
+      firmaId: b.firma.firmaId,
+      kullaniciAdi: b.kullanici.kullaniciAdi,
+      basarili: true,
+      ...istemci,
+    });
+  }
+
   /** Firmanın kayıtlı veritabanı bağlantısı; kullanıcı adı / şifre eksikse ya da çözülemiyorsa BAGLANTI_EKSIK. */
   public static async firmaBaglantisi(firmaId: number): Promise<FirmaBaglantisi> {
     const kayit = baglantiOnbellegi.get(firmaId);
@@ -362,11 +441,13 @@ export class MerkezGirisService {
     }
   }
 
-  /** Şifre kuralına uymuyorsa 400. */
+  /**
+   * Şifre kuralına uymuyorsa 400: en az 8 karakter, harf ve rakam, en çok 72 bayt (bcrypt sınırı). 816e79eb8 kuralı "boş
+   * olmasın"a indirmişti (docs/ADMIN_PANEL_YOL_HARITASI.md K13, kurulum E19) (ortak alan denetimi 19.11.2026, #20)
+   */
   public static sifreKuraliniDenetle(sifre: string): void {
-    if (!sifre || typeof sifre !== "string" || !sifre.trim()) {
-      throw ApiError.badRequest("Şifre boş olamaz.");
-    }
+    const hata = sifreKuralHatasi(sifre);
+    if (hata) throw ApiError.badRequest(hata);
   }
 
   /**

@@ -1,5 +1,5 @@
 import sql from "mssql";
-import { getDbPool } from "../config/mssql.config.js";
+import { getDbPool, getPoolKey } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 
 export interface VezneParaSayimSatirPayload {
@@ -28,13 +28,20 @@ export interface SaveVezneParaSayimPayload {
   satirlar?: VezneParaSayimSatirPayload[];
 }
 
-export class VezneParaSayimSqlRepository {
-  private static tableInitialized = false;
+/** Oturumdaki firmanın veritabanı. Önceden getDbPool() parametresiz çağrılıyordu: süreçteki İLK bağlı havuz dönüyor, bulutta
+ *  sayım başka firmanın veritabanına yazılıp oradan okunabiliyordu; tablo kurulumu da yalnız ilk firmada çalışıyordu
+ *  (ortak alan denetimi 20.11.2026). */
+export type VezneSayimDbContext = { dbServer?: string; dbName?: string };
 
-  public static async ensureTablesAndProcedures(): Promise<void> {
-    if (this.tableInitialized) return;
+export class VezneParaSayimSqlRepository {
+  /** Tabloları denetlenmiş veritabanları (sunucu:port:veritabanı) */
+  private static kurulanlar = new Set<string>();
+
+  public static async ensureTablesAndProcedures(ctx?: VezneSayimDbContext): Promise<void> {
+    const anahtar = getPoolKey(ctx?.dbServer, ctx?.dbName);
+    if (this.kurulanlar.has(anahtar)) return;
     try {
-      const pool = await getDbPool();
+      const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
       await pool.request().query(`
         IF OBJECT_ID('dbo.TODVZ_VEZNE_PARA_SAYIM', 'U') IS NULL
         BEGIN
@@ -71,7 +78,7 @@ export class VezneParaSayimSqlRepository {
           );
         END;
       `);
-      this.tableInitialized = true;
+      this.kurulanlar.add(anahtar);
     } catch (err) {
       logger.warn("Vezne para sayım tabloları kontrolünde uyarı:", err);
     }
@@ -80,9 +87,9 @@ export class VezneParaSayimSqlRepository {
   /**
    * Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_KAYDET ve SODVZ_VEZNE_PARA_SAYIM_SATIR_EKLE kullanarak kaydeder
    */
-  public static async saveSayim(payload: SaveVezneParaSayimPayload): Promise<{ sayimId: number }> {
-    await this.ensureTablesAndProcedures();
-    const pool = await getDbPool();
+  public static async saveSayim(payload: SaveVezneParaSayimPayload, ctx?: VezneSayimDbContext): Promise<{ sayimId: number }> {
+    await this.ensureTablesAndProcedures(ctx);
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     const now = new Date();
     const currentTimeStr = now.toTimeString().split(" ")[0].slice(0, 5);
     const countsJsonStr = payload.countsMap ? JSON.stringify(payload.countsMap) : "{}";
@@ -214,9 +221,9 @@ export class VezneParaSayimSqlRepository {
   /**
    * Veznenin en son sayımını getirir
    */
-  public static async getSonSayimByVezne(vezneId: number): Promise<any | null> {
-    await this.ensureTablesAndProcedures();
-    const pool = await getDbPool();
+  public static async getSonSayimByVezne(vezneId: number, ctx?: VezneSayimDbContext): Promise<any | null> {
+    await this.ensureTablesAndProcedures(ctx);
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     const req = pool.request();
     req.input("VEZNE_ID", sql.Int, vezneId);
 
@@ -252,9 +259,9 @@ export class VezneParaSayimSqlRepository {
   /**
    * Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_LISTELE
    */
-  public static async getGecmisSayimlar(vezneId: number, limit = 100): Promise<any[]> {
-    await this.ensureTablesAndProcedures();
-    const pool = await getDbPool();
+  public static async getGecmisSayimlar(vezneId: number, limit = 100, ctx?: VezneSayimDbContext): Promise<any[]> {
+    await this.ensureTablesAndProcedures(ctx);
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     const req = pool.request();
     req.input("VEZNE_ID", sql.Int, vezneId || 0);
     req.input("LIMIT", sql.Int, limit);
@@ -288,9 +295,9 @@ export class VezneParaSayimSqlRepository {
   /**
    * Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_GETIR
    */
-  public static async getSayimById(sayimId: number): Promise<any | null> {
-    await this.ensureTablesAndProcedures();
-    const pool = await getDbPool();
+  public static async getSayimById(sayimId: number, ctx?: VezneSayimDbContext): Promise<any | null> {
+    await this.ensureTablesAndProcedures(ctx);
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     const req = pool.request();
     req.input("SAYIM_ID", sql.Int, sayimId);
 
@@ -380,9 +387,9 @@ export class VezneParaSayimSqlRepository {
   /**
    * Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_SIL
    */
-  public static async deleteSayim(sayimId: number): Promise<boolean> {
-    await this.ensureTablesAndProcedures();
-    const pool = await getDbPool();
+  public static async deleteSayim(sayimId: number, ctx?: VezneSayimDbContext): Promise<boolean> {
+    await this.ensureTablesAndProcedures(ctx);
+    const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
     const req = pool.request();
     req.input("SAYIM_ID", sql.Int, sayimId);
 

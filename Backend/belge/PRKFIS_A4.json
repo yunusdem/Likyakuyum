@@ -5,6 +5,7 @@
   "kenar": 28,
   "yaziBoyutu": 8.25,
   "yaziTipi": "sans",
+  "yaziGorunumu": "standart",
   "ogeler": [
     { "id": "filigran-onizleme", "tip": "filigran", "kosul": "{{onizleme}}", "metin": "ÖNİZLEME" },
     { "id": "filigran-iptal", "tip": "filigran", "kosul": "{{iptal}}", "metin": "İPTAL", "renk": "#b00020" },

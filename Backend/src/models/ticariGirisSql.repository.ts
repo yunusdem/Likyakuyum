@@ -1,3 +1,4 @@
+import { KendiKayit, kendiKayitKosulu } from "../utils/kendiKayit.js";
 import sql from "mssql";
 import { ApiError } from "../utils/ApiError.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
@@ -343,7 +344,7 @@ export class TicariGirisSqlRepository {
   }
 
   /** Stok Giriş Listesi (T19) */
-  static async liste(f: { baslangic?: string | null; bitis?: string | null; cariKartId?: number | null; arama?: string | null; durbun?: FisDurbunFiltre; limit?: number | null } = {}, ctx?: DbBaglam) {
+  static async liste(f: { baslangic?: string | null; bitis?: string | null; cariKartId?: number | null; arama?: string | null; durbun?: FisDurbunFiltre; limit?: number | null; kendi?: KendiKayit | null } = {}, ctx?: DbBaglam) {
     const pool = await TicariStokSqlRepository.havuz(ctx);
     const req = pool.request();
     const kosul: string[] = [];
@@ -363,6 +364,7 @@ export class TicariGirisSqlRepository {
       durbunParametreleriniBagla(req, k.parametreler);
     }
     const ust = durbunVar ? `TOP (${durbunLimiti(f.limit, 1001, 1001, true)}) ` : "";
+    { const kk = kendiKayitKosulu(req, "G", f.kendi); if (kk) kosul.push(kk); } // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
     const r = await req.query(`
       SELECT ${ust}G.STOK_GIRIS_ID, G.FIS_NO, G.TARIH, G.CARI_KART_ID, RTRIM(C.KOD) AS CARI_KOD, C.AD AS CARI_AD, G.BELGE_NO, G.ACIKLAMA,
         G.ARA_TOPLAM, G.TOPLAM_KDV, G.GENEL_TOPLAM, (SELECT COUNT(*) FROM dbo.TODVZ_STOK_GIRIS_SATIRI S WHERE S.STOK_GIRIS_ID = G.STOK_GIRIS_ID) AS SATIR_SAYISI,

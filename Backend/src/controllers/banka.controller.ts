@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { BankaService } from "../services/banka.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi, kendiKayitSuzgeci, sonrakiGun } from "../services/yetki/fisYetkileri.js";
 import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
 
 export class BankaController {
@@ -80,6 +80,7 @@ export class BankaController {
       fisSatirlari: fisSatirlari === "1" || fisSatirlari === "true",
       // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
       durbun: fisDurbunFiltresiOku(req.query as Record<string, unknown>),
+      kendi: await kendiKayitSuzgeci(req), // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
     };
     const data = await BankaService.listHareketler(filter, dbContext);
     return ApiResponse.ok(res, "Banka hareketleri listelendi.", data);
@@ -108,7 +109,8 @@ export class BankaController {
     const id = Number(req.params.id);
     const userObj = req.user as any;
     const kullaniciId = Number(userObj?.userId || userObj?.id) || 1;
-    await kayitErisimi(req, "bankaHareket", id);
+    // "Kendi kayıtları" kullanıcısı mevcut kaydı silemez (ortak alan denetimi 19.11.2026, #24)
+    await kayitErisimi(req, "bankaHareket", id, { isDelete: true });
     await BankaService.deleteHareket(id, kullaniciId, dbContext);
     return ApiResponse.ok(res, "Banka hareketi silindi.");
   });
@@ -119,7 +121,8 @@ export class BankaController {
     const { iptal } = req.body;
     const userObj = req.user as any;
     const kullaniciId = Number(userObj?.userId || userObj?.id) || 1;
-    await kayitErisimi(req, "bankaHareket", id);
+    // İptal / geri alma mevcut kaydı değiştirir: "Kendi kayıtları" kullanıcısında silme gibi yasak (#24)
+    await kayitErisimi(req, "bankaHareket", id, { isDelete: true });
     await BankaService.toggleIptalHareket(id, Boolean(iptal), kullaniciId, dbContext);
     return ApiResponse.ok(res, `Banka hareketi ${iptal ? "iptal edildi" : "aktif hale getirildi"}.`);
   });

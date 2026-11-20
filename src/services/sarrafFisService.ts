@@ -323,9 +323,11 @@ export class SarrafFisService {
     return res.data!;
   }
 
-  static async deleteFis(id: number, kullaniciId: number): Promise<void> {
-    await apiClient.delete(`/sarraf-fis/${id}?kullaniciId=${kullaniciId}`);
+  /** Döner: silmede "iade bekliyor" işaretlenen POS çekimleri (POS K14) */
+  static async deleteFis(id: number, kullaniciId: number): Promise<{ iadeBekleyenAdet: number; iadeBekleyenTutar: number }> {
+    const res = await apiClient.delete<{ iadeBekleyenAdet: number; iadeBekleyenTutar: number }>(`/sarraf-fis/${id}?kullaniciId=${kullaniciId}`);
     notifyVezneBakiyeChanged({ type: "sarraf_delete", id });
+    return { iadeBekleyenAdet: Number(res?.data?.iadeBekleyenAdet) || 0, iadeBekleyenTutar: Number(res?.data?.iadeBekleyenTutar) || 0 };
   }
 
   static async saveDetay(id: number, payload: Partial<SaveSarrafFisPayload>): Promise<void> {

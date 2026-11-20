@@ -8,7 +8,7 @@ import { EbelgeKuyrukService } from "../services/ebelgeKuyruk.service.js";
 import { kopyaKaydet } from "../services/firmaKlasoru.js";
 import { kaynakSilTuru } from "../models/ebelgeGonderimKilidi.js";
 import { kayitDuzeltmeYetkisi } from "../services/yetki/menuYetkiKatalogu.js";
-import { kayitErisimi } from "../services/yetki/fisYetkileri.js";
+import { kayitErisimi, kendiKayitSuzgeci } from "../services/yetki/fisYetkileri.js";
 import { notifyVezneBakiyeDegisti } from "../services/vezneEventService.js";
 import { EbelgeKaynakRepository } from "../models/ebelgeKaynak.repository.js";
 import { EbelgeKodRepository } from "../models/ebelgeKod.repository.js";
@@ -54,7 +54,7 @@ export class EbelgeController {
   public static kaynakListe = asyncHandler(async (req: Request, res: Response) => {
     const parsed = ebelgeKaynakListeSchema.safeParse(req.query);
     if (!parsed.success) throw ApiError.badRequest("Kaynak belge filtresi geçersiz.",parsed.error.format());
-    return ApiResponse.ok(res,"Kaynak belgeler listelendi.",await EbelgeKaynakRepository.list(parsed.data,EbelgeController.getDbContext(req)));
+    return ApiResponse.ok(res,"Kaynak belgeler listelendi.",await EbelgeKaynakRepository.list({ ...parsed.data, kendi: await kendiKayitSuzgeci(req) },EbelgeController.getDbContext(req)));
   });
   public static kaynakHazirla = asyncHandler(async (req: Request, res: Response) => {
     const parsed = ebelgeKaynakKimlikSchema.safeParse(req.body);
@@ -74,11 +74,12 @@ export class EbelgeController {
     const k = parsed.data; const ctx = EbelgeController.getDbContext(req);
     const tur = await kaynakSilTuru(k, ctx);
     await kayitDuzeltmeYetkisi(req, tur);
-    await kayitErisimi(req, tur === "sarraf" || tur === "doviz" ? tur : "fatura", k.belgeId);
+    // Silme: "Kendi kayıtları" kullanıcısı fişin kendi ekranındaki gibi silemez (ortak alan denetimi 19.11.2026, #24)
+    await kayitErisimi(req, tur === "sarraf" || tur === "doviz" ? tur : "fatura", k.belgeId, { isDelete: true });
     const kullaniciId = Number(req.user?.userId || 0) || 1;
-    await EbelgeKaynakService.sil(k, tur, kullaniciId, ctx);
+    const iade = await EbelgeKaynakService.sil(k, tur, kullaniciId, ctx);
     notifyVezneBakiyeDegisti({ type: `${tur}_delete`, id: k.belgeId });
-    return ApiResponse.ok(res, "Fiş silindi.", { belgeId: k.belgeId, tur });
+    return ApiResponse.ok(res, "Fiş silindi.", { belgeId: k.belgeId, tur, iade });
   });
   public static dovizDurum = asyncHandler(async (req: Request, res: Response) => {
     const uuid = String(req.params.uuid || "").trim();

@@ -43,6 +43,10 @@ const KOLONLAR = [
   "ALAN_ISLEMLERI_YETKISI",
   "VEZNE_SON_ISLEMLER_YETKISI",
   "KENDI_KAYITLARI_YETKISI",
+  // Cari sınırlama (göç 031) ve atanmış carilerin okunacağı kart kimliği: listede olmadıkları için sınırlama hep 0 okunuyor,
+  // cari süzgeci hiç çalışmıyordu (ortak alan denetimi 19.11.2026, #16)
+  "CARI_SINIRLAMA_TIPI",
+  "KULLANICI_ID",
 ];
 
 const ONBELLEK = Symbol("kullaniciYetkisi");
@@ -69,7 +73,7 @@ export async function kullaniciYetkisi(req: Request): Promise<KullaniciYetkisi> 
       .then((x) => new Set<string>(x.recordset.map((c: any) => String(c.name).toUpperCase())));
     const kolonlar = KOLONLAR.filter((k) => var_.has(k));
     // Hiçbiri yoksa tablo yok ya da başka bir veritabanı: boş SELECT yerine anlaşılır hata (önbelleğe alınmaz)
-    if (!kolonlar.length) throw ApiError.internal("Kullanıcı tablosunda (TODVZ_KULLANICI) yetki kolonları bulunamadı.");
+    if (!kolonlar.some((k) => k !== "KULLANICI_ID")) throw ApiError.internal("Kullanıcı tablosunda (TODVZ_KULLANICI) yetki kolonları bulunamadı.");
     secilen = { zaman: Date.now(), kolonlar };
     kolonOnbellegi.set(anahtar, secilen);
   }
@@ -85,14 +89,9 @@ export async function kullaniciYetkisi(req: Request): Promise<KullaniciYetkisi> 
       ORDER BY CASE WHEN ISNULL(@UN, '') <> '' AND LOWER(RTRIM(LTRIM([AD]))) = LOWER(@UN) THEN 0 ELSE 1 END
     `);
   const satir = sonuc.recordset[0];
-  if (!satir) {
-    if (req.user?.role === "admin") {
-      const y = yetkiSatirdan({ SISTEM_YONETICISI: 1 });
-      r[ONBELLEK] = y;
-      return y;
-    }
-    throw ApiError.unauthorized("Kullanıcı kartı bulunamadı.");
-  }
+  // Kart yoksa yetki yok: jetondaki "admin" rolüyle tam yetki verilmez (yöneticiliği / kartı kaldırılan kullanıcı jetonu
+  // geçerli kaldıkça tam yetkili kalıyordu) (ortak alan denetimi 19.11.2026, #23)
+  if (!satir) throw ApiError.unauthorized("Kullanıcı kartı bulunamadı.");
   if (satir.CARI_SINIRLAMA_TIPI != null && Number(satir.CARI_SINIRLAMA_TIPI) > 0) {
     try {
       const kId = satir.KULLANICI_ID || id;

@@ -8,7 +8,7 @@ import { TicariGirisSqlRepository } from "../models/ticariGirisSql.repository.js
 import { TicariSatisSqlRepository } from "../models/ticariSatisSql.repository.js";
 import { excelOnizle, excelYukle, ornekExcel } from "../services/ticari/ticariExcel.js";
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
-import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
+import { fisKayitYetkisi, gunSiniri, kayitErisimi, kendiKayitSuzgeci, sonrakiGun } from "../services/yetki/fisYetkileri.js";
 import { bankaHesabiDenetle, ticariFiyatDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
 import { fisDurbunFiltresiOku } from "../utils/fisDurbunFiltre.js";
@@ -144,6 +144,7 @@ export const TicariController = {
     baslangic: sonrakiGun(metin(req.query.baslangic), await gunSiniri(req)), bitis: metin(req.query.bitis), cariKartId: sayiVeyaNull(req.query.cariKartId), arama: metin(req.query.arama),
     // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
     durbun: fisDurbunFiltresiOku(req.query as Record<string, unknown>), limit: sayiVeyaNull(req.query.limit),
+    kendi: await kendiKayitSuzgeci(req), // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
   }, baglam(req))),
   girisGetir: sar(async (req) => {
     await kayitErisimi(req, "stokGiris", kimlik(req));
@@ -160,7 +161,8 @@ export const TicariController = {
     return TicariGirisSqlRepository.kaydet({ ...(req.body || {}), stokGirisId, vezneId }, kullanici(req), baglam(req));
   }),
   girisSil: sar(async (req) => {
-    await kayitErisimi(req, "stokGiris", kimlik(req));
+    // "Kendi kayıtları" kullanıcısı mevcut kaydı silemez (ortak alan denetimi 19.11.2026, #24)
+    await kayitErisimi(req, "stokGiris", kimlik(req), { isDelete: true });
     return TicariGirisSqlRepository.sil(kimlik(req), req.query.onay === "1", baglam(req));
   }),
 
@@ -170,6 +172,7 @@ export const TicariController = {
     eBelgeDurumu: sayiVeyaNull(req.query.eBelgeDurumu), stokKartId: sayiVeyaNull(req.query.stokKartId),
     // Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4)
     durbun: fisDurbunFiltresiOku(req.query as Record<string, unknown>), limit: sayiVeyaNull(req.query.limit),
+    kendi: await kendiKayitSuzgeci(req), // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
   }, baglam(req))),
   satisKimlikler: sar(async (req) => TicariSatisSqlRepository.kimlikler(baglam(req), await gunSiniri(req))),
   satisGetir: sar(async (req) => {
@@ -193,7 +196,8 @@ export const TicariController = {
     );
   }),
   satisSil: sar(async (req) => {
-    await kayitErisimi(req, "fatura", kimlik(req));
+    // "Kendi kayıtları" kullanıcısı mevcut kaydı silemez (ortak alan denetimi 19.11.2026, #24)
+    await kayitErisimi(req, "fatura", kimlik(req), { isDelete: true });
     return TicariSatisSqlRepository.sil(kimlik(req), baglam(req));
   }),
 

@@ -857,12 +857,14 @@ export class MasakSqlRepository {
     );
 
     const orKosullar: string[] = [];
+    // Kimlik ve ad birlikte aranır (VEYA): listede kimliği boş / farklı yazılmış kişi adından da yakalanır (MASAK §7.2).
+    // Önceden kimlik verilince ad / diğer ad / kelime koşulları kapanıyordu; kimlik eşleşmesi skorda en üstte kalır
+    // (ortak alan denetimi 19.11.2026, #30)
     if (kimlik) {
-      // Kimlik / TCKN / VKN belirtilmişse: KESİNLİKLE kimlik eşleşmesi aranır.
-      // TC tutmuyorsa sadece isim tutuyor diye kayıt getirilmez.
       orKosullar.push("([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[' OR [DIGER_BILGILER] LIKE @kimlikLike ESCAPE '[' OR [EK_BILGI] LIKE @kimlikLike ESCAPE '[')");
-    } else if (adNorm) {
-      // Kimlik yoksa yalnızca ada göre aranır; bulunan kayıtların TC/kimlik bilgileri doğrudan sonuç tablosunda döner.
+    }
+    if (adNorm) {
+      // Ada göre; bulunan kayıtların TC/kimlik bilgileri doğrudan sonuç tablosunda döner.
       orKosullar.push("[AD_UNVAN_NORM] = @adNorm");
       orKosullar.push("[DIGER_ISIMLER_NORM] LIKE @adLike ESCAPE '['");
 
@@ -885,10 +887,10 @@ export class MasakSqlRepository {
       WITH [SECILEN] AS (
       SELECT TOP (@limit) [MASAK_ID],
         CASE
-          WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[')
-               AND (@adNorm IS NOT NULL AND ([AD_UNVAN_NORM] = @adNorm OR [DIGER_ISIMLER_NORM] LIKE @adLike ESCAPE '[')) THEN 100
-          WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[') THEN 95
-          WHEN @kimlik IS NOT NULL AND ([DIGER_BILGILER] LIKE @kimlikLike ESCAPE '[' OR [EK_BILGI] LIKE @kimlikLike ESCAPE '[') THEN 85
+          -- Kimlik (TCKN / VKN / kimlik no) eşleşmesi her zaman en yüksek skor: 100 kesin uyarı (MASAK §7.2) (#30)
+          WHEN @kimlik IS NOT NULL AND ([TCKN] = @kimlik OR [VKN] = @kimlik OR [KIMLIK_NO] LIKE @kimlikLike ESCAPE '[') THEN 100
+          -- Kimlik serbest metinde (diğer bilgiler / ek bilgi) geçiyor: ad eşleşmesinin üstünde
+          WHEN @kimlik IS NOT NULL AND ([DIGER_BILGILER] LIKE @kimlikLike ESCAPE '[' OR [EK_BILGI] LIKE @kimlikLike ESCAPE '[') THEN 95
           WHEN @adNorm IS NOT NULL AND [AD_UNVAN_NORM] = @adNorm THEN 90
           WHEN @adLike IS NOT NULL AND [DIGER_ISIMLER_NORM] LIKE @adLike ESCAPE '[' THEN 70
           ELSE 50
@@ -910,16 +912,15 @@ export class MasakSqlRepository {
     return res.recordset.map((r: any) => {
       const kayit = MasakSqlRepository.mapKayit(r);
       const skor: number = r.SKOR ?? 50;
+      // 100 / 95 kimlik, 90 ad tam, 70 diğer ad, 50 kelime (önceki sıralamada 90 da "KIMLIK_TAM" sayılıyordu) (#30)
       const eslesmeTipi: MasakEslesmeTipi =
-        skor === 100
-          ? (kimlik ? "KIMLIK_TAM" : "AD_TAM")
-          : skor >= 85
-            ? "KIMLIK_TAM"
-            : skor === 90
-              ? "AD_TAM"
-              : skor === 70
-                ? "ALIAS_TAM"
-                : "AD_KELIME";
+        skor >= 95
+          ? "KIMLIK_TAM"
+          : skor >= 90
+            ? "AD_TAM"
+            : skor >= 70
+              ? "ALIAS_TAM"
+              : "AD_KELIME";
 
       return {
         ...kayit,

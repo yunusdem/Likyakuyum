@@ -106,8 +106,11 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
         if (!src && (c.dosya === "logo-gib.png" || c.dosya.includes("gib"))) {
           src = GIB_LOGO_DATA_URL;
         }
+        // Termal ruloda firma görseli siyah-beyaz (yazıcı gri tonu noktalarla basar, eşikleme daha net çıkar; FIS_TASARIM 4.3).
+        // Çekirdek bayrağı yalnız 80 mm'de firma görseline koyar (ortak alan denetimi 19.11.2026, #53)
+        const sb = c.siyahBeyaz ? ";filter:grayscale(100%) contrast(500%)" : "";
         if (src) {
-          ustKatman.push(`<img alt="" src="${src}" loading="eager" decoding="sync" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.g)};height:${pt(c.h)};object-fit:contain;image-rendering:-webkit-optimize-contrast;-webkit-print-color-adjust:exact;print-color-adjust:exact"/>`);
+          ustKatman.push(`<img alt="" src="${src}" loading="eager" decoding="sync" style="position:absolute;left:${pt(k + say(c.x))};top:${pt(k + say(c.y))};width:${pt(c.g)};height:${pt(c.h)};object-fit:contain;image-rendering:-webkit-optimize-contrast;-webkit-print-color-adjust:exact;print-color-adjust:exact${sb}"/>`);
         }
         break;
       }
@@ -143,41 +146,5 @@ export async function sablonHtml(sablon: BelgeSablon, veri: Record<string, any>,
   const html = `<div class="belge-sablon" style="position:relative;width:${pt(W)};height:${pt(H)};background:#fff;color:#000000;font-family:${YAZI_AILESI[sahne.yaziTipi]};overflow:hidden;box-sizing:border-box;margin:0;padding:0">${svg}${ustKatman.join("")}</div>`;
   return { html, genislik: W, yukseklik: H, sahne };
 }
-
-/** Yazdırma için tam HTML belgesi (tarayıcı iframe yedeği). */
-export function yazdirmaBelgesi(govde: string, baslik: string, genislikPt: number): string {
-  const isPos = genislikPt < 300;
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>${kacis(baslik)}</title><style>
-@page { size: ${isPos ? "auto" : `${pt(genislikPt)} auto`}; margin: 0; }
-@media print {
-  html, body {
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-    color: #000000 !important;
-    font-weight: 600 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  .pos-print-root {
-    width: 100%;
-    max-width: 80mm;
-    margin: 0 auto !important;
-    padding: 4px 0 0 0 !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: flex-start !important;
-    box-sizing: border-box !important;
-  }
-  .belge-sablon {
-    margin: 0 auto !important;
-    ${isPos ? "transform: scale(0.98) !important; transform-origin: top center !important;" : ""}
-    box-sizing: border-box !important;
-    page-break-inside: avoid !important;
-  }
-}
-* { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-html, body { margin: 0 !important; padding: 0 !important; background: #fff; color: #000000; font-family: 'Consolas', 'Segoe UI Mono', monospace; font-weight: 600; }
-</style></head><body>${isPos ? `<div class="pos-print-root">${govde}</div>` : govde}</body></html>`;
-}
+// yazdirmaBelgesi (tarayıcı iframe yedeğinin tam HTML belgesi) kaldırıldı: çağıranı yoktu; tarayıcıdan yazdırma
+// önizleme pencerelerindeki "Tarayıcıdan Yazdır" düğmesiyle yapılır (ortak alan denetimi 19.11.2026, #55)

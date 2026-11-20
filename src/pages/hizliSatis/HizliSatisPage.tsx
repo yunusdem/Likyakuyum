@@ -389,14 +389,20 @@ export const HizliSatisPage: React.FC = () => {
 
   /** Satıra elle fiyat / kur (Fiyat Değiştir tuşu ve satır düzenleme penceresi). Sarraf/Döviz'de kur yetkisi, gişe aralığı ve sapma uyarısı. */
   const fiyatUygula = (satir: SepetSatiri, d: number): boolean => {
+    let kurDegeri = d;
     if (veri && (modul === "sarraf" || modul === "doviz")) {
       const u = { paraId: satir.urunId, urunTipi: satir.urunTipi };
       const kur = urunKuru(veri.kurlar, u, tip);
       const den = kurDenetle(kullaniciYetkisi, kur > 0 ? { kur, alis: urunKuru(veri.kurlar, u, 0) || null, satis: urunKuru(veri.kurlar, u, 1) || null } : null, d);
       if (den.hata) { showError(den.hata); return false; }
-      if (den.uyari && !window.confirm(`${den.uyari}\n\nYine de uygulansın mı?`)) return false;
+      // Kur yetki / gişe aralığı dışındaysa sınıra çekilir; satır tutarı sepet hesabında bu kurdan yeniden çıkar (Döviz/Sarraf
+      // ekranlarındaki kurDegeriniSinirla davranışı; kullanıcı kararı "sınıra çek, tutarı yeniden hesapla"; ortak alan denetimi 19.11.2026, #6)
+      if (den.sinirKur !== undefined && den.sinirKur > 0 && Math.abs(den.sinirKur - d) > 1e-9) {
+        kurDegeri = den.sinirKur;
+        showWarning(`Kur yetki sınırına çekildi: ${kurDegeri.toLocaleString("tr-TR", { maximumFractionDigits: 4 })}; tutar bu kurdan hesaplandı.`);
+      } else if (den.uyari && !window.confirm(`${den.uyari}\n\nYine de uygulansın mı?`)) return false;
     }
-    satirGuncelle(satir.anahtar, { birimFiyat: d, fiyatElle: true });
+    satirGuncelle(satir.anahtar, { birimFiyat: kurDegeri, fiyatElle: true });
     return true;
   };
 
@@ -599,6 +605,39 @@ export const HizliSatisPage: React.FC = () => {
     if (veri?.fiyatListesiId) setVeri({ ...veri, fiyatListesiId: null });
   };
 
+  /**
+   * MASAK sınırları firma tanımından — fiş ekranlarıyla aynı kaynak (CompanyService tanımı; SarrafFisiPage masakStatus):
+   * TL sınırı TL; döviz sınırı kendi parasında (varsayılan USD) → USD karşılığı (masakGerekli satır miktarı / USD toplamıyla
+   * karşılaştırır); altın sınırı kendi parasında → TL. Tanımda yoksa masakGerekli'nin sabitleri (185.000 TL / 5.000 USD) kalır.
+   * Önceden tanım hiç geçirilmiyordu (ortak alan denetimi 19.11.2026, #51)
+   */
+  const masakSinirlari = (): { tlSiniri?: number; dovizSiniri?: number; altinSiniri?: number } => {
+    const t = veri?.tanim;
+    if (!veri || !t) return {};
+    const paraKodu = (id: number) =>
+      String(veri.paralar.find((p) => Number(p.paraId ?? p.id) === id)?.kod || veri.kurlar.find((k) => Number(k.paraId) === id)?.kod || "").trim().toUpperCase();
+    const paraKuru = (id: number) => {
+      const kod = paraKodu(id);
+      if (["TL", "TRY", "TRL"].includes(kod)) return 1;
+      return urunKuru(veri.kurlar, { paraId: id, kod }, tip);
+    };
+    const usdKuru = urunKuru(veri.kurlar, { kod: "USD", urunTipi: 0 }, tip);
+    const sonuc: { tlSiniri?: number; dovizSiniri?: number; altinSiniri?: number } = {};
+    if (Number(t.TL_VERGI_SINIRI) > 0) sonuc.tlSiniri = Number(t.TL_VERGI_SINIRI);
+    if (Number(t.DOVIZ_VERGI_SINIRI) > 0) {
+      const lim = Number(t.DOVIZ_VERGI_SINIRI);
+      const pid = Number(t.DOVIZ_VERGI_SINIRI_PARA_ID) || 2;
+      const kod = paraKodu(pid) || (pid === 3 ? "EUR" : "USD");
+      const r = kod === "USD" ? 0 : paraKuru(pid);
+      sonuc.dovizSiniri = r > 0 && usdKuru > 0 ? (lim * r) / usdKuru : lim;
+    }
+    if (Number(t.ALTIN_VERGI_SINIRI) > 0) {
+      const r = paraKuru(Number(t.ALTIN_VERGI_SINIRI_PARA_ID) || 2);
+      if (r > 0) sonuc.altinSiniri = Number(t.ALTIN_VERGI_SINIRI) * r;
+    }
+    return sonuc;
+  };
+
   const tamamla = async (odemeListesi: SepetOdemesi[] = odemeler, m: HizliMusteri = musteri) => {
     if (!modul || !veri || kaydediliyor) return;
     if (!sepet.length) return showError("Sepet boş.");
@@ -619,6 +658,7 @@ export const HizliSatisPage: React.FC = () => {
       hasKuru: urunKuru(veri.kurlar, { kod: "HAS", urunTipi: 1 }, tip),
       usdKuru: urunKuru(veri.kurlar, { kod: "USD", urunTipi: 0 }, tip),
       gayriResmi: gayriResmiMi(istatistik),
+      ...masakSinirlari(), // firma tanımındaki TL / döviz / altın sınırları (#51)
     });
     if (faturaSiniri || masak) {
       const eksik = aliciEksikleri(m).filter((e) => faturaSiniri || (e !== "İl" && e !== "İlçe"));

@@ -15,6 +15,7 @@ import ERPToolbar from "../../components/common/ERPToolbar";
 import { SayfaCikisUyarisiModal, useSayfaCikisUyarisi } from "../../components/common/SayfaCikisUyarisiModal";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import FisDurbunModal from "../../components/common/FisDurbunModal";
+import { yeniOnceKarsilastirici } from "../../utils/fisDurbunFiltre";
 import { useAuth } from "../../context/AuthContext";
 import { AuthService } from "../../services/authService";
 import { MasakService, MasakEslesme } from "../../services/masakService";
@@ -66,6 +67,9 @@ import { KimlikDegistirmeNedeniBelgeSection } from "../../components/cari/Kimlik
 import { ParaItem } from "./DovizFisiPage";
 import KuyumKodDurbun from "../../components/common/KuyumKodDurbun";
 import { ALTIN_KODU, kuyumKoduBul } from "../../../Backend/src/services/kuyumKodlari";
+
+/** Dürbün listesi eskiden yeniye gösterilir; sınır aşılınca sunucunun sırasıyla (tarih, kimlik yeni→eski) en yeniler kalsın (ortak alan denetimi 19.11.2026, #36) */
+const sarrafDurbunYeniOnce = yeniOnceKarsilastirici<SarrafFisListItem>((f) => f.tarih, (f) => f.sarrafFisiId);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface VezneItem { id: number; kod: string; ad: string; }
@@ -232,6 +236,14 @@ export const isZiynetProduct = (urun?: { urunTipi?: number | string | null; kod?
   return false;
 };
 
+/**
+ * Ürün adında döviz adı var mı: kelime kelime bakılır (alt metin değil). Uzun adlar ek alabilir (DOLARI, STERLİNİ, FRANGI);
+ * kısa olanlar (YEN, EURO, AVRO) yalnız tam kelime — "YENİ", "YENGEÇ" döviz sayılmaz.
+ */
+const DOVIZ_ADLARI = ["DOLAR", "DOVIZ", "DÖVİZ", "EURO", "AVRO", "POUND", "STERLİN", "STERLIN", "FRANK", "FRANG", "RİYAL", "RIYAL", "RUBLE", "YEN", "JAPON"];
+export const dovizAdiVar = (adBuyuk: string): boolean =>
+  adBuyuk.split(/[^A-Z0-9ÇĞİÖŞÜ]+/).some((w) => w !== "" && DOVIZ_ADLARI.some((d) => w === d || (d.length >= 5 && w.startsWith(d))));
+
 export const isCurrencyItem = (item?: { kod?: string; ad?: string; urunTipi?: number | string | null; hasOrani?: number; alisMilyem?: number; hasAlisKatsayisi?: number } | null): boolean => {
   if (!item) return false;
   const k = (item.kod || "").trim().toUpperCase();
@@ -251,9 +263,11 @@ export const isCurrencyItem = (item?: { kod?: string; ad?: string; urunTipi?: nu
 
   if (k === "TL" || k === "TRY" || k === "TRL" || a.includes("TÜRK LİRASI") || a.includes("TURK LIRASI")) return true;
   const dovizCodes = ["USD", "EUR", "GBP", "CHF", "AUD", "CAD", "JPY", "SAR", "AED", "RUB", "KWD", "NOK", "DKK", "SEK"];
-  const dovizNames = ["DOLAR", "DOVIZ", "DÖVİZ", "EURO", "AVRO", "POUND", "STERLİN", "STERLIN", "FRANK", "FRANG", "RİYAL", "RIYAL", "RUBLE", "YEN"];
-  if (dovizCodes.includes(k) || dovizNames.some((d) => a.includes(d))) return true;
-
+  if (dovizCodes.includes(k)) return true;
+  // Ürün tanımında tür Altın / Gümüş / Ziynet ise addan döviz çıkarılmaz ("YENİ MODEL KOLYE" Japon yeni sayılıp işçilik siliniyordu)
+  if (item.urunTipi !== undefined && item.urunTipi !== null && String(item.urunTipi).trim() !== "" && [1, 2, 3].includes(Number(item.urunTipi))) return false;
+  // Ad kelime kelime: "YENİ", "YENGEÇ" döviz sayılmaz
+  if (dovizAdiVar(a)) return true;
   return false;
 };
 
@@ -391,7 +405,8 @@ const recomputeOdemeRow = (r: OdemeRow, defaultHasKuru: number = 0, changedField
   );
   const isKurFixed = isTL || isKart || isIskonto;
   const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
-  const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi });
+  // Ekrandaki kilitle aynı karar: tür (effTipi) verilir; tipi Altın olup adı "DOLAR KOLYE" olan ürün döviz sayılmaz (ortak alan denetimi 19.11.2026, #8)
+  const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi, urunTipi: effTipi });
   const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
   const isPara = isDoviz || isTL || isIskonto || isKart;
   const isParaOrZiynet = isPara || isZiynet;
@@ -590,7 +605,9 @@ const sabitTutariKoru = (r: GridRow, kur: number | string, hesaplanan: number | 
 
 const recomputeRowHam = (r: GridRow, defaultKur: number = 0, changedField?: keyof GridRow, iscilikGirisSekli: number = 0, isKdvDisabled: boolean = false, dovizZiynetGirisSekli: number = 0): GridRow => {
   const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
-  const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.urunKodu, ad: r.urunAdi });
+  // Ekrandaki kilitle aynı karar: tür (effTipi) verilir; tipi Altın olup adında YEN/DOLAR geçen ürünün milyem / has / işçiliği
+  // silinmesin (ortak alan denetimi 19.11.2026, #8)
+  const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.urunKodu, ad: r.urunAdi, urunTipi: effTipi });
   const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
   const isParaOrZiynet = isDoviz || isZiynet;
 
@@ -2702,7 +2719,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           const isIskonto = Boolean(o.iskontoId || matchedIskonto);
           const effTipi = resolveEffectiveUrunTipi({ urunTipi: o.urunTipi || matchedUrun?.urunTipi, kod: resolvedParaKodu, ad: resolvedParaAdi });
           const isGumus = effTipi === 2 || (resolvedParaKodu && (resolvedParaKodu.toUpperCase().includes("GUMUS") || resolvedParaKodu.toUpperCase().includes("GÜMÜŞ")));
-          const isDoviz = effTipi === 0 || isCurrencyItem({ kod: resolvedParaKodu, ad: resolvedParaAdi });
+          const isDoviz = effTipi === 0 || isCurrencyItem({ kod: resolvedParaKodu, ad: resolvedParaAdi, urunTipi: effTipi }); // #8
           const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: effTipi, kod: resolvedParaKodu, ad: resolvedParaAdi });
           const isGold = (!isDoviz && !isZiynet && !isGumus) || effTipi === 1;
 
@@ -3266,7 +3283,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   };
 
   // Save
-  const handleSave = useCallback(async (
+  // Asıl kayıt; dışarıdan her zaman çift kayıt kilitli handleSave ile çağrılır (#35)
+  const handleSaveIc = useCallback(async (
     forceMasakApprove = false,
     andPrint = false,
     forceFarkApprove = false,
@@ -3341,12 +3359,39 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     // Kur yetkisi denetimi: Sarraf fişinde gişe kur sapma uyarısı (confirm popup) gösterilmez.
     // Yalnızca kullanıcının kuru değiştirme yetkisi kesinlikle yoksa veya yetki sınırını aşıyorsa hata verir.
-    if (!forceFarkApprove && kYetkiRef.current.kurYetkisi !== "Var") {
+    // Fark onayı ("Yine de Kaydet" / "Kalanını İskontoya At") yalnız fark denetimini geçer; kur ve milyem denetimi her kayıtta
+    // çalışır (önceden forceFarkApprove ikisini de atlıyordu; ortak alan denetimi 19.11.2026, #7)
+    if (kYetkiRef.current.kurYetkisi !== "Var") {
       const gise = (l: (typeof validLines)[number]) => {
         const u = { paraId: l.urunId, kod: l.urunKodu, ad: l.urunAdi, urunTipi: l.urunTipi };
         const kur = getKurRef.current(u, tip === 0 ? 0 : 1);
         return kur > 0 ? { kur, alis: getKurRef.current(u, 0) || null, satis: getKurRef.current(u, 1) || null } : null;
       };
+      // kurDenetle yetki dışı kuru engellemez, sınır değerini (sinirKur) verir. Tutar yazılıp hücreden çıkmadan F1'e basılınca
+      // türetilen kur sınırdan geçmemiş olabilir: sınır dışı satır kuru sınıra çekilir, tutar yeniden hesaplanır ve kayıt durur
+      // (toplam / fark değişeceği için kullanıcı görüp yeniden kaydeder; ortak alan denetimi 19.11.2026, #7).
+      // Pay: sunucudaki SUNUCU_KUR_PAYI (fisIcerikYetkisi.ts, %0,5) ile aynı; ekran açıkken canlı kur kayması bu pay içinde kayıt
+      // durdurmaz ("Yok" yetkisinde pay içindeki farka dokunulmaz kararı)
+      const KAYIT_KUR_PAYI = 0.5;
+      const cekilenKurlar = new Map<string, number>();
+      validLines.forEach((l) => {
+        const g = gise(l);
+        const k = parseDecimal(l.kur);
+        if (!g || !(k > 0)) return;
+        const d = kurDenetle(kYetkiRef.current, g, k, "Kur", KAYIT_KUR_PAYI);
+        if (!d.hata && d.sinirKur !== undefined && d.sinirKur > 0 && Math.abs(d.sinirKur - k) > 1e-9) cekilenKurlar.set(l.id, d.sinirKur);
+      });
+      if (cekilenKurlar.size > 0) {
+        setLines((prev) => prev.map((r) => {
+          const sinir = cekilenKurlar.get(r.id);
+          if (sinir === undefined) return r;
+          const effT = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
+          const paraZiynet = effT === 0 || effT === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
+          return recomputeRow({ ...r, kur: sinir }, paraZiynet ? 0 : (Number(altinHasKuru) || 0), "kur", userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
+        }));
+        showNotif("warning", `${cekilenKurlar.size} satırın kuru yetki sınırına çekildi, tutar yeniden hesaplandı. Kontrol edip yeniden kaydedin.`);
+        return;
+      }
       const { hata } = kurlariDenetle(
         kYetkiRef.current,
         validLines.map((l, i) => ({ etiket: `${i + 1}. satırın kuru`, gise: gise(l), kur: parseDecimal(l.kur) }))
@@ -3357,8 +3402,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       }
     }
 
-    // Milyem yetkisi denetimi
-    if (!forceFarkApprove && kYetkiRef.current.milyemYetkisi !== "Var") {
+    // Milyem yetkisi denetimi (fark onayından sonra da çalışır; #7)
+    if (kYetkiRef.current.milyemYetkisi !== "Var") {
       const satirlarMilyem: { etiket: string; refMilyem: number | null | undefined; milyem: number }[] = [];
       validLines.forEach((l, i) => {
         const effTipi = resolveEffectiveUrunTipi({ urunTipi: l.urunTipi, kod: l.urunKodu, ad: l.urunAdi });
@@ -3511,7 +3556,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           .map((o, i) => {
             const effTipi = resolveEffectiveUrunTipi({ urunTipi: o.urunTipi, kod: o.paraKodu, ad: o.paraAdi });
             const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: o.urunTipi, kod: o.paraKodu, ad: o.paraAdi });
-            const isDoviz = effTipi === 0 || isCurrencyItem({ kod: o.paraKodu, ad: o.paraAdi });
+            // Ekrandaki kilitle aynı karar (tür verilir; ortak alan denetimi 19.11.2026, #8)
+            const isDoviz = effTipi === 0 || isCurrencyItem({ kod: o.paraKodu, ad: o.paraAdi, urunTipi: effTipi });
             const isTL = (o.paraKodu?.toUpperCase() === "TL") || (o.paraKodu?.toUpperCase() === "TRY");
             const isPZ = (isDoviz || isZiynet || isTL);
             const mik = parseDecimal(o.miktar);
@@ -3734,15 +3780,33 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           printers,
         });
 
-        const printerToUse = targetPrinter || resolved.printer;
-        const isPos = targetPrinter ? targetPrinter.belgeYaziciModu !== 0 : resolved.recommendedPrintType === "POS";
-        const copiesToUse = targetCopies || resolved.kopyaSayisi || 1;
+        // Döviz F10 ile aynı sıra (7b568d1ad): seçilen yazıcı → bu terminalde seçilmiş yerel yazıcı (localStorage) → tanımlar.
+        // Yerel yazıcı tanımlarda varsa modu (80 / A4) ondan, yoksa tanımın önerdiği türden (ortak alan denetimi 19.11.2026, #54)
+        const termUUID = PrinterService.getTerminalUUID();
+        let savedTermPrinter: string | null = null;
+        try {
+          savedTermPrinter =
+            localStorage.getItem(`likya_terminal_printer_${termUUID}`) ||
+            localStorage.getItem("likya_last_selected_printer") ||
+            localStorage.getItem("likya_terminal_last_printer");
+        } catch { savedTermPrinter = null; }
+        const yerelTanim = !targetPrinter && savedTermPrinter
+          ? printers.find((p) => (p.cihazAdi || "").trim() === savedTermPrinter!.trim() || (p.ad || "").trim() === savedTermPrinter!.trim()) || null
+          : null;
+        const printerToUse = targetPrinter || yerelTanim || resolved.printer;
+        const isPos = targetPrinter
+          ? targetPrinter.belgeYaziciModu !== 0
+          : yerelTanim ? yerelTanim.belgeYaziciModu !== 0 : resolved.recommendedPrintType === "POS";
+        const copiesToUse = targetCopies || (!targetPrinter && savedTermPrinter ? 1 : resolved.kopyaSayisi) || 1;
+        const yaziciAdi = targetPrinter
+          ? targetPrinter.cihazAdi || targetPrinter.ad || null
+          : savedTermPrinter || printerToUse?.cihazAdi || printerToUse?.ad || resolved.printerName || null;
 
         // Fiş firmanın şablonundan basılır; satır sayısı ne olursa olsun bütün ürünler tek fişte
         try {
           const fisCikti = await sarrafFisHtml(snapObj, isPos ? "80" : "A4");
           const sonuc = await fisiYazdir(fisCikti, {
-            printerName: printerToUse?.cihazAdi || printerToUse?.ad || resolved.printerName || null,
+            printerName: yaziciAdi,
             copies: copiesToUse,
             isPos,
           });
@@ -3829,6 +3893,21 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     detayDogumYeri, detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru,
     detayKimlikGecerlilikTarihi, detayVekilAdi, detayVekilKimlikNo,
     cariKartId, lines, odemeRows, totalTutar, farkHas, user?.id, bakiyeler, fisList, resetForm, isDuzeltmeMode, loadFisById]);
+
+  // Çift kayıt engeli: F1 / F10 / Kaydet art arda basılınca ikinci çağrı, ilki (POS tahsilatı ve yazdırma dahil) bitene kadar
+  // yok sayılır; kilit her durumda finally'de bırakılır (PerakendeFisiPage isSubmittingRef gibi; ortak alan denetimi 19.11.2026, #35)
+  const kayitKilidiRef = useRef(false);
+  const handleSave = useCallback(async (...args: Parameters<typeof handleSaveIc>) => {
+    if (kayitKilidiRef.current) return;
+    kayitKilidiRef.current = true;
+    setIsSaving(true);
+    try {
+      await handleSaveIc(...args);
+    } finally {
+      kayitKilidiRef.current = false;
+      setIsSaving(false);
+    }
+  }, [handleSaveIc]);
 
 
   // Cari ve Tahsilat satırları için hem Para/Döviz hem İskonto seçimi
@@ -4055,8 +4134,13 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       return;
     }
     try {
-      await SarrafFisService.deleteFis(fisId, Number(user?.id) || 1);
-      showNotif("success", "Fiş silindi");
+      const iade = await SarrafFisService.deleteFis(fisId, Number(user?.id) || 1);
+      // POS ile tahsil edilmiş tutar cihazdan iade edilmeli; kayıt POS'ta "iade bekliyor" oldu (POS K14, ortak alan denetimi 19.11.2026)
+      if (iade.iadeBekleyenAdet > 0) {
+        showNotif("warning", `Fiş silindi. POS ile tahsil edilen ${iade.iadeBekleyenTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL (${iade.iadeBekleyenAdet} işlem) cihazdan iade edilmeli; kayıt POS'ta "iade bekliyor" olarak işaretlendi.`);
+      } else {
+        showNotif("success", "Fiş silindi");
+      }
       resetForm();
       setShowDeleteConfirm(false);
       const fl = await SarrafFisService.getFisList({ limit: 200 }).catch(() => []);
@@ -4547,7 +4631,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const effTipi = resolveEffectiveUrunTipi({ urunTipi: urun.urunTipi, kod: urun.kod, ad: urun.ad });
     const isZiynet = effTipi === 3 || isZiynetProduct(urun);
-    if (isZiynet || isCurrencyItem(urun as any)) return "";
+    if (isZiynet || isCurrencyItem({ ...(urun as any), urunTipi: effTipi })) return ""; // tür verilir (#8)
 
     const isGumus = effTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS");
 
@@ -4682,7 +4766,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const effTipi = resolveEffectiveUrunTipi(urun);
     const isZiynet = effTipi === 3 || isZiynetProduct(urun);
-    const isPara = effTipi === 0 || isCurrencyItem(urun as any);
+    const isPara = effTipi === 0 || isCurrencyItem({ ...(urun as any), urunTipi: effTipi }); // tür verilir (#8)
     const isGumus = effTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS");
     const isAltin = !isZiynet && !isPara && !isGumus;
 
@@ -4778,7 +4862,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const effTipi = resolveEffectiveUrunTipi(urun);
     const isZiynet = effTipi === 3 || isZiynetProduct(urun);
-    const isPara = effTipi === 0 || isCurrencyItem(urun as any);
+    const isPara = effTipi === 0 || isCurrencyItem({ ...(urun as any), urunTipi: effTipi }); // tür verilir (#8)
     const isGumus = effTipi === 2 || code.includes("GUMUS") || code.includes("GÜMÜŞ") || name.includes("GÜMÜŞ") || name.includes("GUMUS");
     const isAltin = !isZiynet && !isPara && !isGumus;
 
@@ -4893,7 +4977,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const resolvedUrunTipi = resolveEffectiveUrunTipi(item);
     const isZiynet = resolvedUrunTipi === 3 || isZiynetProduct(item);
-    const isPara = resolvedUrunTipi === 0 || isCurrencyItem(item as any);
+    // Ekrandaki kilitle aynı karar: tür verilir (ortak alan denetimi 19.11.2026, #8)
+    const isPara = resolvedUrunTipi === 0 || isCurrencyItem({ ...(item as any), urunTipi: resolvedUrunTipi });
     const isParaOrZiynet = isPara || isZiynet;
     const isTL = ["TL", "TRY", "TRL"].includes((item.kod || "").trim().toUpperCase()) || (item.ad || "").trim().toUpperCase().includes("TÜRK LİRASI");
     const autoKur = getKurForProduct(item, tip);
@@ -4980,7 +5065,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   ) => {
     const resolvedUrunTipi = resolveEffectiveUrunTipi(item);
     const isZiynet = resolvedUrunTipi === 3 || isZiynetProduct(item);
-    const isPara = resolvedUrunTipi === 0 || isCurrencyItem(item as any);
+    // Ekrandaki kilitle aynı karar: tür verilir (ortak alan denetimi 19.11.2026, #8)
+    const isPara = resolvedUrunTipi === 0 || isCurrencyItem({ ...(item as any), urunTipi: resolvedUrunTipi });
     const isParaOrZiynet = isPara || isZiynet;
     const isTL = ["TL", "TRY", "TRL"].includes((item.kod || "").trim().toUpperCase()) || (item.ad || "").trim().toUpperCase().includes("TÜRK LİRASI");
     const odemeTip: 0 | 1 = tip === 0 ? 1 : 0;
@@ -5333,7 +5419,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         const hasMilyemOrHas = (Number(r.milyem) > 0) || (Number(r.hasGram) > 0) || (userDovizZiynetGirisSekli === 0 && Number(r.miktar) > 0 && (r.adet === "" || r.adet === null || r.adet === undefined));
         const isZiynet = (effTipi === 3 || isZiynetProduct({ urunTipi: effTipi, kod: r.paraKodu, ad: r.paraAdi })) && !hasMilyemOrHas;
         const isGumus = effTipi === 2 || pk.includes("GUMUS") || pk.includes("GÜMÜŞ");
-        const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi });
+        const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi, urunTipi: effTipi }); // #8
         const isGold = (!isDoviz && !isZiynet && !isGumus) || effTipi === 1;
 
         let rowKur = parseDecimal(r.kur);
@@ -5591,7 +5677,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       const isPara = effTipi === 0 || isCurrencyItem({ kod: r.urunKodu, ad: r.urunAdi, urunTipi: r.urunTipi });
       const isGumus = effTipi === 2 || (r.urunKodu && (r.urunKodu.toUpperCase().includes("GUMUS") || r.urunKodu.toUpperCase().includes("GÜMÜŞ")));
       const curRowDefaultKur = (isZiynet || isPara) ? 0 : (Number(altinHasKuru) || 0);
-      return recomputeRow({ ...r, refMilyem: nextRefMilyem, [field]: val }, curRowDefaultKur, field, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
+      const hesap = recomputeRow({ ...r, refMilyem: nextRefMilyem, [field]: val }, curRowDefaultKur, field, userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
+      // Tutar elle girilince kur ondan türetilir: türetilen kur da yetki sınırından geçer; sınır dışındaysa kur sınıra çekilir ve
+      // tutar sınırlanmış kurdan yeniden hesaplanır (kullanıcı kararı "sınıra çek, tutarı yeniden hesapla"; ortak alan denetimi 19.11.2026, #7)
+      if (field === "tutar") {
+        const turetilenKur = parseDecimal(hesap.kur);
+        if (turetilenKur > 0) {
+          const matchedUrun = urunList.find((item) => (r.urunId && item.id === r.urunId) || (r.urunKodu && item.kod.trim().toLowerCase() === r.urunKodu.trim().toLowerCase()));
+          const u = matchedUrun || { paraId: r.urunId, id: r.urunId, kod: r.urunKodu, ad: r.urunAdi, urunTipi: r.urunTipi };
+          const { alis, satis, ref } = getKurAlisSatisForProduct(u);
+          const gise = (ref > 0 || alis > 0 || satis > 0) ? { kur: ref || alis || satis, alis: alis || null, satis: satis || null } : null;
+          if (gise) {
+            const res = kurDegeriniSinirla(kYetkiRef.current, gise, turetilenKur, 4);
+            if (res.degisti) {
+              pendingWarnMsg = `${res.mesaj ? res.mesaj + " " : ""}Tutarın verdiği kur sınıra çekildi, tutar yeniden hesaplandı.`;
+              return recomputeRow({ ...hesap, kur: res.kur }, curRowDefaultKur, "kur", userIscilikGirisSekli, isKdvDisabledRef.current, userDovizZiynetGirisSekli);
+            }
+          }
+        }
+      }
+      return hesap;
     }));
     if (pendingWarnMsg) {
       const msg = pendingWarnMsg;
@@ -6839,6 +6944,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (col === "urunAdi" || col === "hasGram" || col === "tlTutar" || col === "iscilikHasGram") return true;
       const isKurAllowed = kurDegistirilebilir(kYetkiRef.current);
       if (col === "kur" && !isKurAllowed) return true;
+      // Tutar kuru türetir: kur yetkisi yoksa Tutar da kilitli (Döviz'deki gibi; ortak alan denetimi 19.11.2026, #7)
+      if (col === "tutar" && !isKurAllowed) return true;
       if (col === "milyem" && !milyemAcik) return true;
       const currentRow = lines[rIdx];
       const effTipi = currentRow ? resolveEffectiveUrunTipi({ urunTipi: currentRow.urunTipi, kod: currentRow.urunKodu, ad: currentRow.urunAdi }) : 1;
@@ -8460,6 +8567,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       {pos.pencere}
       <ERPToolbar
         disableShortcuts
+        disabled={isSaving} // kayıt sürerken Kaydet dahil düğmeler pasif (çift kayıt engeli, #35)
         pageTitle={displayTitle}
         onNew={isDuzeltmeMode ? undefined : handleNew}
         hideNew={isDuzeltmeMode}
@@ -8680,7 +8788,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           if (!r.paraKodu || r.paraKodu === "TL") return r;
                           const found = urunList.find((u) => u.kod.trim().toLowerCase() === r.paraKodu.trim().toLowerCase()) || { paraId: r.paraId, kod: r.paraKodu, urunTipi: r.urunTipi };
                           const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
-                          const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi });
+                          const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi, urunTipi: effTipi }); // #8
                           const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
                           const isTL = r.paraKodu === "TL" || r.paraKodu === "TRY";
                           const isKart = r.odemeAraciTuru === 2;
@@ -8762,7 +8870,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                             if (!r.paraKodu || r.paraKodu === "TL") return r;
                             const found = urunList.find((u) => u.kod.trim().toLowerCase() === r.paraKodu.trim().toLowerCase()) || { paraId: r.paraId, kod: r.paraKodu, urunTipi: r.urunTipi };
                             const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
-                            const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi });
+                            const isDoviz = effTipi === 0 || isCurrencyItem({ kod: r.paraKodu, ad: r.paraAdi, urunTipi: effTipi }); // #8
                             const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.paraKodu, ad: r.paraAdi });
                             const isTL = r.paraKodu === "TL" || r.paraKodu === "TRY";
                             const isKart = r.odemeAraciTuru === 2;
@@ -10004,6 +10112,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                   : ""
                               }
                               onChange={(e) => {
+                                // Tutar kuru türettiği için kur yetkisi yoksa değişmez (Döviz'deki kilit; ortak alan denetimi 19.11.2026, #7)
+                                if (!kurAcik) return;
                                 const input = e.target;
                                 let rawVal = input.value;
                                 if (rawVal.length > 1 && rawVal.startsWith("0") && !rawVal.startsWith("0,") && !rawVal.startsWith("0.")) {
@@ -10018,14 +10128,19 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                                   });
                                 }
                               }}
-                              onBlur={() => normalizeRowOnBlur(row.id, "tutar")}
+                              disabled={!kurAcik}
+                              readOnly={!kurAcik}
+                              tabIndex={!kurAcik ? -1 : undefined}
+                              onBlur={() => { if (kurAcik) normalizeRowOnBlur(row.id, "tutar"); }}
                               onFocus={handleKalemRowFocus}
                               onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "tutar", row.id)}
                               style={{
                                 fontSize: "11px",
                                 padding: "1px 4px",
+                                backgroundColor: !kurAcik ? "#e9ecef" : undefined,
+                                cursor: !kurAcik ? "not-allowed" : undefined,
                               }}
-                              title="Toplam Tutar (TL) - Değiştirildiğinde kur otomatik güncellenir"
+                              title={!kurAcik ? "Kur değiştirme yetkiniz yok" : "Toplam Tutar (TL) - Değiştirildiğinde kur otomatik güncellenir"}
                             />
                           </td>
                         )}
@@ -11002,14 +11117,16 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
             {/* ─── Alt Kısayol Çubuğu (Kaydet, F8 Detay ve Sağda Belge Türü) ───────── */}
             <div className="d-flex gap-3 flex-wrap mt-2 pt-2 border-top align-items-center justify-content-between">
               <div className="d-flex align-items-center gap-2">
+                {/* Kayıt sürerken düğme pasif (çift kayıt engeli; ortak alan denetimi 19.11.2026, #35) */}
                 <span
                   className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
-                  style={{ fontSize: "11.5px", cursor: "pointer" }}
-                  onClick={() => handleSave(false, false)}
-                  title="Fişi Kaydet (F1)"
+                  style={{ fontSize: "11.5px", cursor: isSaving ? "wait" : "pointer", opacity: isSaving ? 0.6 : 1, pointerEvents: isSaving ? "none" : undefined }}
+                  onClick={() => { if (!isSaving) void handleSave(false, false); }}
+                  aria-disabled={isSaving}
+                  title={isSaving ? "Kaydediliyor…" : "Fişi Kaydet (F1)"}
                 >
                   <Badge bg="primary" className="px-1.5 py-0.5" style={{ fontSize: "10.5px" }}>F1</Badge>
-                  <span className="fw-bold text-dark">Kaydet</span>
+                  <span className="fw-bold text-dark">{isSaving ? "Kaydediliyor…" : "Kaydet"}</span>
                 </span>
                 <span
                   className="d-inline-flex align-items-center gap-1.5 px-2.5 py-1 rounded border bg-light shadow-2xs"
@@ -11236,6 +11353,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         selectedId={fisId}
         columns={fisColumns}
         getir={durbunFisGetir}
+        kesmeSirasi={sarrafDurbunYeniOnce}
         sunucuArama
         searchPlaceholder="Fiş no veya ünvan ile arayın..."
         alanlar={{ tarih: true, vezne: true, urun: true, tip: true, cari: true, tutar: true, belgeNo: true }}

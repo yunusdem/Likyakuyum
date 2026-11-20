@@ -1,3 +1,4 @@
+import type { KendiKayit } from "../utils/kendiKayit.js";
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { DbContext, EbelgeSqlRepository } from "./ebelgeSql.repository.js";
@@ -67,11 +68,12 @@ export class EbelgeKaynakRepository {
     `);
     return pool;
   }
-  static async list(f: { arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ" | "PERAKENDE_SATIS" | "PERAKENDE_ALIS" | "TICARI_SATIS"; gruplar?: string[]; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }, ctx?: DbContext) {
+  static async list(f: { kendi?: KendiKayit | null; arama?: string; durum?: string; belgeTuru?: number; kaynak?: "FATURA" | "IRSALIYE" | "GIDER" | "DOVIZ" | "PERAKENDE_SATIS" | "PERAKENDE_ALIS" | "TICARI_SATIS"; gruplar?: string[]; baslangicTarihi?: string; bitisTarihi?: string; sayfa: number }, ctx?: DbContext) {
     const pool = await this.pool(ctx);
     // "Tümü"de yalnız firmanın lisansındaki fiş grupları (gruplar verilmezse hepsi)
     const grup = (g: string) => !f.gruplar || f.gruplar.includes(g);
-    const r = pool.request().input("arama", sql.NVarChar(200), `%${f.arama || ""}%`)
+    // Kendi kayıtları yetkisi: üç kaynakta da ekleyen ya da kart veznesi (ortak alan denetimi 19.11.2026)
+    const r = pool.request().input("kkKullanici", sql.Int, f.kendi?.kullaniciId ?? null).input("kkVezne", sql.Int, f.kendi?.vezneId ?? 0).input("arama", sql.NVarChar(200), `%${f.arama || ""}%`)
       .input("durum", sql.VarChar(30), f.durum || null).input("tur", sql.Int, f.belgeTuru ?? null)
       .input("kaynak", sql.VarChar(20), f.kaynak || null)
       .input("gD", sql.Bit, grup("doviz")).input("gS", sql.Bit, grup("sarraf")).input("gP", sql.Bit, grup("perakende")).input("gT", sql.Bit, grup("ticari"))
@@ -104,7 +106,7 @@ export class EbelgeKaynakRepository {
         -- yeni numaralı fişle yapılır.
         WHERE G.BELGE_NO=RTRIM(D.BELGE_NO) OR G.UUID=NULLIF(RTRIM(D.ETTN),'')
         ORDER BY G.OLUSTURMA_TARIHI DESC) G
-      WHERE ISNULL(D.IPTAL,0)=0 AND ((@kaynak IS NULL AND @gD=1) OR @kaynak='DOVIZ')
+      WHERE ISNULL(D.IPTAL,0)=0 AND (@kkKullanici IS NULL OR EXISTS (SELECT 1 FROM dbo.TODVZ_FIS KF WHERE KF.FIS_ID=D.BELGE_ID AND (KF.EKLEYEN_ID=@kkKullanici OR (@kkVezne>0 AND KF.VEZNE_ID=@kkVezne)))) AND ((@kaynak IS NULL AND @gD=1) OR @kaynak='DOVIZ')
         AND (@tur IS NULL OR D.FIS_TIPI=@tur)
         AND (@ilk IS NULL OR D.TARIH>=@ilk) AND (@son IS NULL OR D.TARIH<DATEADD(day,1,@son))
         AND (D.BELGE_NO LIKE @arama OR D.UNVAN LIKE @arama);
@@ -132,7 +134,7 @@ export class EbelgeKaynakRepository {
         ORDER BY G.OLUSTURMA_TARIHI DESC) G
       -- Tutar fişin kendi satırlarından (müşterinin ödediği; eski satır görünümü has gram × has kuru veriyordu)
       OUTER APPLY (SELECT SUM(ISNULL(E.TUTAR,0)) TOPLAM FROM dbo.TODVZ_SARRAF_FISI_SATIRI E WHERE E.SARRAF_FISI_ID=S.SARRAF_FISI_ID) T
-      WHERE (@kaynak IS NULL OR (@kaynak='FATURA' AND S.kaynakTuru=1) OR (@kaynak='IRSALIYE' AND S.kaynakTuru=2) OR (@kaynak='GIDER' AND S.kaynakTuru=3))
+      WHERE (@kkKullanici IS NULL OR S.EKLEYEN_ID=@kkKullanici OR (@kkVezne>0 AND S.VEZNE_ID=@kkVezne)) AND (@kaynak IS NULL OR (@kaynak='FATURA' AND S.kaynakTuru=1) OR (@kaynak='IRSALIYE' AND S.kaynakTuru=2) OR (@kaynak='GIDER' AND S.kaynakTuru=3))
         AND (@tur IS NULL OR S.kaynakTuru=@tur)
         AND (@ilk IS NULL OR S.TARIH>=@ilk) AND (@son IS NULL OR S.TARIH<DATEADD(day,1,@son))
         AND (S.FIS_NO LIKE @arama OR S.IRSALIYE_NO LIKE @arama OR S.UNVAN LIKE @arama OR R.BELGE_NO LIKE @arama);
@@ -159,7 +161,7 @@ export class EbelgeKaynakRepository {
         ORDER BY CASE WHEN R.DURUM='HATA' THEN 1 ELSE 0 END,R.TARIH DESC) R
       OUTER APPLY (SELECT TOP 1 * FROM dbo.TODVZ_EBELGE_GIDEN G WHERE G.BELGE_NO=RTRIM(F.FATURA_NO) OR G.UUID=CAST(F.ETTN AS varchar(40))
         ORDER BY G.OLUSTURMA_TARIHI DESC) G
-      WHERE ((@kaynak IS NULL AND ((@gP=1 AND ISNULL(F.FIS_KAYNAGI,0)=0) OR (@gT=1 AND ISNULL(F.FIS_KAYNAGI,0)=1)))
+      WHERE (@kkKullanici IS NULL OR F.EKLEYEN_ID=@kkKullanici OR (@kkVezne>0 AND F.VEZNE_ID=@kkVezne)) AND ((@kaynak IS NULL AND ((@gP=1 AND ISNULL(F.FIS_KAYNAGI,0)=0) OR (@gT=1 AND ISNULL(F.FIS_KAYNAGI,0)=1)))
           OR (@kaynak='PERAKENDE_SATIS' AND F.FATURA_TIPI<>0 AND ISNULL(F.FIS_KAYNAGI,0)=0) OR (@kaynak='PERAKENDE_ALIS' AND F.FATURA_TIPI=0 AND ISNULL(F.FIS_KAYNAGI,0)=0)
           OR (@kaynak='TICARI_SATIS' AND ISNULL(F.FIS_KAYNAGI,0)=1))
         AND (@tur IS NULL OR F.FATURA_TIPI=@tur)

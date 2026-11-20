@@ -12,6 +12,13 @@ export const loginSchema = z.object({
   }),
 });
 
+// Alan değiştirme: geçilecek firma (aynı müşteri noya bağlı veritabanı); müşteri no oturumdaki firmadan alınır
+export const alanDegistirSchema = z.object({
+  body: z.object({
+    firmaId: z.coerce.number().int().positive("Lütfen geçilecek alanı seçiniz"),
+  }),
+});
+
 export const lisansYukleSchema = z.object({
   // Kod açık modül listesini taşır (ERP ~6000 karakter, katalog büyüdükçe artar); 8000 sınırı internetsiz müşteriyi kilitliyordu.
   // Kısa olan aktivasyon anahtarı da buradan gelir (tiresiz 18 karakter, docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 16)

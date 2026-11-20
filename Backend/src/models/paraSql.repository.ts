@@ -125,15 +125,47 @@ const normalizeBirim = (urunTipi?: any, birim?: any): number | null => {
 };
 
 
+/**
+ * Bağlı para kodu boş ürünün okumadaki varsayılanı (veritabanına yazılmaz): altın / ziynet (URUN_TIPI 1, 3) → HAS; gümüş (2) → gümüş
+ * taban satırı (varsa); döviz (0) → boş. Önceden her okumada bütün boş satırlara 'HAS' UPDATE ediliyordu (gümüş ve döviz dahil;
+ * K2016 tetikleyicisiyle eski programa da gidiyordu) (ortak alan denetimi 19.11.2026, #47)
+ */
+const bagliParaVarsayilani = (entity: TodvzParaEntity, gumusTabani: string | null): string | null => {
+  const kayitli = entity.BAGLI_PARA_KODU ? entity.BAGLI_PARA_KODU.trim() : "";
+  if (kayitli) return kayitli;
+  const tip = Number(entity.URUN_TIPI ?? 0);
+  if (tip === 1 || tip === 3) return "HAS";
+  if (tip === 2) return gumusTabani || null;
+  return null;
+};
+
+/** Gümüş taban satırı: tipi Gümüş (2) ve has oranı 1000 (1 ya da 1000 yazılmış), yoksa kodu GUMUS / GÜMÜŞ (Kur Fiyat Listesi'yle aynı kural) */
+const gumusTabaniBul = (liste: TodvzParaEntity[]): string | null => {
+  const kodu = (e: TodvzParaEntity) => (e.KOD || "").trim().toUpperCase();
+  const taban =
+    liste.find((e) => Number(e.URUN_TIPI) === 2 && (Number(e.HAS_ORANI) === 1 || Number(e.HAS_ORANI) === 1000)) ||
+    liste.find((e) => kodu(e) === "GUMUS" || kodu(e) === "GÜMÜŞ");
+  return taban ? (taban.KOD || "").trim() || null : null;
+};
+
 export class ParaSqlRepository {
-  private static mapEntityToModel(entity: TodvzParaEntity): ParaModel {
+  /** Tek kayıt okumada gümüş taban kodu (yalnız bağlı kodu boş gümüş için sorulur) */
+  private static async gumusTabaniOku(pool: sql.ConnectionPool, entity: TodvzParaEntity): Promise<string | null> {
+    if (Number(entity.URUN_TIPI) !== 2 || (entity.BAGLI_PARA_KODU && entity.BAGLI_PARA_KODU.trim())) return null;
+    const r = await pool.request().query<TodvzParaEntity>(
+      `SELECT [PARA_ID], [KOD], [URUN_TIPI], [HAS_ORANI] FROM [dbo].[TODVZ_PARA] ORDER BY [PARA_ID] ASC`
+    );
+    return gumusTabaniBul(r.recordset || []);
+  }
+
+  private static mapEntityToModel(entity: TodvzParaEntity, gumusTabani: string | null = null): ParaModel {
     return {
       id: entity.PARA_ID,
       kod: (entity.KOD || "").trim(),
       ad: (entity.AD || "").trim(),
       pariteIslemi: entity.PARITE_ISLEMI ?? 0,
       siraNo: entity.SIRA_NO ?? 0,
-      bagliParaKodu: entity.BAGLI_PARA_KODU && entity.BAGLI_PARA_KODU.trim() ? entity.BAGLI_PARA_KODU.trim() : "HAS",
+      bagliParaKodu: bagliParaVarsayilani(entity, gumusTabani),
       gramaj: entity.GRAMAJ ?? 0,
       hasOrani: entity.HAS_ORANI ?? 0,
       iscilik: entity.ISCILIK ?? 0,
@@ -162,12 +194,7 @@ export class ParaSqlRepository {
   public static async findAll(dbContext?: { dbServer?: string; dbName?: string }): Promise<ParaModel[]> {
     try {
       const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
-      // Boş olan bağlı para kodlarını otomatik HAS olarak güncelle
-      await pool.request().query(`
-        UPDATE [dbo].[TODVZ_PARA] 
-        SET [BAGLI_PARA_KODU] = 'HAS' 
-        WHERE [BAGLI_PARA_KODU] IS NULL OR LTRIM(RTRIM([BAGLI_PARA_KODU])) = ''
-      `).catch(() => {});
+      // Okuma (GET) veritabanına yazmaz: boş bağlı para kodu yalnız dönen modelde, türüne göre doldurulur (#47)
       const query = `
         SELECT 
           [PARA_ID],
@@ -202,7 +229,8 @@ export class ParaSqlRepository {
         ORDER BY [PARA_ID] ASC;
       `;
       const result = await pool.request().query<TodvzParaEntity>(query);
-      return result.recordset.map(ParaSqlRepository.mapEntityToModel);
+      const gumusTabani = gumusTabaniBul(result.recordset);
+      return result.recordset.map((e) => ParaSqlRepository.mapEntityToModel(e, gumusTabani));
     } catch (error) {
       logger.error("ParaSqlRepository.findAll error:", error);
       throw error;
@@ -253,7 +281,8 @@ export class ParaSqlRepository {
       `;
       const result = await request.query<TodvzParaEntity>(query);
       if (!result.recordset || result.recordset.length === 0) return null;
-      return ParaSqlRepository.mapEntityToModel(result.recordset[0]);
+      const e = result.recordset[0];
+      return ParaSqlRepository.mapEntityToModel(e, await ParaSqlRepository.gumusTabaniOku(pool, e));
     } catch (error) {
       logger.error(`ParaSqlRepository.findById(${id}) error:`, error);
       throw error;
@@ -304,7 +333,8 @@ export class ParaSqlRepository {
       `;
       const result = await request.query<TodvzParaEntity>(query);
       if (!result.recordset || result.recordset.length === 0) return null;
-      return ParaSqlRepository.mapEntityToModel(result.recordset[0]);
+      const e = result.recordset[0];
+      return ParaSqlRepository.mapEntityToModel(e, await ParaSqlRepository.gumusTabaniOku(pool, e));
     } catch (error) {
       logger.error(`ParaSqlRepository.findByCode(${kod}) error:`, error);
       throw error;
@@ -331,8 +361,8 @@ export class ParaSqlRepository {
       request.input("AD", sql.VarChar(200), (data.ad || "").trim().slice(0, 200));
       request.input("PARITE_ISLEMI", sql.TinyInt, toInt(data.pariteIslemi, 0));
       request.input("SIRA_NO", sql.Int, calculatedSiraNo);
-      const effectiveBagliParaCreate = (data.bagliParaKodu && data.bagliParaKodu.trim()) ? data.bagliParaKodu.trim().slice(0, 5) : "HAS";
-      request.input("BAGLI_PARA_KODU", sql.VarChar(5), effectiveBagliParaCreate);
+      // Girilen yazılır; boşsa boş kalır (varsayılan yalnız okumada, türüne göre — gümüş / döviz HAS olmaz) (#47)
+      request.input("BAGLI_PARA_KODU", sql.VarChar(5), toNullableString(data.bagliParaKodu, 5));
       request.input("GRAMAJ", sql.Float, toFloat(data.gramaj, 0));
       request.input("HAS_ORANI", sql.Float, toFloat(data.hasOrani, 0));
       request.input("ISCILIK", sql.Float, toFloat(data.iscilik, 0));
@@ -446,8 +476,8 @@ export class ParaSqlRepository {
       request.input("AD", sql.VarChar(200), (data.ad || "").trim().slice(0, 200));
       request.input("PARITE_ISLEMI", sql.TinyInt, toInt(data.pariteIslemi, 0));
       request.input("SIRA_NO", sql.Int, toInt(data.siraNo, 0));
-      const effectiveBagliParaUpdate = (data.bagliParaKodu && data.bagliParaKodu.trim()) ? data.bagliParaKodu.trim().slice(0, 5) : "HAS";
-      request.input("BAGLI_PARA_KODU", sql.VarChar(5), effectiveBagliParaUpdate);
+      // Girilen yazılır; boşsa boş kalır (varsayılan yalnız okumada, türüne göre — gümüş / döviz HAS olmaz) (#47)
+      request.input("BAGLI_PARA_KODU", sql.VarChar(5), toNullableString(data.bagliParaKodu, 5));
       request.input("GRAMAJ", sql.Float, toFloat(data.gramaj, 0));
       request.input("HAS_ORANI", sql.Float, toFloat(data.hasOrani, 0));
       request.input("ISCILIK", sql.Float, toFloat(data.iscilik, 0));

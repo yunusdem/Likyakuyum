@@ -108,10 +108,11 @@ export const RaporPage: React.FC<RaporPageProps> = ({ yol: propYol, isModal, onC
   const kYetki = useKullaniciYetkisi();
   const menu = useMemo(() => RAPOR_MENU.find(m => m.yol === yol), [yol]);
   const kod = menu?.kod;
-  const isVezneRaporu = useMemo(() => ["VEZHAR1", "VEZHAS1", "VEZALT1", "VEZBAK1"].includes(kod || ""), [kod]);
-  // Sınırsız yetkili (sistem yöneticisi) olmayan kullanıcılar vezne hareket raporlarında kendi veznesini pasif (kilitli) olarak görür
-  const isVezneKilitli = isVezneRaporu && !user?.isSysAdmin;
-  const hasOnlyOwn = !user?.isSysAdmin && (user?.hasOnlyOwnRecordsPerm || kYetki.kendiKayitlari);
+  const isVezneRaporu = useMemo(() => ["VEZHAR1", "VEZHAS1", "VEZALT1", "VEZBAK1", "VEZANL1"].includes(kod || ""), [kod]);
+  // Yönetici olmayan kullanıcılar vezne raporlarında kendi veznesini pasif (kilitli) olarak görür. Kural sunucudakiyle aynı (rapor.controller.ts):
+  // yönetici = sistem yöneticisi ya da merkezde Firma Yöneticisi (Y3; yetkiProfilden), kendi kayıtları yetkilisi her zaman kilitli.
+  // (ortak alan denetimi 19.11.2026, #44)
+  const isVezneKilitli = isVezneRaporu && (!kYetki.yonetici || kYetki.kendiKayitlari);
 
   const [tanim, setTanim] = useState<RaporTanim | null>(null);
   const [degerler, setDegerler] = useState<RaporParametreDegerleri>({});

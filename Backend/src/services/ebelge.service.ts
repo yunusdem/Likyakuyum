@@ -138,7 +138,7 @@ export const pkEtiketiSec = (kullanicilar: { Alias?: string; Unit?: string }[]):
 /** Ekrandaki mükellef / alıcı adresi sorguları için (anahtar: firma havuzu + VKN) */
 const ALICI_ONBELLEK_SURE_MS = 6 * 60 * 60_000;
 const ALICI_ONBELLEK_EN_FAZLA = 2000;
-const mukellefOnbellek = new SureliOnbellek<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string }>(
+const mukellefOnbellek = new SureliOnbellek<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string; sorgulanamadi?: boolean }>(
   ALICI_ONBELLEK_SURE_MS, ALICI_ONBELLEK_EN_FAZLA);
 const adresOnbellek = new SureliOnbellek<{ adresler: EbelgeAliciAdres[] }>(ALICI_ONBELLEK_SURE_MS, ALICI_ONBELLEK_EN_FAZLA);
 
@@ -631,7 +631,7 @@ export class EbelgeService {
     vknTckn: string,
     kullanici: string,
     dbContext?: DbContext
-  ): Promise<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string }> {
+  ): Promise<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string; sorgulanamadi?: boolean }> {
     const sonuc = await mukellefOnbellek.al(
       `${getPoolKey(dbContext?.dbServer, dbContext?.dbName)}|${vknTckn.trim()}`,
       () => this.mukellefSorgulaCanli(vknTckn, kullanici, dbContext),
@@ -643,12 +643,15 @@ export class EbelgeService {
   /**
    * Alıcının e-Fatura mükellefi olup olmadığını sorar.
    * Sonuç boşsa alıcı mükellef değildir → e-Arşiv kesilmelidir.
+   * Sorgu yapılamadıysa (entegratör ayarı yok, ICE hata / başarısız cevap) `sorgulanamadi: true` döner: `mukellefMi: false`
+   * bu durumda "mükellef değil" demek değildir. Ekranlar mesajı gösterir; gönderim yolları durup hata vermelidir, sessizce
+   * e-Arşiv seçmemelidir (ortak alan denetimi 19.11.2026, #31; docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF12, PERAKENDE P9).
    */
   public static async mukellefSorgulaCanli(
     vknTckn: string,
     kullanici: string,
     dbContext?: DbContext
-  ): Promise<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string }> {
+  ): Promise<{ mukellefMi: boolean; kullanicilar: any[]; mesaj: string; sorgulanamadi?: boolean }> {
     if (!/^\d{10}$|^\d{11}$/.test(vknTckn.trim())) {
       return {
         mukellefMi: false,
@@ -661,11 +664,12 @@ export class EbelgeService {
     try {
       config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
     } catch {
-      // Entegratör ayarları tanımlı değilse hata fırlatmak yerine e-Arşiv olarak kabul et
+      // Entegratör ayarları tanımlı değilse hata fırlatmak yerine e-Arşiv olarak kabul et (ekran); sonuç belirsiz işaretlenir (#31)
       return {
         mukellefMi: false,
         kullanicilar: [],
         mesaj: "e-Belge entegratör ayarları henüz tanımlanmamış. e-Arşiv senaryosu uygulandı.",
+        sorgulanamadi: true,
       };
     }
 
@@ -676,6 +680,7 @@ export class EbelgeService {
           mukellefMi: false,
           kullanicilar: [],
           mesaj: sonuc.mesaj || "Mükellef sorgusu yapılamadı, e-Arşiv uygulandı.",
+          sorgulanamadi: true,
         };
       }
 
@@ -706,6 +711,7 @@ export class EbelgeService {
         mukellefMi: false,
         kullanicilar: [],
         mesaj: "Mükellef sorgulanamadı, varsayılan e-Arşiv senaryosu uygulandı.",
+        sorgulanamadi: true,
       };
     }
   }

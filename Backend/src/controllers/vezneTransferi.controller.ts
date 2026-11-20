@@ -116,7 +116,8 @@ export class VezneTransferiController {
     const kullaniciId = u?.userId || u?.id || 1;
     const degisiklikTakipVar = req.body?.degisiklikTakipVar || false;
 
-    await kayitErisimi(req, "vezneTransferi", id);
+    // "Kendi kayıtları" kullanıcısı mevcut kaydı silemez (ortak alan denetimi 19.11.2026, #24)
+    await kayitErisimi(req, "vezneTransferi", id, { isDelete: true });
     await VezneTransferiService.deleteTransfer(id, kullaniciId, degisiklikTakipVar, dbContext);
     notifyVezneBakiyeDegisti({ type: "transfer_delete", id });
     return ApiResponse.ok(res, "Vezne transferi başarıyla silindi.", { id });

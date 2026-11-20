@@ -23,6 +23,11 @@ export interface FisDurbunFiltre {
   tutarMax?: number;
   /** Belge / seri / fiş no metni */
   belgeNo?: string;
+  /**
+   * Dürbün "Tümü" (tarih sınırı yok, drbTum=1): koşul üretmez, yalnız isteğin dürbün isteği olduğunu bildirir; böylece
+   * durbunFiltresiVar true olur, DURBUN_EN_FAZLA tavanı / en yeni kayıtlardan kesme uygulanır (ortak alan denetimi 19.11.2026, #36)
+   */
+  tumu?: boolean;
 }
 
 export interface FisDurbunKolonlari {
@@ -88,15 +93,30 @@ function tamsayi(v: unknown): number | undefined {
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-/** "1.234,50" / "1234.5" / "1234,5" → 1234.5 */
+/**
+ * "1.234,50" / "1234.5" / "1234,5" → 1234.5; "1.000" → 1000. Ön yüzün parseDecimal kuralıyla aynı (src/utils/numericInput.ts;
+ * sunucuda o dosya yok, kural burada aynı sırayla yazıldı): nokta+virgül → sondaki ayraç ondalık; yalnız virgül → tekse ondalık,
+ * çoksa binlik; yalnız nokta → çoksa binlik, tekse ve öncesi 1–3 hane (0 değil) + sonrası tam 3 hane ise binlik, değilse ondalık.
+ * Önceden "1.000" 1 okunuyordu (ortak alan denetimi 19.11.2026, #52).
+ */
 export function tutarOku(v: unknown): number | undefined {
   if (v === undefined || v === null) return undefined;
   if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
-  let s = String(v).trim().replace(/\s/g, "");
-  if (!s) return undefined;
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
-  if (!/^-?\d+(\.\d+)?$/.test(s)) return undefined;
-  const n = Number(s);
+  const s = String(v).trim().replace(/\s/g, "");
+  if (!s || !/^-?[\d.,]+$/.test(s) || !/\d/.test(s)) return undefined;
+  let temiz: string;
+  if (s.includes(",") && s.includes(".")) {
+    temiz = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  } else if (s.includes(",")) {
+    temiz = s.split(",").length > 2 ? s.replace(/,/g, "") : s.replace(",", ".");
+  } else if (s.includes(".")) {
+    const p = s.split(".");
+    const binlik = p.length > 2 || (p[0].length >= 1 && p[0].length <= 3 && p[0] !== "0" && p[1].length === 3);
+    temiz = binlik ? s.replace(/\./g, "") : s;
+  } else {
+    temiz = s;
+  }
+  const n = parseFloat(temiz);
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -109,7 +129,7 @@ function metin(v: unknown, enUzun = 100): string | undefined {
 /**
  * İstek sorgusundan filtre alanlarını okur (geçersiz değerler yok sayılır). Ekranların eski parametreleriyle (vezneId, tip,
  * baslangic…) çakışmasın diye hepsi drb öneklidir: drbBas, drbBit, drbVezne, drbUrunId, drbUrun, drbTip, drbCari,
- * drbTutarMin, drbTutarMax, drbBelge.
+ * drbTutarMin, drbTutarMax, drbBelge, drbTum ("Tümü" işareti).
  */
 export function fisDurbunFiltresiOku(q: Record<string, unknown> | undefined | null): FisDurbunFiltre {
   const s = q || {};
@@ -134,10 +154,12 @@ export function fisDurbunFiltresiOku(q: Record<string, unknown> | undefined | nu
   if (tmax !== undefined) f.tutarMax = tmax;
   const belge = metin(s.drbBelge, 60);
   if (belge) f.belgeNo = belge;
+  // "Tümü": tarih yok ama dürbün isteği (ortak alan denetimi 19.11.2026, #36)
+  if (s.drbTum === "1" || s.drbTum === 1 || s.drbTum === "true" || s.drbTum === true) f.tumu = true;
   return f;
 }
 
-/** Filtrede en az bir alan dolu mu (dürbün isteği mi) */
+/** Filtrede en az bir alan dolu mu (dürbün isteği mi); "Tümü" işareti (tumu) de sayılır */
 export function durbunFiltresiVar(f: FisDurbunFiltre | undefined | null): boolean {
   return !!f && Object.values(f).some((v) => v !== undefined && v !== null && v !== "");
 }

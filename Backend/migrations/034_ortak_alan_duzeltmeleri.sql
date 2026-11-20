@@ -1,0 +1,153 @@
+-- Migration 034: Ortak alan denetimi düzeltmeleri (19.11.2026, docs/ORTAK_ALAN_DENETIMI.md)
+--
+-- 1) TODVZ_ODEME_SATIRI.ADET, BANKA_ID, CARI_KART_ID (#1, #12)
+--    Sarraf fişi kaydı ödeme satırına ADET ve BANKA_ID yazar (sarrafFisSql.repository), kaydet yordamı (göç 021) CARI_KART_ID
+--    yazar; cari raporları ve banka sorguları CARI_KART_ID okur. Üçünü ekleyen göç yoktu: kolonların olmadığı (yeni / taşınan)
+--    firmada sarraf fişi "Invalid column name" ile hiç kaydedilmiyor, cari raporları açılmıyordu. ADET'i 033 de ekler, korumalı
+--    tekrar zararsızdır.
+--
+-- 2) SODVZ_SARRAF_FISI_SIL (#3)
+--    Kaydet yordamı (göç 021) altın/gümüşte gram, ziynet/dövizde adet işler. Doğru silme yordamı depodaydı
+--    (Backend/current_SODVZ_SARRAF_FISI_SIL.sql) ama yalnız kaydet yordamı eskiyse kuruluyordu; 021 kaydet yordamını kurduğu
+--    için hiç kurulmuyor, eski şifreli yordam her üründe adet geri alıyordu → sarraf fişi silinince vezne bakiyesi bozuk
+--    kalıyordu. Dosya birebir alındı.
+--
+-- 3) TODVZ_HESAP.ISKONTO_ID (#10)
+--    Havale / Hesap ödemeli sarraf fişi hesabı iskontodan bulur; kolonu yalnız Kasa Hesap ekranının ensure'ü ekliyordu, o ekran
+--    açılmamış firmada kayıt derlemede düşüyordu. Tip kasaHesapSql.repository ile aynı.
+--
+-- 4) TODVZ_ALTIN_URUN / TODVZ_OZEL_URUN.KONSINYE, KATALOG (#26)
+--    Altın / Özel Ürün Stoğu raporları okur; kolonları yalnız etiket ekranlarının ensure'ü ekliyordu. Tipler
+--    altinUrunSql / ozelUrunSql.repository ile aynı. Tablo yoksa atlanır.
+
+IF OBJECT_ID('dbo.TODVZ_ODEME_SATIRI', 'U') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ADET') IS NULL
+    ALTER TABLE [dbo].[TODVZ_ODEME_SATIRI] ADD [ADET] FLOAT NULL;
+IF OBJECT_ID('dbo.TODVZ_ODEME_SATIRI', 'U') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'BANKA_ID') IS NULL
+    ALTER TABLE [dbo].[TODVZ_ODEME_SATIRI] ADD [BANKA_ID] INT NULL;
+IF OBJECT_ID('dbo.TODVZ_ODEME_SATIRI', 'U') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'CARI_KART_ID') IS NULL
+    ALTER TABLE [dbo].[TODVZ_ODEME_SATIRI] ADD [CARI_KART_ID] INT NULL;
+GO
+
+CREATE OR ALTER PROCEDURE SODVZ_SARRAF_FISI_SIL
+	@SARRAF_FISI_ID KAYIT_ID OUT,
+	@KULLANICI_ID KAYIT_ID
+AS
+BEGIN
+	SET NOCOUNT ON;
+	DECLARE @HATA_MESAJI TANIM_ADI;
+
+	IF NOT EXISTS (SELECT 1 FROM TODVZ_SARRAF_FISI WHERE SARRAF_FISI_ID = @SARRAF_FISI_ID)
+	BEGIN
+		SET @HATA_MESAJI = 'Silinecek fiş bulunamadı';
+		RAISERROR (@HATA_MESAJI, 16, 1);
+		RETURN 1;
+	END;
+
+	BEGIN TRAN;
+
+	-- 1. Kalemler Vezne Bakiye Geri Alınması
+	UPDATE B SET B.MIKTAR = B.MIKTAR - SX.MIKTAR
+	FROM
+		(SELECT SFS.URUN_ID, SF.VEZNE_ID, SUM(CASE WHEN SF.TIP = 0 THEN 1.0 ELSE -1.0 END *
+			CASE
+				-- 1. Altın (1) veya Gümüş (2) ise: kesinlikle MİKTAR (gram) vezneye işlenmeli
+				WHEN ISNULL(SFS.URUN_TIPI, PR.URUN_TIPI) IN (1, 2)
+				THEN SFS.MIKTAR
+
+				-- 2. Ziynet (3) veya Döviz (0) ise: ADET çalışmalı
+				WHEN ISNULL(SFS.URUN_TIPI, PR.URUN_TIPI) IN (0, 3)
+				THEN CASE WHEN ISNULL(SFS.ADET, 0) > 0 THEN SFS.ADET ELSE (CASE WHEN ISNULL(SFS.MIKTAR, 0) > 0 THEN SFS.MIKTAR ELSE 1 END) END
+
+				-- 3. Diğer
+				ELSE SFS.MIKTAR
+			END) AS MIKTAR
+			FROM TODVZ_SARRAF_FISI SF
+				INNER JOIN TODVZ_SARRAF_FISI_SATIRI SFS ON SF.SARRAF_FISI_ID = SFS.SARRAF_FISI_ID
+				INNER JOIN TODVZ_PARA PR ON PR.PARA_ID = SFS.URUN_ID
+			WHERE SF.SARRAF_FISI_ID = @SARRAF_FISI_ID
+			GROUP BY SFS.URUN_ID, SF.VEZNE_ID
+		) AS SX
+		INNER JOIN TODVZ_VEZNE_BAKIYE B ON B.VEZNE_ID = SX.VEZNE_ID AND B.PARA_ID = SX.URUN_ID;
+
+	IF @@ERROR <> 0
+	BEGIN
+		SET @HATA_MESAJI = 'Vezne bakiyesi güncellenemedi';
+		GOTO UNDO;
+	END;
+
+	-- 2. Vezne Ödeme Satırları Bakiye Geri Alınması
+	UPDATE B SET B.MIKTAR = B.MIKTAR - SX.MIKTAR
+	FROM
+		(SELECT COALESCE(SFS.PARA_ID, 1) AS PARA_ID, SF.VEZNE_ID, SUM(CASE WHEN SF.TIP = 1 THEN 1.0 ELSE -1.0 END * SFS.MIKTAR) AS MIKTAR
+			FROM TODVZ_SARRAF_FISI SF
+				INNER JOIN TODVZ_ODEME_SATIRI SFS ON SF.SARRAF_FISI_ID = SFS.SARRAF_FISI_ID
+				LEFT JOIN TODVZ_PARA PR_O ON PR_O.PARA_ID = COALESCE(SFS.PARA_ID, 1)
+			WHERE SF.SARRAF_FISI_ID = @SARRAF_FISI_ID AND ISNULL(SFS.ODEME_ARACI_TURU, 0) = 0 AND SFS.ISLEME_YERI = 0
+			GROUP BY COALESCE(SFS.PARA_ID, 1), SF.VEZNE_ID
+		) AS SX
+		INNER JOIN TODVZ_VEZNE_BAKIYE B ON B.VEZNE_ID = SX.VEZNE_ID AND B.PARA_ID = SX.PARA_ID;
+
+	IF @@ERROR <> 0
+	BEGIN
+		SET @HATA_MESAJI = 'Ödeme vezne bakiyesi güncellenemedi';
+		GOTO UNDO;
+	END;
+
+	-- 3. Barkodlu ürün işlemleri silme
+	DELETE OG
+	FROM TODVZ_SARRAF_FISI_SATIRI S
+		INNER JOIN TODVZ_URUN_OGESI_ISLEMI OG ON OG.SARRAF_FISI_SATIRI_ID = S.SARRAF_FISI_SATIRI_ID
+	WHERE S.SARRAF_FISI_ID = @SARRAF_FISI_ID;
+
+	IF @@ERROR <> 0
+	BEGIN
+		SET @HATA_MESAJI = 'Barkodlu ürün işlemleri silinemedi';
+		GOTO UNDO;
+	END;
+
+	-- 4. Satırlar silme
+	DELETE FROM TODVZ_SARRAF_FISI_SATIRI WHERE SARRAF_FISI_ID = @SARRAF_FISI_ID;
+	IF @@ERROR <> 0
+	BEGIN
+		SET @HATA_MESAJI = 'Fiş satırları silinemedi';
+		GOTO UNDO;
+	END;
+
+	-- 5. Ödeme satırları silme
+	DELETE FROM TODVZ_ODEME_SATIRI WHERE SARRAF_FISI_ID = @SARRAF_FISI_ID;
+	IF @@ERROR <> 0
+	BEGIN
+		SET @HATA_MESAJI = 'Ödeme satırları silinemedi';
+		GOTO UNDO;
+	END;
+
+	-- 6. Ana fiş silme
+	DELETE FROM TODVZ_SARRAF_FISI WHERE SARRAF_FISI_ID = @SARRAF_FISI_ID;
+	IF @@ERROR <> 0
+	BEGIN
+		SET @HATA_MESAJI = 'Fiş silinemedi';
+		GOTO UNDO;
+	END;
+
+	COMMIT TRAN;
+	RETURN 0;
+
+UNDO:
+	ROLLBACK TRAN;
+	RAISERROR (@HATA_MESAJI, 16, 1);
+	RETURN 1;
+END;
+GO
+
+IF OBJECT_ID('dbo.TODVZ_HESAP', 'U') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_HESAP', 'ISKONTO_ID') IS NULL
+    ALTER TABLE [dbo].[TODVZ_HESAP] ADD [ISKONTO_ID] INT NULL;
+GO
+
+IF OBJECT_ID('dbo.TODVZ_ALTIN_URUN', 'U') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_ALTIN_URUN', 'KONSINYE') IS NULL
+    ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [KONSINYE] BIT NOT NULL CONSTRAINT DF_TODVZ_ALTIN_URUN_KONSINYE DEFAULT(0);
+IF OBJECT_ID('dbo.TODVZ_ALTIN_URUN', 'U') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_ALTIN_URUN', 'KATALOG') IS NULL
+    ALTER TABLE [dbo].[TODVZ_ALTIN_URUN] ADD [KATALOG] BIT NOT NULL CONSTRAINT DF_TODVZ_ALTIN_URUN_KATALOG DEFAULT(0);
+IF OBJECT_ID('dbo.TODVZ_OZEL_URUN', 'U') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_OZEL_URUN', 'KONSINYE') IS NULL
+    ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [KONSINYE] BIT NOT NULL CONSTRAINT DF_TODVZ_OZEL_URUN_KONSINYE DEFAULT(0);
+IF OBJECT_ID('dbo.TODVZ_OZEL_URUN', 'U') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_OZEL_URUN', 'KATALOG') IS NULL
+    ALTER TABLE [dbo].[TODVZ_OZEL_URUN] ADD [KATALOG] BIT NOT NULL CONSTRAINT DF_TODVZ_OZEL_URUN_KATALOG DEFAULT(0);

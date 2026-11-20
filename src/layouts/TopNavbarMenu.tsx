@@ -6,6 +6,7 @@ import { menuyuKullaniciyaSuz, menuyuSuz } from "../config/modulKatalogu";
 import { useKullaniciYetkisi } from "../hooks/useKullaniciYetkisi";
 import { solMenuyuBirlestir } from "../config/solMenuBirlesimi";
 import { getAppBrand } from "../utils/brandHelper";
+import { AlanDegistirDugmesi } from "../components/alan/AlanDegistir";
 import {
   getThemeForMenu,
   getSubmenuIcon,
@@ -400,6 +401,9 @@ export const TopNavbarMenu: React.FC = () => {
             </span>
           </Link>
         </div>
+
+        {/* Alan Değiştir: üst menü stillerinde sol menü yerine burada (yalnız yetkili ve birden çok alanı olan kullanıcıda) */}
+        <AlanDegistirDugmesi yerlesim="ust" />
 
         {/* 2. ORTA BÖLÜM: 8 ALANIN HEPSİ TAM SIĞACAK ŞEKİLDE SIRALI MODÜL MENÜLERİ (TEK SATIR, ASLA WRAP ETMEZ) */}
         <div

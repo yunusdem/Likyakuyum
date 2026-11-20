@@ -29,6 +29,7 @@ import ERPToolbar from "../../components/common/ERPToolbar";
 import { isCtrlNEvent } from "../../utils/keyboardShortcuts";
 import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import FisDurbunModal from "../../components/common/FisDurbunModal";
+import { yeniOnceKarsilastirici } from "../../utils/fisDurbunFiltre";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
@@ -192,6 +193,9 @@ interface TransferGridRow {
   paraAdi: string;
   miktar: number | string;
 }
+
+/** Dürbün listesi eskiden yeniye gösterilir; sınır aşılınca sunucunun sırasıyla (tarih, kimlik yeni→eski) en yeniler kalsın (ortak alan denetimi 19.11.2026, #36) */
+const transferDurbunYeniOnce = yeniOnceKarsilastirici<VezneTransferiListItem>((t) => t.tarih, (t) => t.id);
 
 export interface VezneTransferiPageProps {
   isModal?: boolean;
@@ -1852,6 +1856,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
         onHide={() => setShowSearchModal(false)}
         title="Geçmiş Vezne Transferleri (Arama / Seçim)"
         getir={durbunTransferGetir}
+        kesmeSirasi={transferDurbunYeniOnce}
         sunucuArama
         alanlar={{ tarih: true, vezne: true, urun: true, belgeNo: true }}
         vezneler={vezneList.map((v) => ({ deger: String(v.id), ad: `${v.kod} - ${v.ad}` }))}

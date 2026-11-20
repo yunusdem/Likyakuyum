@@ -508,7 +508,8 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     const pos80 = r.recommendedPrintType === "POS";
     try {
       const c = await ticariFisHtml({ ...f, vezneKod: vezne?.kod }, pos80 ? "80" : "A4");
-      const s = await triggerSilentPrint({ html: c.html, printerName: r.printer?.cihazAdi || r.printer?.ad || null, copies: r.kopyaSayisi || 1, isPos: pos80, title: `Satis_Fisi_${f.faturaNo}` });
+      // Her belge nolu fiş 1 kopya (yazdir.ts kuralı; yazıcı tanımındaki kopya sayısı fişe uygulanmaz) (ortak alan denetimi 19.11.2026, #40)
+      const s = await triggerSilentPrint({ html: c.html, printerName: r.printer?.cihazAdi || r.printer?.ad || null, copies: 1, isPos: pos80, title: `Satis_Fisi_${f.faturaNo}` });
       if (!s.success) showWarning(`Fiş kaydedildi ancak yazdırılamadı: ${s.message}`);
     } catch (e: any) {
       showWarning(`Fiş kaydedildi ancak yazdırılamadı: ${e?.message || "bilinmeyen hata"}`);

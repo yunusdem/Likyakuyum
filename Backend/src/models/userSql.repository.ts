@@ -125,8 +125,9 @@ const toStatId = (val: any): number | null => {
   return isNaN(parsed) ? null : parsed;
 };
 
-// KUR_YETKISI eski programın ekran sırasıyla 0 Var, 1 Yok, 2 Limitli (docs/YETKI_VE_VEZNE_YOL_HARITASI.md, K8);
-// önceden 0 "Yok", 1 "Var" okunup yazılıyordu.
+// KUR_YETKISI kodu: 0 Var, 1 Yok, 2 Esnek (gişe alış–satış aralığı), 3 Yüzde (gişe kurundan ± tolerans). Eski programın
+// 2 "Limitli" değerleri göç 020 ile bir kez 3'e çevrildi; çeviri kullaniciYetkiKural.ts kurYetkisiKoddan / kurYetkisiKoda'dadır.
+// (ortak alan denetimi 19.11.2026, #19 — kullanıcı kararı: bu kodlama kalır; K8'in 2 = Limitli okuması geçersiz)
 const kurYetkisiToDb = (val: any): number => kurYetkisiKoda(val);
 const kurYetkisiFromDb = (val: any): string => kurYetkisiKoddan(val);
 const milyemYetkisiToDb = (val: any): number => milyemYetkisiKoda(val);
@@ -1005,7 +1006,9 @@ export class UserSqlRepository {
    * Converts a UserModel into safe UserResponseDto
    */
   public static toDto(user: UserModel): UserResponseDto {
-    const { password, passwordHash, ...safeUser } = user;
+    // Entegratör ve MASAK şifreleri de yanıta konmaz (kullanıcı listesi, kart ve oturum profili hepsi buradan geçer); boş
+    // gelen alan kayıtta mevcut değeri korur (UserService.updateUser) (ortak alan denetimi 19.11.2026, #23)
+    const { password, passwordHash, integratorPassword, masakPassword, ...safeUser } = user;
     return safeUser as UserResponseDto;
   }
 }

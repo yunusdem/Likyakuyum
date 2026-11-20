@@ -52,6 +52,9 @@
     {"id": "odeme-alt-cizgi", "tip": "cizgi", "kosul": "{{odemeVar}}", "daralt": true, "x1": 0, "y1": 221.35, "x2": 209.77, "y2": 221.35, "kalinlik": 0.6},
 
     {"id": "karekod", "ad": "Karekod", "tip": "qr", "x": 80.4, "y": 225.35, "boyut": 49, "icerik": "{{qr}}"},
-    {"id": "ettn", "ad": "ETTN", "tip": "metin", "kosul": "{{ettn}}", "daralt": true, "x": 0, "y": 277.35, "g": 209.77, "metin": "ETTN: {{ettn}}", "boyut": 6, "hiza": "center"}
+    {"id": "ettn", "ad": "ETTN", "tip": "metin", "kosul": "{{ettn}}", "daralt": true, "x": 0, "y": 277.35, "g": 209.77, "metin": "ETTN: {{ettn}}", "boyut": 6, "hiza": "center"},
+    { "id": "alt-cizgi", "tip": "cizgi", "x1": 0, "y1": 288.35, "x2": 209.77, "y2": 288.35, "kalinlik": 0.5 },
+    { "id": "bilgi-fisi", "ad": "Bilgi fişi ibaresi", "zorunlu": true, "tip": "satirlar", "x": 0, "y": 291.35, "g": 209.77, "boyut": 6.75, "aralik": 0.5, "hiza": "center",
+      "satirlar": ["İyi günlerde kullanmanız dileğiyle.", "Mali değeri yoktur, bilgi fişidir."] }
   ]
 }

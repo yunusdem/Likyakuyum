@@ -102,6 +102,10 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
     const kur = parseKur(line.kur);
     const tutar = line.tutar !== undefined && line.tutar !== null ? parseDecimal(line.tutar) : miktar * kur;
     const bmv = parseDecimal(line.bmv);
+    // Satırda BSMV alanı hiç yoksa sunucu binde 2 hesaplar; alan varsa (0 / boş dahil) satırın değeri basılır.
+    // Ekran BSMV'siz satırda "" tutar (DovizFisiPage hesap); 0 → undefined olursa 40.000 TL'lik fiş 40.080 basılıyordu
+    // (ortak alan denetimi 19.11.2026, #18)
+    const bmvVerildi = line.bmv !== undefined && line.bmv !== null;
     const kmv = parseDecimal(line.kmv);
     const komisyon = parseDecimal(line.komisyon);
 
@@ -139,7 +143,7 @@ export async function dovizFisleriHtml(girdi: Record<string, any>): Promise<FisH
       totalMasraf: undefined,
       sonToplam: undefined,
       odemeTutari: undefined,
-      bsmvTutari: satirTip === 1 ? (bmv || undefined) : 0,
+      bsmvTutari: satirTip === 1 ? (bmvVerildi ? bmv : undefined) : 0,
       kmvTutari: satirTip === 1 ? (kmv || undefined) : 0,
       komisyonTutari: komisyon || undefined,
     };

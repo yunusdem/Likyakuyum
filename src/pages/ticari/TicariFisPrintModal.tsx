@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Modal, Button, Form } from "react-bootstrap";
+import { Modal, Button, Form, Alert } from "react-bootstrap";
 import { IconPrinter, IconX, IconReceipt, IconFileText } from "@tabler/icons-react";
 import type { TicariSatisFisi } from "../../services/ticariService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
@@ -29,6 +29,9 @@ export const TicariFisPrintModal: React.FC<TicariFisPrintModalProps> = ({ show, 
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [resolvedResult, setResolvedResult] = useState<ResolvedPrinterResult | null>(null);
   const [yaziciHazir, setYaziciHazir] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  // PrinterAgent hatası yutulmaz: pencere açık kalır, mesaj görünür (ortak alan denetimi 19.11.2026, #38)
+  const [yazdirHatasi, setYazdirHatasi] = useState<string | null>(null);
   const faturaRef = useRef(fatura);
   faturaRef.current = fatura;
 
@@ -51,23 +54,43 @@ export const TicariFisPrintModal: React.FC<TicariFisPrintModalProps> = ({ show, 
   const { fis, hata } = useSablonluFis(show && yaziciHazir && !!fatura, `${printType}|${fatura?.faturaId ?? ""}|${fatura?.faturaNo ?? ""}`,
     () => ticariFisHtml(faturaRef.current as any, printType === "POS" ? "80" : "A4"));
 
-  const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis) => {
-    if (!hazir) return;
-    await fisiYazdir(hazir, {
-      printerId: selectedPrinterId,
-      printerName: resolvedResult?.printer?.cihazAdi || resolvedResult?.printer?.ad,
-      copies: resolvedResult?.kopyaSayisi || 1,
-      isPos: printType === "POS",
-    });
-  }, [fis, selectedPrinterId, resolvedResult, printType]);
+  const handlePrint = useCallback(async (hazir: FisHtml | FisHtml[] | null = fis): Promise<boolean> => {
+    if (!hazir || isPrinting) return false;
+    setIsPrinting(true);
+    setYazdirHatasi(null);
+    try {
+      // Seçilen yazıcı kaydının cihaz adı / adı gider (vezne modallarındaki gibi); seçim yoksa çözülen yazıcı.
+      // Kopya: her belge nolu fiş 1 kopya (yazdir.ts kuralı) (ortak alan denetimi 19.11.2026, #39 / #40)
+      const secilen = printers.find((p) => String(p.id) === String(selectedPrinterId)) || null;
+      const printerName = secilen
+        ? (secilen.cihazAdi?.trim() || secilen.ad?.trim() || null)
+        : (resolvedResult?.printer?.cihazAdi || resolvedResult?.printer?.ad || null);
+      const res = await fisiYazdir(hazir, {
+        printerId: secilen ? secilen.id : null,
+        printerName,
+        copies: 1,
+        isPos: printType === "POS",
+      });
+      if (res.success) return true;
+      // Hata olunca pencere kapanmaz; mesaj gösterilir (#38)
+      setYazdirHatasi(res.message || "Fiş yazıcıya gönderilemedi.");
+      return false;
+    } catch (e: any) {
+      setYazdirHatasi(e?.message || "Fiş yazıcıya gönderilemedi.");
+      return false;
+    } finally {
+      setIsPrinting(false);
+    }
+  }, [fis, isPrinting, printers, selectedPrinterId, resolvedResult, printType]);
 
   // Doğrudan yazdırma: fiş hazır olunca yazdır ve kapat; hata olursa pencere açılır, hata görünür.
   const otomatikBasildi = useRef(false);
-  useEffect(() => { if (!show) otomatikBasildi.current = false; }, [show]);
+  useEffect(() => { if (!show) { otomatikBasildi.current = false; setYazdirHatasi(null); } }, [show]);
   useEffect(() => {
     if (!show || !autoPrint || otomatikBasildi.current || !fis) return;
     otomatikBasildi.current = true;
-    handlePrint(fis).finally(() => onHide());
+    // Yalnız başarıda kapanır; başarısızlıkta pencere hata ile açılır (#38)
+    handlePrint(fis).then((basildi) => { if (basildi) onHide(); });
   }, [show, autoPrint, fis, handlePrint, onHide]);
 
   // Keyboard shortcut listener (F8 / F10 inside print modal)
@@ -86,7 +109,7 @@ export const TicariFisPrintModal: React.FC<TicariFisPrintModalProps> = ({ show, 
   if (!fatura) return null;
 
   return (
-    <Modal show={show && (!autoPrint || !!hata)} onHide={onHide} size="xl" centered className="ticari-print-modal" backdrop="static">
+    <Modal show={show && (!autoPrint || !!hata || !!yazdirHatasi)} onHide={onHide} size="xl" centered className="ticari-print-modal" backdrop="static">
       <Modal.Header closeButton className="bg-light py-2 px-3 border-bottom d-print-none">
         <div className="d-flex align-items-center justify-content-between w-100 me-3 flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2">
@@ -112,7 +135,8 @@ export const TicariFisPrintModal: React.FC<TicariFisPrintModalProps> = ({ show, 
               >
                 {printers.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.ad || p.cihazAdi || `Yazıcı #${p.id}`} {p.kopyaSayisi ? `(${p.kopyaSayisi} Kopya)` : ""}
+                    {/* "(N Kopya)" etiketi kaldırıldı: her belge nolu fiş 1 kopya basılır (ortak alan denetimi 19.11.2026, #40) */}
+                    {p.ad || p.cihazAdi || `Yazıcı #${p.id}`}
                   </option>
                 ))}
                 {printers.length === 0 && <option value="">Sistem Varsayılan Yazıcısı</option>}
@@ -139,6 +163,13 @@ export const TicariFisPrintModal: React.FC<TicariFisPrintModalProps> = ({ show, 
       </Modal.Header>
 
       <Modal.Body className="p-4 bg-light overflow-auto" style={{ maxHeight: "calc(85vh - 110px)" }}>
+        {yazdirHatasi && (
+          <Alert variant="danger" className="mb-3 py-2 small" dismissible onClose={() => setYazdirHatasi(null)}>
+            <div className="fw-bold">Fiş yazıcıya gönderilemedi.</div>
+            <div>{yazdirHatasi}</div>
+            <div className="mt-1">Yazıcı köprüsünü (PrinterAgent) ve seçilen yazıcıyı kontrol edip yeniden deneyin.</div>
+          </Alert>
+        )}
         <SablonluFisOnizleme fis={fis} hata={hata} />
       </Modal.Body>
 
@@ -147,7 +178,7 @@ export const TicariFisPrintModal: React.FC<TicariFisPrintModalProps> = ({ show, 
           <IconX size={16} className="me-1" />
           Kapat
         </Button>
-        <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis}>
+        <Button variant="primary" size="sm" onClick={() => handlePrint()} disabled={!fis || isPrinting}>
           <IconPrinter size={16} className="me-1" />
           Yazdır
         </Button>

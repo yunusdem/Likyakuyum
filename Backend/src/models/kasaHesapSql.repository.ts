@@ -1,3 +1,4 @@
+import { KendiKayit, kendiKayitKosulu } from "../utils/kendiKayit.js";
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
@@ -68,6 +69,28 @@ export interface HesapHareketiModel {
   eklemeZamani?: string | null;
   guncelleyenId?: number | null;
   guncellemeZamani?: string | null;
+  /** Kaydı yazan fiş ("Sarraf Fişi", "Döviz Fişi", "Perakende Fişi"); doluysa Kasa Hareket'te salt okunur (ortak alan denetimi 19.11.2026, #32) */
+  fisKaynagi?: string | null;
+}
+
+/**
+ * Fişlerin kendi yazdığı kasa kayıtları: işçilik ("… Fişi İşçilik - …") ve sarraf havale/hesap ödemesi ("Sarraf Fişi Ödeme - …").
+ * Bunlar vezne bakiyesine yazılmadan doğrudan eklenir; Kasa Hareket'in kaydet/sil yordamı ise vezneyi geri alıp yeniden işler,
+ * MIKTAR/HAS_TUTARI/KUR'u sıfırlar — bu yüzden yalnız kendi fişinden düzeltilir / silinir (ortak alan denetimi 19.11.2026, #32).
+ * Karşılaştırma SQL'de, yazan koddaki gibi VARCHAR sabitiyle yapılır (Türkçe harfler veritabanı kod sayfasına aynı biçimde çevrilir).
+ */
+const FIS_KAYNAGI_SQL = (a: string) => `CASE
+    WHEN ${a}.ACIKLAMA LIKE 'Sarraf Fişi İşçilik - %' OR ${a}.ACIKLAMA LIKE 'Sarraf Fişi Ödeme - %' THEN 'SARRAF'
+    WHEN ${a}.ACIKLAMA LIKE 'Döviz Fişi İşçilik - %' THEN 'DOVIZ'
+    WHEN ${a}.ACIKLAMA LIKE 'Perakende Fişi İşçilik - %' THEN 'PERAKENDE'
+    ELSE NULL END`;
+const FIS_KAYNAGI_ADI: Record<string, string> = { SARRAF: "Sarraf Fişi", DOVIZ: "Döviz Fişi", PERAKENDE: "Perakende Fişi" };
+const fisKaynagiAdi = (kod: unknown): string | null => (kod ? FIS_KAYNAGI_ADI[String(kod).trim()] || null : null);
+function fistenOlusanReddet(kod: unknown, islem: "düzeltilemez" | "silinemez"): void {
+  const ad = fisKaynagiAdi(kod);
+  if (ad) {
+    throw ApiError.badRequest(`Bu kasa kaydı ${ad}'nden oluştu; Kasa Hareket'ten ${islem}. Fişin kendi ekranından düzeltin ya da silin.`);
+  }
 }
 
 export interface SaveHesapHareketiDto {
@@ -762,7 +785,7 @@ export class KasaHesapSqlRepository {
   // ═══════════════════════════════════════════════════════════════════════════
 
   public static async listHareketler(
-    filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number; baslangic?: string | null; durbun?: FisDurbunFiltre },
+    filter?: { hesapId?: number; vezneId?: number; search?: string; limit?: number; baslangic?: string | null; durbun?: FisDurbunFiltre; kendi?: KendiKayit | null },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<HesapHareketiModel[]> {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
@@ -776,7 +799,8 @@ export class KasaHesapSqlRepository {
         HH.TARIH, HH.ACIKLAMA, HH.PARA_ID, P.KOD AS PARA_KODU, P.AD AS PARA_ADI,
         HH.MEBLAG, HH.KDV_ORANI, HH.KDV, HH.TIP, HH.VEZNE_ID, V.KOD AS VEZNE_KOD, V.AD AS VEZNE_AD,
         HH.MIKTAR, HH.HAS_TUTARI, HH.KUR,
-        HH.EKLEYEN_ID, HH.EKLEME_ZAMANI, HH.GUNCELLEYEN_ID, HH.GUNCELLEME_ZAMANI
+        HH.EKLEYEN_ID, HH.EKLEME_ZAMANI, HH.GUNCELLEYEN_ID, HH.GUNCELLEME_ZAMANI,
+        ${FIS_KAYNAGI_SQL("HH")} AS FIS_KAYNAGI
       FROM TODVZ_HESAP_HAREKETI HH
       LEFT JOIN TODVZ_HESAP H ON H.HESAP_ID = HH.HESAP_ID
       LEFT JOIN TODVZ_PARA P ON P.PARA_ID = HH.PARA_ID
@@ -808,6 +832,8 @@ export class KasaHesapSqlRepository {
       query += k.sql;
       durbunParametreleriniBagla(req, k.parametreler);
     }
+    const kendiKosul = kendiKayitKosulu(req, "HH", filter?.kendi); // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
+    if (kendiKosul) query += ` AND ${kendiKosul}`;
     query += ` ORDER BY HH.TARIH DESC, HH.HESAP_HAREKETI_ID DESC`;
 
     const res = await req.query(query);
@@ -835,6 +861,7 @@ export class KasaHesapSqlRepository {
       eklemeZamani: r.EKLEME_ZAMANI ? new Date(r.EKLEME_ZAMANI).toISOString() : null,
       guncelleyenId: r.GUNCELLEYEN_ID,
       guncellemeZamani: r.GUNCELLEME_ZAMANI ? new Date(r.GUNCELLEME_ZAMANI).toISOString() : null,
+      fisKaynagi: fisKaynagiAdi(r.FIS_KAYNAGI),
     }));
   }
 
@@ -857,9 +884,26 @@ export class KasaHesapSqlRepository {
 
     const targetId = dto.hesapHareketiId && Number(dto.hesapHareketiId) > 0 ? Number(dto.hesapHareketiId) : null;
     const meblag = Number(dto.meblag) || 0;
-    const miktar = Number(dto.miktar) || 0;
-    const hasTutari = Number(dto.hasTutari) || 0;
-    const kur = Number(dto.kur) || 0;
+    let miktar = Number(dto.miktar) || 0;
+    let hasTutari = Number(dto.hasTutari) || 0;
+    let kur = Number(dto.kur) || 0;
+
+    // Düzeltmede: fişten oluşan kayıt reddedilir; yükte gelmeyen MIKTAR / HAS_TUTARI / KUR kayıttaki değerle korunur
+    // (Kasa Hareket ekranı bu alanları göndermiyor, her düzeltme sıfırlıyordu) (ortak alan denetimi 19.11.2026, #32)
+    if (targetId) {
+      const mevcut = await pool.request().input("ID", sql.Int, targetId).query(`
+        SELECT ${FIS_KAYNAGI_SQL("HH")} AS FIS_KAYNAGI, HH.MIKTAR, HH.HAS_TUTARI, HH.KUR
+        FROM TODVZ_HESAP_HAREKETI HH WHERE HH.HESAP_HAREKETI_ID = @ID
+      `);
+      const m = mevcut.recordset?.[0];
+      if (m) {
+        fistenOlusanReddet(m.FIS_KAYNAGI, "düzeltilemez");
+        const gelmedi = (v: unknown) => v === undefined || v === null || v === "";
+        if (gelmedi(dto.miktar)) miktar = Number(m.MIKTAR) || 0;
+        if (gelmedi(dto.hasTutari)) hasTutari = Number(m.HAS_TUTARI) || 0;
+        if (gelmedi(dto.kur)) kur = Number(m.KUR) || 0;
+      }
+    }
     const kdvOrani = Number(dto.kdvOrani) || 0;
     const kdv = dto.kdv !== undefined && dto.kdv !== null ? Number(dto.kdv) : parseFloat(((meblag * kdvOrani) / 100).toFixed(4));
     const tip = dto.tip === 0 ? 0 : 1;
@@ -935,6 +979,13 @@ export class KasaHesapSqlRepository {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
     await this.ensureTables(pool);
     await this.ensureProcedures(pool);
+
+    // Fişten oluşan kayıt (işçilik / sarraf ödemesi) vezneye yazılmadığı halde silme yordamı vezneden düşüyordu; yalnız fişinden silinir
+    // (ortak alan denetimi 19.11.2026, #32)
+    const kaynak = await pool.request().input("ID", sql.Int, hesapHareketiId).query(`
+      SELECT ${FIS_KAYNAGI_SQL("HH")} AS FIS_KAYNAGI FROM TODVZ_HESAP_HAREKETI HH WHERE HH.HESAP_HAREKETI_ID = @ID
+    `);
+    fistenOlusanReddet(kaynak.recordset?.[0]?.FIS_KAYNAGI, "silinemez");
 
     try {
       const req = pool.request();

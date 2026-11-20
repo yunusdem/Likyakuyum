@@ -3,7 +3,7 @@ import { DovizFisService } from "../services/dovizFis.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { fisVeznesi } from "../services/yetki/fisVeznesi.js";
 import { fisKayitYetkisi, gunSiniri, kayitErisimi } from "../services/yetki/fisYetkileri.js";
-import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
+import { kullaniciYetkisi, yetkiGerekli } from "../services/yetki/kullaniciYetkisi.js";
 import { bankaHesabiDenetle, dovizKurDenetle, komisyonDenetle } from "../services/yetki/fisIcerikYetkisi.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -123,10 +123,11 @@ export class DovizFisController {
    * GET /api/v1/doviz-fis/debug-info
    */
   public static getDebugInfo = asyncHandler(async (req: Request, res: Response) => {
-    const dbContext = DovizFisController.getDbContext(req);
-    // İsteğin kendi firmasının havuzu: getActivePool() süreçteki İLK bağlı havuzu verir (çok firmalı sunucuda başka firmanın veritabanı)
+    // Yalnız sistem yöneticisi; havuz oturumdaki kullanıcının veritabanı (başlık / sorgu değeri değil). getActivePool() süreçteki
+    // İLK bağlı havuzu verir (çok firmalı sunucuda başka firmanın veritabanı) (ortak alan denetimi 19.11.2026, #28)
+    await yetkiGerekli(req, (y) => y.yonetici, "Bu bilgi yalnız sistem yöneticisine açıktır.");
     const { getDbPool } = await import("../config/mssql.config.js");
-    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    const pool = await getDbPool(req.user?.dbServer, req.user?.dbName);
 
     // 1. Foreign keys on TODVZ_FIS, TODVZ_FIS_SATIRI, TODVZ_VEZNE_BAKIYE
     let foreignKeys: any[] = [];
@@ -172,7 +173,19 @@ export class DovizFisController {
     } catch (e: any) { kullanicilar = [{ error: e.message }]; }
 
     try {
-      const tRes = await pool.request().query("SELECT TOP 1 * FROM TODVZ_TANIM");
+      // SELECT * şifre kolonlarını (DEGISIKLIK_TAKIP_SIFRESI, entegratör / MASAK şifreleri) da döndürüyordu: yalnız fiş kaydına ilişkin
+      // alanlar, tabloda olanlar okunur (ortak alan denetimi 19.11.2026, #28)
+      const TANIM_ALANLARI = [
+        "FIRMA_ADI", "SUBE_KODU", "SUBE_ADI", "HESAP_YILI", "USD_PARA_ID", "EUR_PARA_ID", "RAPOR_PARA_ID", "HAS_ALTIN_PARA_ID",
+        "ALIS_ISTATISTIK_ID", "SATIS_ISTATISTIK_ID", "ARBITRAJ_ALIS_ISTATISTIK_ID", "ARBITRAJ_SATIS_ISTATISTIK_ID",
+        "FISTE_COKLU_SATIR", "TL_YUVARLAMA_ARALIGI", "TL_YUVARLAMA_ESIGI", "DONEM_ONAY_TARIHI", "DIGER_VERITABANI_ADI",
+      ];
+      const kRes = await pool.request().query("SELECT UPPER(name) AS name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TODVZ_TANIM')");
+      const mevcut = new Set<string>((kRes.recordset || []).map((c: any) => String(c.name)));
+      const alanlar = TANIM_ALANLARI.filter((a) => mevcut.has(a));
+      const tRes = alanlar.length
+        ? await pool.request().query(`SELECT TOP 1 ${alanlar.map((a) => `[${a}]`).join(", ")} FROM dbo.TODVZ_TANIM`)
+        : { recordset: [] as any[] };
       tanim = tRes.recordset || [];
     } catch (e: any) { tanim = [{ error: e.message }]; }
 
@@ -400,10 +413,10 @@ export class DovizFisController {
    * Returns list of unregistered customers from TODVZ_KAYITSIZ_MUSTERI
    */
   public static getKayitsizMusteriler = asyncHandler(async (req: Request, res: Response) => {
-    const dbContext = DovizFisController.getDbContext(req);
-    // İsteğin kendi firmasının havuzu: getActivePool() süreçteki İLK bağlı havuzu verir (çok firmalı sunucuda başka firmanın veritabanı)
+    // Oturumdaki kullanıcının veritabanı (başlık / sorgu değeri değil): getActivePool() süreçteki İLK bağlı havuzu verir
+    // (çok firmalı sunucuda başka firmanın müşterileri) (ortak alan denetimi 19.11.2026, #28)
     const { getDbPool } = await import("../config/mssql.config.js");
-    const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
+    const pool = await getDbPool(req.user?.dbServer, req.user?.dbName);
 
     try {
       const result = await pool.request().query(`

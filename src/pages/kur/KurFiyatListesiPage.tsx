@@ -1476,6 +1476,21 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
       const missingBases = new Set<string>();
       const missingRatesBases = new Set<string>();
 
+      // Bağlı para kodu boş gümüş için taban: tipi Gümüş (2) ve has oranı 1000 olan satır, yoksa kodu GUMUS / GÜMÜŞ olan satır.
+      // Önceden boş bağlı kodlu gümüş HAS (altın) fiyatından hesaplanıyordu (ortak alan denetimi 19.11.2026, #47)
+      const gumusTabanKodu = (() => {
+        const kodu = (b: KurRowItem) => (b.kod || "").trim().toUpperCase();
+        const urunu = (b: KurRowItem) => productsById.get(b.paraId) || productsByKod.get(kodu(b));
+        const taban =
+          updatedRows.find((b) => {
+            const p = urunu(b);
+            const tipi = p?.urunTipi ?? b.urunTipi;
+            const has = p?.hasOrani ?? b.hasOrani;
+            return tipi !== null && tipi !== undefined && Number(tipi) === 2 && getMultiplier(Number(has)) === 1;
+          }) || updatedRows.find((b) => kodu(b) === "GUMUS" || kodu(b) === "GÜMÜŞ");
+        return taban ? kodu(taban) : "";
+      })();
+
       updatedRows.forEach((r, idx) => {
         const itemCode = (r.kod || "").trim().toUpperCase();
         const itemName = (r.ad || "").trim().toUpperCase();
@@ -1531,7 +1546,16 @@ export const KurFiyatListesiPage: React.FC<KurFiyatListesiPageProps> = ({
         // 2. [A- Ürün Tanımları] sayfasındaki Bağlı Para Kodu (Statik değil, ürün kartında ne tanımlıysa o)
         let bagliParaKod = (prod?.bagliParaKodu || r.bagliParaKodu || "").trim().toUpperCase();
         if (!bagliParaKod) {
-          bagliParaKod = urunTipiNum === 2 ? "HAS" : "HAS";
+          // Gümüş altından hesaplanmaz: taban gümüş satırı yoksa gümüş hesaplanmaz (#47)
+          if (urunTipiNum === 2) {
+            if (!gumusTabanKodu) {
+              missingBases.add("GÜMÜŞ (has oranı 1000 gümüş satırı)");
+              return;
+            }
+            bagliParaKod = gumusTabanKodu;
+          } else {
+            bagliParaKod = "HAS";
+          }
         }
 
         // Eğer bu satırın kendi kodu bağlı para kodu ile aynı ise (ör: HAS'ın bağlı parası HAS),

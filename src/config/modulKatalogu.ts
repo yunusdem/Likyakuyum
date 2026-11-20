@@ -257,6 +257,10 @@ const SAYFA_TAKMA_ADLARI: Record<string, string> = {
   "perakende/liste": "perakende/satis-listesi",
   // Kur
   "kur/gunluk-fiyat-listesi": "kur/anlik-fiyat-listesi",
+  // Eski Merkez Bankası adresleri (d71dd6c2b menüde merkez-bankasi-* adına geçti, eskiler yönlendirme olarak kaldı)
+  // (ortak alan denetimi 19.11.2026, #59)
+  "kur/merkez-kurlar": "kur/merkez-bankasi-kurlari",
+  "kur/merkez-saklananlar": "kur/merkez-bankasi-saklananlar",
   "tanimlar/pano-tanimi": "kur/pano-tanimi",
   // Banka
   "banka/hesap-karti": "banka/hesap-kartlari",

@@ -428,6 +428,9 @@ const UserDefinitionsPage: React.FC = () => {
   // (docs/KULLANICI_GORUNUM_YOL_HARITASI.md, G10). Yalnız yönetici okur/yazar; kart kaydıyla birlikte kaydedilir.
   const [kisayolKapali, setKisayolKapali] = useState<string[]>([]);
   const kisayolYuklenen = useRef<{ id: string; kapali: string[] } | null>(null);
+  // Kullanıcı adı yazılırken adı tutan kart kendiliğinden açılır; o kartın kimliği ve yazmaya başlamadan önceki durum (yeni kayıt
+  // ya da açık kart) burada tutulur. Kart açıkça seçilince / kaydedilince / "Yeni" ile sıfırlanır (bkz. kullaniciAdiniUygula)
+  const adEslesmesiRef = useRef<{ id: string; onceki: { yeni: boolean; kart: UserProfile } } | null>(null);
   const rawDb = localStorage.getItem("kuyumcu_erp_active_db");
   const activeDb = rawDb && rawDb !== "test" ? rawDb : "R2016_dvz";
   const rawServer = localStorage.getItem("kuyumcu_erp_active_server");
@@ -502,6 +505,9 @@ const UserDefinitionsPage: React.FC = () => {
           try {
             const toSave = {
               ...updatedUser,
+              // Otomatik kayıt şifreye dokunmaz: kutudaki değer (kendi kartında doğrulama, başka kartta yeni şifre) yalnız
+              // "Kaydet" ile gider; boş şifre sunucuda mevcut şifreyi korur (ortak alan denetimi 19.11.2026, #17)
+              password: "",
               ratePermType: updatedUser.ratePermType === "Limitli" ? "Yüzde" : (updatedUser.ratePermType || "Var"),
               ratePermValue: (updatedUser.ratePermType === "Yüzde" || updatedUser.ratePermType === "Limitli")
                 ? String(updatedUser.ratePermValue || "0").replace(/,/g, ".")
@@ -568,6 +574,7 @@ const UserDefinitionsPage: React.FC = () => {
             await UserService.updateUser(targetUser.id, {
               ...targetUser,
               appearance: newAppearance,
+              password: "", // otomatik kayıt şifreye dokunmaz (#17)
             }).catch((err) => {
               console.warn("UserService.updateUser görünüm hatası:", err);
             });
@@ -615,10 +622,9 @@ const UserDefinitionsPage: React.FC = () => {
 
   // Yönetim paneli (merkez) açıkken mevcut kullanıcının şifresi buradan yazılmaz; firma yöneticisi sıfırlar
   const merkez = authUser?.merkez;
-  // Kullanıcı kartlarını yöneten (sunucudaki kuralla aynı): merkez açıkken firma yöneticisi, değilse sistem yöneticisi.
-  const kartYoneticisi = Boolean(
-    merkez?.firmaYoneticisi || authUser?.isSysAdmin || authUser?.role === "admin"
-  );
+  // Kullanıcı kartlarını yöneten (sunucudaki kuralla aynı, Y3): merkezde firma yöneticisi ya da kartta sistem yöneticisi
+  // (profil kartı her açılışta karttan okur; kesin karar sunucuda) (ortak alan denetimi 19.11.2026, #23)
+  const kartYoneticisi = Boolean(merkez?.firmaYoneticisi || authUser?.isSysAdmin || authUser?.role === "admin");
 
   const seciliKullaniciId = currentUser?.id ? String(currentUser.id) : "";
   React.useEffect(() => {
@@ -797,6 +803,7 @@ const UserDefinitionsPage: React.FC = () => {
           targetIdx = authIdx !== -1 ? authIdx : 0;
         }
 
+        adEslesmesiRef.current = null;
         setUserIndex(targetIdx);
         const selectedUser = ensureUserSidebarStyle(JSON.parse(JSON.stringify(dbUsers[targetIdx])));
 
@@ -848,75 +855,64 @@ const UserDefinitionsPage: React.FC = () => {
     setCurrentUser((prev) => ({ ...prev, [field]: value }));
   };
 
-  /** Kullanıcı adı değiştiğinde: kayıt varsa mevcut kartı yükler, kayıt yoksa yeni kayıt moduna geçirir */
-  const handleUsernameChange = (newVal: string) => {
+  /**
+   * Kullanıcı adı yazıldıkça: adı tutan başka bir kayıt varsa o kart yüklenir. Tutan kayıt yoksa açık (kayıtlı) kartın adı
+   * değiştiriliyordur: kart kimliği korunur, kayıtta ad güncellenir. Yeni kullanıcı yalnız "Yeni" ile açılır — önceden ad
+   * değiştirmek yeni kayıt açıyordu. Şifre kutusundaki değer yalnız kendi kartına geçerken korunur (kendi kartında doğrulama
+   * şifresidir); başka karta yöneticinin yazdığı yeni şifre taşınmaz. (ortak alan denetimi 19.11.2026, #17)
+   */
+  const kullaniciAdiniUygula = (newVal: string, yazarken: boolean) => {
     const cleanVal = newVal.replace(/\s+/g, "");
     const trimmed = cleanVal.trim().toLowerCase();
-
-    if (!trimmed) {
-      setCurrentUser((prev) => ({
-        ...prev,
-        id: "",
-        username: "",
-      }));
-      setIsNewRecord(true);
-      return;
-    }
-
-    const matched = users.find(
-      (u) => u.username && u.username.toLowerCase().trim() === trimmed
-    );
+    const matched = trimmed
+      ? users.find((u) => u.username && u.username.toLowerCase().trim() === trimmed)
+      : undefined;
 
     if (matched) {
-      // Kayıt var! Mevcut kullanıcının kartını yükle
+      if (String(matched.id) === String(currentUser.id) && !isNewRecord) {
+        setCurrentUser((prev) => ({ ...prev, username: cleanVal }));
+        return;
+      }
+      // Yazmaya başlamadan önceki durum bir kez saklanır (ali → alican gibi zincirde ilk durum korunur)
+      const oncekiEslesme = adEslesmesiRef.current;
+      adEslesmesiRef.current = {
+        id: String(matched.id),
+        onceki: oncekiEslesme && oncekiEslesme.id === String(currentUser.id)
+          ? oncekiEslesme.onceki
+          : { yeni: isNewRecord, kart: currentUser },
+      };
       const matchedIdx = users.findIndex((u) => String(u.id) === String(matched.id));
       if (matchedIdx !== -1) setUserIndex(matchedIdx);
+      const kendiKarti = !!authUser?.id && String(matched.id) === String(authUser.id);
       setCurrentUser(
         ensureUserSidebarStyle({
           ...JSON.parse(JSON.stringify(matched)),
-          password: currentUser.password || "", // şifre kutusunda yazılanı koru
+          password: kendiKarti ? currentUser.password || "" : "",
         })
       );
       setIsNewRecord(false);
-    } else {
-      // Kayıt yok! Sıfırdan yeni kayıt modu. Giriş yapanın ID'si temizlenir!
+    } else if (adEslesmesiRef.current && adEslesmesiRef.current.id === String(currentUser.id)) {
+      // Açık kart adla eşleşip kendiliğinden açılmıştı ve yazılan ad artık onu tutmuyor: o kart yeniden adlandırılmaz, yazmaya
+      // başlamadan önceki duruma dönülür. Yoksa "ali" varken yeni kullanıcı "ali2" yazan yönetici ali'nin kartını eziyordu.
+      if (!(yazarken || trimmed)) return;
+      const { yeni, kart } = adEslesmesiRef.current.onceki;
+      adEslesmesiRef.current = null;
+      if (!yeni) {
+        const oncekiIdx = users.findIndex((u) => String(u.id) === String(kart.id));
+        if (oncekiIdx !== -1) setUserIndex(oncekiIdx);
+      }
+      setIsNewRecord(yeni);
+      setCurrentUser({ ...kart, ...(yeni ? { id: "" } : {}), username: cleanVal });
+    } else if (!isNewRecord && currentUser.id) {
+      // Açık kartın adı değiştiriliyor (boşaltılsa da kimlik kalır; kayıtta boş ad kabul edilmez)
+      if (yazarken || trimmed) setCurrentUser((prev) => ({ ...prev, username: cleanVal }));
+    } else if (yazarken || trimmed) {
       setIsNewRecord(true);
-      setCurrentUser((prev) => ({
-        ...prev,
-        id: "",
-        username: cleanVal,
-      }));
+      setCurrentUser((prev) => ({ ...prev, id: "", username: cleanVal }));
     }
   };
-
-  const handleUsernameBlur = (newVal: string) => {
-    const cleanVal = newVal.replace(/\s+/g, "");
-    const trimmed = cleanVal.trim().toLowerCase();
-    if (!trimmed) return;
-
-    const matched = users.find(
-      (u) => u.username && u.username.toLowerCase().trim() === trimmed
-    );
-
-    if (matched) {
-      const matchedIdx = users.findIndex((u) => String(u.id) === String(matched.id));
-      if (matchedIdx !== -1) setUserIndex(matchedIdx);
-      setCurrentUser(
-        ensureUserSidebarStyle({
-          ...JSON.parse(JSON.stringify(matched)),
-          password: currentUser.password || "",
-        })
-      );
-      setIsNewRecord(false);
-    } else {
-      setIsNewRecord(true);
-      setCurrentUser((prev) => ({
-        ...prev,
-        id: "",
-        username: cleanVal,
-      }));
-    }
-  };
+  const handleUsernameChange = (newVal: string) => kullaniciAdiniUygula(newVal, true);
+  const handleUsernameBlur = (newVal: string) => kullaniciAdiniUygula(newVal, false);
 
   const handleInputFocusOrClick = (
     e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement> | React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -1019,13 +1015,23 @@ const UserDefinitionsPage: React.FC = () => {
 
       const passwordVal = (currentUser.password || "").trim();
 
-      // Veritabanında / listede bu kullanıcı adına sahip kayıt var mı kontrol et:
-      const existingUser = users.find(
-        (u) => u.username && u.username.toLowerCase().trim() === trimmedUsername.toLowerCase()
+      // Kayıt modu kart kimliğiyle seçilir: açık (kayıtlı) kart güncellenir — ad değiştiyse yeniden adlandırılır —, yeni kayıt
+      // yalnız "Yeni" ile açılan kartta. Önceden kullanıcı adı eşleşmesine bakılıyordu: ad değiştirmek yeni kayıt açıyordu.
+      // (ortak alan denetimi 19.11.2026, #17)
+      const existingUser = !isNewRecord && currentUser.id
+        ? users.find((u) => String(u.id) === String(currentUser.id))
+        : undefined;
+      const adCakisan = users.find(
+        (u) => u.username && u.username.toLowerCase().trim() === trimmedUsername.toLowerCase() && String(u.id) !== String(existingUser?.id ?? "")
       );
+      if (adCakisan) {
+        setAlertError(`"${trimmedUsername}" kullanıcı adı daha önce kayıtlıdır. Lütfen farklı bir kullanıcı adı seçiniz.`);
+        setTimeout(() => setAlertError(null), 3000);
+        return;
+      }
 
       // =========================================================================
-      // 1. DURUM: KAYIT YOK İSE -> SIFIRDAN YENİ KAYIT
+      // 1. DURUM: YENİ KART ("Yeni") -> SIFIRDAN YENİ KAYIT
       // Giriş yapan kullanıcının kaydı güncellenmeyecek, sıfırdan yeni kayıt oluşacak
       // =========================================================================
       if (!existingUser) {
@@ -1074,32 +1080,36 @@ const UserDefinitionsPage: React.FC = () => {
         } else if (created) {
           setCurrentUser(ensureUserSidebarStyle(created));
         }
+        adEslesmesiRef.current = null;
         setIsNewRecord(false);
         // ÖNEMLİ: Oturum (authUser / localStorage) ASLA değiştirilmez!
       } else {
         // =========================================================================
-        // 2. DURUM: KAYIT VAR İSE -> ŞİFRE KULLANICI ADI UYUŞUYORSA GÜNCELLENECEK
+        // 2. DURUM: KAYITLI KART -> GÜNCELLENECEK (#17)
+        // Şifre kutusu: kendi kartında doğrulamadır (yönetici olmayan kaydetmek için şifresini girer; kendi şifresi
+        // "Şifre Değiştir" ekranından değişir). Yöneticinin başka karta yazdığı şifre yeni şifredir; boş bırakılırsa
+        // kartın şifresi korunur — yönetici o kişinin şifresini bilmeden kaydedebilir.
         // =========================================================================
-        if (!passwordVal) {
-          setAlertError(`"${existingUser.username}" kullanıcısının bilgilerini güncellemek için lütfen kullanıcının şifresini giriniz.`);
+        const kendiKarti = !!authUser?.id && String(existingUser.id) === String(authUser.id);
+        if (kendiKarti && !kartYoneticisi && !passwordVal) {
+          setAlertError("Kartınızı kaydetmek için lütfen şifrenizi giriniz.");
           setTimeout(() => setAlertError(null), 3000);
           return;
         }
 
-        // Şifre doğrulama kontrolü:
-        const isMatched = await UserService.verifyPassword({
-          userId: String(existingUser.id),
-          username: existingUser.username,
-          password: passwordVal,
-        });
-
-        if (!isMatched) {
-          setAlertError("Girilen şifre kullanıcı adı ile uyuşmuyor! Güncelleme yapılamadı.");
-          setTimeout(() => setAlertError(null), 3000);
-          return;
+        if (kendiKarti && passwordVal) {
+          const isMatched = await UserService.verifyPassword({
+            userId: String(existingUser.id),
+            username: existingUser.username,
+            password: passwordVal,
+          });
+          if (!isMatched) {
+            setAlertError("Girilen şifre kullanıcı adı ile uyuşmuyor! Güncelleme yapılamadı.");
+            setTimeout(() => setAlertError(null), 3000);
+            return;
+          }
         }
 
-        // Şifre uyuştu, güncelleme yapılabilir
         if (!kartYoneticisi) {
           if (String(existingUser.cashierCode).trim() !== cashierVal) {
             setAlertError("Veznenizi yalnız sistem yöneticisi değiştirebilir.");
@@ -1111,9 +1121,10 @@ const UserDefinitionsPage: React.FC = () => {
         const toSaveUser = {
           ...currentUser,
           id: existingUser.id,
-          username: existingUser.username,
+          // Yönetici adı değiştirebilir (aynı kart yeniden adlandırılır); yönetici olmayanın adı sunucuda da değişmez
+          username: kartYoneticisi ? trimmedUsername : existingUser.username,
+          // Kendi kartında sunucu da doğrular, şifreyi değiştirmez; başka kartta boş = mevcut şifre korunur
           password: passwordVal,
-          verifyPassword: true,
           ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
           ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
             ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
@@ -1141,11 +1152,14 @@ const UserDefinitionsPage: React.FC = () => {
         const updatedList = (res.data || []).map(ensureUserSidebarStyle);
         setUsers(updatedList);
         const found = updatedList.find((u) => String(u.id) === String(existingUser.id));
+        // Kendi kartında doğrulama şifresi kutuda kalır (yeniden kaydetmek için); başka kartta yazılan yeni şifre temizlenir
+        const kutudakiSifre = kendiKarti ? passwordVal : "";
         if (found) {
-          setCurrentUser(ensureUserSidebarStyle({ ...found, password: passwordVal }));
+          setCurrentUser(ensureUserSidebarStyle({ ...found, password: kutudakiSifre }));
         } else if (updated) {
-          setCurrentUser(ensureUserSidebarStyle({ ...updated, password: passwordVal }));
+          setCurrentUser(ensureUserSidebarStyle({ ...updated, password: kutudakiSifre }));
         }
+        adEslesmesiRef.current = null;
         setIsNewRecord(false);
 
         // Yalnızca kullanıcı gerçekten kendi profilini güncelliyorsa senkronize edilir
@@ -1159,9 +1173,11 @@ const UserDefinitionsPage: React.FC = () => {
           if (storedUserStr) {
             try {
               const parsed = JSON.parse(storedUserStr);
+              // Şifre yerel depoya yazılmaz (önceden doğrulama şifresi düz metin olarak oturum kaydına giriyordu) (#17)
+              const { password: _sifre, ...kaydedilen } = toSaveUser;
               const merged = {
                 ...parsed,
-                ...toSaveUser,
+                ...kaydedilen,
                 appearance: toSaveUser.appearance || parsed.appearance,
               };
               localStorage.setItem("kuyumcu_erp_user", JSON.stringify(merged));
@@ -1197,6 +1213,7 @@ const UserDefinitionsPage: React.FC = () => {
       cashierCode: "01",
       isActive: true,
     });
+    adEslesmesiRef.current = null;
     setCurrentUser(blankUser);
     setIsNewRecord(true);
     setAlertSuccess("Yeni kullanıcı modu aktif. Bilgileri girip 'Kaydet' butonuna basınız.");
@@ -1229,6 +1246,7 @@ const UserDefinitionsPage: React.FC = () => {
 
   const handleNavigate = (direction: "first" | "prev" | "next" | "last") => {
     if (users.length === 0) return;
+    adEslesmesiRef.current = null;
     setIsNewRecord(false);
     let nextIdx = userIndex;
     if (direction === "first") nextIdx = 0;
@@ -1360,7 +1378,14 @@ const UserDefinitionsPage: React.FC = () => {
                   <Form.Control
                     type={showPassword ? "text" : "password"}
                     value={currentUser.password || ""}
-                    placeholder="Şifre giriniz"
+                    placeholder={
+                      // (ortak alan denetimi 19.11.2026, #17): kayıtlı kartta şifre kutusunun anlamı
+                      isNewRecord || !currentUser.id
+                        ? "Şifre giriniz"
+                        : isCurrentUserSelf
+                          ? "Kaydetmek için şifrenizi giriniz"
+                          : "Değiştirmek için yeni şifre yazın"
+                    }
                     disabled={isLoading}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => updateField("password", e.target.value)}
@@ -3127,6 +3152,7 @@ const UserDefinitionsPage: React.FC = () => {
         onSelect={(selectedU) => {
           const idx = users.findIndex((u) => String(u.id) === String(selectedU.id));
           if (idx !== -1) {
+            adEslesmesiRef.current = null;
             setUserIndex(idx);
             setCurrentUser(ensureUserSidebarStyle(JSON.parse(JSON.stringify(users[idx]))));
             setIsNewRecord(false);

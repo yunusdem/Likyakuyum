@@ -1,3 +1,4 @@
+import type { KendiKayit } from "../utils/kendiKayit.js";
 import {
   BankaSqlRepository,
   BankaHesapModel,
@@ -69,13 +70,16 @@ export class BankaService {
       fisSatirlari?: boolean;
       /** Dürbün gelişmiş filtresi (docs/FIS_TARIH_VE_DURBUN_YOL_HARITASI.md D1–D4, §5) */
       durbun?: FisDurbunFiltre;
+      /** Kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026) */
+      kendi?: KendiKayit | null;
     },
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<BankaHareketModel[]> {
     if (filter?.durbun && durbunFiltresiVar(filter.durbun)) return BankaService.durbunListesi(filter, filter.durbun, dbContext);
     const hareketler = await BankaSqlRepository.listHareketler(filter, dbContext);
     // Cari / vezne / işlem tipi / arama süzgeci olan çağrılar banka fişine özgü; fiş satırları yalnız istenince ve bu süzgeçler yokken eklenir
-    if (!filter?.fisSatirlari || filter.cariKartId || filter.vezneId || filter.islemTipi !== undefined || filter.search) return hareketler;
+    // Kendi kayıtları yetkisinde fişlerin banka satırları eklenmez (ekleyenleri fiş tablolarında; liste yalnız kendi banka fişleri) (ortak alan denetimi 19.11.2026)
+    if (!filter?.fisSatirlari || filter.kendi || filter.cariKartId || filter.vezneId || filter.islemTipi !== undefined || filter.search) return hareketler;
     const fisSatirlari = await BankaSqlRepository.listFisBankaSatirlari(
       { bankaId: filter.bankaId, baslangicTarihi: filter.baslangicTarihi, bitisTarihi: filter.bitisTarihi, limit: filter.limit },
       dbContext
@@ -88,13 +92,13 @@ export class BankaService {
    * banka hesabıyla çekilip bellekte aynı filtreden geçer. Vezne filtresi bu ekranda banka hesabıdır.
    */
   private static async durbunListesi(
-    filter: { bankaId?: number; baslangicTarihi?: string; limit?: number; fisSatirlari?: boolean },
+    filter: { bankaId?: number; baslangicTarihi?: string; limit?: number; fisSatirlari?: boolean; kendi?: KendiKayit | null },
     durbun: FisDurbunFiltre,
     dbContext?: { dbServer?: string; dbName?: string }
   ): Promise<BankaHareketModel[]> {
-    const hareketler = await BankaSqlRepository.listHareketler({ bankaId: filter.bankaId, baslangicTarihi: filter.baslangicTarihi, limit: filter.limit, durbun }, dbContext);
+    const hareketler = await BankaSqlRepository.listHareketler({ bankaId: filter.bankaId, baslangicTarihi: filter.baslangicTarihi, limit: filter.limit, durbun, kendi: filter.kendi }, dbContext);
     let fisSatirlari: BankaHareketModel[] = [];
-    if (filter.fisSatirlari) {
+    if (filter.fisSatirlari && !filter.kendi) {
       // Gün sınırı (baslangicTarihi) ile dürbün başlangıcından sonraki geçerli; tarihler duvar saati, sürücü UTC gönderir
       const bas = [filter.baslangicTarihi?.slice(0, 10), durbun.tarihBas].filter(Boolean).sort().pop();
       const ham = await BankaSqlRepository.listFisBankaSatirlari(

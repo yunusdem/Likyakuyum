@@ -2,9 +2,8 @@ import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporGrup, RaporSonucVeri, RaporTanim } from "../raporTanim.js";
 import { type RaporParametreler, TL_PARA_SQL, adetOzeti, aralikOzeti, ek, ekOnay, filtreler, idFiltre, kurCoz, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
-import { ISCILIK_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketleriSql } from "../kaynak.js";
+import { FIS_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketleriSql } from "../kaynak.js";
 import { type ParaGrubu, paraBasliklariEkle, paraGrubunaGoreSirala, paraGrupBilgisi } from "../paraGrup.js";
-import { KasaHesapSqlRepository } from "../../../models/kasaHesapSql.repository.js";
 
 /**
  * Kasa raporları (docs/raporlar-faz2.md, Faz R2-K) — yalnızca SELECT.
@@ -199,10 +198,22 @@ const tlPara = async (pool: sql.ConnectionPool) => {
 };
 const paraSecimi = (p: RaporParametreler) => new Set((p.paraIdler || []).filter(n => Number.isInteger(n) && n > 0));
 
-const HAREKET_ALANLARI = `H.HESAP_HAREKETI_ID hareketId, H.TARIH tarih, H.HESAP_ID hesapId, RTRIM(ISNULL(K.KOD,'')) hesapKod, RTRIM(ISNULL(K.AD,'')) hesapAd,
+/**
+ * Kasa hesap hareketinin göç 016 kolonları (MIKTAR, HAS_TUTARI, KUR) veritabanında var mı. Rapor katmanı salt okunurdur (raporVeri.ts): eskiden
+ * KASDEF1 / HESEKS1 her çalışmada KasaHesapSqlRepository.ensureTables ile tabloyu değiştiriyor ve geriye dönük UPDATE yapıyordu; artık kolon yoksa
+ * 0 okunur. (ortak alan denetimi 19.11.2026, #33)
+ */
+export type HareketKolonlari = { miktar: boolean; hasTutari: boolean; kur: boolean };
+const hareketKolonlari = async (pool: sql.ConnectionPool): Promise<HareketKolonlari> => {
+  const r = (await pool.request().query(`SELECT COL_LENGTH('dbo.TODVZ_HESAP_HAREKETI','MIKTAR') m, COL_LENGTH('dbo.TODVZ_HESAP_HAREKETI','HAS_TUTARI') h,
+    COL_LENGTH('dbo.TODVZ_HESAP_HAREKETI','KUR') k`)).recordset[0] || {};
+  return { miktar: r.m != null, hasTutari: r.h != null, kur: r.k != null };
+};
+/** Hareket satırının SELECT alanları; göç 016 kolonları yalnız varsa okunur (yoksa 0). Saf fonksiyon. */
+export const hareketAlanlari = (k: HareketKolonlari) => `H.HESAP_HAREKETI_ID hareketId, H.TARIH tarih, H.HESAP_ID hesapId, RTRIM(ISNULL(K.KOD,'')) hesapKod, RTRIM(ISNULL(K.AD,'')) hesapAd,
   RTRIM(ISNULL(H.ACIKLAMA,'')) aciklama, H.PARA_ID paraId, RTRIM(ISNULL(P.KOD,'')) paraKod, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(H.MEBLAG,0) meblag,
   ISNULL(H.KDV_ORANI,0) kdvOrani, ISNULL(H.KDV,0) kdv, H.TIP tip, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(U.AD,'')) kaydeden,
-  ISNULL(H.MIKTAR,0) miktar, ISNULL(H.HAS_TUTARI,0) hasTutari, ISNULL(H.KUR,0) hasKuru`;
+  ${k.miktar ? "ISNULL(H.MIKTAR,0)" : "0"} miktar, ${k.hasTutari ? "ISNULL(H.HAS_TUTARI,0)" : "0"} hasTutari, ${k.kur ? "ISNULL(H.KUR,0)" : "0"} hasKuru`;
 const HAREKET_JOIN = `dbo.TODVZ_HESAP_HAREKETI H
   LEFT JOIN dbo.TODVZ_HESAP K ON K.HESAP_ID=H.HESAP_ID LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=H.PARA_ID
   LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.VEZNE_ID LEFT JOIN dbo.TODVZ_KULLANICI U ON U.KULLANICI_ID=H.EKLEYEN_ID`;
@@ -214,19 +225,21 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
    * fişlerin komisyon / BSMV / KMV'si (TL, ayrı satır, giriş), nakit cari hareketler ve kasa hesap hareketleri (KDV ayrı TL satırı); yürüyen bakiye.
    * TL'de fişler satır tutarıyla yazılır (eski yordam gibi); bankadan ödenen fişin TL'si ve bankaya giden satırın dövizi kasaya girmez.
    * Sarraf fişi, perakende fişi ve ürün tanımı (eski raporda yoktu; kullanıcı kararı 01.10.2026) kendi ibareleriyle ("Sarraf fişi", "Perakende fişi", "Ürün tanımı")
-   * gün ve fiş tipine göre toplu girer: ürün satırları ve vezneden yapılan ödemeler kendi paralarında (vezne hareketiyle aynı kural). Fişlerin işçilik kayıtları nakit olmadığından (ISCILIK_KAYDI) girmez. Vezne transferleri firma içi
+   * gün ve fiş tipine göre toplu girer: ürün satırları ve vezneden yapılan ödemeler kendi paralarında (vezne hareketiyle aynı kural). Fişlerin işçilik ve havale / hesap
+   * ödemesi kayıtları nakit olmadığından (FIS_KAYDI) girmez. Vezne transferleri firma içi
    * olduğundan, dekontlar eski raporda olmadığından kapsam dışıdır. Hesap seçilirse yalnızca o hesapların hareketleri.
    */
   async KASDEF1(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
-    await KasaHesapSqlRepository.ensureTables(pool);
+    // Salt okunur: tablo değiştirilmez, göç 016 kolonları varsa okunur (ortak alan denetimi 19.11.2026, #33)
+    const kolonlar = await hareketKolonlari(pool);
     const tl = await tlPara(pool);
     const istek = () => pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis);
     const satirlarHam: any[] = [];
-    // 1) Kasa hesap hareketleri (+ KDV TL satırı)
+    // 1) Kasa hesap hareketleri (+ KDV TL satırı); fişin işçilik ve havale / hesap ödemesi kayıtları hariç (ortak alan denetimi 19.11.2026, #11)
     { const req = istek(); const f = filtreler(req, p, { vezne: "V" }) + idFiltre(req, p.hesapIdler, "H.HESAP_ID", "hs");
-      const res = await req.query(`SELECT ${HAREKET_ALANLARI}, CASE WHEN CAST(H.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
-        FROM ${HAREKET_JOIN} WHERE CAST(H.TARIH AS date)<=@bit AND NOT ${ISCILIK_KAYDI("H")} ${f} ORDER BY H.TARIH, H.HESAP_HAREKETI_ID;`);
+      const res = await req.query(`SELECT ${hareketAlanlari(kolonlar)}, CASE WHEN CAST(H.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
+        FROM ${HAREKET_JOIN} WHERE CAST(H.TARIH AS date)<=@bit AND NOT ${FIS_KAYDI("H")} ${f} ORDER BY H.TARIH, H.HESAP_HAREKETI_ID;`);
       for (const r of res.recordset) for (const n of kasaNakitSatirlari({ ...r, paraId: Number(r.paraId), tip: Number(r.tip), meblag: Number(r.meblag), kdv: Number(r.kdv) }, tl))
         satirlarHam.push({ ...n, sira: 9, siraNo: n.kdvSatiri ? tl.siraNo : Number(r.siraNo) }); }
     if (!p.hesapIdler?.length) {
@@ -317,6 +330,7 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
   /** Kasa hareket listesi — hareket bazında; KDV ayrı TL satırı (eski VODVZR_KASA_HAREKET_LISTESI gibi); sıralama tarih / hesap / para (grup başlığı sıralamaya göre) */
   async KASHAR1(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
+    const kolonlar = await hareketKolonlari(pool); // göç 016 kolonları korumalı (ortak alan denetimi 19.11.2026, #33)
     const tl = await tlPara(pool);
     const req = pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis)
       .input("tip", sql.Int, p.kasaTipi === 0 || p.kasaTipi === 1 ? p.kasaTipi : null);
@@ -324,7 +338,7 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
     const f = filtreler(req, p, { vezne: "V" }) + idFiltre(req, p.hesapIdler, "H.HESAP_ID", "hs");
     const sira = p.siralama === "hesap" ? "K.KOD, H.TARIH" : "CAST(H.TARIH AS date), H.TARIH";
     const res = await req.query(`
-      SELECT ${HAREKET_ALANLARI}
+      SELECT ${hareketAlanlari(kolonlar)}
       FROM ${HAREKET_JOIN}
       WHERE CAST(H.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR H.TIP=@tip) ${f}
       ORDER BY ${sira}, H.HESAP_HAREKETI_ID;`);
@@ -361,7 +375,8 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
    */
   async HESEKS1(pool, p, t) {
     if (!p.baslangic || !p.bitis) throw ApiError.badRequest("Tarih aralığı zorunludur.");
-    await KasaHesapSqlRepository.ensureTables(pool);
+    // Salt okunur: tablo değiştirilmez, göç 016 kolonları varsa okunur (ortak alan denetimi 19.11.2026, #33)
+    const kolonlar = await hareketKolonlari(pool);
     const tl = await tlPara(pool);
     const siralama = secim(p, "siralama", ["kod", "ad", "tarih"]), hesapTipi = secim(p, "hesapTipi", ["hepsi", "borc", "alacak"]);
     const devirGizle = onay(p, "devirGizle"), devirAyrinti = onay(p, "devirAyrinti");
@@ -369,7 +384,7 @@ export const KASA_SORGULARI: Record<string, Sorgu> = {
     const ad = hesapAdAraligi(req, p, "K.AD");
     const f = idFiltre(req, p.hesapIdler, "H.HESAP_ID", "hs") + ad.sql;
     const res = await req.query(`
-      SELECT ${HAREKET_ALANLARI}, CASE WHEN CAST(H.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
+      SELECT ${hareketAlanlari(kolonlar)}, CASE WHEN CAST(H.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
       FROM ${HAREKET_JOIN}
       WHERE CAST(H.TARIH AS date)<=@bit ${f}
       ORDER BY ${siralama === "tarih" ? "" : "K.KOD, "}H.TARIH, H.HESAP_HAREKETI_ID;`);

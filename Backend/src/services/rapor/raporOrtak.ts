@@ -14,6 +14,8 @@ export interface RaporParametreler {
   cariBaslangic?: string; cariBitis?: string; vezneBaslangic?: string; vezneBitis?: string; paraIdler?: number[];
   /** Seçim listeleri (yönetici kararı 14.09.2026): boş = tümü. "İlk kod" listesi; "Son kod" seçilmişse ilk listedeki ilk kayıttan son kayda KOD aralığı */
   cariIdler?: number[]; vezneIdler?: number[];
+  /** Kullanıcının cari sınırlaması (göç 031; 1 izinli cariler, 2 yasaklı cariler). Denetleyici koyar, istekten gelmez (ortak alan denetimi 19.11.2026, #16) */
+  cariSinir?: { tip: number; idler: number[] };
   cariSonId?: number; vezneSonId?: number; paraSonId?: number;
   kurTuru?: number; kurTarihi?: string; kurAlani?: "alis" | "satis" | "ikisi";
   arama?: string; kmt?: string;
@@ -234,6 +236,16 @@ export function filtreler(req: sql.Request, p: RaporParametreler, alias: { cari?
     } else {
       cids.forEach((id, i) => req.input(`cl${i}`, sql.Int, id));
       if (cids.length) parcalar.push(`${alias.cari}.CARI_KART_ID IN (${cids.map((_, i) => `@cl${i}`).join(",")})`);
+    }
+    // Cari sınırlaması: kullanıcı yalnız izinli carileri görür / yasaklı carileri göremez — Cari Kart ve Cari Hareket ekranlarıyla aynı kural (#16).
+    // Carisi olmayan satır (perakende / döviz müşteri fişi; cari LEFT JOIN ile bağlı raporlar: Fiş Listeleme, Barkodlu Altın Satış, POS ekstresi)
+    // sınırlamanın konusu değildir, gizlenmez: NULL IN / NOT IN bilinmez döndüğü için önceden bu satırlar da düşüyordu. Cariyle INNER JOIN
+    // kuran cari raporlarında NULL satır olmadığından etkisi yoktur.
+    if (p.cariSinir && (p.cariSinir.tip === 1 || p.cariSinir.tip === 2)) {
+      const sids = (p.cariSinir.idler || []).filter(n => Number.isInteger(n) && n > 0);
+      const kolon = `${alias.cari}.CARI_KART_ID`;
+      if (p.cariSinir.tip === 1) parcalar.push(sids.length ? `(${kolon} IS NULL OR ${kolon} IN (${sids.join(",")}))` : `${kolon} IS NULL`);
+      else if (sids.length) parcalar.push(`(${kolon} IS NULL OR ${kolon} NOT IN (${sids.join(",")}))`);
     }
   }
   if (alias.vezne) {

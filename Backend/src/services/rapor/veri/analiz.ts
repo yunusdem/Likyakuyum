@@ -101,6 +101,15 @@ export function iscilikTabani(sekilKod: any, miktar: any, adet: any): number {
 }
 
 /**
+ * Sarraf fişi satırının işçilik tutarı (TL): satırın işçilik tutarı (ISCILIK_TUTARI, göç 021; varsa ve doluysa), yoksa işçilik has gramı × fişteki
+ * altın has kuru. ALTISC1 ve VEZALT1 aynı kuralı kullanır (ortak alan denetimi 19.11.2026, #29). Saf fonksiyon.
+ */
+export function sarrafIscilikTutari(iscilikTutariKayit: any, iscilikHasGram: any, hasKuru: any): number {
+  const kayitTl = Number(iscilikTutariKayit) || 0;
+  return kayitTl > 0 ? kayitTl : (Number(iscilikHasGram) || 0) * (Number(hasKuru) || 0);
+}
+
+/**
  * Sarraf fişi işçilik satırı: işçilik (TL) = satırın işçilik tutarı (ISCILIK_TUTARI, varsa ve doluysa), yoksa işçilik has gramı × fişteki altın has kuru.
  * İşçilik / birim fiyatı = işçilik (TL) ÷ taban (iscilikTabani); hesaplanamıyorsa boş. İşçilik (milyem) = birim işçilik has gramı × 1000
  * (has gram yoksa işçilik TL ÷ has kuru); o da yoksa satırda girilen ISCILIK_MIKTARI. KDV sarraf fişinde fiş düzeyinde tutulur: yalnız fişin
@@ -108,7 +117,7 @@ export function iscilikTabani(sekilKod: any, miktar: any, adet: any): number {
  */
 export function sarrafIscilikSatiri(r: Record<string, any>, ilkSatir: boolean): Record<string, any> {
   const ihg = Number(r.iscilikHasGram) || 0, hk = Number(r.hasKuru) || 0, oran = Number(r.kdvOrani) || 0, kdv = ilkSatir ? Number(r.fisKdv) || 0 : 0;
-  const kayitTl = Number(r.iscilikTutariKayit) || 0, tl = kayitTl > 0 ? kayitTl : ihg * hk, taban = iscilikTabani(r.sekilKod, r.miktar, r.adet);
+  const tl = sarrafIscilikTutari(r.iscilikTutariKayit, ihg, hk), taban = iscilikTabani(r.sekilKod, r.miktar, r.adet);
   const birimHas = (ihg > 0 ? ihg : tl > 0 && hk > 0 ? tl / hk : 0) / (taban || 1);
   const { iscilikTutariKayit: _k, ...kalan } = r;
   return { ...kalan, bolum: 2, bolumAd: BOLUM_ADI[2], belge: "Sarraf fişi", cins: r.paraKod, kdvOrani: oran, kdv, kdvMatrahi: oran > 0 ? kdv / (oran / 100) : 0, tip: Number(r.tipKod) === 1 ? "Satış" : "Alış",

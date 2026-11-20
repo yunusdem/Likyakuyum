@@ -53,6 +53,7 @@ import {
 } from "@tabler/icons-react";
 import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
+import { AlanDegistirDugmesi } from "../components/alan/AlanDegistir";
 import { CashDeskService } from "../services/cashDeskService";
 
 import { DashboardMenu } from "routes/DashboardRoute";
@@ -815,6 +816,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             </button>
           </div>
 
+          {/* Alan Değiştir: menünün en üstü (yalnız yetkili ve birden çok alanı olan kullanıcıda çizilir) */}
+          <AlanDegistirDugmesi />
+
           {/* Alt Kısım: Sol Dar İkon Şeridi (64px) + Sağ Alt Başlıklar Paneli (206px) */}
           <div className="d-flex flex-row flex-grow-1 overflow-hidden">
             {/* Sol Dar İkon Şeridi (64px) */}
@@ -1044,6 +1048,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           </button>
         </div>
       )}
+
+      {/* Alan Değiştir: menünün en üstü (yalnız yetkili ve birden çok alanı olan kullanıcıda çizilir) */}
+      <AlanDegistirDugmesi />
 
       {/* 2. Scrollable Navigation Menu */}
       <div className="sidebar-menu-wrapper">

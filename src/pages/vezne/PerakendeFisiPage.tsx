@@ -529,6 +529,30 @@ export function detectScenario(
   return "EARSIVFATURA";
 }
 
+/**
+ * Bu terminalde seçilmiş yerel yazıcı (localStorage; Döviz F10 ile aynı anahtar sırası, 7b568d1ad). Tanımlarda aynı adlı yazıcı
+ * varsa modu (80 / A4) için o da döner (ortak alan denetimi 19.11.2026, #54).
+ */
+const terminalYazicisiCoz = (printers: YaziciItem[]): { ad: string | null; tanim: YaziciItem | null } => {
+  let ad: string | null = null;
+  try {
+    const termUUID = PrinterService.getTerminalUUID();
+    ad =
+      localStorage.getItem(`likya_terminal_printer_${termUUID}`) ||
+      localStorage.getItem("likya_last_selected_printer") ||
+      localStorage.getItem("likya_terminal_last_printer");
+  } catch {
+    ad = null;
+  }
+  const temiz = (ad || "").trim();
+  if (!temiz) return { ad: null, tanim: null };
+  const tanim = printers.find((p) => (p.cihazAdi || "").trim() === temiz || (p.ad || "").trim() === temiz) || null;
+  return { ad: temiz, tanim };
+};
+
+/** Dürbün listesi eskiden yeniye gösterilir; sınır aşılınca sunucunun sırasıyla (FATURA_ID yeni→eski) en yeniler kalsın (ortak alan denetimi 19.11.2026, #36) */
+const perakendeDurbunYeniOnce = <T extends { faturaId: number }>(a: T, b: T): number => (Number(b.faturaId) || 0) - (Number(a.faturaId) || 0);
+
 export interface PerakendeFisiPageProps {
   isDuzeltme?: boolean;
 }
@@ -6018,12 +6042,14 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       user,
       printers,
     });
-    const isPos = resolved.recommendedPrintType === "POS";
+    // Bu terminalde seçilmiş yerel yazıcı tanımlardan önce gelir (Döviz F10 sırası; ortak alan denetimi 19.11.2026, #54)
+    const yerel = terminalYazicisiCoz(printers);
+    const isPos = yerel.tanim ? yerel.tanim.belgeYaziciModu !== 0 : resolved.recommendedPrintType === "POS";
     try {
       const fisCikti = await perakendeFisHtml(previewFatura, isPos ? "80" : "A4");
       const sonuc = await fisiYazdir(fisCikti, {
-        printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
-        copies: resolved.kopyaSayisi || 1,
+        printerName: yerel.ad || resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
+        copies: yerel.ad ? 1 : resolved.kopyaSayisi || 1,
         isPos,
       });
       if (sonuc.success) {
@@ -6412,13 +6438,15 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           user,
           printers,
         });
-        const isPos = resolved.recommendedPrintType === "POS";
+        // Bu terminalde seçilmiş yerel yazıcı tanımlardan önce gelir (Döviz F10 sırası; ortak alan denetimi 19.11.2026, #54)
+        const yerel = terminalYazicisiCoz(printers);
+        const isPos = yerel.tanim ? yerel.tanim.belgeYaziciModu !== 0 : resolved.recommendedPrintType === "POS";
         // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; çoklu satır varsa hepsi yazdırılır).
         try {
           const fisCikti = await perakendeFisHtml(result || payload, isPos ? "80" : "A4");
           const sonuc = await fisiYazdir(fisCikti, {
-            printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
-            copies: resolved.kopyaSayisi || 1,
+            printerName: yerel.ad || resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
+            copies: yerel.ad ? 1 : resolved.kopyaSayisi || 1,
             isPos,
           });
           if (!sonuc.success) {
@@ -6585,7 +6613,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         const vId = Number(f.vezneId || 0);
         return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
       });
-      const sinirli = sinirUygula(filteredList);
+      const sinirli = sinirUygula(filteredList, DURBUN_SINIRI, perakendeDurbunYeniOnce);
       setHistoryList(sinirli.liste);
       setHistoryTasti(sinirli.tasti);
     } catch (err: any) {
@@ -6648,7 +6676,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         const vId = Number(f.vezneId || 0);
         return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
       });
-      const sinirli = sinirUygula(filteredList);
+      const sinirli = sinirUygula(filteredList, DURBUN_SINIRI, perakendeDurbunYeniOnce);
       setHistoryList(sinirli.liste);
       setHistoryTasti(sinirli.tasti);
     } catch (err: any) {

@@ -32,6 +32,7 @@ import { Container, ListGroup, Button } from "react-bootstrap";
 //import custom components
 import UserMenu from "./UserMenu";
 import DestekZil from "components/destek/DestekZil";
+import { AlanRozeti } from "components/alan/AlanDegistir";
 import MasakModal from "components/masak/MasakModal";
 import MasakMenu from "components/masak/MasakMenu";
 import { TvKatalogMenuSecimModal } from "components/katalog/TvKatalogMenuSecimModal";
@@ -644,6 +645,11 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
               as={"ul"}
               className="d-flex align-items-center mb-0 gap-1 gap-sm-1.5 flex-shrink-0 ms-auto"
             >
+              {/* Bulunulan alan (veritabanı) rozeti: R2026 / A2026 */}
+              <ListGroup.Item as="li" className="me-0.5 flex-shrink-0">
+                <AlanRozeti />
+              </ListGroup.Item>
+
               {/* Theme Quick Selector Dropdown & Modal */}
               {kontrolAcik("kontrol:tema") && (
               <ListGroup.Item as="li" className="me-0.5 flex-shrink-0">

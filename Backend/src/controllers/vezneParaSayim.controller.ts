@@ -4,6 +4,12 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { VezneParaSayimSqlRepository, SaveVezneParaSayimPayload } from "../models/vezneParaSayimSql.repository.js";
 
+/** Oturumdaki firmanın veritabanı (jeton / firma kaydı; eski jetonda auth ara katmanının da okuduğu başlık) */
+const baglam = (req: Request) => ({
+  dbServer: req.user?.dbServer || (req.headers["x-db-server"] as string) || undefined,
+  dbName: req.user?.dbName || (req.headers["x-db-name"] as string) || undefined,
+});
+
 export class VezneParaSayimController {
   public static saveSayim = asyncHandler(async (req: Request, res: Response) => {
     const payload: SaveVezneParaSayimPayload = req.body;
@@ -17,7 +23,7 @@ export class VezneParaSayimController {
       payload.kullaniciAdi = authUser.fullName || authUser.username;
     }
 
-    const result = await VezneParaSayimSqlRepository.saveSayim(payload);
+    const result = await VezneParaSayimSqlRepository.saveSayim(payload, baglam(req));
     return ApiResponse.created(res, "Vezne kasa sayımı başarıyla kaydedildi.", result);
   });
 
@@ -27,7 +33,7 @@ export class VezneParaSayimController {
       throw ApiError.badRequest("Geçerli bir vezne ID girilmelidir.");
     }
 
-    const sonSayim = await VezneParaSayimSqlRepository.getSonSayimByVezne(vezneId);
+    const sonSayim = await VezneParaSayimSqlRepository.getSonSayimByVezne(vezneId, baglam(req));
     return ApiResponse.ok(res, "Son vezne sayımı getirildi.", sonSayim);
   });
 
@@ -35,7 +41,7 @@ export class VezneParaSayimController {
     const vezneId = req.params.vezneId ? parseInt(req.params.vezneId, 10) : 0;
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
 
-    const list = await VezneParaSayimSqlRepository.getGecmisSayimlar(vezneId, limit);
+    const list = await VezneParaSayimSqlRepository.getGecmisSayimlar(vezneId, limit, baglam(req));
     return ApiResponse.ok(res, "Geçmiş vezne sayımları listelendi.", list);
   });
 
@@ -45,7 +51,7 @@ export class VezneParaSayimController {
       throw ApiError.badRequest("Geçersiz sayım ID.");
     }
 
-    const sayim = await VezneParaSayimSqlRepository.getSayimById(sayimId);
+    const sayim = await VezneParaSayimSqlRepository.getSayimById(sayimId, baglam(req));
     if (!sayim) {
       throw ApiError.notFound("Sayım kaydı bulunamadı.");
     }
@@ -59,7 +65,7 @@ export class VezneParaSayimController {
       throw ApiError.badRequest("Geçersiz sayım ID.");
     }
 
-    await VezneParaSayimSqlRepository.deleteSayim(sayimId);
+    await VezneParaSayimSqlRepository.deleteSayim(sayimId, baglam(req));
     return ApiResponse.ok(res, "Sayım kaydı silindi.", { sayimId });
   });
 }

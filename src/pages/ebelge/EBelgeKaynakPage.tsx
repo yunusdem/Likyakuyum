@@ -123,7 +123,15 @@ export default function EBelgeKaynakPage() {
     setBusy(true); setHata(''); setSonuclar({});
     for (const k of silinecekler) {
       setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Siliniyor', mesaj: '' } }));
-      try { await ebelgeService.kaynakSil(k); setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Silindi', mesaj: '' } })); }
+      try {
+        const sonuc = await ebelgeService.kaynakSil(k);
+        // POS ile tahsil edilmiş sarraf fişi: çekim "iade bekliyor" oldu, tutar cihazdan iade edilmeli (POS K14; fiş ekranındaki uyarıyla aynı)
+        const iade = sonuc?.iade;
+        const mesaj = iade && iade.iadeBekleyenAdet > 0
+          ? `POS ile tahsil edilen ${Number(iade.iadeBekleyenTutar || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL (${iade.iadeBekleyenAdet} işlem) cihazdan iade edilmeli; kayıt POS'ta "iade bekliyor" olarak işaretlendi.`
+          : '';
+        setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Silindi', mesaj } }));
+      }
       catch (e: any) { setSonuclar(o => ({ ...o, [key(k)]: { no: k.belgeNo, durum: 'Silinemedi', mesaj: e.message || 'Fiş silinemedi.' } })); }
     }
     await yukle(sayfa);

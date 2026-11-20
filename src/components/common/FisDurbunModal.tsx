@@ -25,13 +25,18 @@ export interface FisDurbunModalProps<T> extends Omit<LookupModalProps<T>, "items
   sunucuArama?: boolean;
   /** sunucuArama kapalıyken istemcide arama */
   filterFn?: (item: T, term: string) => boolean;
+  /**
+   * Yeni→eski karşılaştırıcı: liste eskiden yeniye gösteriliyorsa verilir; sınır aşımında en yeni kayıtlar kalır, gösterim sırası
+   * korunur (baştan kesmek en yeni fişi düşürüyordu; ortak alan denetimi 19.11.2026, #36)
+   */
+  kesmeSirasi?: (a: T, b: T) => number;
 }
 
 const GECIKME_MS = 350;
 
 /** Pencere her açılışta yeniden kurulur: filtre bu aya döner (D4) */
 function FisDurbunIcerik<T extends Record<string, any>>(props: FisDurbunModalProps<T>) {
-  const { getir, alanlar, vezneler, urunler, tipler, etiketler, sunucuArama, filterFn, show, initialSearchTerm, ...lookup } = props;
+  const { getir, alanlar, vezneler, urunler, tipler, etiketler, sunucuArama, filterFn, kesmeSirasi, show, initialSearchTerm, ...lookup } = props;
   const [filtre, setFiltre] = useState<FisDurbunFiltreDegeri>(() => varsayilanDurbunFiltresi());
   const [arama, setArama] = useState<string>(initialSearchTerm || "");
   const [liste, setListe] = useState<T[]>([]);
@@ -42,6 +47,8 @@ function FisDurbunIcerik<T extends Record<string, any>>(props: FisDurbunModalPro
   const ilkIstek = useRef(true);
   const getirRef = useRef(getir);
   getirRef.current = getir;
+  const kesmeRef = useRef(kesmeSirasi);
+  kesmeRef.current = kesmeSirasi;
 
   const yukle = useCallback(async (f: FisDurbunFiltreDegeri, a: string) => {
     const no = ++istekNo.current;
@@ -50,7 +57,7 @@ function FisDurbunIcerik<T extends Record<string, any>>(props: FisDurbunModalPro
     try {
       const sonuc = await getirRef.current(durbunSorguParametreleri(f, sunucuArama ? a : undefined), DURBUN_SINIRI + 1);
       if (no !== istekNo.current) return;
-      const s = sinirUygula(sonuc || []);
+      const s = sinirUygula(sonuc || [], DURBUN_SINIRI, kesmeRef.current);
       setListe(s.liste);
       setTasti(s.tasti);
     } catch (e: any) {

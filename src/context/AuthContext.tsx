@@ -10,6 +10,10 @@ const YETKI_ALANLARI = [
   "hasSlipAmountChangePerm", "hasSlipBankAccountPerm", "hasCommissionPerm", "commissionRate", "canViewAccountBalance",
   "canViewOpenTermTrans", "isSuspiciousTransAuth", "noCrossRateCheck", "canBeOutsideCounterRate", "noDeviationWarning",
   "hasMasakWarning", "hasWorkspacePerm",
+  // Sonradan eklenen kart yetkileri (göç 026/028/031, giriş şekilleri): açık oturuma yansımıyordu (Y12)
+  // (ortak alan denetimi 19.11.2026, #45)
+  "hasVezneLastTransactionsPerm", "hasOnlyOwnRecordsPerm", "cariSinirlamaTipi", "atananCariIdler", "iscilikGirisSekli",
+  "dovizZiynetGirisSekli",
 ];
 
 interface AuthContextType {
@@ -91,6 +95,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (e.key === "kuyumcu_erp_access_token" && !e.newValue && user) {
         // Token was removed externally or cleared
         triggerSessionExpired();
+      } else if (e.key === "kuyumcu_erp_active_db" && e.oldValue && e.newValue && e.oldValue !== e.newValue && user) {
+        // Başka sekmede alan değiştirildi (ya da başka alana girildi): jeton ortak olduğu için bu sekme artık o alanda
+        // çalışır. Eski alanın ekranı açık kalıp yeni alana kayıt yazmasın diye sekme yeni alanda baştan açılır.
+        window.location.assign("/dashboard");
       } else if (e.key === "kuyumcu_erp_user" && e.newValue) {
         try {
           setUser(JSON.parse(e.newValue));

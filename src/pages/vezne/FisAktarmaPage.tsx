@@ -270,7 +270,9 @@ export const FisAktarmaPage: React.FC = () => {
                     size="sm"
                     value={hedefVeritabani}
                     onChange={(e) => setHedefVeritabani(e.target.value)}
-                    disabled={loading || dbAlanlari.length === 0}
+                    // Hedef yalnız Firma Tanımları › Diğer veritabanı adı; sunucu farklı seçimi reddeder (ortak alan denetimi 19.11.2026, #49)
+                    disabled
+                    title="Hedef alan Firma Tanımları'ndaki 'Diğer veritabanı adı'dır; oradan değiştirilir."
                     className={`font-monospace fw-bold ${alanYok ? "border-danger text-danger bg-danger bg-opacity-10" : "text-primary"}`}
                   >
                     <option value="">-- Hedef Alan Seçiniz (Tanımlı Alan Yok) --</option>

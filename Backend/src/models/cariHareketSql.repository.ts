@@ -310,7 +310,8 @@ export class CariHareketSqlRepository {
         sfWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR SF.[UNVAN] LIKE @search OR SF.[FIS_NO] LIKE @search)");
       }
       if (filters?.onlyOwnRecords && filters?.userId) {
-        sfWhere.push("(SF.[KULLANICI_ID] = @ownUserId OR (@ownVezneId > 0 AND SF.[VEZNE_ID] = @ownVezneId))");
+        // TODVZ_SARRAF_FISI'nde KULLANICI_ID yok, kaydeden EKLEYEN_ID (fisYetkileri KAYIT_TABLOLARI) (ortak alan denetimi 19.11.2026, #25)
+        sfWhere.push("(SF.[EKLEYEN_ID] = @ownUserId OR (@ownVezneId > 0 AND SF.[VEZNE_ID] = @ownVezneId))");
       }
       if (filters?.cariSinirlamaTipi && filters?.userId) {
         if (filters.cariSinirlamaTipi === 1) {
@@ -368,7 +369,8 @@ export class CariHareketSqlRepository {
         dfWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR F.[UNVAN] LIKE @search OR F.[BELGE_NO] LIKE @search)");
       }
       if (filters?.onlyOwnRecords && filters?.userId) {
-        dfWhere.push("(F.[KULLANICI_ID] = @ownUserId OR (@ownVezneId > 0 AND F.[VEZNE_ID] = @ownVezneId))");
+        // TODVZ_FIS'te KULLANICI_ID yok, kaydeden EKLEYEN_ID (ortak alan denetimi 19.11.2026, #25)
+        dfWhere.push("(F.[EKLEYEN_ID] = @ownUserId OR (@ownVezneId > 0 AND F.[VEZNE_ID] = @ownVezneId))");
       }
       if (filters?.cariSinirlamaTipi && filters?.userId) {
         if (filters.cariSinirlamaTipi === 1) {
@@ -1155,6 +1157,8 @@ export class CariHareketSqlRepository {
       await transaction.begin();
 
       const numId = parseInt(String(id), 10);
+      // Tek geri alma noktası: kayıt TODVZ_CARI_HAREKET'te ise eski nakit vezne etkisi burada BİR KEZ geri alınır, dalın sonunda
+      // yeni hâli BİR KEZ uygulanır; sarraf fişi dalında (kayıt cari harekette yok) bu çağrılar etkisizdir (ortak alan denetimi 19.11.2026, #2)
       await CariHareketSqlRepository.stokGirisiDegil(transaction, numId);
       await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
       let effectiveCariKartId = data.cariKartId;
@@ -1179,8 +1183,8 @@ export class CariHareketSqlRepository {
         SELECT [CARI_HAREKET_ID] FROM [dbo].[TODVZ_CARI_HAREKET] WITH (NOLOCK) WHERE [CARI_HAREKET_ID] = @CH_ID;
       `);
       if (chCheck.recordset.length > 0) {
-        await CariHareketSqlRepository.stokGirisiDegil(transaction, numId);
-        await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
+        // Stok girişi denetimi ve eski nakit vezne etkisinin geri alınması yukarıda (fonksiyon başında) bir kez yapıldı;
+        // burada tekrar geri almak vezneyi iki kez düşürüyordu (2.000→2.500 düzeltmede +500 yerine −1.500) (ortak alan denetimi 19.11.2026, #2)
 
         const headerRequest = new sql.Request(transaction);
         headerRequest.input("CARI_HAREKET_ID", sql.Int, numId);
@@ -1408,9 +1412,10 @@ export class CariHareketSqlRepository {
 
       // baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
       const chFilter = userFilter ? "AND (H.[EKLEYEN_ID] = @uId OR H.[GUNCELLEYEN_ID] = @uId OR (@vId > 0 AND H.[VEZNE_ID] = @vId))" : "";
-      const sfFilter = userFilter ? "AND (SF.[KULLANICI_ID] = @uId OR (@vId > 0 AND SF.[VEZNE_ID] = @vId))" : "";
-      const fFilter = userFilter ? "AND (F.[KULLANICI_ID] = @uId OR (@vId > 0 AND F.[VEZNE_ID] = @vId))" : "";
-      const fatFilter = userFilter ? "AND (FAT.[KULLANICI_ID] = @uId OR (@vId > 0 AND FAT.[VEZNE_ID] = @vId))" : "";
+      // Fiş tablolarında KULLANICI_ID yok; kaydeden EKLEYEN_ID (fisYetkileri KAYIT_TABLOLARI) (ortak alan denetimi 19.11.2026, #25)
+      const sfFilter = userFilter ? "AND (SF.[EKLEYEN_ID] = @uId OR (@vId > 0 AND SF.[VEZNE_ID] = @vId))" : "";
+      const fFilter = userFilter ? "AND (F.[EKLEYEN_ID] = @uId OR (@vId > 0 AND F.[VEZNE_ID] = @vId))" : "";
+      const fatFilter = userFilter ? "AND (FAT.[EKLEYEN_ID] = @uId OR (@vId > 0 AND FAT.[VEZNE_ID] = @vId))" : "";
 
       const query = `
         WITH CombinedMovements AS (

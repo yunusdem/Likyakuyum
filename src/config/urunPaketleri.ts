@@ -91,6 +91,9 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
     ],
     [D, G, K],
   ],
+  // Vezne › Kur maddeleri (T–W, d71dd6c2b: Kur menüsünün sayfaları Vezne'de de): Vezne ana menüsü olan paketlerde. Hiçbir kurala
+  // girmedikleri için ilk paket içeriğine düşmüyorlardı (ortak alan denetimi 19.11.2026, #46)
+  [["vezne:kur/*"], [D, G, K]],
   // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H3): her biri kendi fişinin paketinde; Perakende/Ticari maddeleri ana menüyle gelir
   [["vezne:hizli-satis/sarraf"], [K]],
   [["vezne:hizli-satis/doviz"], [D, G]],
@@ -175,7 +178,8 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
   [["ayarlar:ayarlar/gib-sorgu"], [D, G, K, T, C]],
 
   // Üst kısayol çubuğu
-  [["ust:kur", "ust:vezne-izleme"], [D, G, K]],
+  // V. Transfer kısayolu (93dabe14c) Vezne Transferi sayfasının paketlerinde; kuralı yoktu (ortak alan denetimi 19.11.2026, #46)
+  [["ust:kur", "ust:vezne-izleme", "ust:vezne-transfer"], [D, G, K]],
   [["ust:doviz"], [D, G]],
   [["ust:fiyat", "ust:sarraf", "ust:perakende"], [K]],
   [["ust:banka", "ust:e-belge"], [D, G, K, T, C]],

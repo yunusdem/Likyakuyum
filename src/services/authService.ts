@@ -22,6 +22,21 @@ export interface MusteriVeritabani {
   dbName: string;
 }
 
+/** Alan değiştirme: müşteri noya bağlı veritabanlarından kullanıcının geçebildiği biri (alanKodu: R2026_dvz → R2026) */
+export interface AlanBilgisi {
+  firmaId: number;
+  unvan: string;
+  dbName: string;
+  alanKodu: string;
+  bulunulan: boolean;
+}
+
+/** gecebilir: kullanıcı başka alana geçebilir (yetkili ve birden çok alan var); değilse liste yalnız bulunulan alandır */
+export interface AlanListesi {
+  gecebilir: boolean;
+  alanlar: AlanBilgisi[];
+}
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken?: string;
@@ -109,6 +124,26 @@ export const AuthService = {
 
     const res = await apiClient.post<AuthResponse>("/auth/login", payload);
     if (res.data && res.data.tokens?.accessToken) {
+      this.setSession(res.data.tokens.accessToken, res.data.user, res.data.baglanti?.dbServer, res.data.baglanti?.dbName);
+    }
+    return res.data;
+  },
+
+  /** Alan değiştirme listesi (sol menünün üstündeki düğme ve sağ üst rozet) */
+  async alanlar(): Promise<AlanListesi> {
+    const res = await apiClient.get<AlanListesi>("/auth/alanlar");
+    return res.data || { gecebilir: false, alanlar: [] };
+  },
+
+  /**
+   * Başka alana (aynı müşteri noya bağlı veritabanına) şifresiz geçiş. Yeni oturum saklanır; çağıran sayfayı baştan
+   * yükler (bellekteki önbellekler ve açık ekranlar eski alana aittir).
+   */
+  async alanDegistir(firmaId: number): Promise<AuthResponse> {
+    const res = await apiClient.post<AuthResponse>("/auth/alan-degistir", { firmaId });
+    if (res.data && res.data.tokens?.accessToken) {
+      // Sekme başlığındaki firma adı eski alanın: yeni alanın firma tanımından yeniden okunsun
+      localStorage.removeItem("kuyumcu_erp_firma_adi");
       this.setSession(res.data.tokens.accessToken, res.data.user, res.data.baglanti?.dbServer, res.data.baglanti?.dbName);
     }
     return res.data;

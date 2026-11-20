@@ -49,6 +49,7 @@ import KurKomisyonTablosu, { type KurKomisyonTablosuRef } from "../../components
 import KurKaynakSecici, { type KurKaynakSeciciRef } from "../../components/kur/KurKaynakSecici";
 import FaturaSiniriAlani, { type FaturaSiniriAlaniRef } from "../hizliSatis/FaturaSiniriAlani";
 import FisAktarmaModal from "../vezne/FisAktarmaModal";
+import { alanliBaslik } from "../../components/alan/AlanDegistir";
 
 interface ThousandsInputProps {
   value: number | null | undefined;
@@ -1198,7 +1199,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
             try {
               localStorage.setItem("kuyumcu_erp_firma_adi", fAdi);
             } catch {}
-            document.title = fAdi;
+            document.title = alanliBaslik(fAdi);
           }
         }
         CompanyService.getKlasor().then(setFirmaKlasoru).catch(() => setFirmaKlasoru(null));
@@ -1296,7 +1297,7 @@ export const CompanyDefinitionsPage: React.FC = () => {
         try {
           localStorage.setItem("kuyumcu_erp_firma_adi", savedFirmaAdi);
         } catch {}
-        document.title = savedFirmaAdi;
+        document.title = alanliBaslik(savedFirmaAdi);
       }
       // Yeni yazılan posta kodu referans tabloya eklenmiş olabilir; liste tazelenmeden metin eşlenemez.
       if (cleanData.POSTA_KODU !== undefined) {
