@@ -33,6 +33,19 @@ export class AdminLogSqlRepository {
     }
   }
 
+  /** Hedefe yapılmış son işlemin zamanı (ISO); yoksa null. Okunamazsa hata fırlatır (çağıran karar verir). */
+  public static async sonIslemZamani(islem: AdminIslem, hedefTur: string, hedefId: string | number): Promise<string | null> {
+    const pool = await getAdminPool();
+    const r = await pool
+      .request()
+      .input("islem", sql.VarChar(40), islem)
+      .input("hedefTur", sql.VarChar(20), hedefTur)
+      .input("hedefId", sql.VarChar(50), String(hedefId))
+      .query(`SELECT TOP 1 TARIH FROM dbo.ADM_ISLEM_LOG WHERE ISLEM = @islem AND HEDEF_TUR = @hedefTur AND HEDEF_ID = @hedefId ORDER BY LOG_ID DESC`);
+    const t = r.recordset[0]?.TARIH;
+    return t ? new Date(t).toISOString() : null;
+  }
+
   /** Denetim izi. eski/yeni değerler JSON'a çevrilir; çağıran buraya şifre/hash KOYMAMALIDIR. */
   public static async islemLogu(kayit: {
     adminId: number | null;

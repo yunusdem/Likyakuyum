@@ -1,5 +1,6 @@
 import sql from "mssql";
 import { Engel } from "./aktarimInceleme.js";
+import { AktarimIzi, izCikar, izYaz } from "./aktarimIzi.js";
 import { AktarimPlani, PlanSecenekleri, TabloPlani, kopyalamaKomutu, planOlustur } from "./aktarimPlani.js";
 import { n, q, semaOku, tabloBul, tamAd } from "./aktarimSema.js";
 
@@ -59,6 +60,10 @@ export interface AktarimSonucu {
   notlar: string[];
   kurallar: AktarimPlani["kurallar"];
   dogrulama: DogrulamaOzeti | null;
+  /** Aktarım izi (K24): aktarımın yazdığı tabloların COMMIT anındaki satır sayısı + içerik özeti */
+  iz?: AktarimIzi | null;
+  /** İz firma veritabanına yazıldı mı (yazılamadıysa yalnız raporda) */
+  izYazildi?: boolean;
 }
 
 export class AktarimEngeli extends Error {
@@ -247,8 +252,25 @@ export const aktar = async (s: AktarimSecenekleri): Promise<AktarimSonucu> => {
       if (!dogrulama.basarili) throw new AktarimDogrulamaHatasi(dogrulama);
     }
 
+    // 10) Aktarım izi (K24): aynı işlemde, tam olarak yedekten gelen hâl. COMMIT'ten sonra firmaya yazılır; sonraki
+    //     aktarım firmada aktarımdan sonra kayıt girildiyse (canlıya geçtiyse) bununla anlar ve durur.
+    //     Aktarımın yazdığı tablolar + e-Belge kaynak işaretleri (aktarım "eski programla gönderildi" yazar; sonradan değişmesi
+    //     firmadan e-belge işlemi yapıldığını gösterir).
+    adim = "IZ";
+    const izTablolari = silinecek.map((t) => t.tablo);
+    if (!izTablolari.some((t) => t.toUpperCase() === "TODVZ_EBELGE_KAYNAK")) izTablolari.push("TODVZ_EBELGE_KAYNAK");
+    const iz = await izCikar(() => r(), s.hedefDb, izTablolari);
+
     adim = "COMMIT";
     await tx.commit();
+    let izYazildi = false;
+    try {
+      await izYaz(s.pool, s.hedefDb, iz);
+      izYazildi = true;
+    } catch (err: any) {
+      // Veri yazıldı ve doğrulandı; iz rapora da yazılır (aktarım servisi oradan okur)
+      notlar.push(`Aktarım izi firma veritabanına yazılamadı (${String(err?.message || err).slice(0, 200)}); iz aktarım raporunda saklandı.`);
+    }
     ilerle("BITTI", 100, "Aktarım tamamlandı");
     const bitis = new Date();
     return {
@@ -265,6 +287,8 @@ export const aktar = async (s: AktarimSecenekleri): Promise<AktarimSonucu> => {
       notlar,
       kurallar: plan.kurallar,
       dogrulama,
+      iz,
+      izYazildi,
     };
   } catch (err: any) {
     await tx.rollback().catch(() => undefined);

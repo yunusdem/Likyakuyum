@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import fs from "fs";
 import sql from "mssql";
-import { AktarimAdimi, AktarimSonucu, aktar } from "./aktarimMotoru.js";
+import { AktarimAdimi, AktarimEngeli, AktarimSonucu, aktar } from "./aktarimMotoru.js";
+import { canliFirmaEngelleri, izYenile } from "./aktarimIzi.js";
 import { DogrulamaRaporu, dogrula, veritabanlariniDogrula } from "./aktarimDogrulama.js";
 import { Engel, IncelemeOzeti, geciciAc, geciciSil, incele, setSec, sunucuAnaSurumu, yedekBasligi, yedekEngelleri } from "./aktarimInceleme.js";
 import { AktarimPlani } from "./aktarimPlani.js";
@@ -131,6 +132,11 @@ export const standartEkAdimlar = async (tx: sql.Transaction, kaynakDb: string, h
 
 export const veriAktarKomutu = async (pool: sql.ConnectionPool, g: VeriAktarGirdisi): Promise<VeriAktarSonucu> => {
   if (!fs.existsSync(g.yedek)) throw new Error(`Yedek dosyası yok: ${g.yedek}`);
+  // Canlı firma kilidi (K22 + K24): firmadan e-belge gönderilmişse ya da son aktarımdan sonra firmada kayıt girildiyse aktarım
+  // yapılmaz (onaysız, bayraksız). Çiftte aktarım eşin veritabanına da yazar: eş de aynı kilide bakılır.
+  const kilit = await canliFirmaEngelleri(pool, g.hedefDb);
+  if (g.cift) for (const e of await canliFirmaEngelleri(pool, g.cift.esHedefDb)) kilit.push({ ...e, mesaj: `Eş veritabanı ${g.cift.esHedefDb}: ${e.mesaj}` });
+  if (kilit.length) throw new AktarimEngeli(kilit);
   const sonuc = await yedekleCalis(pool, g.yedek, async (geciciDb, ozet) => {
     let rapor: DogrulamaRaporu | null = null;
     const cift = g.cift ? ciftSecenekleri(ozet, geciciDb, g.hedefDb, g.cift) : null;
@@ -150,6 +156,12 @@ export const veriAktarKomutu = async (pool: sql.ConnectionPool, g: VeriAktarGird
         return rapor as unknown as { basarili: boolean };
       },
     });
+    // Çift: aktarım eşin veritabanına da yazdı; eşin izi (varsa) yeni hâliyle yenilenir (eş başta kilide bakıldı)
+    if (cift) {
+      await izYenile(pool, cift.esHedefDb)
+        .then((y) => y && aktarim.notlar.push(`Eşin (${cift.esHedefDb}) aktarım izi yenilendi.`))
+        .catch((err: any) => aktarim.notlar.push(`Eşin (${cift.esHedefDb}) aktarım izi yenilenemedi: ${String(err?.message || err).slice(0, 200)}`));
+    }
     // Aktarım sonrası kontrol: geçici kaynak silinmeden, COMMIT'ten sonra
     const son = await sonKontrol(pool, { kaynakDb: geciciDb, hedefDb: g.hedefDb, cift }).catch(() => null);
     return { inceleme: ozet, aktarim, dogrulama: rapor!, cift, sonKontrol: son };
