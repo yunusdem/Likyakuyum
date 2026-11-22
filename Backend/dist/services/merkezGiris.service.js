@@ -8,7 +8,7 @@ import { ESKI_SIFRE_ISARETI, } from "../types/admin.types.js";
 import { ApiError } from "../utils/ApiError.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { ResponseMessages } from "../constants/responseMessages.js";
-import { sahteSifreDogrula, sifreDogrula, sifreHashle } from "../utils/sifre.utils.js";
+import { sahteSifreDogrula, sifreDogrula, sifreHashle, sifreKuralHatasi } from "../utils/sifre.utils.js";
 import { comparePassword, hashPassword } from "../utils/password.utils.js";
 import { baglantiSina, firmaDbAnahtari } from "./admin/firmaBaglanti.service.js";
 import { sifreCoz } from "../utils/kripto.utils.js";
@@ -102,6 +102,76 @@ export class MerkezGirisService {
             throw await girisRedHatasi(engel);
         }
         return firma;
+    }
+    /**
+     * Alan değiştirme: oturumdaki firmayla aynı müşteri noya bağlı, çalışabilir durumdaki firmalardan kullanıcının aynı adla
+     * açık (AKTIF) kaydı olanlar. Bulunulan firma her zaman listededir (ilk sırada değil, müşteri no listesindeki yerinde).
+     */
+    static async kullaniciAlanlari(firmaId, kullaniciAdi) {
+        const mevcut = await FirmaSqlRepository.idIleBul(firmaId);
+        if (!mevcut)
+            return [];
+        const kendisi = { firmaId: mevcut.firmaId, unvan: mevcut.unvan, dbName: mevcut.dbName };
+        const no = musteriNoTemizle(mevcut.musteriNo || "");
+        if (!no)
+            return [kendisi];
+        const sonuc = [];
+        for (const f of await FirmaSqlRepository.musteriNoIleListele(no)) {
+            if (f.firmaId === firmaId) {
+                sonuc.push(kendisi);
+                continue;
+            }
+            const firma = await FirmaSqlRepository.idIleBul(f.firmaId);
+            if (!firma || firmaEngeli(firma))
+                continue;
+            const k = await KullaniciSqlRepository.adIleBul(f.firmaId, kullaniciAdi);
+            if (k && k.durum === "AKTIF")
+                sonuc.push({ firmaId: f.firmaId, unvan: f.unvan, dbName: f.dbName });
+        }
+        if (!sonuc.some((x) => x.firmaId === firmaId))
+            sonuc.unshift(kendisi);
+        return sonuc;
+    }
+    /**
+     * Alan değiştirmenin denetimi: hedef firma oturumdaki firmayla aynı müşteri noya bağlı mı, çalışabilir mi, kullanıcının
+     * orada aynı adla açık kaydı var mı. Şifre sorulmaz (kullanıcı kararı); reddedilen her deneme giriş günlüğüne yazılır.
+     */
+    static async alanFirmaKontrol(mevcutFirmaId, hedefFirmaId, kullaniciAdi, istemci) {
+        const [mevcut, hedef] = await Promise.all([FirmaSqlRepository.idIleBul(mevcutFirmaId), FirmaSqlRepository.idIleBul(hedefFirmaId)]);
+        const reddet = async (neden, hata) => {
+            await AdminLogSqlRepository.girisLogu({
+                tur: "KULLANICI",
+                firmaId: hedef ? hedef.firmaId : null,
+                kullaniciAdi,
+                basarili: false,
+                redNedeni: `ALAN_DEGISTIR: ${neden} (${mevcutFirmaId} → ${hedefFirmaId})`,
+                ...istemci,
+            });
+            throw hata;
+        };
+        const no = musteriNoTemizle(mevcut?.musteriNo || "");
+        const eslesir = !!hedef && !!no && musteriNoTemizle(hedef.musteriNo || "") === no && hedef.baglantiModu !== "setup";
+        if (!eslesir)
+            return reddet("müşteri no uyuşmuyor", ApiError.forbidden("Seçilen alan bu müşteriye ait değil."));
+        const engel = firmaEngeli(hedef);
+        if (engel)
+            return reddet(engel, await girisRedHatasi(engel));
+        const kullanici = await KullaniciSqlRepository.adIleBul(hedef.firmaId, kullaniciAdi);
+        if (!kullanici || kullanici.durum !== "AKTIF") {
+            return reddet("kullanıcı yok ya da pasif", ApiError.forbidden("Bu alanda aynı adla tanımlı, açık bir kullanıcınız yok. Lütfen firma yöneticinize başvurunuz."));
+        }
+        return { firma: hedef, kullanici };
+    }
+    /** Alan değiştirme başarılı: hedef firmadaki kullanıcının son girişi ve giriş günlüğü (normal giriş gibi) */
+    static async alanGecisiKaydet(b, istemci) {
+        await KullaniciSqlRepository.girisSonucuYaz(b.kullanici.kullaniciId, true);
+        await AdminLogSqlRepository.girisLogu({
+            tur: "KULLANICI",
+            firmaId: b.firma.firmaId,
+            kullaniciAdi: b.kullanici.kullaniciAdi,
+            basarili: true,
+            ...istemci,
+        });
     }
     /** Firmanın kayıtlı veritabanı bağlantısı; kullanıcı adı / şifre eksikse ya da çözülemiyorsa BAGLANTI_EKSIK. */
     static async firmaBaglantisi(firmaId) {
@@ -299,11 +369,14 @@ export class MerkezGirisService {
             throw ApiError.forbidden("Bu işlem için firma yöneticisi olmalısınız.");
         }
     }
-    /** Şifre kuralına uymuyorsa 400. */
+    /**
+     * Şifre kuralına uymuyorsa 400: en az 8 karakter, harf ve rakam, en çok 72 bayt (bcrypt sınırı). 816e79eb8 kuralı "boş
+     * olmasın"a indirmişti (docs/ADMIN_PANEL_YOL_HARITASI.md K13, kurulum E19) (ortak alan denetimi 19.11.2026, #20)
+     */
     static sifreKuraliniDenetle(sifre) {
-        if (!sifre || typeof sifre !== "string" || !sifre.trim()) {
-            throw ApiError.badRequest("Şifre boş olamaz.");
-        }
+        const hata = sifreKuralHatasi(sifre);
+        if (hata)
+            throw ApiError.badRequest(hata);
     }
     /**
      * Merkezdeki şifreyi yazar. Firma veritabanındaki TODVZ_KULLANICI.SIFRE alanı da (uygulamanın mevcut

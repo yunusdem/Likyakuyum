@@ -4,6 +4,16 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { kullaniciYetkisi } from "../services/yetki/kullaniciYetkisi.js";
 export class CariController {
+    /** Cari sınırlaması (göç 031): 1 = yalnız atanmış cariler, 2 = atanmış cariler hariç. Yönetici muaf. Görme / düzeltme / silme aynı kural (ortak alan denetimi 19.11.2026, #16) */
+    static cariErisimiDenetle(yetki, cariId, islem) {
+        if (yetki.yonetici || !yetki.cariSinirlamaTipi || yetki.cariSinirlamaTipi <= 0)
+            return;
+        const iceriyor = (yetki.atananCariIdler || []).includes(cariId);
+        if (yetki.cariSinirlamaTipi === 1 && !iceriyor)
+            throw ApiError.forbidden(`Bu cari kartı ${islem} yetkiniz bulunmamaktadır (İzin verilen cariler sınırlaması).`);
+        if (yetki.cariSinirlamaTipi === 2 && iceriyor)
+            throw ApiError.forbidden(`Bu cari kartı ${islem} yetkiniz bulunmamaktadır (Yasaklanan cariler sınırlaması).`);
+    }
     static getDbContext(req) {
         return {
             dbServer: req.user?.dbServer || req.query.dbServer || req.body.dbServer,
@@ -24,7 +34,7 @@ export class CariController {
     static listCariKartlar = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
         const yetki = await kullaniciYetkisi(req);
-        const isSysAdmin = !!(req.user?.role === "admin" || req.user?.isSysAdmin || yetki.yonetici);
+        const isSysAdmin = yetki.yonetici; // jetondaki role değil kart yetkisi (ortak alan denetimi 19.11.2026, #16 / #23)
         const filter = {
             userId: req.user?.userId ? Number(req.user.userId) : undefined,
             cariSinirlamaTipi: yetki.cariSinirlamaTipi,
@@ -44,19 +54,8 @@ export class CariController {
     static getCariKartById = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
         const yetki = await kullaniciYetkisi(req);
-        const isSysAdmin = !!(req.user?.role === "admin" || req.user?.isSysAdmin || yetki.yonetici);
         const cariId = Number(req.params.id);
-        // Cari sınırlama kontrolü
-        if (!isSysAdmin && yetki.cariSinirlamaTipi && yetki.cariSinirlamaTipi > 0) {
-            const atananlar = yetki.atananCariIdler || [];
-            const iceriyor = atananlar.includes(cariId);
-            if (yetki.cariSinirlamaTipi === 1 && !iceriyor) {
-                throw ApiError.forbidden("Bu cari kartı görme yetkiniz bulunmamaktadır (İzin verilen cariler sınırlaması).");
-            }
-            if (yetki.cariSinirlamaTipi === 2 && iceriyor) {
-                throw ApiError.forbidden("Bu cari kartı görme yetkiniz bulunmamaktadır (Yasaklanan cariler sınırlaması).");
-            }
-        }
+        CariController.cariErisimiDenetle(yetki, cariId, "görme");
         const item = await CariService.getCariKartById(req.params.id, dbContext);
         return ApiResponse.ok(res, "Cari kart detayı getirildi.", item);
     });
@@ -74,6 +73,7 @@ export class CariController {
      */
     static updateCariKart = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
+        CariController.cariErisimiDenetle(await kullaniciYetkisi(req), Number(req.params.id), "düzeltme");
         const kullaniciId = req.user?.userId ? Number(req.user.userId) : undefined;
         const updated = await CariService.updateCariKart(req.params.id, req.body, dbContext, kullaniciId);
         return ApiResponse.ok(res, "Cari kart başarıyla güncellendi.", updated);
@@ -83,6 +83,7 @@ export class CariController {
      */
     static deleteCariKart = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
+        CariController.cariErisimiDenetle(await kullaniciYetkisi(req), Number(req.params.id), "silme");
         await CariService.deleteCariKart(req.params.id, dbContext);
         return ApiResponse.ok(res, "Cari kart başarıyla silindi.", { id: req.params.id });
     });
@@ -92,6 +93,7 @@ export class CariController {
      */
     static getCariFotograf = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
+        CariController.cariErisimiDenetle(await kullaniciYetkisi(req), Number(req.params.id), "görme");
         const fotos = await CariService.getAllCariFotograflar(req.params.id, dbContext);
         const primary = fotos.length > 0 ? fotos[0] : null;
         return ApiResponse.ok(res, "Cari fotoğrafları getirildi.", {
@@ -106,6 +108,7 @@ export class CariController {
      */
     static saveCariFotograf = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
+        CariController.cariErisimiDenetle(await kullaniciYetkisi(req), Number(req.params.id), "düzeltme");
         const kullaniciId = req.user?.userId ? Number(req.user.userId) : undefined;
         const foto = await CariService.saveCariFotograf(req.params.id, req.body, kullaniciId, dbContext);
         return ApiResponse.ok(res, "Cari fotoğrafı başarıyla kaydedildi.", foto);
@@ -115,6 +118,7 @@ export class CariController {
      */
     static deleteCariFotograf = asyncHandler(async (req, res) => {
         const dbContext = CariController.getDbContext(req);
+        CariController.cariErisimiDenetle(await kullaniciYetkisi(req), Number(req.params.id), "düzeltme");
         const fotografId = req.query.fotografId ? Number(req.query.fotografId) : undefined;
         await CariService.deleteCariFotograf(req.params.id, fotografId, dbContext);
         return ApiResponse.ok(res, "Cari fotoğrafı başarıyla silindi.");

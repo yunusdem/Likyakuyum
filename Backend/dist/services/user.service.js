@@ -7,6 +7,11 @@ import { getDbPool } from "../config/mssql.config.js";
 import sql from "mssql";
 import { ResponseMessages } from "../constants/responseMessages.js";
 import { logger } from "../utils/logger.js";
+/**
+ * Kartta saklanan değer bir özet mi: password.utils hashPassword (HMAC-SHA256, 30 karakter base64) ya da eski bcrypt.
+ * Eski programın düz metin şifresi bu biçimde olmaz. (ortak alan denetimi 19.11.2026, #17)
+ */
+const sifreOzetiMi = (s) => /^\$2[aby]\$\d{2}\$/.test(s) || /^[A-Za-z0-9+/]{30}$/.test(s);
 export class UserService {
     static async listUsers(query, dbContext) {
         try {
@@ -86,6 +91,7 @@ export class UserService {
             milyemPermValue: input.milyemPermValue ?? 0,
             iscilikGirisSekli: input.iscilikGirisSekli ?? 0,
             dovizZiynetGirisSekli: input.dovizZiynetGirisSekli ?? 0,
+            altinHesaplamaSekli: input.altinHesaplamaSekli ?? 0,
             hasVezneLastTransactionsPerm: input.hasVezneLastTransactionsPerm ?? false,
             hasOnlyOwnRecordsPerm: input.hasOnlyOwnRecordsPerm ?? false,
             cariSinirlamaTipi: input.cariSinirlamaTipi ?? 0,
@@ -197,6 +203,12 @@ export class UserService {
         // Şifre karttan taşınmaz; boş giden şifre depoda zaten korunur.
         const { password: _sifre, passwordHash: _ozet, ...mevcut } = existing;
         const gonderilen = Object.fromEntries(Object.entries(restInput).filter(([, v]) => v !== undefined));
+        // Entegratör / MASAK şifreleri yanıtta gönderilmiyor (toDto): boş gelen şifre alanı kayıttaki değeri silmez, yalnız yazılan
+        // yeni değer kaydedilir (ortak alan denetimi 19.11.2026, #23)
+        for (const alan of ["integratorPassword", "masakPassword"]) {
+            if (!String(gonderilen[alan] ?? "").trim())
+                delete gonderilen[alan];
+        }
         const updatePayload = {
             ...mevcut,
             ...gonderilen,
@@ -261,17 +273,20 @@ export class UserService {
             const todvzUser = res.recordset?.[0];
             if (todvzUser) {
                 const stored = String(todvzUser.SIFRE || "").trim();
-                if (stored && (stored === inputPassword.trim() || await comparePassword(inputPassword, stored))) {
+                // Saklanan özetin kendisi şifre sayılmaz (listede / kayıtta özeti gören özetle doğrulanabiliyordu); eski programın düz
+                // metin şifresi comparePassword'ün eşitlik yoluyla doğrulanmaya devam eder (ortak alan denetimi 19.11.2026, #17)
+                const ozetinKendisi = sifreOzetiMi(stored) && inputPassword === stored;
+                if (stored && !ozetinKendisi && await comparePassword(inputPassword, stored)) {
                     return true;
                 }
             }
-            // 2. ADM_KULLANICI (merkez / central auth) kontrolü
+            // 2. ADM_KULLANICI (merkez / central auth) kontrolü — yalnız bcrypt doğrulaması; özet metni şifre sayılmaz (#17)
             if (firmaId) {
                 const username = todvzUser ? todvzUser.AD : String(userIdOrUsername).trim();
                 const adminUser = await KullaniciSqlRepository.adIleBul(firmaId, username);
                 if (adminUser && adminUser.sifreHash) {
                     if (adminUser.sifreHash !== "ESKI") {
-                        if (await sifreDogrula(inputPassword, adminUser.sifreHash) || inputPassword === adminUser.sifreHash) {
+                        if (await sifreDogrula(inputPassword, adminUser.sifreHash)) {
                             return true;
                         }
                     }

@@ -528,7 +528,9 @@ export class VezneTransferiSqlRepository {
                 query += k.sql;
                 durbunParametreleriniBagla(request, k.parametreler);
             }
-            query += durbunVar ? " ORDER BY t.TARIH DESC, t.VEZNE_TRANSFERI_ID DESC" : " ORDER BY t.VEZNE_TRANSFERI_ID ASC";
+            // Sınır her durumda en yeni kayıtlardan kesilir: filtresiz ("Tümü") istekte artan sıra en eski 200'ü getirip yenileri
+            // düşürüyordu; tek çağıran dürbün listeyi zaten kendisi sıralıyor (ortak alan denetimi 19.11.2026, #36)
+            query += " ORDER BY t.TARIH DESC, t.VEZNE_TRANSFERI_ID DESC";
             const res = await request.query(query);
             return (res.recordset || []).map((r) => ({
                 id: r.id,

@@ -135,7 +135,9 @@ export class CariSqlRepository {
                 return [];
             // Calculate real-time balances for all cariler across all sources
             try {
+                // TL parasının kimliği (services/rapor/raporOrtak.ts TL_PARA_SQL ile aynı ifade) (ortak alan denetimi 19.11.2026, #15)
                 const bakiyeQuery = `
+          DECLARE @TL_PARA_ID INT = ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID), 1);
           WITH AllMovements AS (
             -- 1. TODVZ_CARI_HAREKET
             SELECT 
@@ -162,10 +164,11 @@ export class CariSqlRepository {
 
             UNION ALL
 
-            -- 3. TODVZ_FIS (Döviz Fişi)
-            SELECT 
+            -- 3. TODVZ_FIS (Döviz Fişi): TUTAR satırın TL karşılığıdır, TL parasının satırına yazılır (önceden döviz parasının
+            --    satırına yazılıyor, ör. 100 USD satırı "4.100 USD" görünüyordu) (ortak alan denetimi 19.11.2026, #15)
+            SELECT
               F.[CARI_KART_ID],
-              FS.[PARA_ID],
+              @TL_PARA_ID AS [PARA_ID],
               CASE WHEN F.[TIP] = 1 THEN FS.[TUTAR] ELSE 0 END AS [BORC],
               CASE WHEN F.[TIP] = 0 THEN FS.[TUTAR] ELSE 0 END AS [ALACAK]
             FROM [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK)
@@ -200,7 +203,7 @@ export class CariSqlRepository {
             M.[CARI_KART_ID],
             M.[PARA_ID],
             LTRIM(RTRIM(ISNULL(P.[KOD], 'TL'))) AS [PARA_KOD],
-            ISNULL(P.[HAS_ORANI], 1) AS [HAS_ORANI],
+            ISNULL(P.[HAS_ORANI], 0) AS [HAS_ORANI],
             SUM(M.[BORC]) AS [TOPLAM_BORC],
             SUM(M.[ALACAK]) AS [TOPLAM_ALACAK]
           FROM AllMovements M
@@ -226,8 +229,11 @@ export class CariSqlRepository {
                         const borc = Number(r.TOPLAM_BORC) || 0;
                         const alacak = Number(r.TOPLAM_ALACAK) || 0;
                         const diff = alacak - borc; // > 0 Alacak, < 0 Borç
-                        const hasOrani = Number(r.HAS_ORANI) || 1;
-                        const isGold = (r.PARA_KOD || "").toUpperCase().includes("HAS") || hasOrani > 0;
+                        // TL / döviz kartlarında has oranı 0'dır: "|| 1" ile 1 sayılınca TL ve döviz bakiyesi gram has diye ekleniyordu
+                        // (1.305 TL alacak → 1.304,08 gr has). Yalnız HAS kodlu kartta oran boşsa 1 sayılır (ortak alan denetimi 20.11.2026).
+                        const hasKodlu = (r.PARA_KOD || "").toUpperCase().includes("HAS");
+                        const hasOrani = Number(r.HAS_ORANI) || (hasKodlu ? 1 : 0);
+                        const isGold = hasOrani > 0;
                         if (isGold && Math.abs(diff) > 0.0001) {
                             totalNetHas += diff * hasOrani;
                         }

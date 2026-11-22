@@ -136,8 +136,26 @@ export class BelgeController {
     static pdfOnizleme = asyncHandler(async (req, res) => {
         const { tur, bicim = "80", ...girdi } = req.body || {};
         let c;
+        let onizleme = false;
         if (tur === "doviz") {
-            c = await FisCiktiService.doviz(girdi, BelgeController.getDbContext(req));
+            // Gövde /cikti/doviz şemasından geçer; kayıtlı + ETTN'li + GİB'e gönderilmiş fişte resmî ICE PDF'i, değilse
+            // "ÖNİZLEME" filigranlı şablon çıktısı (docs/belgeverapor.md G2) (ortak alan denetimi 19.11.2026, #43)
+            const p = dovizCiktiSema.safeParse(girdi);
+            if (!p.success)
+                throw ApiError.badRequest(p.error.issues[0]?.message || "Fiş önizleme isteği geçersiz.");
+            const ice = await BelgeService.dovizOnizlemeIce(p.data, BelgeController.kullanici(req), BelgeController.getDbContext(req));
+            if (ice.pdf) {
+                res.setHeader("Content-Type", "application/pdf");
+                res.setHeader("Content-Disposition", `inline; filename="${ice.belgeNo || "fis"}.pdf"`);
+                res.setHeader("Content-Length", String(ice.pdf.length));
+                res.setHeader("Cache-Control", "no-store");
+                res.setHeader("X-Belge-Kaynak", "ICE");
+                res.setHeader("X-Belge-Onizleme", "0");
+                return res.status(200).end(ice.pdf);
+            }
+            c = await FisCiktiService.doviz(p.data, BelgeController.getDbContext(req));
+            onizleme = !ice.gonderildi;
+            c = { ...c, veri: { ...c.veri, onizleme } };
         }
         else if (tur === "sarraf") {
             c = await FisCiktiService.sarraf(girdi, bicim, BelgeController.getDbContext(req));
@@ -158,6 +176,8 @@ export class BelgeController {
         res.setHeader("Content-Disposition", `inline; filename="${c.veri?.belgeNo || "fis"}.pdf"`);
         res.setHeader("Content-Length", String(pdf.length));
         res.setHeader("Cache-Control", "no-store");
+        res.setHeader("X-Belge-Kaynak", "SABLON");
+        res.setHeader("X-Belge-Onizleme", onizleme ? "1" : "0");
         return res.status(200).end(pdf);
     });
     /**

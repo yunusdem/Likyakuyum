@@ -10,7 +10,27 @@ export const YAPILANDIRMA_KOLONLARI = [{ tablo: "TODVZ_TANIM", kolon: "DIGER_VER
  */
 export const BIRAKILABILIR_KOLONLAR = [
     { tablo: "TODVZ_SARRAF_FISI", kolon: "HESAP_ISLEYISI", izinli: (k) => `ISNULL(${k}, 0) = 0`, aciklama: "Eski hesap işleyişi yalnız varsayılan (0) iken bırakılır" },
+    // Muhasebe fiş satırındaki "servis oluşturdu" işareti bizim sürümde yok; yalnız hayır (0) iken bırakılır, evet olan satır varsa aktarım durur
+    { tablo: "TODVZ_MUH_FIS_SATIRI", kolon: "SERVIS_OLUSTURDU", izinli: (k) => `ISNULL(${k}, 0) = 0`, aciklama: "Eski SERVIS_OLUSTURDU yalnız hayır (0) iken bırakılır" },
 ];
+/**
+ * Eski sürümde boş bırakılabilen, bizim şemada zorunlu (NOT NULL) kolonlar için boş değerin karşılığı (19.11.2026 denetimi).
+ * Burada yoksa: hedef kolonun şemadaki sabit varsayılanı yazılır; o da yoksa boş satır varken aktarım incelemede durur
+ * (önceden kopyalama sırasında ham "Cannot insert the value NULL" hatasıyla geri alınıyordu).
+ */
+export const BOS_DEGER_KURALLARI = [
+    { tablo: "TODVZ_MASAK_ISLEM_BILDIRIMI", kolon: "BIL_YENI_EK", deger: "0", aciklama: "boş işaret hayır (0)" },
+    { tablo: "TODVZ_SARRAF_FISI_SATIRI", kolon: "ISCILIK_MIKTARI", deger: "0", aciklama: "boş işçilik miktarı 0" },
+];
+/** Hedef kolonun şemadaki varsayılanı sabit bir sayı / metin ise SQL ifadesi; fonksiyon (GETDATE, NEWID …) ya da yoksa null. */
+export const sabitVarsayilan = (k) => {
+    if (!k.varsayilan)
+        return null;
+    let v = k.varsayilan.trim();
+    while (v.startsWith("(") && v.endsWith(")"))
+        v = v.slice(1, -1).trim();
+    return /^-?\d+(\.\d+)?$/.test(v) || /^N?'(?:[^']|'')*'$/.test(v) ? v : null;
+};
 const NEWID = () => "CONVERT(varchar(40), NEWID())";
 const sarraf = (hedef, gereken, ifade, aciklama, ek = {}) => ({
     tablo: "TODVZ_SARRAF_FISI",
@@ -31,14 +51,27 @@ const kmv = (tablo) => ({
     gereken: ["KMV_KURA_DAHIL"],
     ifade: (k) => `CASE ${k("KMV_KURA_DAHIL")} WHEN 1 THEN 2 WHEN 0 THEN 3 ELSE NULL END`,
     tuketilen: ["KMV_KURA_DAHIL"],
-    aciklama: "Eski KMV_KURA_DAHIL → KMV_UYGULAMA_SEKLI (1 → 2 kura dahil, 0 → 3 kurdan hariç)",
+    aciklama: "Eski firma ayarı KMV_KURA_DAHIL → KMV_UYGULAMA_SEKLI (1 → 2 kura dahil, 0 → 3 kurdan hariç)",
 });
 /**
  * Sürüm kuralları: eski programın 2025.01.02 sürümü ile bizim şemanın (2025.12.16) farkları. Bir tablo/kolon için
  * sıradaki ilk uygun kural kullanılır. Yeni sürüm farkı çıktığında buraya eklenir (Faz 7: kuyum / sarraf).
  */
 export const KOLON_KURALLARI = [
-    kmv("TODVZ_FIS"),
+    // FİŞ: değer eski bit ile AYNI kalır (1 = kura dahil). Yeni sürümün e-Döviz belge görünümleri (VODVZ_E_DOVIZ_BELGESI, _XSLT, _NOTE)
+    // fişteki KMV_UYGULAMA_SEKLI'yi eski KMV_KURA_DAHIL gibi okur: yalnız 1 iken "K.M.V. Kura dahildir" der ve ödenecek tutara KMV eklemez;
+    // diğer her değerde (0, 2, 3, boş) KMV'yi tutara ekler. Bizim e-Döviz gönderimi ve belge çıktısı tutarı bu görünümden alır
+    // (ebelgeKaynak.service dovizGirdisi). 19.11.2026 denetimi: önceki kural (1 → 2) ile örnek yedekte gönderilmeyi bekleyen 611 satış
+    // belgesinin 601'i KMV kadar (toplam 57.462 TL) fazla ödenecek tutarla gidecekti. Eski 0 → 3 (kurdan hariç; görünüm de hariç sayar).
+    {
+        tablo: "TODVZ_FIS",
+        hedef: "KMV_UYGULAMA_SEKLI",
+        gereken: ["KMV_KURA_DAHIL"],
+        ifade: (k) => `CASE ${k("KMV_KURA_DAHIL")} WHEN 1 THEN 1 WHEN 0 THEN 3 ELSE NULL END`,
+        tuketilen: ["KMV_KURA_DAHIL"],
+        aciklama: "Eski fiş KMV_KURA_DAHIL → KMV_UYGULAMA_SEKLI (1 → 1 kura dahil: e-Döviz belge görünümü böyle okur; 0 → 3 kurdan hariç)",
+    },
+    // FİRMA TANIMI (ve günlüğü): bizim ekranların okuduğu ayar — 1 uygulanmasın, 2 kura dahil, 3 kurdan hariç (Firma Tanımları, Döviz Fişi)
     kmv("TODVZ_TANIM"),
     kmv("TODVZ_LOG_TANIM"),
     kmv("TODVZ_LOG_FIS"),
@@ -347,7 +380,37 @@ const tabloPlani = (plan, kt, ht, secenek = {}) => {
                 }
                 continue;
             }
-            tp.kolonlar.push({ hedef: hk.ad, ifade: d.ifade, deterministik: true, kaynak: kk.ad, kural: null });
+            // Eski sürümde boş bırakılabilen, bizde zorunlu kolon: boş değerin karşılığı (kural → şema varsayılanı) yazılır; yoksa incelemede durur
+            let ifade = d.ifade;
+            if (kk.bosOlabilir && !hk.bosOlabilir) {
+                const bosKural = BOS_DEGER_KURALLARI.find((b) => ayni(b.tablo, ht.ad) && ayni(b.kolon, hk.ad));
+                const deger = bosKural?.deger ?? sabitVarsayilan(hk);
+                const bosSorgu = `SELECT COUNT(*) AS N FROM ${tamAd(plan.kaynakDb, kt.ad)} K WHERE K.${q(kk.ad)} IS NULL`;
+                if (deger !== null) {
+                    ifade = `COALESCE(${d.ifade}, CAST(${deger} AS ${tipTanimi(hk)}))`;
+                    if (kt.satir > 0) {
+                        plan.denetimler.push({
+                            kod: "BOS_ZORUNLU_VARSAYILAN",
+                            tablo: ht.ad,
+                            kolon: hk.ad,
+                            sorgu: bosSorgu,
+                            seviye: "UYARI",
+                            mesaj: `${ht.ad}.${hk.ad} bizim sürümde zorunlu; eski kayıtta boş olan satırlara ${deger} yazılır (${bosKural?.aciklama ?? "şemanın varsayılanı"})`,
+                        });
+                    }
+                }
+                else if (kt.satir > 0) {
+                    plan.denetimler.push({
+                        kod: "BOS_ZORUNLU",
+                        tablo: ht.ad,
+                        kolon: hk.ad,
+                        sorgu: bosSorgu,
+                        seviye: "ENGEL",
+                        mesaj: `${ht.ad}.${hk.ad} bizim sürümde zorunlu ve varsayılanı yok, eski kayıtta boş; kural eklenmeli.`,
+                    });
+                }
+            }
+            tp.kolonlar.push({ hedef: hk.ad, ifade, deterministik: true, kaynak: kk.ad, kural: null });
             if (d.denetim && kt.satir > 0) {
                 plan.denetimler.push({
                     kod: "DONUSUM_KAYBI",

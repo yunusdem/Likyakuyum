@@ -86,6 +86,10 @@ export class FirmaKullaniciMerkezService {
         if (!kendisi)
             MerkezGirisService.yoneticiOlmali(b);
         if (girdi.password && String(girdi.password).trim() !== "") {
+            // Kendi şifresi kart üzerinden değişmez (mevcut şifre sorulmadan değişiyordu); 816e79eb8'de kaldırılan engel geri geldi
+            // (ortak alan denetimi 19.11.2026, #20)
+            if (kendisi)
+                throw ApiError.badRequest("Kendi şifrenizi 'Şifre Değiştir' ekranından değiştirin.");
             MerkezGirisService.sifreKuraliniDenetle(girdi.password);
         }
     }
@@ -111,7 +115,9 @@ export class FirmaKullaniciMerkezService {
             firmaYoneticisi: kendisi ? hedef.firmaYoneticisi : !!guncel.isSysAdmin,
         });
         if (yeniSifre && String(yeniSifre).trim() !== "") {
-            await KullaniciSqlRepository.sifreGuncelle(hedef.kullaniciId, await sifreHashle(yeniSifre), false);
+            // Yöneticinin başkasına yazdığı şifre geçicidir: kullanıcı ilk girişte değiştirir (sifreDegismeli true; 816e79eb8 false
+            // yapmıştı) (ortak alan denetimi 19.11.2026, #20)
+            await KullaniciSqlRepository.sifreGuncelle(hedef.kullaniciId, await sifreHashle(yeniSifre), true);
         }
     }
     static silmeEngeli() {

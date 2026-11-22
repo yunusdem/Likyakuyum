@@ -30,8 +30,13 @@ export async function gibeGonderildiMi(pool, evrakTuru, belgeId) {
     `);
         return Number(r.recordset?.[0]?.G) === 1;
     }
-    catch {
-        return false;
+    catch (e) {
+        // Tablo yokluğu (e-Belge hiç kurulmamış firma) beklenen durumdur: gönderilmemiş sayılır. Başka her hata (bağlantı, zaman aşımı,
+        // kilit…) gönderilmemiş sayılırsa GİB'e gitmiş fiş silinebiliyordu; silme durdurulur (ortak alan denetimi 19.11.2026, #50)
+        const no = Number(e?.number ?? e?.originalError?.info?.number);
+        if (no === 208)
+            return false;
+        throw ApiError.unprocessable(`Fişin GİB gönderim durumu okunamadı; güvenlik için işlem durduruldu. Biraz sonra yeniden deneyin. (${e?.message || e})`);
     }
 }
 /** Gönderilmiş fişi silme girişiminde fırlatılır — her fiş türünde aynı mesaj. */

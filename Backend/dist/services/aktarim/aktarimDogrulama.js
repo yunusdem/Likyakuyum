@@ -36,6 +36,71 @@ const anahtarIfadesi = (ifade, k) => (metinMi(k) ? `CAST(${ifade} AS nvarchar(45
 const tek = async (b, sorgu) => (await new sql.Request(b).query(sorgu)).recordset[0] || {};
 const coklu = async (b, sorgu) => (await new sql.Request(b).query(sorgu)).recordset;
 const sayiMetni = (v) => (v === null || v === undefined ? null : String(v));
+/**
+ * Eski programın görünümleriyle anlam denetimi (19.11.2026 denetimi). Tablolar birebir kopyalansa da yeni sürümün aynı adlı görünümü
+ * veriyi farklı yorumlayabilir: fişteki KMV bilgisi yanlış kodlandığında e-Döviz belgelerinin ödenecek tutarı değişiyordu (satır
+ * özetleri kuralla hesaplandığı için bunu göremez). Bizim e-Döviz gönderimi ve belge çıktısı tutarı bu görünümden okur.
+ * Eski sarraf fişi yapısı (kuyum, taslak kurallar) cari ve vezne bakiyesine yeni yapıda aynı şekilde yansımaz; bakiye görünümleri
+ * bunu da yakalar. anahtar: satırı tanımlayan kolonlar; deger: karşılaştırılan tutarlar; sifirHaric: sıfır bakiyeli satırlar sayılmaz.
+ */
+export const GORUNUM_KAPILARI = [
+    { gorunum: "VODVZ_E_DOVIZ_BELGESI_XSLT", ad: "e-Döviz belge tutarları", anahtar: ["UUID", "ID"], deger: ["PayableAmount", "TaxInclusiveAmount", "TaxExclusiveAmount", "TaxAmount", "LineExtensionAmount"], sifirHaric: false, taslaktaUyari: false },
+    { gorunum: "VODVZR_CARI_BAKIYE_RAPORU", ad: "Cari bakiyeleri", anahtar: ["CARI_KART_ID", "PARA_ID"], deger: ["BAKIYE"], sifirHaric: true, taslaktaUyari: true },
+    { gorunum: "VODVZ_VEZNE_BAKIYE", ad: "Vezne bakiyeleri", anahtar: ["VEZNE_ID", "PARA_ID"], deger: ["MIKTAR"], sifirHaric: true, taslaktaUyari: true },
+    { gorunum: "VODVZR_HESAP_BAKIYE_RAPORU", ad: "Kasa hesap bakiyeleri", anahtar: ["HESAP_ID", "PARA_ID"], deger: ["BAKIYE"], sifirHaric: true, taslaktaUyari: true },
+];
+export const gorunumKontrolleri = async (baglanti, plan) => {
+    const k = [];
+    // Taslak (sarraf) kuralları yönetici onayıyla kullanıldıysa bakiye farkı aktarımı durdurmaz, uyarı olarak raporlanır (deneme aktarımı, K8)
+    const taslak = plan.engeller.some((e) => e.kod === "TASLAK_KURAL");
+    for (const g of GORUNUM_KAPILARI) {
+        const kolonlar = async (db) => {
+            const r = await coklu(baglanti, `SELECT c.name AS K FROM ${q(db)}.sys.columns c WHERE c.object_id = OBJECT_ID(${n(`${db}.dbo.${g.gorunum}`)}, 'V')`);
+            return r.length ? r.map((x) => String(x.K).toUpperCase()) : null;
+        };
+        try {
+            const kk = await kolonlar(plan.kaynakDb), hk = await kolonlar(plan.hedefDb);
+            if (!kk || !hk)
+                continue; // görünüm bir yanda yok (eski program olmayan / çok eski sürüm): denetlenmez
+            const ortak = (ad) => kk.includes(ad.toUpperCase()) && hk.includes(ad.toUpperCase());
+            const degerler = g.deger.filter(ortak);
+            if (!g.anahtar.every(ortak) || !degerler.length)
+                continue;
+            // Metin anahtarlar iki yanda açık (ikili) harf düzeniyle: bağlamın düzeni (canlıda master = SQL_Latin1) ve iki veritabanınınki farklı olabilir
+            const sec = (db) => `SELECT ${g.anahtar.map((a, i) => `CAST(RTRIM(CAST(${q(a)} AS varchar(100))) AS varchar(100)) COLLATE Latin1_General_BIN2 AS A${i}`).join(", ")}, ` +
+                `${degerler.map((d, i) => `CAST(ROUND(ISNULL(${q(d)}, 0), 4) AS decimal(38, 4)) AS D${i}`).join(", ")} FROM ${tamAd(db, g.gorunum)}` +
+                (g.sifirHaric ? ` WHERE ${degerler.map((d) => `ABS(ISNULL(${q(d)}, 0)) >= 0.00005`).join(" OR ")}` : "");
+            const eslesme = g.anahtar.map((_a, i) => `X.A${i} = Y.A${i}`).join(" AND ");
+            const farkKosulu = `X.A0 IS NULL OR Y.A0 IS NULL OR ${degerler.map((_d, i) => `X.D${i} <> Y.D${i}`).join(" OR ")}`;
+            const govde = `FROM (${sec(plan.kaynakDb)}) X FULL OUTER JOIN (${sec(plan.hedefDb)}) Y ON ${eslesme}`;
+            const x = await tek(baglanti, `SELECT SUM(CASE WHEN X.A0 IS NOT NULL THEN 1 ELSE 0 END) AS KS, SUM(CASE WHEN ${farkKosulu} THEN 1 ELSE 0 END) AS FARK ${govde}`);
+            const ks = Number(x.KS || 0), fark = Number(x.FARK || 0);
+            let ornekler;
+            if (fark > 0) {
+                const o = await coklu(baglanti, `
+          SELECT TOP 5 ${g.anahtar.map((_a, i) => `COALESCE(X.A${i}, Y.A${i}) AS A${i}`).join(", ")}, X.D0 AS KD, Y.D0 AS HD ${govde}
+          WHERE ${farkKosulu} ORDER BY ${g.anahtar.map((_a, i) => `COALESCE(X.A${i}, Y.A${i})`).join(", ")}`);
+                ornekler = o.map((r) => `${g.anahtar.map((a, i) => `${a}=${String(r[`A${i}`]).trim()}`).join(" ")}: eski ${r.KD ?? "-"}, yeni ${r.HD ?? "-"}`);
+            }
+            k.push({
+                grup: "GORUNUM",
+                tablo: g.gorunum,
+                ad: `${g.ad} eski programın gösterdiğiyle aynı (${degerler.join(", ")})`,
+                durum: fark === 0 ? "TAMAM" : taslak && g.taslaktaUyari ? "UYARI" : "FARK",
+                kaynak: ks,
+                hedef: ks - fark,
+                ayrinti: fark
+                    ? `${fark} kayıt eski programdakinden farklı görünüyor.` + (taslak && g.taslaktaUyari ? " Taslak (sarraf) kurallarıyla aktarıldı; canlıya alınmadan önce giderilmeli." : "")
+                    : undefined,
+                ornekler,
+            });
+        }
+        catch (err) {
+            k.push({ grup: "GORUNUM", tablo: g.gorunum, ad: `${g.ad} karşılaştırılamadı (görünüm çalışmadı)`, durum: "UYARI", ayrinti: String(err?.message || err).slice(0, 300) });
+        }
+    }
+    return k;
+};
 export const dogrula = async (baglanti, plan, secenek = {}) => {
     const bas = Date.now();
     const ornekSayisi = secenek.ornekSayisi ?? 5;
@@ -204,6 +269,8 @@ export const dogrula = async (baglanti, plan, secenek = {}) => {
     ekle({ grup: "SEMA", tablo: null, ad: "Kapalı / doğrulanmamış kısıt", durum: guvensiz.length ? "UYARI" : "TAMAM", hedef: guvensiz.length, ornekler: guvensiz.slice(0, 20).map((x) => String(x.A)) });
     const kapaliTetik = await coklu(baglanti, `SELECT t.name + N'.' + tr.name AS A FROM ${H}.sys.triggers tr JOIN ${H}.sys.tables t ON t.object_id = tr.parent_id WHERE tr.is_disabled = 1`);
     ekle({ grup: "SEMA", tablo: null, ad: "Kapalı tetik", durum: kapaliTetik.length ? "UYARI" : "TAMAM", hedef: kapaliTetik.length, ornekler: kapaliTetik.slice(0, 20).map((x) => String(x.A)) });
+    // 9) Eski programın görünümleri: e-Döviz belge tutarları ve bakiyeler
+    kontroller.push(...(await gorunumKontrolleri(baglanti, plan)));
     if (secenek.ekKontroller)
         kontroller.push(...(await secenek.ekKontroller(baglanti, plan)));
     const fark = kontroller.filter((k) => k.durum === "FARK").length;

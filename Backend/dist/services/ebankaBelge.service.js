@@ -108,7 +108,16 @@ export class EBankaBelgeService {
         const yil = Number(tarih.slice(0, 4));
         const alici = taraf(istek.alici);
         if (gelen) {
-            const senaryo = alici.vknTckn === NIHAI_TUKETICI ? "EARSIVFATURA" : (await EbelgeService.mukellefSorgulaCanli(alici.vknTckn, kullanici, dbContext)).mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
+            // Mükellef sorgusu yapılamadıysa (ICE hatası / ayar yok) sessizce e-Arşiv seçilmez; durup hata verilir (EF12)
+            // (ortak alan denetimi 19.11.2026, #31)
+            let senaryo = "EARSIVFATURA";
+            if (alici.vknTckn !== NIHAI_TUKETICI) {
+                const m = await EbelgeService.mukellefSorgulaCanli(alici.vknTckn, kullanici, dbContext);
+                if (m.sorgulanamadi) {
+                    throw ApiError.unprocessable(`Alıcının (${alici.vknTckn}) e-Fatura mükellefiyeti sorgulanamadı; belge türü belirlenemediği için belge kesilmedi. Biraz sonra yeniden deneyin.${m.mesaj ? ` (${m.mesaj})` : ""}`);
+                }
+                senaryo = m.mukellefMi ? "TICARIFATURA" : "EARSIVFATURA";
+            }
             const belgeNo = await EbelgeService.siradakiBelgeNo(senaryo === "TICARIFATURA" ? "EFatura" : "EArsiv", yil, dbContext);
             const { girdi, cozum } = ebankaSatisGirdisi(istek.satis, hedef, { belgeNo, tarih, alici, odemeNotu: h.bankaAdi || null });
             const tam = await EbelgeKaynakService.aliciAdresiniTamamla({ ...girdi, senaryo }, dbContext);

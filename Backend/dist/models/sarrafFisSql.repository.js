@@ -166,6 +166,11 @@ export class SarrafFisSqlRepository {
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
         IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
+        -- Kayıt ödeme satırına ADET / BANKA_ID, kaydet yordamı (göç 021) CARI_KART_ID yazar; göç 034 çalışmamış veritabanında
+        -- kayıt "Invalid column name" ile düşmesin (ortak alan denetimi 19.11.2026, #1)
+        IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ADET') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ADET] FLOAT NULL;
+        IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'BANKA_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [BANKA_ID] INT NULL;
+        IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'CARI_KART_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [CARI_KART_ID] INT NULL;
       `).catch(() => { });
             await ensureSarrafStoredProcedures(pool).catch(() => { });
         }
@@ -268,13 +273,16 @@ export class SarrafFisSqlRepository {
                 masakListesindeVar: h.MASAK_LISTESINDE_VAR === true || h.MASAK_LISTESINDE_VAR === 1,
                 bankaAciklama: (h.BANKA_ACIKLAMA || "").trim() || null,
                 satirlar: satirlar.map((r) => {
+                    // Milyemi 0 yazılmış kayıt (12.10–20.11 arası Sarraf ekranı): gerçek satış milyemi has / miktar; ürün tanımındaki değer değil
                     const mVal = (r.MILYEM !== null && r.MILYEM !== undefined && Number(r.MILYEM) !== 0)
                         ? Number(r.MILYEM)
-                        : (r.HAS_ORANI !== null && r.HAS_ORANI !== undefined && Number(r.HAS_ORANI) !== 0
-                            ? Number(r.HAS_ORANI)
-                            : (r.PARA_HAS_ORANI !== null && r.PARA_HAS_ORANI !== undefined && Number(r.PARA_HAS_ORANI) !== 0
-                                ? Number(r.PARA_HAS_ORANI)
-                                : (Number(r.MILYEM) || 0)));
+                        : Number(r.MIKTAR) > 0 && Number(r.HAS_GRAM) > 0
+                            ? Number((Number(r.HAS_GRAM) / Number(r.MIKTAR)).toFixed(4))
+                            : (r.HAS_ORANI !== null && r.HAS_ORANI !== undefined && Number(r.HAS_ORANI) !== 0
+                                ? Number(r.HAS_ORANI)
+                                : (r.PARA_HAS_ORANI !== null && r.PARA_HAS_ORANI !== undefined && Number(r.PARA_HAS_ORANI) !== 0
+                                    ? Number(r.PARA_HAS_ORANI)
+                                    : (Number(r.MILYEM) || 0)));
                     return {
                         satirNo: r.SATIR_NO, urunId: r.URUN_ID ?? 0,
                         urunKodu: (r.URUN_KODU || "").trim(), urunAdi: r.URUN_ADI || "",
@@ -288,13 +296,16 @@ export class SarrafFisSqlRepository {
                     };
                 }),
                 odemeSatirlari: odemeler.map((r) => {
+                    // Milyemi 0 yazılmış kayıt (12.10–20.11 arası Sarraf ekranı): gerçek satış milyemi has / miktar; ürün tanımındaki değer değil
                     const mVal = (r.MILYEM !== null && r.MILYEM !== undefined && Number(r.MILYEM) !== 0)
                         ? Number(r.MILYEM)
-                        : (r.HAS_ORANI !== null && r.HAS_ORANI !== undefined && Number(r.HAS_ORANI) !== 0
-                            ? Number(r.HAS_ORANI)
-                            : (r.PARA_HAS_ORANI !== null && r.PARA_HAS_ORANI !== undefined && Number(r.PARA_HAS_ORANI) !== 0
-                                ? Number(r.PARA_HAS_ORANI)
-                                : (Number(r.MILYEM) || 0)));
+                        : Number(r.MIKTAR) > 0 && Number(r.HAS_GRAM) > 0
+                            ? Number((Number(r.HAS_GRAM) / Number(r.MIKTAR)).toFixed(4))
+                            : (r.HAS_ORANI !== null && r.HAS_ORANI !== undefined && Number(r.HAS_ORANI) !== 0
+                                ? Number(r.HAS_ORANI)
+                                : (r.PARA_HAS_ORANI !== null && r.PARA_HAS_ORANI !== undefined && Number(r.PARA_HAS_ORANI) !== 0
+                                    ? Number(r.PARA_HAS_ORANI)
+                                    : (Number(r.MILYEM) || 0)));
                     const rawOat = Number(r.ODEME_ARACI_TURU) || 0;
                     let effectiveCariKod = (r.CARI_KOD || "").trim();
                     let effectiveCariUnvan = r.CARI_UNVAN || "";
@@ -366,10 +377,18 @@ export class SarrafFisSqlRepository {
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'BANKA_ACIKLAMA') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_KODU') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_KODU] VARCHAR(50) NULL;
       IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'PARA_ADI') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [PARA_ADI] VARCHAR(100) NULL;
+      -- Aşağıdaki UPDATE ADET ve BANKA_ID kolonlarını, kaydet yordamı CARI_KART_ID kolonunu kullanır (göç 034; ortak alan denetimi 19.11.2026, #1)
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'ADET') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [ADET] FLOAT NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'BANKA_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [BANKA_ID] INT NULL;
+      IF COL_LENGTH('dbo.TODVZ_ODEME_SATIRI', 'CARI_KART_ID') IS NULL ALTER TABLE dbo.TODVZ_ODEME_SATIRI ADD [CARI_KART_ID] INT NULL;
     `).catch(() => { });
         // e-Belge KDV kodu kolonu (göç 022): yoksa (yetki / eski şema) fiş yine kaydedilir, yalnız kod yazılmaz
         const istisnaKoduKolonu = (await pool.request().query(`SELECT COL_LENGTH('dbo.TODVZ_SARRAF_FISI', 'E_BELGE_ISTISNA_KODU') AS L`).catch(() => ({ recordset: [{ L: null }] }))).recordset[0]?.L != null;
         const req = pool.request();
+        // Milyem kolonu (TAMSAYI) binde tutulur (916, 930). Sarraf ekranı ondalık gönderiyordu (0,93): tamsayıya yuvarlanıp 0 yazılıyor,
+        // fiş düzeltmeye açılınca ürün tanımındaki milyem geliyor, eski program ve raporlar 0 görüyordu. Ondalık (≤ 1) binde çevrilir;
+        // Hızlı Satış gibi binde gönderenler değişmez (ortak alan denetimi 20.11.2026, ekran denemesi)
+        const milyemBinde = (val) => { const m = parseNum(val); return m > 0 && m <= 1 ? Math.round(m * 1000) : Math.round(m); };
         const parseNum = (val) => {
             if (val === null || val === undefined || val === "")
                 return 0;
@@ -536,7 +555,7 @@ export class SarrafFisSqlRepository {
             req.input(`${p}_sNo`, sql.Int, parseNum(s.satirNo) || (idx + 1));
             req.input(`${p}_uId`, sql.Int, Number(s.urunId));
             req.input(`${p}_mik`, sql.Float, parseNum(s.miktar));
-            req.input(`${p}_mil`, sql.Float, parseNum(s.milyem));
+            req.input(`${p}_mil`, sql.Float, milyemBinde(s.milyem));
             req.input(`${p}_hg`, sql.Float, parseNum(s.hasGram));
             req.input(`${p}_ad`, sql.Int, Math.round(parseNum(s.adet)));
             req.input(`${p}_im`, sql.Float, parseNum(s.iscilikiMiktari));
@@ -577,6 +596,11 @@ export class SarrafFisSqlRepository {
                 });
             }
         }
+        // TODVZ_HESAP.ISKONTO_ID göç 034'le / Kasa Hesap ekranıyla gelir; korumasız okunursa bütün kayıt derlemede düşer.
+        // Kolon yoksa hesap yalnız kod / adla aranır (ortak alan denetimi 19.11.2026, #10)
+        const hesapOdemesiVar = validOdemeler.some((o) => parseNum(o.odemeAraciTuru) === 3);
+        const hesapIskontoKolonu = hesapOdemesiVar
+            && (await pool.request().query(`SELECT COL_LENGTH('dbo.TODVZ_HESAP', 'ISKONTO_ID') AS L`).catch(() => ({ recordset: [{ L: null }] }))).recordset[0]?.L != null;
         const odemeValuesSql = validOdemeler.map((o, idx) => {
             const p = `o_${idx}`;
             const rawOat = parseNum(o.odemeAraciTuru);
@@ -608,7 +632,7 @@ export class SarrafFisSqlRepository {
             req.input(`${p}_ad`, sql.Int, Math.round(parseNum(o.adet)));
             req.input(`${p}_bankaId`, sql.Int, o.bankaId ? Number(o.bankaId) : null);
             req.input(`${p}_mik`, sql.Float, mik);
-            req.input(`${p}_mil`, sql.Float, parseNum(o.milyem));
+            req.input(`${p}_mil`, sql.Float, milyemBinde(o.milyem));
             req.input(`${p}_hg`, sql.Float, parseNum(o.hasGram));
             req.input(`${p}_kur`, sql.Float, kur);
             req.input(`${p}_tut`, sql.Float, tut);
@@ -1135,10 +1159,10 @@ export class SarrafFisSqlRepository {
             return `
         BEGIN
           DECLARE @TARGET_HESAP_ID_${idx} INT = NULL;
-          IF (@o_${idx}_iskId IS NOT NULL)
+          ${hesapIskontoKolonu ? `IF (@o_${idx}_iskId IS NOT NULL)
           BEGIN
             SELECT TOP 1 @TARGET_HESAP_ID_${idx} = HESAP_ID FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) WHERE ISKONTO_ID = @o_${idx}_iskId;
-          END;
+          END;` : ""}
           IF (@TARGET_HESAP_ID_${idx} IS NULL AND LEN(LTRIM(RTRIM(@o_${idx}_pkod))) > 0)
           BEGIN
             SELECT TOP 1 @TARGET_HESAP_ID_${idx} = HESAP_ID FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
@@ -1149,10 +1173,7 @@ export class SarrafFisSqlRepository {
             SELECT TOP 1 @TARGET_HESAP_ID_${idx} = HESAP_ID FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) 
             WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@o_${idx}_pad) OR UPPER(LTRIM(RTRIM(AD))) = UPPER(@o_${idx}_pad);
           END;
-          IF (@TARGET_HESAP_ID_${idx} IS NULL)
-          BEGIN
-            SELECT TOP 1 @TARGET_HESAP_ID_${idx} = HESAP_ID FROM [dbo].[TODVZ_HESAP] WITH (NOLOCK) ORDER BY HESAP_ID ASC;
-          END;
+          -- Hesap bulunamazsa ilk hesaba yazılmaz, kasa kaydı açılmaz (ortak alan denetimi 19.11.2026, #11)
 
           IF (@TARGET_HESAP_ID_${idx} IS NOT NULL AND @o_${idx}_tut > 0)
           BEGIN
@@ -1174,34 +1195,9 @@ export class SarrafFisSqlRepository {
           `;
         }).filter(Boolean).join("\n")}
 
-        -- POS (ODEME_ARACI_TURU = 2) hareketlerini TODVZ_POS_ISLEM tablosuna işleme
-        IF OBJECT_ID('dbo.TODVZ_POS_ISLEM', 'U') IS NOT NULL
-        BEGIN
-          DELETE FROM [dbo].[TODVZ_POS_ISLEM] 
-          WHERE BELGE_TURU = 'sarraf' AND (BELGE_ID = @OUT_SARRAF_FISI_ID OR BELGE_NO = @OUT_FIS_NO);
-
-          ${validOdemeler.map((o, idx) => {
-            const rawOat = parseNum(o.odemeAraciTuru);
-            if (rawOat !== 2)
-                return "";
-            return `
-          IF (@o_${idx}_tut > 0)
-          BEGIN
-            INSERT INTO [dbo].[TODVZ_POS_ISLEM] (
-              ISTEK_KIMLIK, POS_TERMINAL_ID, ENTEGRASYON, MOD, BELGE_TURU,
-              BELGE_ID, BELGE_NO, BELGE_TIPI, TUTAR, DURUM,
-              ELLE, ELLE_KULLANICI_ID, ELLE_ZAMANI, IADE_DURUMU,
-              POS_CIHAZI_ID, OLUSTURMA, SONUC_ZAMANI, VEZNE_ID, KULLANICI_ID
-            ) VALUES (
-              NEWID(), NULL, 'yok', 'canli', 'sarraf',
-              @OUT_SARRAF_FISI_ID, @OUT_FIS_NO, 'earsiv', @o_${idx}_tut, 'ONAY',
-              1, @IN_KULLANICI_ID, GETDATE(), 0,
-              @o_${idx}_pos, GETDATE(), GETDATE(), @IN_VEZNE_ID, @IN_KULLANICI_ID
-            );
-          END;
-            `;
-        }).filter(Boolean).join("\n")}
-        END;
+        -- POS ödemeleri burada TODVZ_POS_ISLEM tablosuna yazılmaz, oradan silinmez: kart fiş kaydından sonra POS penceresinden
+        -- çekilir ve kaydı yalnız POS modülü (pos.service) tutar. Burada yazılan ONAY satırı pencereyi açtırmıyor, yeniden kayıtta
+        -- cihazdan gelen gerçek kaydı siliyordu (docs/POS_ENTEGRASYON_YOL_HARITASI.md K15, K18, K28, K29; ortak alan denetimi 19.11.2026, #9)
       END;
 
       SELECT 
@@ -1316,6 +1312,7 @@ export class SarrafFisSqlRepository {
             throw ApiError.badRequest(userFriendlyMsg);
         }
     }
+    /** Döner: "iade bekliyor" işaretlenen POS çekimlerinin adedi ve tutarı — ekran kullanıcıya cihazdan iade etmesini söyler (POS K14) */
     static async deleteFis(sarrafFisiId, kullaniciId, dbContext) {
         const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
         // GİB'e gönderilmiş (e-Belge giden kaydı gönderildi/kuyrukta) fiş hiçbir ekrandan silinemez — döviz fişiyle aynı kural
@@ -1333,12 +1330,31 @@ export class SarrafFisSqlRepository {
                     .input("A_ODE", sql.VarChar(200), `%Sarraf Fişi Ödeme - Fiş No: ${fisNo}%`)
                     .query(`IF OBJECT_ID('dbo.TODVZ_HESAP_HAREKETI','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_HESAP_HAREKETI] WHERE ACIKLAMA = @A_ISC OR ACIKLAMA LIKE @A_ODE`)
                     .catch((e) => logger.warn("Sarraf fişi hesap kaydı silinemedi:", e?.message));
-                await pool.request()
-                    .input("FID", sql.Int, sarrafFisiId)
-                    .input("FNO", sql.VarChar(50), fisNo)
-                    .query(`IF OBJECT_ID('dbo.TODVZ_POS_ISLEM','U') IS NOT NULL DELETE FROM [dbo].[TODVZ_POS_ISLEM] WHERE BELGE_TURU = 'sarraf' AND (BELGE_ID = @FID OR BELGE_NO = @FNO)`)
-                    .catch((e) => logger.warn("Sarraf fişi POS kaydı silinemedi:", e?.message));
             }
+            // POS kayıtları silinmez (ortak alan denetimi 19.11.2026, #9): fişin tahsil edilmiş ve iade işareti olmayan çekimleri
+            // "iade bekliyor" olur (K14; IADE_DURUMU 1, POS modülünün iadeIsaretle'siyle aynı alanlar). Bekleyen / belirsiz işlemlere dokunulmaz.
+            // Ekran uyarısı için işaretlenen çekimlerin adedi ve tutarı OUTPUT ile alınır (ortak alan denetimi 19.11.2026)
+            const iade = { iadeBekleyenAdet: 0, iadeBekleyenTutar: 0 };
+            await pool.request()
+                .input("FID", sql.Int, sarrafFisiId)
+                .input("KID", sql.Int, kullaniciId || null)
+                .query(`
+          DECLARE @IADE TABLE (TUTAR FLOAT);
+          IF OBJECT_ID('dbo.TODVZ_POS_ISLEM','U') IS NOT NULL
+            UPDATE [dbo].[TODVZ_POS_ISLEM]
+            SET IADE_DURUMU = 1, IADE_KULLANICI_ID = @KID, IADE_ZAMANI = GETDATE()
+            OUTPUT inserted.TUTAR INTO @IADE (TUTAR)
+            WHERE BELGE_TURU = 'sarraf' AND BELGE_ID = @FID AND DURUM = 'ONAY' AND IADE_DURUMU = 0;
+          SELECT COUNT(*) AS ADET, ISNULL(SUM(TUTAR), 0) AS TUTAR FROM @IADE;`)
+                .then((r) => {
+                const s = r.recordset?.[0] || {};
+                iade.iadeBekleyenAdet = Number(s.ADET) || 0;
+                iade.iadeBekleyenTutar = Math.round((Number(s.TUTAR) || 0) * 100) / 100;
+                if (iade.iadeBekleyenAdet > 0)
+                    logger.info(`Sarraf fişi #${sarrafFisiId} silindi; ${iade.iadeBekleyenAdet} POS çekimi (${iade.iadeBekleyenTutar} TL) "iade bekliyor" işaretlendi.`);
+            })
+                .catch((e) => logger.warn("Sarraf fişinin POS çekimleri iade bekliyor işaretlenemedi:", e?.message));
+            return iade;
         }
         catch (err) {
             logger.error("deleteFis error:", err);

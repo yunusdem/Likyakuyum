@@ -1,3 +1,4 @@
+import { kendiKayitKosulu } from "../utils/kendiKayit.js";
 import sql from "mssql";
 import { EVRAK_TURU_PERAKENDE, gibeGonderildiyseEngelle } from "./ebelgeGonderimKilidi.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -516,6 +517,11 @@ export class TicariSatisSqlRepository {
             durbunParametreleriniBagla(req, k.parametreler);
         }
         const ust = durbunVar ? `TOP (${durbunLimiti(f.limit, 1001, 1001, true)}) ` : "";
+        {
+            const kk = kendiKayitKosulu(req, "F", f.kendi);
+            if (kk)
+                kosul.push(kk);
+        } // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
         const r = await req.query(`
       SELECT ${ust}F.FATURA_ID, F.FATURA_NO, F.TARIH, F.SENARYO, F.ALICI_VKN_TCKN, F.ALICI_UNVAN, F.CARI_KART_ID, RTRIM(C.KOD) AS CARI_KOD,
         F.ARA_TOPLAM, F.TOPLAM_KDV, F.ISKONTO_TUTARI, F.GENEL_TOPLAM, ISNULL(F.E_BELGE_DURUMU, 0) AS E_BELGE_DURUMU, F.GIB_STATU_KODU,

@@ -231,6 +231,18 @@ export const incele = async (pool, geciciDb, yedek) => {
             mesaj: `Bu veritabanı ${b.db} ile bağlı (${b.nesneler.length} tetik/nesne; ortak numaratör ve tanımlar). İki yedek aynı müşteri numarasıyla, çift olarak aktarılmalı.`,
         });
     }
+    // Firma kimliği boş yedek (R/A çiftinin çalışma alanında olağan): aktarım birebir olduğu için firmanın Firma Tanımları ekranı da
+    // boş açılır. 20.11.2026 canlıda "firma tanımları gelmemiş" sorusu bu yüzden geldi; yedeği yüklerken söylenir.
+    if (!ozet.firma.vkn && !ozet.firma.adres) {
+        const es = ozet.bagliVeritabanlari[0]?.db;
+        engeller.push({
+            kod: "FIRMA_BILGISI_BOS",
+            seviye: "UYARI",
+            mesaj: `Yedekteki firma tanımında VKN ve adres boş (eski programda da boş${ozet.firma.ad ? `; yalnız "${ozet.firma.ad}" yazılı` : ""}). ` +
+                `Aktarımdan sonra firmanın Firma Tanımları ekranı da böyle görünür${es ? `; VKN, adres ve diğer firma bilgileri eşi ${es} yedeğinde` : ""}. ` +
+                "Gerekirse aktarımdan sonra Firma Tanımları'ndan girilir.",
+        });
+    }
     // e-Döviz serileri: numaratör + fiş satırlarındaki belge numaraları + eski programın gönderim günlüğü
     // logVar: günlükte kayıt var mı (tablo boşsa eski programın gönderim bilgisi yok demektir)
     ozet.eDoviz.logVar = varMi("TODVZ_E_FATURA_LOG") && sayi("TODVZ_E_FATURA_LOG") > 0;

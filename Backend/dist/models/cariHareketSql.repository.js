@@ -2,6 +2,8 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+/** TL'nin PARA_ID'si (services/rapor/raporOrtak.ts TL_PARA_SQL ile aynı ifade; rapor modülüne bağımlılık kurmamak için burada). */
+const TL_PARA_SQL = `ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID), 1)`;
 const HAREKET_TIPI_LABELS = {
     0: "Nakit",
     1: "Banka / Havale",
@@ -193,7 +195,8 @@ export class CariHareketSqlRepository {
                     sfWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR SF.[UNVAN] LIKE @search OR SF.[FIS_NO] LIKE @search)");
                 }
                 if (filters?.onlyOwnRecords && filters?.userId) {
-                    sfWhere.push("(SF.[KULLANICI_ID] = @ownUserId OR (@ownVezneId > 0 AND SF.[VEZNE_ID] = @ownVezneId))");
+                    // TODVZ_SARRAF_FISI'nde KULLANICI_ID yok, kaydeden EKLEYEN_ID (fisYetkileri KAYIT_TABLOLARI) (ortak alan denetimi 19.11.2026, #25)
+                    sfWhere.push("(SF.[EKLEYEN_ID] = @ownUserId OR (@ownVezneId > 0 AND SF.[VEZNE_ID] = @ownVezneId))");
                 }
                 if (filters?.cariSinirlamaTipi && filters?.userId) {
                     if (filters.cariSinirlamaTipi === 1) {
@@ -255,7 +258,8 @@ export class CariHareketSqlRepository {
                     dfWhere.push("(C.[KOD] LIKE @search OR C.[AD] LIKE @search OR F.[UNVAN] LIKE @search OR F.[BELGE_NO] LIKE @search)");
                 }
                 if (filters?.onlyOwnRecords && filters?.userId) {
-                    dfWhere.push("(F.[KULLANICI_ID] = @ownUserId OR (@ownVezneId > 0 AND F.[VEZNE_ID] = @ownVezneId))");
+                    // TODVZ_FIS'te KULLANICI_ID yok, kaydeden EKLEYEN_ID (ortak alan denetimi 19.11.2026, #25)
+                    dfWhere.push("(F.[EKLEYEN_ID] = @ownUserId OR (@ownVezneId > 0 AND F.[VEZNE_ID] = @ownVezneId))");
                 }
                 if (filters?.cariSinirlamaTipi && filters?.userId) {
                     if (filters.cariSinirlamaTipi === 1) {
@@ -1000,6 +1004,8 @@ export class CariHareketSqlRepository {
         try {
             await transaction.begin();
             const numId = parseInt(String(id), 10);
+            // Tek geri alma noktası: kayıt TODVZ_CARI_HAREKET'te ise eski nakit vezne etkisi burada BİR KEZ geri alınır, dalın sonunda
+            // yeni hâli BİR KEZ uygulanır; sarraf fişi dalında (kayıt cari harekette yok) bu çağrılar etkisizdir (ortak alan denetimi 19.11.2026, #2)
             await CariHareketSqlRepository.stokGirisiDegil(transaction, numId);
             await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
             let effectiveCariKartId = data.cariKartId;
@@ -1022,8 +1028,8 @@ export class CariHareketSqlRepository {
         SELECT [CARI_HAREKET_ID] FROM [dbo].[TODVZ_CARI_HAREKET] WITH (NOLOCK) WHERE [CARI_HAREKET_ID] = @CH_ID;
       `);
             if (chCheck.recordset.length > 0) {
-                await CariHareketSqlRepository.stokGirisiDegil(transaction, numId);
-                await CariHareketSqlRepository.nakitVezneEtkisi(transaction, numId, -1);
+                // Stok girişi denetimi ve eski nakit vezne etkisinin geri alınması yukarıda (fonksiyon başında) bir kez yapıldı;
+                // burada tekrar geri almak vezneyi iki kez düşürüyordu (2.000→2.500 düzeltmede +500 yerine −1.500) (ortak alan denetimi 19.11.2026, #2)
                 const headerRequest = new sql.Request(transaction);
                 headerRequest.input("CARI_HAREKET_ID", sql.Int, numId);
                 headerRequest.input("CARI_KART_ID", sql.Int, effectiveCariKartId);
@@ -1220,9 +1226,10 @@ export class CariHareketSqlRepository {
             await CariHareketSqlRepository.ensureTablesExist(pool);
             // baslangic: kullanıcının işlem gösterme sınırı (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2)
             const chFilter = userFilter ? "AND (H.[EKLEYEN_ID] = @uId OR H.[GUNCELLEYEN_ID] = @uId OR (@vId > 0 AND H.[VEZNE_ID] = @vId))" : "";
-            const sfFilter = userFilter ? "AND (SF.[KULLANICI_ID] = @uId OR (@vId > 0 AND SF.[VEZNE_ID] = @vId))" : "";
-            const fFilter = userFilter ? "AND (F.[KULLANICI_ID] = @uId OR (@vId > 0 AND F.[VEZNE_ID] = @vId))" : "";
-            const fatFilter = userFilter ? "AND (FAT.[KULLANICI_ID] = @uId OR (@vId > 0 AND FAT.[VEZNE_ID] = @vId))" : "";
+            // Fiş tablolarında KULLANICI_ID yok; kaydeden EKLEYEN_ID (fisYetkileri KAYIT_TABLOLARI) (ortak alan denetimi 19.11.2026, #25)
+            const sfFilter = userFilter ? "AND (SF.[EKLEYEN_ID] = @uId OR (@vId > 0 AND SF.[VEZNE_ID] = @vId))" : "";
+            const fFilter = userFilter ? "AND (F.[EKLEYEN_ID] = @uId OR (@vId > 0 AND F.[VEZNE_ID] = @vId))" : "";
+            const fatFilter = userFilter ? "AND (FAT.[EKLEYEN_ID] = @uId OR (@vId > 0 AND FAT.[VEZNE_ID] = @vId))" : "";
             const query = `
         WITH CombinedMovements AS (
           SELECT 
@@ -1371,24 +1378,28 @@ export class CariHareketSqlRepository {
 
           UNION ALL
 
-          -- 4. Döviz Fişi Satırı (Sadece Cari Kartı seçilmiş olanlar)
-          SELECT 
+          -- 4-5. Döviz Fişi: YALNIZ bankadan ödenen fiş, bankanın carisine yazılır — Cari Bakiye Raporu (CARBAK1) ve eski programın
+          --      cari bakiye raporuyla aynı kapsam (services/rapor/kaynak.ts cariHareketleriSql). Fişte seçilen cari kart müşterinin
+          --      kimliğidir; işlem veznede nakit kapanır, cariye borç / alacak yazmaz. (19.11.2026: önceden cari kartı seçilmiş her
+          --      fiş iki bacakla cariye yazılıyor, bakiye eski programdakinden farklı çıkıyordu — yönetici kararı: rapora eşitlendi.)
+          -- 4. Döviz bacağı: satırdaki banka hesabı bu cari ise
+          SELECT
             FS.[PARA_ID],
             CASE WHEN F.[TIP] = 0 THEN FS.[MIKTAR] ELSE 0.0 END AS [BORC],
-            CASE WHEN F.[TIP] = 1 THEN FS.[MIKTAR] ELSE 0.0 END AS [ALACAK]
+            CASE WHEN F.[TIP] = 0 THEN 0.0 ELSE FS.[MIKTAR] END AS [ALACAK]
           FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
             INNER JOIN [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK) ON FS.[FIS_ID] = F.[FIS_ID]
-          WHERE F.[CARI_KART_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
+          WHERE FS.[BANKA_HESABI_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
 
           UNION ALL
 
-          -- 5. Döviz Fişi TL Karşılığı (Sadece Cari Kartı seçilmiş olanlar)
-          SELECT 
-            1 AS [PARA_ID],
-            CASE WHEN F.[TIP] = 1 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [BORC],
+          -- 5. TL karşılığı: fişin banka hesabı bu cari ise
+          SELECT
+            ${TL_PARA_SQL} AS [PARA_ID],
+            CASE WHEN F.[TIP] = 0 THEN 0.0 ELSE F.[ODEME_TUTARI] END AS [BORC],
             CASE WHEN F.[TIP] = 0 THEN F.[ODEME_TUTARI] ELSE 0.0 END AS [ALACAK]
           FROM [dbo].[TODVZ_FIS] F WITH (NOLOCK)
-          WHERE F.[CARI_KART_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0
+          WHERE F.[BANKA_HESABI_ID] = @id AND ISNULL(F.[IPTAL], 0) = 0 AND ISNULL(F.[ODEME_TUTARI], 0) <> 0
 
           UNION ALL
 

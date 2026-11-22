@@ -329,6 +329,7 @@ const defaultNewUserTemplate: UserProfile = {
   milyemPermValue: "0.00",
   iscilikGirisSekli: 0,
   dovizZiynetGirisSekli: 0,
+  altinHesaplamaSekli: 0,
 
   menuPerms: {
     mainMenu: "Tam Yetki",
@@ -412,6 +413,7 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
     milyemPermType: normalizedMilyemType,
     milyemPermValue: normalizedMilyemValue,
     dovizZiynetGirisSekli: u.dovizZiynetGirisSekli !== undefined ? Number(u.dovizZiynetGirisSekli) : 0,
+    altinHesaplamaSekli: u.altinHesaplamaSekli !== undefined ? Number(u.altinHesaplamaSekli) : 0,
     cariSinirlamaTipi: u.cariSinirlamaTipi !== undefined ? Number(u.cariSinirlamaTipi) : 0,
     atananCariIdler: Array.isArray(u.atananCariIdler) ? u.atananCariIdler : [],
     appearance: {
@@ -1060,6 +1062,7 @@ const UserDefinitionsPage: React.FC = () => {
             : "0.00",
           cariSinirlamaTipi: currentUser.cariSinirlamaTipi !== undefined ? Number(currentUser.cariSinirlamaTipi) : 0,
           atananCariIdler: currentUser.atananCariIdler || [],
+          altinHesaplamaSekli: currentUser.altinHesaplamaSekli !== undefined ? Number(currentUser.altinHesaplamaSekli) : 0,
         };
 
         const created = await UserService.createUser(toCreateUser);
@@ -1139,6 +1142,7 @@ const UserDefinitionsPage: React.FC = () => {
             : "0.00",
           cariSinirlamaTipi: currentUser.cariSinirlamaTipi !== undefined ? Number(currentUser.cariSinirlamaTipi) : 0,
           atananCariIdler: currentUser.atananCariIdler || [],
+          altinHesaplamaSekli: currentUser.altinHesaplamaSekli !== undefined ? Number(currentUser.altinHesaplamaSekli) : 0,
         };
 
         const updated = await UserService.updateUser(existingUser.id, toSaveUser);
@@ -2068,6 +2072,50 @@ const UserDefinitionsPage: React.FC = () => {
                                 onClick={() => updateField("dovizZiynetGirisSekli", 1)}
                               >
                                 Miktar
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Altın Hesaplama Şekli (0: Has kuru, 1: Ürün kuru) */}
+                        <div className="p-2 bg-white rounded border">
+                          <div className="d-flex align-items-center justify-content-between gap-2">
+                            <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
+                              <IconCoins size={16} /> Altın hesaplama şekli:
+                            </span>
+                            <div
+                              className="btn-group p-0.5 bg-light rounded border flex-shrink-0"
+                              role="group"
+                              aria-label="Altın Hesaplama Şekli"
+                              style={{ padding: "2px" }}
+                            >
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                variant={Number(currentUser.altinHesaplamaSekli || 0) === 0 ? "primary" : "light"}
+                                className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.altinHesaplamaSekli || 0) === 0
+                                    ? "shadow-sm text-white"
+                                    : "text-secondary bg-transparent hover-bg-white"
+                                  }`}
+                                style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
+                                onClick={() => updateField("altinHesaplamaSekli", 0)}
+                              >
+                                Has kuru
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                variant={Number(currentUser.altinHesaplamaSekli || 0) === 1 ? "primary" : "light"}
+                                className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.altinHesaplamaSekli || 0) === 1
+                                    ? "shadow-sm text-white"
+                                    : "text-secondary bg-transparent hover-bg-white"
+                                  }`}
+                                style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
+                                onClick={() => updateField("altinHesaplamaSekli", 1)}
+                              >
+                                Ürün kuru
                               </Button>
                             </div>
                           </div>

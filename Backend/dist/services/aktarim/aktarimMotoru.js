@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { izCikar, izYaz } from "./aktarimIzi.js";
 import { kopyalamaKomutu, planOlustur } from "./aktarimPlani.js";
 import { n, q, semaOku, tabloBul, tamAd } from "./aktarimSema.js";
 export class AktarimEngeli extends Error {
@@ -19,6 +20,21 @@ export class AktarimDogrulamaHatasi extends Error {
 export const planHazirla = async (pool, kaynakDb, hedefDb, planSecenekleri = {}) => {
     const plan = planOlustur(kaynakDb, hedefDb, await semaOku(pool, kaynakDb), await semaOku(pool, hedefDb), planSecenekleri);
     const engeller = [...plan.engeller];
+    // Motor yalnız dbo şemasını okur: başka şemada dolu tablo varsa sessizce atlanmasın (19.11.2026 denetimi)
+    const disSema = (await new sql.Request(pool).query(`
+    SELECT s.name AS SEMA, t.name AS TABLO, SUM(p.rows) AS SATIR
+    FROM ${q(kaynakDb)}.sys.tables t
+    JOIN ${q(kaynakDb)}.sys.schemas s ON s.schema_id = t.schema_id
+    JOIN ${q(kaynakDb)}.sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
+    WHERE t.is_ms_shipped = 0 AND s.name <> 'dbo'
+    GROUP BY s.name, t.name HAVING SUM(p.rows) > 0`)).recordset;
+    for (const t of disSema) {
+        engeller.push({
+            kod: "KAYIP_TABLO",
+            seviye: "ENGEL",
+            mesaj: `${t.SEMA}.${t.TABLO} tablosu (${t.SATIR} satır) dbo şemasında değil; aktarım yalnız dbo tablolarını taşır, veri kaybolur. Bu tablo için kural eklenmeli.`,
+        });
+    }
     for (const d of plan.denetimler) {
         const nSatir = Number((await new sql.Request(pool).query(d.sorgu)).recordset[0]?.N) || 0;
         if (nSatir > 0)
@@ -161,8 +177,26 @@ export const aktar = async (s) => {
             if (!dogrulama.basarili)
                 throw new AktarimDogrulamaHatasi(dogrulama);
         }
+        // 10) Aktarım izi (K24): aynı işlemde, tam olarak yedekten gelen hâl. COMMIT'ten sonra firmaya yazılır; sonraki
+        //     aktarım firmada aktarımdan sonra kayıt girildiyse (canlıya geçtiyse) bununla anlar ve durur.
+        //     Aktarımın yazdığı tablolar + e-Belge kaynak işaretleri (aktarım "eski programla gönderildi" yazar; sonradan değişmesi
+        //     firmadan e-belge işlemi yapıldığını gösterir).
+        adim = "IZ";
+        const izTablolari = silinecek.map((t) => t.tablo);
+        if (!izTablolari.some((t) => t.toUpperCase() === "TODVZ_EBELGE_KAYNAK"))
+            izTablolari.push("TODVZ_EBELGE_KAYNAK");
+        const iz = await izCikar(() => r(), s.hedefDb, izTablolari);
         adim = "COMMIT";
         await tx.commit();
+        let izYazildi = false;
+        try {
+            await izYaz(s.pool, s.hedefDb, iz);
+            izYazildi = true;
+        }
+        catch (err) {
+            // Veri yazıldı ve doğrulandı; iz rapora da yazılır (aktarım servisi oradan okur)
+            notlar.push(`Aktarım izi firma veritabanına yazılamadı (${String(err?.message || err).slice(0, 200)}); iz aktarım raporunda saklandı.`);
+        }
         ilerle("BITTI", 100, "Aktarım tamamlandı");
         const bitis = new Date();
         return {
@@ -179,6 +213,8 @@ export const aktar = async (s) => {
             notlar,
             kurallar: plan.kurallar,
             dogrulama,
+            iz,
+            izYazildi,
         };
     }
     catch (err) {

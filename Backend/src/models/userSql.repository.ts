@@ -176,6 +176,11 @@ export class UserSqlRepository {
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [DOVIZ_ZIYNET_GIRIS_SEKLI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_DOVIZ_ZIYNET_GIRIS_SEKLI DEFAULT 0;
         END;
 
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'ALTIN_HESAPLAMA_SEKLI') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [ALTIN_HESAPLAMA_SEKLI] TINYINT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_ALTIN_HESAPLAMA_SEKLI DEFAULT 0;
+        END;
+
         IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'VEZNE_SON_ISLEMLER_YETKISI') IS NULL
         BEGIN
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [VEZNE_SON_ISLEMLER_YETKISI] BIT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_VEZNE_SON_ISLEMLER_YETKISI DEFAULT 0;
@@ -246,6 +251,7 @@ export class UserSqlRepository {
       milyemPermValue: entity.MILYEM_TOLERANS_ORANI ?? 0,
       iscilikGirisSekli: Number(entity.ISCILIK_GIRIS_SEKLI ?? 0),
       dovizZiynetGirisSekli: Number(entity.DOVIZ_ZIYNET_GIRIS_SEKLI ?? 0),
+      altinHesaplamaSekli: Number(entity.ALTIN_HESAPLAMA_SEKLI ?? 0),
       cariSinirlamaTipi: Number(entity.CARI_SINIRLAMA_TIPI ?? 0),
       atananCariIdler: (entity as any).atananCariIdler || [],
 
@@ -630,6 +636,7 @@ export class UserSqlRepository {
       request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
       request.input("ISCILIK_GIRIS_SEKLI", sql.TinyInt, toInt(user.iscilikGirisSekli, 0));
       request.input("DOVIZ_ZIYNET_GIRIS_SEKLI", sql.TinyInt, toInt(user.dovizZiynetGirisSekli, 0));
+      request.input("ALTIN_HESAPLAMA_SEKLI", sql.TinyInt, toInt(user.altinHesaplamaSekli, 0));
       request.input("VEZNE_SON_ISLEMLER_YETKISI", sql.Bit, toBit(user.hasVezneLastTransactionsPerm));
       request.input("KENDI_KAYITLARI_YETKISI", sql.Bit, toBit(user.hasOnlyOwnRecordsPerm));
       request.input("CARI_SINIRLAMA_TIPI", sql.TinyInt, toInt(user.cariSinirlamaTipi, 0));
@@ -655,7 +662,7 @@ export class UserSqlRepository {
           [ENTEGRATOR_KULLANICI_ADI], [ENTEGRATOR_KULLANICI_SIFRESI], [E_BELGE_KULLANILIYOR],
           [MASAK_KULLANICI_ADI], [MASAK_KULLANICI_SIFRESI], [MASAK_UYARISI_VERSIN], [SUPHELI_ISLEMLER_YETKILISI],
           [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK], [SIDEBAR_GORUNUM],
-          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI], [DOVIZ_ZIYNET_GIRIS_SEKLI],
+          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI], [DOVIZ_ZIYNET_GIRIS_SEKLI], [ALTIN_HESAPLAMA_SEKLI],
           [VEZNE_SON_ISLEMLER_YETKISI], [KENDI_KAYITLARI_YETKISI], [CARI_SINIRLAMA_TIPI]
         )
         VALUES (
@@ -675,7 +682,7 @@ export class UserSqlRepository {
           @ENTEGRATOR_KULLANICI_ADI, @ENTEGRATOR_KULLANICI_SIFRESI, @E_BELGE_KULLANILIYOR,
           @MASAK_KULLANICI_ADI, @MASAK_KULLANICI_SIFRESI, @MASAK_UYARISI_VERSIN, @SUPHELI_ISLEMLER_YETKILISI,
           @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK, @SIDEBAR_GORUNUM,
-          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI, @DOVIZ_ZIYNET_GIRIS_SEKLI,
+          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI, @DOVIZ_ZIYNET_GIRIS_SEKLI, @ALTIN_HESAPLAMA_SEKLI,
           @VEZNE_SON_ISLEMLER_YETKISI, @KENDI_KAYITLARI_YETKISI, @CARI_SINIRLAMA_TIPI
         );
 
@@ -790,6 +797,7 @@ export class UserSqlRepository {
       request.input("CAPRAZ_KUR_KONTROLU_YOK", sql.Bit, toBit(user.noCrossRateCheck));
       request.input("ISCILIK_GIRIS_SEKLI", sql.TinyInt, toInt(user.iscilikGirisSekli, 0));
       request.input("DOVIZ_ZIYNET_GIRIS_SEKLI", sql.TinyInt, toInt(user.dovizZiynetGirisSekli, 0));
+      request.input("ALTIN_HESAPLAMA_SEKLI", sql.TinyInt, toInt(user.altinHesaplamaSekli, 0));
       request.input("VEZNE_SON_ISLEMLER_YETKISI", sql.Bit, toBit(user.hasVezneLastTransactionsPerm));
       request.input("KENDI_KAYITLARI_YETKISI", sql.Bit, toBit(user.hasOnlyOwnRecordsPerm));
       request.input("CARI_SINIRLAMA_TIPI", sql.TinyInt, toInt(user.cariSinirlamaTipi, 0));
@@ -867,6 +875,7 @@ export class UserSqlRepository {
           [MILYEM_YETKISI] = @MILYEM_YETKISI,
           [MILYEM_TOLERANS_ORANI] = @MILYEM_TOLERANS_ORANI,
           [DOVIZ_ZIYNET_GIRIS_SEKLI] = @DOVIZ_ZIYNET_GIRIS_SEKLI,
+          [ALTIN_HESAPLAMA_SEKLI] = @ALTIN_HESAPLAMA_SEKLI,
           [VEZNE_SON_ISLEMLER_YETKISI] = @VEZNE_SON_ISLEMLER_YETKISI,
           [KENDI_KAYITLARI_YETKISI] = @KENDI_KAYITLARI_YETKISI,
           [CARI_SINIRLAMA_TIPI] = @CARI_SINIRLAMA_TIPI

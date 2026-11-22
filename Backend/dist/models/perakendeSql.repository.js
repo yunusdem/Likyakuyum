@@ -19,6 +19,8 @@ import { perakendeOnEki, perakendeSeriTuru } from "../services/ebelgePerakende.j
 /**
  * Perakende fişinin vezne etkisini geri alan SQL (@FID faturası, veritabanındaki hâlinden) — düzeltmede başlık güncellenmeden önce ve silmede kullanılır.
  * Barkodsuz satır: satırda saklanan stok parası / miktarı (STOK_PARA_ID / STOK_MIKTAR); 01.10.2026 öncesi satırlarda kaydetmedeki eski kural ve eşleştirme.
+ * Barkodlu satır geri alınmaz (satışta vezneden düşmez); yalnız 15.10–19.11.2026 arasında düşülüp STOK_PARA_ID yazılmış barkodlu satırlar,
+ * düşüldükleri için geri alınır (ortak alan denetimi 19.11.2026, #5).
  * Vezneden tahsilat: yalnızca vezneye işlenmiş (VEZNE_ISLENDI = 1) ödeme satırları. Rapor denetimi 01.10.2026 — önceden düzeltme yeni başlığın veznesi / tipiyle
  * ve farklı bir para eşleştirmesiyle geri alıyor, tahsilatı hiç işlemiyordu.
  */
@@ -30,7 +32,7 @@ const PERAKENDE_VEZNE_GERI_AL = `
     DECLARE @GA TABLE (PARA_ID INT, M FLOAT);
     INSERT INTO @GA (PARA_ID, M)
       SELECT COALESCE(s.STOK_PARA_ID, E1.PARA_ID, E2.PARA_ID),
-        CASE WHEN @GA_TIPI = 1 THEN 1 ELSE -1 END * COALESCE(s.STOK_MIKTAR, s.MIKTAR)
+        CASE WHEN @GA_TIPI = 1 THEN 1 ELSE -1 END * COALESCE(s.STOK_MIKTAR, CASE WHEN s.GRAM > 0 THEN s.GRAM ELSE s.MIKTAR END)
       FROM dbo.TODVZ_FATURA_SATIRI s
       OUTER APPLY (SELECT TOP 1 P.PARA_ID FROM dbo.TODVZ_PARA P
         WHERE UPPER(LTRIM(RTRIM(P.KOD))) = UPPER(LTRIM(RTRIM(s.AYAR)))
@@ -43,7 +45,7 @@ const PERAKENDE_VEZNE_GERI_AL = `
           UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(s.AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', '')))) + ' AYAR ALTIN',
           UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(s.AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))))))) E2
       WHERE s.FATURA_ID = @FID AND (s.STOK_PARA_ID IS NOT NULL OR (ISNULL(s.ALTIN_URUN_ID, 0) = 0 AND LEN(LTRIM(RTRIM(ISNULL(s.BARKOD, '')))) = 0))
-        AND COALESCE(s.STOK_MIKTAR, s.MIKTAR) > 0;
+        AND COALESCE(s.STOK_MIKTAR, CASE WHEN s.GRAM > 0 THEN s.GRAM ELSE s.MIKTAR END) > 0;
     IF COL_LENGTH('dbo.TODVZ_FATURA_ODEME', 'VEZNE_ISLENDI') IS NOT NULL
       INSERT INTO @GA (PARA_ID, M)
         SELECT O.PARA_ID, CASE WHEN @GA_TIPI = 1 THEN -1 ELSE 1 END * ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0))
@@ -1130,7 +1132,8 @@ export class PerakendeSqlRepository {
                     lineReq.input("KDV_TUTARI", sql.Float, kdvTutari);
                     lineReq.input("TOPLAM_TUTAR", sql.Float, toplamTutar);
                     lineReq.input("IS_BARKODLU", sql.Bit, isBarkodlu ? 1 : 0);
-                    lineReq.input("STOK_MIKTAR", sql.Float, m > 0 ? m : 1);
+                    // Barkodsuz satırın düşeceği miktar: gram varsa gram, yoksa miktar; Adet birimli parada SQL'de miktara çevrilir (01.10 kuralı) (ortak alan denetimi 19.11.2026, #5)
+                    lineReq.input("STOK_MIKTAR", sql.Float, gramVal > 0 ? gramVal : m);
                     const lineInsertQuery = `
             INSERT INTO dbo.TODVZ_FATURA_SATIRI (
               FATURA_ID, SATIR_NO, ALTIN_URUN_ID, BARKOD, URUN_ADI,
@@ -1161,38 +1164,44 @@ export class PerakendeSqlRepository {
                 IF (@BARKOD IS NOT NULL AND LEN(LTRIM(RTRIM(@BARKOD))) > 0)
                   UPDATE dbo.TODVZ_OZEL_URUN SET SATILDI = @NEW_SATILDI, GUNCELLEME_ZAMANI = GETDATE() WHERE BARKOD = @BARKOD;
               END;
-            END;
-
-            -- 2. Vezne Bakiye Düşüşü: Altın ve gümüşte miktar değil ADET düşer
-            IF (@VEZNE_ID IS NOT NULL AND @VEZNE_ID > 0 AND @MIKTAR > 0)
+            END
+            ELSE
             BEGIN
-              DECLARE @LINE_P_ID INT = NULL;
-              DECLARE @CLEAN_AY VARCHAR(50) = UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(@AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))));
-              DECLARE @CLEAN_NM VARCHAR(100) = UPPER(LTRIM(RTRIM(ISNULL(@URUN_ADI, ''))));
-
-              SELECT TOP 1 @LINE_P_ID = PARA_ID FROM dbo.TODVZ_PARA 
-              WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@AYAR)))
-                 OR UPPER(LTRIM(RTRIM(KOD))) = @CLEAN_AY
-                 OR UPPER(LTRIM(RTRIM(KOD))) = @CLEAN_NM
-                 OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_NM;
-
-              IF @LINE_P_ID IS NULL
+              -- 2. Barkodsuz ürün / Para Tablosu Maddesi (USD, EUR, ÇEY, 22, 14, 18, 24, HAS vb.) vezneden düşer.
+              -- Barkodlu satır vezne stoğuna dokunmaz: stoğu ürün tanımında düştü (01.10 kararı, docs/rapor-denetim.md §7; raporlar da böyle sayar).
+              -- 15.10'dan beri barkodlu satırda da düşülüyordu, stok iki kez azalıyordu (ortak alan denetimi 19.11.2026, #5)
+              IF (@VEZNE_ID IS NOT NULL AND @VEZNE_ID > 0 AND @STOK_MIKTAR > 0)
               BEGIN
-                SELECT TOP 1 @LINE_P_ID = PARA_ID FROM dbo.TODVZ_PARA 
-                WHERE (UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY + ' AYAR'
-                   OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY + ' AYAR ALTIN'
-                   OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY);
-              END;
+                DECLARE @LINE_P_ID INT = NULL;
+                DECLARE @CLEAN_AY VARCHAR(50) = UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(ISNULL(@AYAR, ''), ' AYAR', ''), 'AYAR', ''), ' ', ''))));
+                DECLARE @CLEAN_NM VARCHAR(100) = UPPER(LTRIM(RTRIM(ISNULL(@URUN_ADI, ''))));
 
-              IF @LINE_P_ID IS NOT NULL
-              BEGIN
-                SET @STOK_MIKTAR = @MIKTAR;
-                UPDATE dbo.TODVZ_FATURA_SATIRI SET STOK_PARA_ID = @LINE_P_ID, STOK_MIKTAR = @STOK_MIKTAR WHERE FATURA_ID = @FATURA_ID AND SATIR_NO = @SATIR_NO;
-                DECLARE @DIFF_STK FLOAT = CASE WHEN @FATURA_TIPI = 1 THEN -@STOK_MIKTAR ELSE @STOK_MIKTAR END;
-                IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @LINE_P_ID)
-                  UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @DIFF_STK WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @LINE_P_ID;
-                ELSE
-                  INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @LINE_P_ID, @DIFF_STK);
+                SELECT TOP 1 @LINE_P_ID = PARA_ID FROM dbo.TODVZ_PARA
+                WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(LTRIM(RTRIM(@AYAR)))
+                   OR UPPER(LTRIM(RTRIM(KOD))) = @CLEAN_AY
+                   OR UPPER(LTRIM(RTRIM(KOD))) = @CLEAN_NM
+                   OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_NM;
+
+                IF @LINE_P_ID IS NULL
+                BEGIN
+                  SELECT TOP 1 @LINE_P_ID = PARA_ID FROM dbo.TODVZ_PARA
+                  WHERE (UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY + ' AYAR'
+                     OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY + ' AYAR ALTIN'
+                     OR UPPER(LTRIM(RTRIM(AD))) = @CLEAN_AY);
+                END;
+
+                IF @LINE_P_ID IS NOT NULL
+                BEGIN
+                  -- Adet birimli üründe (TODVZ_PARA.BIRIM 0) stok adetle düşer (sarraf fişiyle aynı); diğerlerinde gram, yoksa miktar (rapor denetimi 01.10.2026 —
+                  -- önceden 2 çeyreklik satırda birim gramajı düşüyordu). Düşen para ve miktar satırda saklanır.
+                  IF (SELECT BIRIM FROM dbo.TODVZ_PARA WHERE PARA_ID = @LINE_P_ID) = 0 SET @STOK_MIKTAR = @MIKTAR;
+                  UPDATE dbo.TODVZ_FATURA_SATIRI SET STOK_PARA_ID = @LINE_P_ID, STOK_MIKTAR = @STOK_MIKTAR WHERE FATURA_ID = @FATURA_ID AND SATIR_NO = @SATIR_NO;
+                  DECLARE @DIFF_STK FLOAT = CASE WHEN @FATURA_TIPI = 1 THEN -@STOK_MIKTAR ELSE @STOK_MIKTAR END;
+                  IF EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @LINE_P_ID)
+                    UPDATE dbo.TODVZ_VEZNE_BAKIYE SET MIKTAR = MIKTAR + @DIFF_STK WHERE VEZNE_ID = @VEZNE_ID AND PARA_ID = @LINE_P_ID;
+                  ELSE
+                    INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR) VALUES (@VEZNE_ID, @LINE_P_ID, @DIFF_STK);
+                END;
               END;
             END;
           `;

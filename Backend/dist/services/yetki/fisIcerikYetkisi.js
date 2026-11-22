@@ -1,6 +1,7 @@
 import { getDbPool } from "../../config/mssql.config.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { HizliSatisSqlRepository } from "../../models/hizliSatisSql.repository.js";
+import { logger } from "../../utils/logger.js";
 import { caprazKurDenetle, dovizGiseKuru, kurDenetle, milyemDenetle, sarrafGiseKuru } from "./kullaniciYetkiKural.js";
 /**
  * Fiş içeriğinde kullanıcı yetkileri (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.2): banka hesabı seçme, komisyon alma,
@@ -55,53 +56,182 @@ export async function guncelKurlar(req) {
     }
     return [...harita.values()];
 }
+// ───────────── Kur sınıra çekilince tutarın yeniden hesabı (ortak alan denetimi 19.11.2026, #6) ─────────────
+// Kullanıcı kararı (19.11.2026): "Sınıra çek, tutarı yeniden hesapla." Önceden yalnız s.kur değişiyor, satır tutarı ve fiş
+// toplamları eski kurla kalıyordu (ekran 41,00 / sunucu 41,02 → 100 USD satırda kur 41,02, tutar 4.100).
+const iki = (n) => parseFloat(n.toFixed(2));
+const dolu = (v) => v !== undefined && v !== null && String(v).trim() !== "";
+const kurYazi = (n) => n.toLocaleString("tr-TR", { maximumFractionDigits: 4 });
+const TL_KODLARI = ["TL", "TRY", "TRL"];
+const tlMi = (kod) => TL_KODLARI.includes(String(kod ?? "").trim().toUpperCase());
+/**
+ * Kur yetkisi döviz satırının kurunu değiştirince satırın tutarı ve masrafları yeni kurla yeniden hesaplanır
+ * (DovizFisiPage calculateRowValues ile aynı hesap; depo bu alanları istekten olduğu gibi yazar):
+ *  - tutar = miktar × kur (2 hane); miktarı olmayan satırda tutar yeni kur / eski kur oranında ölçeklenir.
+ *  - komisyon = tutar × komisyon oranı / 100 ve BSMV (bmv) = tutar × BMV oranı / 100 — yalnız oranı olan satırda; oransız
+ *    elle yazılmış tutar aynen kalır.
+ *  - KMV = tutar × KMV oranı (oran 1–10 arasıysa binde, değilse yüzde: ekrandaki effectiveKmvFactor). KMV'si 0 olan satır
+ *    (firma ayarı "uygulanmasın") 0 kalır. Alış fişinde BMV / KMV'ye dokunulmaz (depo alışta ikisini de sıfırlar).
+ * Dönen: satırın eski → yeni farkları (fiş toplamlarını aynı farkla güncellemek için).
+ */
+function dovizSatiriniYenidenHesapla(s, eskiKur, yeniKur, alis) {
+    const miktar = sayi(s?.miktar);
+    // Depo da boş tutarı miktar × kur sayar (dovizFisSql saveFis)
+    const eskiTutar = sayi(s?.tutar) > 0 ? sayi(s.tutar) : miktar * eskiKur;
+    const yeniTutar = miktar > 0 ? iki(miktar * yeniKur) : eskiKur > 0 ? iki((eskiTutar * yeniKur) / eskiKur) : eskiTutar;
+    const fark = { tutar: yeniTutar - eskiTutar, komisyon: 0, bmv: 0, kmv: 0 };
+    s.tutar = yeniTutar;
+    const oranla = (alan, carpan) => {
+        const yeni = iki(yeniTutar * carpan);
+        fark[alan] = yeni - sayi(s?.[alan]);
+        s[alan] = yeni;
+    };
+    const komisyonOrani = sayi(s?.komisyonOrani);
+    if (komisyonOrani > 0)
+        oranla("komisyon", komisyonOrani / 100);
+    if (!alis) {
+        const bmvOrani = sayi(s?.bmvOrani);
+        if (bmvOrani > 0)
+            oranla("bmv", bmvOrani / 100);
+        const kmvOrani = sayi(s?.kmvOrani);
+        if (kmvOrani > 0 && sayi(s?.kmv) > 0)
+            oranla("kmv", kmvOrani >= 1 && kmvOrani <= 10 ? kmvOrani / 1000 : kmvOrani / 100);
+    }
+    return fark;
+}
+/**
+ * Fişin KMV uygulama şekli (DovizFisiPage getEffectiveKmvMode): istekte yoksa firma tanımı (TODVZ_TANIM, eski şemada kolon
+ * olmayabilir), o da yoksa 3. 1 uygulanmasın, 2 kura dahil (masrafa eklenmez), 3 kurdan hariç (masrafa eklenir).
+ */
+async function kmvUygulamaSekli(req, dto) {
+    const istek = Number(dto?.kmvUygulamaSekli);
+    if (istek === 1 || istek === 2 || istek === 3)
+        return istek;
+    try {
+        const { dbServer, dbName } = baglam(req);
+        const pool = await getDbPool(dbServer, dbName);
+        const r = await pool.request().query(`
+      IF COL_LENGTH('dbo.TODVZ_TANIM', 'KMV_UYGULAMA_SEKLI') IS NULL SELECT CAST(NULL AS INT) AS M
+      ELSE EXEC('SELECT TOP 1 KMV_UYGULAMA_SEKLI AS M FROM dbo.TODVZ_TANIM')`);
+        const m = Number(r.recordset?.[0]?.M);
+        return m === 1 || m === 2 || m === 3 ? m : 3;
+    }
+    catch {
+        return 3;
+    }
+}
 /**
  * Döviz fişi satır kurları kur yetkisine göre geçerli mi; geçerliyse satırların gişe kuru kur tablosundan yazılır
  * (önceden girilen kur gişe kuru diye saklandığı için Kur Sapma raporu döviz fişlerinde fark göremiyordu).
+ * Kur sınıra çekilen satırın tutar / komisyon / BSMV / KMV'si yeni kurla yeniden hesaplanır ve fiş toplamları (toplamTutar,
+ * odemeTutari) aynı farkla güncellenir. Dönen: yapılan kur değişikliklerinin açıklaması (yanıtta kullanıcıya gösterilebilir;
+ * şimdilik kayıt günlüğüne yazılır). (ortak alan denetimi 19.11.2026, #6)
  */
 export async function dovizKurDenetle(req, y, dto) {
     const satirlar = Array.isArray(dto?.satirlar) ? dto.satirlar : [];
     if (!satirlar.length)
-        return;
+        return [];
     const kurlar = await guncelKurlar(req);
     const kurTuru = Number(dto?.kurTuru) || 0;
+    const tip = Number(dto?.tip);
+    const degisiklikler = [];
+    const toplam = { tutar: 0, komisyon: 0, bmv: 0, kmv: 0 };
     satirlar.forEach((s, i) => {
         const k = kurlar.find((x) => x.paraId === Number(s?.paraId));
-        const gise = dovizGiseKuru(k, Number(dto?.tip), kurTuru);
+        const gise = dovizGiseKuru(k, tip, kurTuru);
         if (!gise)
             return;
         s.giseKuru = gise.kur;
-        const d = kurDenetle(y, gise, sayi(s?.kur), `${i + 1}. satırın kuru`, SUNUCU_KUR_PAYI);
-        if (d.sinirKur) {
-            s.kur = d.sinirKur;
-        }
+        const eskiKur = sayi(s?.kur);
+        const d = kurDenetle(y, gise, eskiKur, `${i + 1}. satırın kuru`, SUNUCU_KUR_PAYI);
         if (d.hata)
             throw ApiError.forbidden(d.hata);
+        if (!d.sinirKur || Math.abs(d.sinirKur - eskiKur) < 1e-9)
+            return;
+        s.kur = d.sinirKur;
+        // TL satırının tutarı miktarın kendisidir (kur çarpılmaz); kura bağlı bir şey değişmez
+        if (tlMi(s?.paraKodu || k?.kod))
+            return;
+        const eskiTutar = sayi(s?.tutar);
+        const f = dovizSatiriniYenidenHesapla(s, eskiKur, d.sinirKur, tip !== 1);
+        Object.keys(toplam).forEach((a) => (toplam[a] += f[a]));
+        degisiklikler.push(`${i + 1}. satır kuru ${kurYazi(eskiKur)} → ${kurYazi(d.sinirKur)}, tutar ${kurYazi(eskiTutar)} → ${kurYazi(sayi(s.tutar))}`);
     });
+    if (degisiklikler.length) {
+        // Fiş toplamları istemcinin gönderdiği değere satırlardaki fark eklenerek yeniden kurulur (DovizFisiPage: toplamTutar = Σ satır
+        // tutarı; odemeTutari = satışta toplam + masraf, alışta toplam − masraf; masraf = komisyon + BSMV + yalnız "kurdan hariç"te
+        // KMV). Ekranın toplamları satırlardan geldiği için bu, satırlardan baştan hesapla aynı sonucu verir; ayrıca odemeTutari'nin
+        // banka dağıtımında (F10) yalnız vezne nakit kısmı olduğu fişte banka kısmı korunur, fark nakde yansır.
+        const kmvFarki = tip === 1 && toplam.kmv !== 0 && (await kmvUygulamaSekli(req, dto)) === 3 ? toplam.kmv : 0;
+        const masrafFarki = tip === 1 ? toplam.komisyon + toplam.bmv + kmvFarki : toplam.komisyon;
+        const odemeFarki = tip === 1 ? toplam.tutar + masrafFarki : toplam.tutar - masrafFarki;
+        if (dolu(dto.toplamTutar))
+            dto.toplamTutar = iki(sayi(dto.toplamTutar) + toplam.tutar);
+        if (dolu(dto.odemeTutari))
+            dto.odemeTutari = iki(sayi(dto.odemeTutari) + odemeFarki);
+        logger.info(`[KUR YETKİSİ] Döviz fişi ${dto?.fisId || "(yeni)"} kullanıcı ${req.user?.userId ?? "?"}: kur sınıra çekildi — ${degisiklikler.join("; ")}`);
+    }
+    return degisiklikler;
 }
-/** Sarraf fişi satır kurları kur yetkisine göre geçerli mi */
+/**
+ * Sarraf satırının / ödeme satırının kura bağlı tutarı yeni kurla ölçeklenir. Satır TUTAR'ı = kur × has (ya da miktar / adet)
+ * + işçilik toplamıdır (SarrafFisiPage recomputeRow: tutar = tlTutar + iscilikToplam; işçilik ISCILIK_TUTARI / ISCILIK_KDV
+ * kolonlarında ayrıca durur): istekteki TL işçilik (net işçilik + işçilik KDV'si) ayrılır, kalan kura bağlı kısım yeni kur /
+ * eski kur oranında ölçeklenir, işçilik aynen geri eklenir; işçilik kolonlarına dokunulmaz. Hızlı Satış işçiliği has olarak
+ * gönderir (TL işçilik yok, tutar = (has + işçilik has) × kur): orada tutarın tamamı kura bağlıdır. Ödeme satırında işçilik
+ * yoktur. Tutarı boş satır değişmez (depo ödeme satırında boş tutarı miktar × kur sayar, ürün satırında boş yazar).
+ */
+function sarrafTutariniOlcekle(s, eskiKur, yeniKur) {
+    const tutar = sayi(s?.tutar);
+    if (!(tutar > 0) || !(eskiKur > 0))
+        return null;
+    const iscilik = Math.max(0, sayi(s?.iscilikTutari)) + Math.max(0, sayi(s?.iscilikKdvTutari));
+    const kuraBagli = tutar - iscilik;
+    if (!(kuraBagli > 0))
+        return null;
+    const yeni = iki((kuraBagli * yeniKur) / eskiKur + iscilik);
+    s.tutar = yeni;
+    return { eski: tutar, yeni };
+}
+/**
+ * Sarraf fişi satır kurları kur yetkisine göre geçerli mi. Kur sınıra çekilen satırın ve ödeme satırının tutarı yeni kurla
+ * yeniden hesaplanır (sarrafTutariniOlcekle). Sarraf isteğinde ayrı fiş toplamı alanı yoktur (fiş tutarı satır TUTAR toplamı;
+ * KDV yalnız işçilikten ve başlık has kurundan hesaplanır, kur sınırı başlık kurunu değiştirmez): yeniden kurulacak toplam yok.
+ * Ödeme satırları ürün satırlarına göre yeniden dağıtılmaz (hangi ödemenin değişeceği bilinemez); değişiklik kayıt günlüğüne
+ * yazılır. Dönen: yapılan kur değişikliklerinin açıklaması. (ortak alan denetimi 19.11.2026, #6)
+ */
 export async function sarrafKurDenetle(req, y, dto) {
-    if (y.kurYetkisi === "Var")
-        return;
+    // Var yetkisinde yalnız "Gişe kuru dışında olabilir" işaretsizken gişe aralığı denetlenir (#21)
+    if (y.kurYetkisi === "Var" && (y.yonetici || y.giseKuruDisinda))
+        return [];
     const satirlar = Array.isArray(dto?.satirlar) ? dto.satirlar : [];
     const odemeSatirlari = Array.isArray(dto?.odemeSatirlari) ? dto.odemeSatirlari : [];
     if (!satirlar.length && !odemeSatirlari.length)
-        return;
+        return [];
     const kurlar = await guncelKurlar(req);
     const fiHasKuru = sayi(dto?.altinHasKuru);
     const fiGumusKuru = sayi(dto?.gumusHasKuru);
+    const degisiklikler = [];
+    const yaz = (ad, eskiKur, yeniKur, t) => degisiklikler.push(`${ad} kuru ${kurYazi(eskiKur)} → ${kurYazi(yeniKur)}${t ? `, tutar ${kurYazi(t.eski)} → ${kurYazi(t.yeni)}` : ""}`);
     satirlar.forEach((s, i) => {
         const urun = kurlar.find((x) => x.paraId === Number(s?.urunId));
-        const gise = sarrafGiseKuru(kurlar, urun, Number(dto?.tip), fiHasKuru, fiGumusKuru);
         // Hızlı Satış iskontosu satır kurundan düşülür (H24): iskontosuz kur gönderildiyse ve kur ondan büyük değilse o denetlenir
+        const eskiKur = sayi(s?.kur);
         const iskontosuz = sayi(s?.iskontosuzKur);
-        const kur = iskontosuz > 0 && sayi(s?.kur) <= iskontosuz + 1e-9 ? iskontosuz : sayi(s?.kur);
+        const iskontolu = iskontosuz > 0 && eskiKur <= iskontosuz + 1e-9;
+        const kur = iskontolu ? iskontosuz : eskiKur;
+        const gise = sarrafGiseKuru(kurlar, urun, Number(dto?.tip), fiHasKuru, fiGumusKuru, kur);
         const d = kurDenetle(y, gise, kur, `${i + 1}. satırın kuru`, SUNUCU_KUR_PAYI);
-        if (d.sinirKur) {
-            s.kur = d.sinirKur;
-        }
         if (d.hata)
             throw ApiError.forbidden(d.hata);
+        if (!d.sinirKur || Math.abs(d.sinirKur - kur) < 1e-9)
+            return;
+        // İskontolu satırda iskonto oranı korunur: iskontolu kur, iskontosuz kurla aynı oranda kayar (önceden iskonto siliniyordu)
+        const yeniKur = iskontolu ? Number(((eskiKur * d.sinirKur) / iskontosuz).toFixed(4)) : d.sinirKur;
+        if (iskontolu)
+            s.iskontosuzKur = d.sinirKur;
+        s.kur = yeniKur;
+        yaz(`${i + 1}. satır`, eskiKur, yeniKur, sarrafTutariniOlcekle(s, eskiKur, yeniKur));
     });
     const tip = Number(dto?.tip) || 0;
     const odemeTip = tip === 0 ? 1 : 0;
@@ -110,17 +240,22 @@ export async function sarrafKurDenetle(req, y, dto) {
         if (pk === "TL" || pk === "TRY" || pk === "TRL" || o?.iskontoId || o?.odemeAraciTuru === 2)
             return;
         const urun = kurlar.find((x) => (o?.paraId && x.paraId === Number(o.paraId)) || (pk && String(x.kod || "").toUpperCase().trim() === pk));
-        const gise = sarrafGiseKuru(kurlar, urun, odemeTip, fiHasKuru, fiGumusKuru);
         const kur = sayi(o?.kur);
         if (kur > 0) {
+            const gise = sarrafGiseKuru(kurlar, urun, odemeTip, fiHasKuru, fiGumusKuru, kur);
             const d = kurDenetle(y, gise, kur, `Ödeme ${i + 1}. satırın kuru`, SUNUCU_KUR_PAYI);
-            if (d.sinirKur) {
-                o.kur = d.sinirKur;
-            }
             if (d.hata)
                 throw ApiError.forbidden(d.hata);
+            if (!d.sinirKur || Math.abs(d.sinirKur - kur) < 1e-9)
+                return;
+            o.kur = d.sinirKur;
+            yaz(`Ödeme ${i + 1}. satır`, kur, d.sinirKur, sarrafTutariniOlcekle(o, kur, d.sinirKur));
         }
     });
+    if (degisiklikler.length) {
+        logger.info(`[KUR YETKİSİ] Sarraf fişi ${dto?.sarrafFisiId || "(yeni)"} kullanıcı ${req.user?.userId ?? "?"}: kur sınıra çekildi — ${degisiklikler.join("; ")}`);
+    }
+    return degisiklikler;
 }
 /** Sarraf fişi satır milyemleri milyem yetkisine göre geçerli mi */
 export async function sarrafMilyemDenetle(req, y, dto) {

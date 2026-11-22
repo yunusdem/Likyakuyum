@@ -1,13 +1,15 @@
 import sql from "mssql";
-import { getDbPool } from "../config/mssql.config.js";
+import { getDbPool, getPoolKey } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 export class VezneParaSayimSqlRepository {
-    static tableInitialized = false;
-    static async ensureTablesAndProcedures() {
-        if (this.tableInitialized)
+    /** Tabloları denetlenmiş veritabanları (sunucu:port:veritabanı) */
+    static kurulanlar = new Set();
+    static async ensureTablesAndProcedures(ctx) {
+        const anahtar = getPoolKey(ctx?.dbServer, ctx?.dbName);
+        if (this.kurulanlar.has(anahtar))
             return;
         try {
-            const pool = await getDbPool();
+            const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
             await pool.request().query(`
         IF OBJECT_ID('dbo.TODVZ_VEZNE_PARA_SAYIM', 'U') IS NULL
         BEGIN
@@ -44,7 +46,7 @@ export class VezneParaSayimSqlRepository {
           );
         END;
       `);
-            this.tableInitialized = true;
+            this.kurulanlar.add(anahtar);
         }
         catch (err) {
             logger.warn("Vezne para sayım tabloları kontrolünde uyarı:", err);
@@ -53,9 +55,9 @@ export class VezneParaSayimSqlRepository {
     /**
      * Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_KAYDET ve SODVZ_VEZNE_PARA_SAYIM_SATIR_EKLE kullanarak kaydeder
      */
-    static async saveSayim(payload) {
-        await this.ensureTablesAndProcedures();
-        const pool = await getDbPool();
+    static async saveSayim(payload, ctx) {
+        await this.ensureTablesAndProcedures(ctx);
+        const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
         const now = new Date();
         const currentTimeStr = now.toTimeString().split(" ")[0].slice(0, 5);
         const countsJsonStr = payload.countsMap ? JSON.stringify(payload.countsMap) : "{}";
@@ -182,9 +184,9 @@ export class VezneParaSayimSqlRepository {
     /**
      * Veznenin en son sayımını getirir
      */
-    static async getSonSayimByVezne(vezneId) {
-        await this.ensureTablesAndProcedures();
-        const pool = await getDbPool();
+    static async getSonSayimByVezne(vezneId, ctx) {
+        await this.ensureTablesAndProcedures(ctx);
+        const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
         const req = pool.request();
         req.input("VEZNE_ID", sql.Int, vezneId);
         const res = await req.query(`
@@ -219,9 +221,9 @@ export class VezneParaSayimSqlRepository {
     /**
      * Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_LISTELE
      */
-    static async getGecmisSayimlar(vezneId, limit = 100) {
-        await this.ensureTablesAndProcedures();
-        const pool = await getDbPool();
+    static async getGecmisSayimlar(vezneId, limit = 100, ctx) {
+        await this.ensureTablesAndProcedures(ctx);
+        const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
         const req = pool.request();
         req.input("VEZNE_ID", sql.Int, vezneId || 0);
         req.input("LIMIT", sql.Int, limit);
@@ -254,9 +256,9 @@ export class VezneParaSayimSqlRepository {
     /**
      * Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_GETIR
      */
-    static async getSayimById(sayimId) {
-        await this.ensureTablesAndProcedures();
-        const pool = await getDbPool();
+    static async getSayimById(sayimId, ctx) {
+        await this.ensureTablesAndProcedures(ctx);
+        const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
         const req = pool.request();
         req.input("SAYIM_ID", sql.Int, sayimId);
         try {
@@ -344,9 +346,9 @@ export class VezneParaSayimSqlRepository {
     /**
      * Stored Procedure: SODVZ_VEZNE_PARA_SAYIM_SIL
      */
-    static async deleteSayim(sayimId) {
-        await this.ensureTablesAndProcedures();
-        const pool = await getDbPool();
+    static async deleteSayim(sayimId, ctx) {
+        await this.ensureTablesAndProcedures(ctx);
+        const pool = await getDbPool(ctx?.dbServer, ctx?.dbName);
         const req = pool.request();
         req.input("SAYIM_ID", sql.Int, sayimId);
         try {

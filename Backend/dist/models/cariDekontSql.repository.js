@@ -1,3 +1,4 @@
+import { kendiKayitKosulu } from "../utils/kendiKayit.js";
 import sql from "mssql";
 import crypto from "crypto";
 import { getDbPool } from "../config/mssql.config.js";
@@ -541,11 +542,13 @@ export class CariDekontSqlRepository {
         if (checkRes.recordset.length === 0) {
             throw ApiError.notFound("Silinmek istenen dekont bulunamadı.");
         }
+        // Yordam (eski şifreli ve yukarıdaki ensure tanımı) @CARI_DEKONT_ID, @KULLANICI_ID, @DEGISIKLIK_TAKIP_VAR bekler;
+        // @id/@kullaniciId adlarıyla "expects parameter '@CARI_DEKONT_ID'" hatası veriyor, dekont silinemiyordu (ortak alan denetimi 19.11.2026, #4)
         await pool
             .request()
-            .input("id", sql.Int, id)
-            .input("kullaniciId", sql.Int, kullaniciId)
-            .input("degisiklikTakipVar", sql.Bit, degisiklikTakipVar ? 1 : 0)
+            .input("CARI_DEKONT_ID", sql.Int, id)
+            .input("KULLANICI_ID", sql.Int, kullaniciId)
+            .input("DEGISIKLIK_TAKIP_VAR", sql.Bit, degisiklikTakipVar ? 1 : 0)
             .execute("SODVZ_CARI_DEKONT_SIL");
     }
     /**
@@ -701,6 +704,9 @@ export class CariDekontSqlRepository {
             whereClauses.push(...k.kosullar);
             durbunParametreleriniBagla(req, k.parametreler);
         }
+        const kendiKosul = kendiKayitKosulu(req, "D", filter?.kendi); // kendi kayıtları yetkisi (ortak alan denetimi 19.11.2026)
+        if (kendiKosul)
+            whereClauses.push(kendiKosul);
         const whereSql = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : "";
         const query = `
       SELECT TOP (@limit)

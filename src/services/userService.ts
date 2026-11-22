@@ -73,6 +73,7 @@ export interface UserProfileDto {
   milyemPermValue?: number | string;
   iscilikGirisSekli?: number;
   dovizZiynetGirisSekli?: number;
+  altinHesaplamaSekli?: number;
 
   // General Tab - Right Menu Perms
   menuPerms: {

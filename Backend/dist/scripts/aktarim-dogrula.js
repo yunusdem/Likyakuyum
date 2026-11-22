@@ -12,6 +12,7 @@
 import { env } from "../config/env.config.js";
 import { argumanlar, cliHavuzu, dogrulaKomutu, IncelemeEngeli } from "../services/aktarim/aktarimCli.js";
 import { raporMetni } from "../services/aktarim/aktarimDogrulama.js";
+import { sonKontrolOzeti } from "../services/aktarim/aktarimSonKontrol.js";
 const main = async () => {
     const a = argumanlar(process.argv.slice(2));
     if (!a["hedef-db"] || (!a["kaynak-yedek"] && !a["kaynak-db"])) {
@@ -28,6 +29,7 @@ const main = async () => {
     try {
         const r = await dogrulaKomutu(pool, { kaynakYedek: a["kaynak-yedek"] || null, kaynakDb: a["kaynak-db"] || null, hedefDb: a["hedef-db"], rapor: a.rapor || null });
         console.log(raporMetni(r, !a.hepsi));
+        console.log(`SONUC: ${sonKontrolOzeti(r).metin}`);
         if (!r.basarili)
             process.exitCode = 2;
     }

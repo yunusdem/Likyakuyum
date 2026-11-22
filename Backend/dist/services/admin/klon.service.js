@@ -47,7 +47,7 @@ export const kd = (ad) => `[${ad.replace(/]/g, "]]")}]`;
 export const nm = (metin) => `N'${metin.replace(/'/g, "''")}'`;
 export const klonHavuzu = async (veritabani, secenek = {}) => {
     const { host, port } = parseServerAndPort(env.KLON_DB_SERVER || env.ADMIN_DB_SERVER, Number(env.KLON_DB_PORT) || env.ADMIN_DB_PORT || 1433);
-    return new sql.ConnectionPool({
+    const pool = new sql.ConnectionPool({
         server: host,
         port,
         database: veritabani,
@@ -58,7 +58,12 @@ export const klonHavuzu = async (veritabani, secenek = {}) => {
         connectionTimeout: 15000,
         // geri yükleme büyük şablonda dakikalar sürebilir; veri aktarımı (docs/VERITABANI_TASIMA_YOL_HARITASI.md) daha uzun ister
         requestTimeout: secenek.requestTimeoutMs ?? 10 * 60 * 1000,
-    }).connect();
+    });
+    // Bağlantı işin ortasında koparsa (SQL Server yeniden başlar, oturum öldürülür) sürücü havuzda 'error' olayı yayar; dinleyen yoksa
+    // Node bunu yakalanmamış hata sayar ve server.ts süreci kapatır (bütün kullanıcılar düşer). Çalışan komut zaten kendi hatasını alır,
+    // işlem SQL Server'da geri alınır; burada yalnız kayda geçirilir. (19.11.2026: Faz 9 S3 oturum öldürme denemesinde süreç düştü.)
+    pool.on("error", (err) => logger.warn(`[KLON] ${veritabani} bağlantı hatası: ${String(err?.message || err).slice(0, 300)}`));
+    return pool.connect();
 };
 export const klonIle = async (veritabani, is) => {
     const pool = await klonHavuzu(veritabani);

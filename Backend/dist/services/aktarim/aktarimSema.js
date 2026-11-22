@@ -10,14 +10,17 @@ export const semaOku = async (pool, db, secenek = {}) => {
     const istek = () => new sql.Request(pool);
     const D = q(db);
     const kolonlar = (await istek().query(`
-      SELECT t.name AS TABLO, c.name AS KOLON, st.name AS TIP, ut.name AS KTIP, c.max_length AS UZUNLUK, c.precision AS HASSASIYET,
+      SELECT t.name AS TABLO, c.name AS KOLON, COALESCE(st.name, ut.name, N'?') AS TIP, COALESCE(ut.name, st.name, N'?') AS KTIP,
+             c.max_length AS UZUNLUK, c.precision AS HASSASIYET,
              c.scale AS OLCEK, c.is_nullable AS BOS, c.is_identity AS KIMLIK, c.is_computed AS HESAP, c.column_id AS SIRA,
              dc.definition AS VARSAYILAN
       FROM ${D}.sys.tables t
       JOIN ${D}.sys.schemas s ON s.schema_id = t.schema_id AND s.name = 'dbo'
       JOIN ${D}.sys.columns c ON c.object_id = t.object_id
-      JOIN ${D}.sys.types ut ON ut.user_type_id = c.user_type_id
-      JOIN ${D}.sys.types st ON st.user_type_id = c.system_type_id
+      -- LEFT JOIN: sistem tipi sys.types'ta kendi satırıyla bulunmayan kolon (hierarchyid, geography … system_type_id 240) iç birleştirmede
+      -- listeden düşer ve o kolon hiç fark edilmeden aktarılmazdı; tip adı bulunamazsa '?' (dönüşüm tanımsız → aktarım durur)
+      LEFT JOIN ${D}.sys.types ut ON ut.user_type_id = c.user_type_id
+      LEFT JOIN ${D}.sys.types st ON st.user_type_id = c.system_type_id
       LEFT JOIN ${D}.sys.default_constraints dc ON dc.object_id = c.default_object_id
       WHERE t.is_ms_shipped = 0
       ORDER BY t.name, c.column_id`)).recordset;

@@ -18,6 +18,7 @@ import { env } from "../config/env.config.js";
 import { argumanlar, cliHavuzu, IncelemeEngeli, veriAktarKomutu } from "../services/aktarim/aktarimCli.js";
 import { AktarimDogrulamaHatasi, AktarimEngeli } from "../services/aktarim/aktarimMotoru.js";
 import { raporMetni } from "../services/aktarim/aktarimDogrulama.js";
+import { sonKontrolOzeti } from "../services/aktarim/aktarimSonKontrol.js";
 const main = async () => {
     const a = argumanlar(process.argv.slice(2));
     if (!a.yedek || !a["hedef-db"]) {
@@ -58,6 +59,14 @@ const main = async () => {
             console.log(`  Not: ${n}`);
         console.log("");
         console.log(raporMetni(s.dogrulama));
+        if (s.sonKontrol) {
+            console.log("");
+            console.log(`Aktarım sonrası kontrol: ${sonKontrolOzeti(s.sonKontrol).metin}`);
+            if (!s.sonKontrol.basarili) {
+                console.log(raporMetni(s.sonKontrol));
+                process.exitCode = 2;
+            }
+        }
     }
     catch (err) {
         if (err instanceof IncelemeEngeli || err instanceof AktarimEngeli) {

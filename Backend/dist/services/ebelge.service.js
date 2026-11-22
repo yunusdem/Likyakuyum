@@ -429,6 +429,9 @@ export class EbelgeService {
     /**
      * Alıcının e-Fatura mükellefi olup olmadığını sorar.
      * Sonuç boşsa alıcı mükellef değildir → e-Arşiv kesilmelidir.
+     * Sorgu yapılamadıysa (entegratör ayarı yok, ICE hata / başarısız cevap) `sorgulanamadi: true` döner: `mukellefMi: false`
+     * bu durumda "mükellef değil" demek değildir. Ekranlar mesajı gösterir; gönderim yolları durup hata vermelidir, sessizce
+     * e-Arşiv seçmemelidir (ortak alan denetimi 19.11.2026, #31; docs/EBANKA_FATURALANDIRMA_YOL_HARITASI.md EF12, PERAKENDE P9).
      */
     static async mukellefSorgulaCanli(vknTckn, kullanici, dbContext) {
         if (!/^\d{10}$|^\d{11}$/.test(vknTckn.trim())) {
@@ -443,11 +446,12 @@ export class EbelgeService {
             config = await EbelgeSqlRepository.getConnectionConfig(dbContext);
         }
         catch {
-            // Entegratör ayarları tanımlı değilse hata fırlatmak yerine e-Arşiv olarak kabul et
+            // Entegratör ayarları tanımlı değilse hata fırlatmak yerine e-Arşiv olarak kabul et (ekran); sonuç belirsiz işaretlenir (#31)
             return {
                 mukellefMi: false,
                 kullanicilar: [],
                 mesaj: "e-Belge entegratör ayarları henüz tanımlanmamış. e-Arşiv senaryosu uygulandı.",
+                sorgulanamadi: true,
             };
         }
         try {
@@ -457,6 +461,7 @@ export class EbelgeService {
                     mukellefMi: false,
                     kullanicilar: [],
                     mesaj: sonuc.mesaj || "Mükellef sorgusu yapılamadı, e-Arşiv uygulandı.",
+                    sorgulanamadi: true,
                 };
             }
             await EbelgeSqlRepository.writeLog({
@@ -483,6 +488,7 @@ export class EbelgeService {
                 mukellefMi: false,
                 kullanicilar: [],
                 mesaj: "Mükellef sorgulanamadı, varsayılan e-Arşiv senaryosu uygulandı.",
+                sorgulanamadi: true,
             };
         }
     }

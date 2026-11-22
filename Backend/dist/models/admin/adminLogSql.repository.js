@@ -23,6 +23,18 @@ export class AdminLogSqlRepository {
             logger.error(`[ADMIN] Giriş logu yazılamadı: ${err?.message}`);
         }
     }
+    /** Hedefe yapılmış son işlemin zamanı (ISO); yoksa null. Okunamazsa hata fırlatır (çağıran karar verir). */
+    static async sonIslemZamani(islem, hedefTur, hedefId) {
+        const pool = await getAdminPool();
+        const r = await pool
+            .request()
+            .input("islem", sql.VarChar(40), islem)
+            .input("hedefTur", sql.VarChar(20), hedefTur)
+            .input("hedefId", sql.VarChar(50), String(hedefId))
+            .query(`SELECT TOP 1 TARIH FROM dbo.ADM_ISLEM_LOG WHERE ISLEM = @islem AND HEDEF_TUR = @hedefTur AND HEDEF_ID = @hedefId ORDER BY LOG_ID DESC`);
+        const t = r.recordset[0]?.TARIH;
+        return t ? new Date(t).toISOString() : null;
+    }
     /** Denetim izi. eski/yeni değerler JSON'a çevrilir; çağıran buraya şifre/hash KOYMAMALIDIR. */
     static async islemLogu(kayit) {
         try {

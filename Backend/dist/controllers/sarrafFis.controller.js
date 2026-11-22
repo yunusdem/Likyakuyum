@@ -131,9 +131,9 @@ export const SarrafFisController = {
             if (!id)
                 return res.status(400).json({ success: false, message: "Geçersiz ID" });
             await kayitErisimi(req, "sarraf", id, { isDelete: true });
-            await SarrafFisService.deleteFis(id, kullaniciId, dbContext);
+            const iade = await SarrafFisService.deleteFis(id, kullaniciId, dbContext);
             notifyVezneBakiyeDegisti({ type: "sarraf_delete", id });
-            res.json({ success: true });
+            res.json({ success: true, data: iade }); // iade bekleyen POS çekimi varsa ekran uyarır (POS K14)
         }
         catch (err) {
             next(err);

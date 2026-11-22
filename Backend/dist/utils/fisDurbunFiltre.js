@@ -32,20 +32,36 @@ function tamsayi(v) {
     const n = Number(v);
     return Number.isInteger(n) && n > 0 ? n : undefined;
 }
-/** "1.234,50" / "1234.5" / "1234,5" → 1234.5 */
+/**
+ * "1.234,50" / "1234.5" / "1234,5" → 1234.5; "1.000" → 1000. Ön yüzün parseDecimal kuralıyla aynı (src/utils/numericInput.ts;
+ * sunucuda o dosya yok, kural burada aynı sırayla yazıldı): nokta+virgül → sondaki ayraç ondalık; yalnız virgül → tekse ondalık,
+ * çoksa binlik; yalnız nokta → çoksa binlik, tekse ve öncesi 1–3 hane (0 değil) + sonrası tam 3 hane ise binlik, değilse ondalık.
+ * Önceden "1.000" 1 okunuyordu (ortak alan denetimi 19.11.2026, #52).
+ */
 export function tutarOku(v) {
     if (v === undefined || v === null)
         return undefined;
     if (typeof v === "number")
         return Number.isFinite(v) ? v : undefined;
-    let s = String(v).trim().replace(/\s/g, "");
-    if (!s)
+    const s = String(v).trim().replace(/\s/g, "");
+    if (!s || !/^-?[\d.,]+$/.test(s) || !/\d/.test(s))
         return undefined;
-    if (s.includes(","))
-        s = s.replace(/\./g, "").replace(",", ".");
-    if (!/^-?\d+(\.\d+)?$/.test(s))
-        return undefined;
-    const n = Number(s);
+    let temiz;
+    if (s.includes(",") && s.includes(".")) {
+        temiz = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+    }
+    else if (s.includes(",")) {
+        temiz = s.split(",").length > 2 ? s.replace(/,/g, "") : s.replace(",", ".");
+    }
+    else if (s.includes(".")) {
+        const p = s.split(".");
+        const binlik = p.length > 2 || (p[0].length >= 1 && p[0].length <= 3 && p[0] !== "0" && p[1].length === 3);
+        temiz = binlik ? s.replace(/\./g, "") : s;
+    }
+    else {
+        temiz = s;
+    }
+    const n = parseFloat(temiz);
     return Number.isFinite(n) ? n : undefined;
 }
 function metin(v, enUzun = 100) {
@@ -57,7 +73,7 @@ function metin(v, enUzun = 100) {
 /**
  * İstek sorgusundan filtre alanlarını okur (geçersiz değerler yok sayılır). Ekranların eski parametreleriyle (vezneId, tip,
  * baslangic…) çakışmasın diye hepsi drb öneklidir: drbBas, drbBit, drbVezne, drbUrunId, drbUrun, drbTip, drbCari,
- * drbTutarMin, drbTutarMax, drbBelge.
+ * drbTutarMin, drbTutarMax, drbBelge, drbTum ("Tümü" işareti).
  */
 export function fisDurbunFiltresiOku(q) {
     const s = q || {};
@@ -92,9 +108,12 @@ export function fisDurbunFiltresiOku(q) {
     const belge = metin(s.drbBelge, 60);
     if (belge)
         f.belgeNo = belge;
+    // "Tümü": tarih yok ama dürbün isteği (ortak alan denetimi 19.11.2026, #36)
+    if (s.drbTum === "1" || s.drbTum === 1 || s.drbTum === "true" || s.drbTum === true)
+        f.tumu = true;
     return f;
 }
-/** Filtrede en az bir alan dolu mu (dürbün isteği mi) */
+/** Filtrede en az bir alan dolu mu (dürbün isteği mi); "Tümü" işareti (tumu) de sayılır */
 export function durbunFiltresiVar(f) {
     return !!f && Object.values(f).some((v) => v !== undefined && v !== null && v !== "");
 }

@@ -211,6 +211,18 @@ export function filtreler(req, p, alias) {
             if (cids.length)
                 parcalar.push(`${alias.cari}.CARI_KART_ID IN (${cids.map((_, i) => `@cl${i}`).join(",")})`);
         }
+        // Cari sınırlaması: kullanıcı yalnız izinli carileri görür / yasaklı carileri göremez — Cari Kart ve Cari Hareket ekranlarıyla aynı kural (#16).
+        // Carisi olmayan satır (perakende / döviz müşteri fişi; cari LEFT JOIN ile bağlı raporlar: Fiş Listeleme, Barkodlu Altın Satış, POS ekstresi)
+        // sınırlamanın konusu değildir, gizlenmez: NULL IN / NOT IN bilinmez döndüğü için önceden bu satırlar da düşüyordu. Cariyle INNER JOIN
+        // kuran cari raporlarında NULL satır olmadığından etkisi yoktur.
+        if (p.cariSinir && (p.cariSinir.tip === 1 || p.cariSinir.tip === 2)) {
+            const sids = (p.cariSinir.idler || []).filter(n => Number.isInteger(n) && n > 0);
+            const kolon = `${alias.cari}.CARI_KART_ID`;
+            if (p.cariSinir.tip === 1)
+                parcalar.push(sids.length ? `(${kolon} IS NULL OR ${kolon} IN (${sids.join(",")}))` : `${kolon} IS NULL`);
+            else if (sids.length)
+                parcalar.push(`(${kolon} IS NULL OR ${kolon} NOT IN (${sids.join(",")}))`);
+        }
     }
     if (alias.vezne) {
         req.input("vbas", sql.VarChar(50), p.vezneBaslangic?.trim() || null).input("vbit", sql.VarChar(50), p.vezneBitis?.trim() || null).input("v", sql.Int, p.vezneId || null);

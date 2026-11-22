@@ -255,6 +255,18 @@ export class KurSqlRepository {
             .request()
             .input("kurTablosuId", sql.Int, kurTablosuId)
             .query(ratesQuery);
+        // Bağlı para kodu boşsa varsayılan türe göre: altın / ziynet → HAS, gümüş → gümüş taban satırı (tip 2, has oranı 1 / 1000, yoksa
+        // kodu GUMUS), döviz → boş. Önceden her türe "HAS" veriliyordu; F12 gümüşü ve dövizi altından hesaplıyordu (ortak alan denetimi 19.11.2026, #47)
+        const gumusTabani = (() => {
+            const kod = (r) => String(r.PARA_KOD || "").trim();
+            const t = ratesRes.recordset.find((r) => Number(r.URUN_TIPI) === 2 && (Number(r.HAS_ORANI) === 1 || Number(r.HAS_ORANI) === 1000))
+                || ratesRes.recordset.find((r) => ["GUMUS", "GÜMÜŞ"].includes(kod(r).toUpperCase()));
+            return t ? kod(t) : "";
+        })();
+        const bagliVarsayilan = (r) => {
+            const tip = Number(r.URUN_TIPI ?? 0);
+            return tip === 1 || tip === 3 ? "HAS" : tip === 2 ? gumusTabani : "";
+        };
         const satirlar = ratesRes.recordset.map((r) => ({
             paraId: r.PARA_ID,
             kod: r.PARA_KOD || "",
@@ -265,7 +277,7 @@ export class KurSqlRepository {
             efektifAlis: r.EFEKTIF_ALIS !== null && r.EFEKTIF_ALIS !== undefined && Number(r.EFEKTIF_ALIS) !== 0 ? Number(r.EFEKTIF_ALIS) : null,
             efektifSatis: r.EFEKTIF_SATIS !== null && r.EFEKTIF_SATIS !== undefined && Number(r.EFEKTIF_SATIS) !== 0 ? Number(r.EFEKTIF_SATIS) : null,
             parite: r.PARITE !== null && r.PARITE !== undefined && Number(r.PARITE) !== 0 ? Number(r.PARITE) : null,
-            bagliParaKodu: r.BAGLI_PARA_KODU && r.BAGLI_PARA_KODU.trim() ? r.BAGLI_PARA_KODU.trim() : "HAS",
+            bagliParaKodu: r.BAGLI_PARA_KODU && r.BAGLI_PARA_KODU.trim() ? r.BAGLI_PARA_KODU.trim() : bagliVarsayilan(r),
             hasOrani: r.HAS_ORANI !== null && r.HAS_ORANI !== undefined ? Number(r.HAS_ORANI) : null,
             hasAlisKatsayisi: r.HAS_ALIS_KATSAYISI !== null && r.HAS_ALIS_KATSAYISI !== undefined ? Number(r.HAS_ALIS_KATSAYISI) : null,
             hasSatisKatsayisi: r.HAS_SATIS_KATSAYISI !== null && r.HAS_SATIS_KATSAYISI !== undefined ? Number(r.HAS_SATIS_KATSAYISI) : null,

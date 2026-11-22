@@ -14,6 +14,8 @@ import { KurulumLisansService } from "./kurulum/kurulumLisans.service.js";
 import { kurulumKartOnbelleginiTemizle, sifreDamgasi } from "./kurulum/kurulumKart.js";
 import { kullaniciKapalilari } from "./gorunum/kullaniciGorunum.service.js";
 import { logger } from "../utils/logger.js";
+import { alanKodu } from "../utils/alanKodu.js";
+import { FirmaSqlRepository } from "../models/admin/firmaSql.repository.js";
 export class AuthService {
     /**
      * Müşteri no ile giriş (docs/GIRIS_VE_EBELGE_DUZENLEME.md G2-G7): firma, müşteri no + seçilen firmaId ile merkezde
@@ -102,6 +104,59 @@ export class AuthService {
         if (env.KURULUM_MODU)
             return [];
         return MerkezGirisService.musteriVeritabanlari(musteriNo);
+    }
+    /**
+     * Alan değiştirme (sol menünün üstü): oturumdaki kullanıcının alanları. gecebilir: kartında "Çalışma alanı işlemleri
+     * yetkisi" var ya da yönetici; yoksa yalnız bulunulan alan döner (öteki alanın varlığı gösterilmez). Kurulumda tek alan.
+     */
+    static async alanlar(oturum, yetkili) {
+        const firmaId = Number(oturum.firmaId || 0);
+        const yaz = (x) => ({
+            firmaId: x.firmaId,
+            unvan: String(x.unvan || "").trim(),
+            dbName: String(x.dbName || "").trim(),
+            alanKodu: alanKodu(x.dbName),
+            bulunulan: x.firmaId === firmaId,
+        });
+        if (env.KURULUM_MODU || !firmaId) {
+            const db = String(oturum.dbName || "").trim();
+            return { gecebilir: false, alanlar: db ? [yaz({ firmaId, unvan: "", dbName: db })] : [] };
+        }
+        if (!yetkili) {
+            const f = await FirmaSqlRepository.idIleBul(firmaId);
+            return { gecebilir: false, alanlar: [yaz(f ? f : { firmaId, unvan: "", dbName: String(oturum.dbName || "") })] };
+        }
+        const alanlar = (await MerkezGirisService.kullaniciAlanlari(firmaId, oturum.username)).map(yaz);
+        return { gecebilir: alanlar.length > 1, alanlar };
+    }
+    /**
+     * Alan değiştirme: aynı müşteri noya bağlı başka bir firmaya (veritabanına) şifre sormadan geçiş. Kullanıcının orada aynı
+     * adla açık kaydı olmalı (merkezde ve firma veritabanında); yetki denetimi denetleyicide (Çalışma alanı işlemleri yetkisi).
+     * Yeni merkez oturumu açılır, eskisi kapatılır; yanıt girişle aynıdır.
+     */
+    static async alanDegistir(oturum, hedefFirmaId, istemci = { ip: "", tarayici: "" }) {
+        if (env.KURULUM_MODU)
+            throw ApiError.notFound("Alan değiştirme yalnız bulut sürümünde vardır.");
+        const mevcutFirmaId = Number(oturum.firmaId || 0);
+        if (!mevcutFirmaId) {
+            throw ApiError.badRequest("Oturumunuz alan değiştirmeye uygun değil. Lütfen çıkış yapıp yeniden giriş yapınız.");
+        }
+        if (mevcutFirmaId === hedefFirmaId)
+            throw ApiError.badRequest("Zaten bu alandasınız.");
+        const baglam = await MerkezGirisService.alanFirmaKontrol(mevcutFirmaId, hedefFirmaId, oturum.username, istemci);
+        const b = await MerkezGirisService.firmaBaglantisi(baglam.firma.firmaId);
+        await MerkezGirisService.havuzDogrula(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
+        setDbCredentials(b.dbServer, b.dbName, b.dbUser, b.dbSifre);
+        const dbContext = { dbServer: b.dbServer, dbName: b.dbName };
+        const user = await UserSqlRepository.findByUsername(oturum.username, dbContext);
+        if (!user) {
+            throw ApiError.forbidden("Kullanıcınız bu alanın veritabanında bulunamadı. Lütfen firma yöneticinize başvurunuz.");
+        }
+        await MerkezGirisService.alanGecisiKaydet(baglam, istemci);
+        // Önce yeni oturum açılır: kapatma başarısız olsa da kullanıcı oturumsuz kalmaz
+        const sid = await OturumService.ac(baglam.kullanici.kullaniciId, baglam.firma.firmaId, istemci);
+        await OturumService.bitir(oturum.sid).catch((err) => logger.warn(`Alan değiştirmede eski oturum kapatılamadı:`, err?.message));
+        return this.oturumAc(user, { ...dbContext, firmaId: baglam.firma.firmaId }, await MerkezGirisService.oturumBilgisi(baglam), sid);
     }
     /** Kurulumda kartın şifre damgası (kurulumKart.kurulumKarti ile aynı hesap: kırpılmış SIFRE) */
     static kurulumSifreDamgasi(user) {
