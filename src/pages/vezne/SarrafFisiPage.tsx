@@ -136,7 +136,7 @@ const GRID_COLS = [
   "urunKodu", "urunAdi", "adet", "miktar", "milyem", "hasGram",
   "tlTutar",
   "iscilikHesaplamaSekli", "iscilikiMiktari", "iscilikHasGram", "iscilikTutari", "iscilikKdvOrani", "iscilikKdvTutari", "iscilikToplam",
-  "kur", "tutar",
+  "hasKuru", "urunKuru", "kur", "tutar",
 ] as const;
 type GridColKey = typeof GRID_COLS[number];
 
@@ -1313,6 +1313,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     iscilikTutari: true,
     iscilikKdvOrani: true,
     iscilikKdvTutari: true,
+    hasKuru: true,
+    urunKuru: true,
     kur: true,
     tutar: true,
   };
@@ -7205,7 +7207,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const isColPassive = (col: GridColKey, rIdx: number = rowIndex) => {
       if (col !== "urunKodu" && col in colVisibility && !colVisibility[col as keyof typeof colVisibility]) return true;
-      if (col === "urunAdi" || col === "hasGram" || col === "tlTutar" || col === "iscilikHasGram") return true;
+      if (col === "urunAdi" || col === "hasGram" || col === "tlTutar" || col === "iscilikHasGram" || col === "hasKuru" || col === "urunKuru") return true;
       const isKurAllowed = kurDegistirilebilir(kYetkiRef.current);
       if (col === "kur" && !isKurAllowed) return true;
       // Tutar kuru türetir: kur yetkisi yoksa Tutar da kilitli (Döviz'deki gibi; ortak alan denetimi 19.11.2026, #7)
@@ -9810,6 +9812,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     { key: "iscilikKdvOrani", label: "İşçilik KDV (%)" },
                     { key: "iscilikKdvTutari", label: "İşçilik KDV Tutar" },
                     { key: "iscilikToplam", label: "İşçilik Toplam" },
+                    { key: "hasKuru", label: "Has Kuru" },
+                    { key: "urunKuru", label: "Ürün Kuru" },
                     { key: "kur", label: "Kur" },
                     { key: "tutar", label: "Toplam Tutar" },
                   ] as { key: keyof typeof defaultColVisibility; label: string }[]).map(({ key, label }) => (
@@ -9856,6 +9860,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     {colVisibility.iscilikKdvOrani && <th style={{ width: 80 }} className="text-center">İşçilik KDV (%)</th>}
                     {colVisibility.iscilikKdvTutari && <th style={{ width: 95 }} className="text-center">İşçilik KDV Tutar</th>}
                     {colVisibility.iscilikToplam && <th style={{ width: 95 }} className="text-center">İşçilik Toplam</th>}
+                    {colVisibility.hasKuru && <th style={{ width: 95 }} className="text-center">Has Kuru</th>}
+                    {colVisibility.urunKuru && <th style={{ width: 95 }} className="text-center">Ürün Kuru</th>}
                     {colVisibility.kur && <th style={{ width: 105 }} className="text-center">Kur</th>}
                     {colVisibility.tutar && <th style={{ width: 110 }} className="text-center">Toplam Tutar</th>}
                   </tr>
@@ -9878,6 +9884,31 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     const isAdetMissing = hasProduct && isPZAdetActive && !isMiktarFilled;
                     const isMiktarMissing = hasProduct && (!isParaOrZiynet || isPZMiktarActive) && (!isParaOrZiynet ? (!row.miktar || String(row.miktar).trim() === "" || parseDecimal(row.miktar) <= 0) : !isMiktarFilled);
                     const isKurMissing = !row.kur || parseDecimal(row.kur) <= 0;
+                    const isGumusRow = effTipi === 2 || Boolean(row.urunKodu && (row.urunKodu.toUpperCase().includes("GUMUS") || row.urunKodu.toUpperCase().includes("GÜMÜŞ")));
+                    const rawHasKur = !hasProduct || isParaOrZiynet
+                      ? 0
+                      : (isGumusRow
+                        ? (parseDecimal(gumusHasKuru) || getGumusKurForTip(tip) || parseDecimal(altinHasKuru) || getHasKurForTip(tip))
+                        : (parseDecimal(altinHasKuru) || getHasKurForTip(tip)));
+                    const rowHasKuruVal = rawHasKur > 0
+                      ? rawHasKur.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                      : "";
+                    const rowUrunKuruVal = (() => {
+                      if (!hasProduct) return "";
+                      const rowCode = (row.urunKodu || "").trim().toLowerCase();
+                      const rowName = (row.urunAdi || "").trim().toLowerCase();
+                      const rowUrun = urunList.find((u) => (rowCode && u.kod.trim().toLowerCase() === rowCode) || (rowName && u.ad.trim().toLowerCase() === rowName)) || {
+                        paraId: row.urunId,
+                        kod: row.urunKodu,
+                        ad: row.urunAdi,
+                        urunTipi: row.urunTipi,
+                      };
+                      const ownRate = getProductOwnRate(rowUrun, tip);
+                      const rawUrunKur = ownRate > 0 ? ownRate : parseDecimal(row.kur);
+                      return rawUrunKur > 0
+                        ? rawUrunKur.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                        : "";
+                    })();
 
                     const handleKalemRowFocus = () => {
                       cleanupEmptyRows(rowIndex);
@@ -10380,6 +10411,42 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           </td>
                         )}
 
+                        {/* Has Kuru */}
+                        {colVisibility.hasKuru && (
+                          <td>
+                            <Form.Control
+                              ref={(el) => { rowInputRefs.current[`${row.id}_hasKuru`] = el; }}
+                              readOnly
+                              tabIndex={-1}
+                              size="sm"
+                              className="text-end font-monospace text-muted"
+                              value={rowHasKuruVal}
+                              onFocus={handleKalemRowFocus}
+                              onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "hasKuru", row.id)}
+                              style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
+                              title={isParaOrZiynet ? "Döviz ve Ziynet işlemlerinde has kuru uygulanmaz" : "Has Kuru"}
+                            />
+                          </td>
+                        )}
+
+                        {/* Ürün Kuru */}
+                        {colVisibility.urunKuru && (
+                          <td>
+                            <Form.Control
+                              ref={(el) => { rowInputRefs.current[`${row.id}_urunKuru`] = el; }}
+                              readOnly
+                              tabIndex={-1}
+                              size="sm"
+                              className="text-end font-monospace text-muted"
+                              value={rowUrunKuruVal}
+                              onFocus={handleKalemRowFocus}
+                              onKeyDown={(e) => handleGridKeyDown(e, rowIndex, "urunKuru", row.id)}
+                              style={{ fontSize: "11px", padding: "1px 4px", backgroundColor: "#e9ecef", cursor: "not-allowed" }}
+                              title="Ürün Kuru"
+                            />
+                          </td>
+                        )}
+
                         {/* Kur */}
                         {colVisibility.kur && (
                           <td>
@@ -10474,6 +10541,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     {colVisibility.iscilikKdvOrani && <td></td>}
                     {colVisibility.iscilikKdvTutari && <td style={{ textAlign: "right" }}>{totalIscilikKdvTutari ? totalIscilikKdvTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
                     {colVisibility.iscilikToplam && <td style={{ textAlign: "right" }}>{totalIscilikToplam ? totalIscilikToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                    {colVisibility.hasKuru && <td></td>}
+                    {colVisibility.urunKuru && <td></td>}
                     {colVisibility.kur && <td></td>}
                     {colVisibility.tutar && (
                       <td style={{ textAlign: "right" }}>
