@@ -75,7 +75,10 @@ export interface DovizTeklifTaniModalProps {
   detayDogumYeri?: string;
   detayBabaAdi?: string;
   detayAnneAdi?: string;
+  detayCinsiyet?: string;
   detayMeslek?: string;
+  detayMeslekUnvani?: string;
+  detayCalistigiKurum?: string;
   detayTelefon?: string;
   detayIlce?: string;
   detayIl?: string;
@@ -147,7 +150,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
   detayDogumYeri = "",
   detayBabaAdi = "",
   detayAnneAdi = "",
+  detayCinsiyet = "",
   detayMeslek = "",
+  detayMeslekUnvani = "",
+  detayCalistigiKurum = "",
   detayTelefon = "",
   detayIlce = "",
   detayIl = "",
@@ -207,8 +213,11 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     tcKimlikNo: "",
     kimlikTuruNo: "",
     uyruk: "",
+    cinsiyet: "",
     adres: "",
     meslek: "",
+    meslekUnvani: "",
+    calistigiKurum: "",
     telefon: "",
   });
 
@@ -245,8 +254,11 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
       tcKimlikNo: cleanValue(vergiKimlikNo),
       kimlikTuruNo: buildKimlikTuru(cleanValue(vergiKimlikNo), cleanValue(detayPasaportNo)),
       uyruk: cleanValue(detayUyruk) || (cleanValue(vergiKimlikNo) ? "T.C." : ""),
+      cinsiyet: cleanValue(detayCinsiyet),
       adres: buildAdres(detayAdres, detayIlce, detayIl),
       meslek: cleanValue(detayMeslek),
+      meslekUnvani: cleanValue(detayMeslekUnvani),
+      calistigiKurum: cleanValue(detayCalistigiKurum),
       telefon: cleanValue(detayTelefon),
     };
 
@@ -290,8 +302,11 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
         tcKimlikNo: effectiveVkn || prev.tcKimlikNo,
         kimlikTuruNo: buildKimlikTuru(effectiveVkn || prev.tcKimlikNo, effectivePasaport) || prev.kimlikTuruNo,
         uyruk: (effectiveVkn ? "T.C." : "") || prev.uyruk,
+        cinsiyet: cleanValue((targetCari as any)?.cinsiyet) || prev.cinsiyet,
         adres: cleanValue(targetCari?.adres) || prev.adres,
         meslek: prev.meslek || "",
+        meslekUnvani: cleanValue((targetCari as any)?.meslekUnvani) || prev.meslekUnvani,
+        calistigiKurum: cleanValue((targetCari as any)?.calistigiKurum) || prev.calistigiKurum,
         telefon: cleanValue(targetCari?.telefon) || prev.telefon,
       }));
 
@@ -331,7 +346,10 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
     detayDogumYeri,
     detayBabaAdi,
     detayAnneAdi,
+    detayCinsiyet,
     detayMeslek,
+    detayMeslekUnvani,
+    detayCalistigiKurum,
     detayTelefon,
     detayAdres,
     detayUyruk,
@@ -1088,6 +1106,35 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                   </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Cinsiyeti
+                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, cinsiyet: v }));
+                      }}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        textTransform: "uppercase",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    >
+                      {taniData.cinsiyet}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
                       Adresi
                     </td>
                     <td
@@ -1114,29 +1161,9 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       {taniData.adres}
                     </td>
                   </tr>
-                  <tr style={{ height: "13px" }}>
-                    <td style={{ border: "1px solid #000", padding: "1px 6px" }}></td>
-                    <td
-                      contentEditable
-                      suppressContentEditableWarning
-                      className="tani-editable-cell"
-                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
-                      onPaste={handleTaniCellPaste}
-                      title="Bilgi girmek için tıklayınız"
-                      style={{
-                        border: "1px solid #000",
-                        padding: "1px 6px",
-                        height: "13px",
-                        minHeight: "13px",
-                        cursor: "text",
-                        outline: "none",
-                        verticalAlign: "middle",
-                      }}
-                    ></td>
-                  </tr>
                   <tr>
                     <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
-                      Mesleği
+                      Mesleği / Ünvanı
                     </td>
                     <td
                       contentEditable
@@ -1146,7 +1173,7 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                       onPaste={handleTaniCellPaste}
                       onBlur={(e) => {
                         const v = e.currentTarget.innerText.trim();
-                        setTaniData((prev) => ({ ...prev, meslek: v }));
+                        setTaniData((prev) => ({ ...prev, meslekUnvani: v, meslek: prev.meslek || v }));
                       }}
                       title="Bilgi girmek için tıklayınız"
                       style={{
@@ -1160,7 +1187,36 @@ export const DovizTeklifTaniModal: React.FC<DovizTeklifTaniModalProps> = ({
                         verticalAlign: "middle",
                       }}
                     >
-                      {taniData.meslek}
+                      {taniData.meslekUnvani || taniData.meslek}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: "bold", border: "1px solid #000", padding: "2px 6px" }}>
+                      Çalıştığı Kurum
+                    </td>
+                    <td
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="tani-editable-cell"
+                      onKeyDown={(e) => handleTaniCellKeyDown(e, false)}
+                      onPaste={handleTaniCellPaste}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.innerText.trim();
+                        setTaniData((prev) => ({ ...prev, calistigiKurum: v }));
+                      }}
+                      title="Bilgi girmek için tıklayınız"
+                      style={{
+                        border: "1px solid #000",
+                        padding: "2px 6px",
+                        textTransform: "uppercase",
+                        height: "19px",
+                        minHeight: "19px",
+                        cursor: "text",
+                        outline: "none",
+                        verticalAlign: "middle",
+                      }}
+                    >
+                      {taniData.calistigiKurum}
                     </td>
                   </tr>
                   <tr>

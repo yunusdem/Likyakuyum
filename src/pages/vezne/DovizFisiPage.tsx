@@ -805,8 +805,12 @@ export const DovizFisiPage: React.FC = () => {
   const [detayVekilTipi, setDetayVekilTipi] = useState<string>("Firma");
   const [detayVekilAdi, setDetayVekilAdi] = useState<string>("");
   const [detayVekilKimlikNo, setDetayVekilKimlikNo] = useState<string>("");
+  const [detayCinsiyet, setDetayCinsiyet] = useState<string>("");
   const [detayMeslek, setDetayMeslek] = useState<string>("");
+  const [detayMeslekUnvani, setDetayMeslekUnvani] = useState<string>("");
+  const [detayCalistigiKurum, setDetayCalistigiKurum] = useState<string>("");
   const [detayMeslekId, setDetayMeslekId] = useState<number | null>(null);
+  const [merkezKurSatirlar, setMerkezKurSatirlar] = useState<KurRowItem[]>([]);
   const [detayDernekAmaci, setDetayDernekAmaci] = useState<string>("");
   const [detayBankaHesabi, setDetayBankaHesabi] = useState<string>("");
   const [detayBankaHesabiId, setDetayBankaHesabiId] = useState<number | null>(null);
@@ -1219,7 +1223,10 @@ export const DovizFisiPage: React.FC = () => {
     setDetayVekilTipi("Firma");
     setDetayVekilAdi("");
     setDetayVekilKimlikNo("");
+    setDetayCinsiyet("");
     setDetayMeslek("");
+    setDetayMeslekUnvani("");
+    setDetayCalistigiKurum("");
     setDetayMeslekId(null);
     setDetayDernekAmaci("");
     setDetayBankaHesabi("");
@@ -1363,6 +1370,7 @@ export const DovizFisiPage: React.FC = () => {
 
       const anlikKurSatirlari = kurTabloRes?.satirlar || [];
       const gunlukKurSatirlari = gunlukKurTabloRes?.satirlar || [];
+      setMerkezKurSatirlar(gunlukKurSatirlari);
 
       // Combine anlık and günlük rates (anlık takes priority, günlük fills missing rates)
       const mergedKurMap = new Map<string, KurRowItem>();
@@ -1836,10 +1844,27 @@ export const DovizFisiPage: React.FC = () => {
       } else {
         setDetayPostaKodu("");
       }
+      if ((fis as any).cinsiyet) {
+        setDetayCinsiyet(String((fis as any).cinsiyet));
+      } else {
+        setDetayCinsiyet("");
+      }
+      if ((fis as any).meslekUnvani) {
+        setDetayMeslekUnvani(String((fis as any).meslekUnvani));
+      } else {
+        setDetayMeslekUnvani("");
+      }
+      if ((fis as any).calistigiKurum) {
+        setDetayCalistigiKurum(String((fis as any).calistigiKurum));
+      } else {
+        setDetayCalistigiKurum("");
+      }
       if ((fis as any).meslekId) {
         setDetayMeslekId((fis as any).meslekId);
         const matchM = lookupData.meslekList.find((m) => m.id === (fis as any).meslekId);
         if (matchM) setDetayMeslek(matchM.ad);
+      } else if ((fis as any).meslek) {
+        setDetayMeslek(String((fis as any).meslek));
       }
       if ((fis as any).bankaHesabiId) {
         const bId = Number((fis as any).bankaHesabiId);
@@ -2056,6 +2081,47 @@ export const DovizFisiPage: React.FC = () => {
       }
     },
     []
+  );
+
+  // VERGİ SINIR KONTROLLERİ VE XML/RAPOR HESAPLAMALARI:
+  // Fiş kaydedildiği anda merkez bankası kuru fişe, ilgili paranın gişe kuru fiş satırına yazılıyor.
+  // Kur türü “Efektif” ve Fiş tipi “Alış” ise anlık merkez bankası ve gişe efektif alış kurları
+  // Kur türü “Efektif” ve Fiş tipi “Satış” ise anlık merkez bankası ve gişe efektif satış kurları
+  // Kur türü “Döviz” ve Fiş tipi “Alış” ise anlık merkez bankası ve gişe döviz alış kurları
+  // Kur türü “Döviz” ve Fiş tipi “Satış” ise anlık merkez bankası ve gişe döviz satış kurları
+  const getMerkezUsdKuru = useCallback(
+    (curTip: number, curKurTuru: number): number => {
+      const mbList = (merkezKurSatirlar && merkezKurSatirlar.length > 0) ? merkezKurSatirlar : kurSatirlar;
+      const mbUsdRow = mbList.find((k) => (k.kod || "").toUpperCase().trim() === "USD");
+      if (mbUsdRow) {
+        if (Number(curKurTuru) === 0) {
+          // Efektif
+          const r = Number(curTip) === 0
+            ? parseRate(mbUsdRow.efektifAlis || mbUsdRow.dovizAlis)
+            : parseRate(mbUsdRow.efektifSatis || mbUsdRow.dovizSatis);
+          if (r > 0) return r;
+        } else {
+          // Döviz
+          const r = Number(curTip) === 0
+            ? parseRate(mbUsdRow.dovizAlis)
+            : parseRate(mbUsdRow.dovizSatis);
+          if (r > 0) return r;
+        }
+      }
+      const usdP = paraList.find((p) => p.kod?.toUpperCase() === "USD");
+      const r = usdP ? resolveCurrencyRate(usdP, curTip, curKurTuru) : 0;
+      return r > 0 ? r : 35;
+    },
+    [merkezKurSatirlar, kurSatirlar, paraList, resolveCurrencyRate]
+  );
+
+  const getGiseUsdKuru = useCallback(
+    (curTip: number, curKurTuru: number): number => {
+      const usdP = paraList.find((p) => p.kod?.toUpperCase() === "USD");
+      const r = usdP ? resolveCurrencyRate(usdP, curTip, curKurTuru) : 0;
+      return r > 0 ? r : getMerkezUsdKuru(curTip, curKurTuru);
+    },
+    [paraList, resolveCurrencyRate, getMerkezUsdKuru]
   );
 
   const handleSearchAndLoadFis = useCallback(
@@ -2813,6 +2879,15 @@ export const DovizFisiPage: React.FC = () => {
     if (result.ilce) setDetayIlce(result.ilce);
 
     if (raw) {
+      if (raw.cinsiyet) setDetayCinsiyet(String(raw.cinsiyet));
+      if (raw.meslekUnvani) setDetayMeslekUnvani(String(raw.meslekUnvani));
+      if (raw.calistigiKurum) setDetayCalistigiKurum(String(raw.calistigiKurum));
+      if (raw.meslek) setDetayMeslek(String(raw.meslek));
+      if (raw.meslekId) {
+        setDetayMeslekId(Number(raw.meslekId));
+        const matchM = lookupData.meslekList.find((m) => m.id === Number(raw.meslekId));
+        if (matchM) setDetayMeslek(matchM.ad);
+      }
       if (raw.yetkiliKisi) setDetayYetkiliKisi(raw.yetkiliKisi);
       if (raw.yetkiliKisiId) setDetayYetkiliKisiId(Number(raw.yetkiliKisiId));
       else if (raw.id && result.type === "registered") setDetayYetkiliKisiId(Number(raw.id));
@@ -3518,8 +3593,7 @@ export const DovizFisiPage: React.FC = () => {
     }
   }, [totalTutar, totalMasraf, tip]);
 
-  // Firma Tanımlarındaki Limit sekmesinden dinamik MASAK Sınır Kontrolü (Altında Altın, Dövizde Döviz, TL'de TL Sınırı)
-  // Firma Tanımlarındaki Limit sekmesinden dinamik MASAK Sınır Kontrolü (Altında Altın, Dövizde Döviz, TL'de TL Sınırı)
+  // Firma Tanımlarındaki Limit sekmesinden dinamik MASAK Sınır Kontrolü (Önce TL Fiş Bazında, Sonra USD Satır Bazında)
   const masakStatus = useMemo(() => {
     const compDef = companyDefinitionsRef.current || companyDefinitions || CompanyService.cachedDefinitions;
     const tlLimit = Number(compDef?.TL_VERGI_SINIRI) > 0 ? Number(compDef.TL_VERGI_SINIRI) : 100000;
@@ -3550,44 +3624,35 @@ export const DovizFisiPage: React.FC = () => {
       return fallback;
     }
 
+    const effectiveMerkezUsdKuru = getMerkezUsdKuru(tip, kurTuru);
+
+    // 1) ÖNCE TL LİMİT KONTROLÜ (Fiş bazında kontrol yapılıyor, fiş toplam tutarı + arbitraj toplam tutarı esas alınır)
+    const rawArb = (savedArbitrajInfo?.result?.allLines && savedArbitrajInfo.result.allLines.length > 0)
+      ? savedArbitrajInfo.result.allLines
+      : (savedArbitrajInfo?.result?.lines || []);
+    const arbitrajEkTutar = rawArb.length > 0
+      ? rawArb.reduce((acc: number, a: any) => acc + (Number(a.tutar) || (parseMiktar(a.miktar) * parseKur(a.kur)) || 0), 0)
+      : (Number(savedArbitrajInfo?.result?.toplamTl) || 0);
+    const effectiveFisToplamTl = Math.max(Math.abs(sonToplam), Math.abs(totalTutar)) + arbitrajEkTutar;
+
+    if (effectiveFisToplamTl >= tlLimit) {
+      return {
+        isExceeded: true,
+        type: "tl" as const,
+        limitLabel: `TL Vergi Sınırını (${tlLimit.toLocaleString("tr-TR")} ₺ / Fiş Toplamı: ${Math.round(effectiveFisToplamTl).toLocaleString("tr-TR")} ₺)`,
+        limitTitle: "MASAK TL Bildirim Sınırı Uyarısı",
+      };
+    }
+
+    // 2) USD LİMİT KONTROLÜ (Satır bazında kontrol yapılıyor)
     const validLines = lines.filter((l) => {
       const m = parseMiktar(l.miktar);
       return (l.paraId || (l.paraKodu && l.paraKodu.trim() !== "")) && m > 0;
     });
 
-    if (validLines.length === 0) {
-      if (Math.max(Math.abs(sonToplam), Math.abs(totalTutar)) >= tlLimit) {
-        return {
-          isExceeded: true,
-          type: "tl" as const,
-          limitLabel: `TL Vergi Sınırını (${tlLimit.toLocaleString("tr-TR")} ₺)`,
-          limitTitle: "MASAK TL Bildirim Sınırı Uyarısı",
-        };
-      }
-      return fallback;
-    }
-
-    const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD" || Number(p.id) === 2);
-    const usdRate = (() => {
-      const r = usdPara ? resolveCurrencyRate(usdPara, tip, kurTuru) : 0;
-      return r > 0 ? r : 35;
-    })();
-
-    const activeLimitParaRate = limitPara ? resolveCurrencyRate(limitPara, tip, kurTuru) : usdRate;
-    const activeAltinParaRate = (() => {
-      if (altinParaKodu === "TL" || altinParaKodu === "TRY") return 1;
-      const rate = altinPara ? resolveCurrencyRate(altinPara, tip, kurTuru) : 0;
-      if (rate > 0) return rate;
-      if (altinParaKodu === "USD" || altinParaKodu === "$") return usdRate;
-      if (altinParaKodu === "EUR" || altinParaKodu === "€") return (activeLimitParaRate > 0 && limitParaKodu === "EUR" ? activeLimitParaRate : 38);
-      const hasRatio = (altinPara as any)?.hasOrani ? Number((altinPara as any).hasOrani) : (altinParaKodu === "22" ? 0.916 : (altinParaKodu === "14" ? 0.585 : (altinParaKodu === "18" ? 0.75 : 1)));
-      return 3200 * hasRatio;
-    })();
-
     const isGoldItem = (paraId?: number, kod?: string, ad?: string, uTipi?: number) => {
       const upperKod = (kod || "").toUpperCase().trim();
       const upperAd = (ad || "").toUpperCase().trim();
-      // Döviz birimleri kesinlikle altın sayılmaz
       if (["USD", "EUR", "GBP", "CHF", "CAD", "AUD", "JPY", "SAR", "AED", "RUB", "KWD", "$", "€", "£"].includes(upperKod)) {
         return false;
       }
@@ -3608,91 +3673,45 @@ export const DovizFisiPage: React.FC = () => {
       return upper === "TL" || upper === "TRY" || upper === "TRL" || upper === "POS" || upper === "HAVALE" || upper === "";
     };
 
-    let totalDovizEquivalent = 0;
-    let hasDovizLimitDirect = false;
-    let hasDoviz = false;
-
-    let totalGoldTl = 0;
-    let totalGoldGram = 0;
-    let hasGold = false;
-
-    let totalTlAmount = 0;
-
-    validLines.forEach((l) => {
+    for (const l of validLines) {
       const m = parseMiktar(l.miktar);
       const k = parseKur(l.kur);
       const kod = (l.paraKodu || "").trim().toUpperCase();
       const ad = (l.paraAdi || "").trim();
       const paraId = l.paraId;
+      const satirTutar = parseDecimal(l.tutar) > 0 ? parseDecimal(l.tutar) : (m * k);
 
       if (isGoldItem(paraId, kod, ad, l.urunTipi)) {
-        hasGold = true;
-        const lineTl = m * (k > 0 ? k : (activeAltinParaRate > 0 ? activeAltinParaRate : 3000));
-        totalGoldTl += lineTl;
-        totalGoldGram += m;
-      } else if (!isTlItem(kod)) {
-        // Döviz satırı (USD, EUR, GBP, vb.)
-        hasDoviz = true;
-        const isTargetLimitCurrency =
-          kod === limitParaKodu ||
-          (dovizParaId && Number(paraId) === Number(dovizParaId)) ||
-          (limitParaKodu === "USD" && (kod === "$" || kod === "USD" || kod.includes("DOLAR") || ad.toUpperCase().includes("DOLAR"))) ||
-          (limitParaKodu === "EUR" && (kod === "€" || kod === "EUR" || kod.includes("EURO") || ad.toUpperCase().includes("EURO")));
-
-        if (isTargetLimitCurrency) {
-          totalDovizEquivalent += m;
-          if (m >= dovizLimit) hasDovizLimitDirect = true;
-        } else {
-          const lineTl = m * (k > 0 ? k : 1);
-          const activeRate = activeLimitParaRate > 0 ? activeLimitParaRate : usdRate;
-          const eq = activeRate > 0 ? lineTl / activeRate : m;
-          totalDovizEquivalent += eq;
-          if (eq >= dovizLimit) hasDovizLimitDirect = true;
+        // Altın işlemlerinde: USD karşılık = satır tutarı / merkez bankası USD kuru
+        const lineUsdEquivalent = effectiveMerkezUsdKuru > 0 ? (satirTutar / effectiveMerkezUsdKuru) : 0;
+        if (lineUsdEquivalent >= altinLimit) {
+          return {
+            isExceeded: true,
+            type: "altin" as const,
+            limitLabel: `Altın Vergi Sınırını (${altinLimit.toLocaleString("tr-TR")} USD / Karşılık: $${Math.round(lineUsdEquivalent).toLocaleString("tr-TR")})`,
+            limitTitle: "MASAK Altın Bildirim Sınırı Uyarısı",
+          };
         }
-      } else {
-        const lineTl = m * (k > 0 ? k : 1);
-        totalTlAmount += lineTl;
+      } else if (!isTlItem(kod)) {
+        // Döviz satırı
+        // Döviz işlemlerinde: Satırda USD varsa satırdaki miktar; satırda USD dışı döviz varsa USD karşılık = Miktar * gişe kuru / merkez bankası USD kuru
+        let lineUsdEquivalent = 0;
+        if (kod === "USD" || kod === "$" || (limitParaKodu === "USD" && (kod.includes("DOLAR") || ad.toUpperCase().includes("DOLAR")))) {
+          lineUsdEquivalent = m;
+        } else {
+          const giseKuru = k > 0 ? k : ((l as any).giseKuru ? parseDecimal((l as any).giseKuru) : 1);
+          lineUsdEquivalent = effectiveMerkezUsdKuru > 0 ? (m * giseKuru) / effectiveMerkezUsdKuru : m;
+        }
+
+        if (lineUsdEquivalent >= dovizLimit) {
+          return {
+            isExceeded: true,
+            type: "doviz" as const,
+            limitLabel: `Döviz Vergi Sınırını (${dovizLimit.toLocaleString("tr-TR")} USD / Karşılık: $${Math.round(lineUsdEquivalent).toLocaleString("tr-TR")})`,
+            limitTitle: "MASAK Döviz Bildirim Sınırı Uyarısı",
+          };
+        }
       }
-    });
-
-    // 1) Altın kontrolü:
-    // Firma Tanımları Limit sekmesindeki Altın Vergi Sınırı (örn. 5.000) ve Altın Sınır Para (örn. USD, 22 Ayar vb.) baz alınır.
-    // Altın Sınır Para ne seçilmişse o para biriminin kuruna göre sınır hesaplanır (Miktar * Kur).
-    const altinLimitInTl = altinLimit * (activeAltinParaRate > 0 ? activeAltinParaRate : 1);
-    const altinValInPara = activeAltinParaRate > 0 ? totalGoldTl / activeAltinParaRate : totalGoldTl;
-    const isAltinExceeded = hasGold && (totalGoldTl >= altinLimitInTl || altinValInPara >= altinLimit);
-
-    // 2) Döviz kontrolü:
-    const isDovizExceeded = hasDoviz && (hasDovizLimitDirect || totalDovizEquivalent >= dovizLimit);
-
-    // 3) TL kontrolü: Saf TL işlemi (altın ve döviz harici saf TL tutarı) TL Vergi Sınırını aştığında tetiklenir
-    // Altın veya döviz içeren işlemlerde genel tutar TL sınırına sokulmaz!
-    const isPureTl = !hasGold && !hasDoviz;
-    const isTlExceeded = (isPureTl ? Math.max(Math.abs(sonToplam), Math.abs(totalTutar)) >= tlLimit : false) || totalTlAmount >= tlLimit;
-
-    if (isAltinExceeded) {
-      return {
-        isExceeded: true,
-        type: "altin" as const,
-        limitLabel: `Altın Vergi Sınırını (${altinLimit.toLocaleString("tr-TR")} ${altinParaKodu})`,
-        limitTitle: "MASAK Altın Bildirim Sınırı Uyarısı",
-      };
-    }
-    if (isDovizExceeded) {
-      return {
-        isExceeded: true,
-        type: "doviz" as const,
-        limitLabel: `Döviz Vergi Sınırını (${dovizLimit.toLocaleString("tr-TR")} ${limitParaKodu})`,
-        limitTitle: "MASAK Döviz Bildirim Sınırı Uyarısı",
-      };
-    }
-    if (isTlExceeded) {
-      return {
-        isExceeded: true,
-        type: "tl" as const,
-        limitLabel: `TL Vergi Sınırını (${tlLimit.toLocaleString("tr-TR")} ₺)`,
-        limitTitle: "MASAK TL Bildirim Sınırı Uyarısı",
-      };
     }
 
     return fallback;
@@ -3700,17 +3719,13 @@ export const DovizFisiPage: React.FC = () => {
     isMasakKontroluVar,
     sonToplam,
     totalTutar,
+    savedArbitrajInfo,
     lines,
     paraList,
     tip,
     kurTuru,
-    resolveCurrencyRate,
-    statisticList,
-    istatistikId,
-    istatistikKodu,
     companyDefinitions,
-    istatistikFisDizaynTipi,
-    selectedStatistic,
+    getMerkezUsdKuru,
   ]);
 
   const isMasakLimitExceeded = masakStatus.isExceeded;
@@ -3996,30 +4011,37 @@ export const DovizFisiPage: React.FC = () => {
     setKurTuru(newKurTuru);
     setLines((prev) =>
       prev.map((row) => {
-        if (!row.paraId && (!row.paraKodu || row.paraKodu.trim() === "")) return row;
-        const found = paraList.find(
-          (p) =>
-            (row.paraId && p.id === row.paraId) ||
-            (row.paraKodu && p.kod.toUpperCase() === row.paraKodu.trim().toUpperCase())
-        );
-        if (!found) return row;
-        const newRate = resolveCurrencyRate(found, tip, newKurTuru);
-        const kurStr = newRate > 0 ? newRate.toFixed(kurKurusSayisi) : row.kur;
+        let rate = parseFloat(String(row.kur).replace(/,/g, ".")) || 0;
+        if (row.paraId || (row.paraKodu && row.paraKodu.trim() !== "")) {
+          const found = paraList.find(
+            (p) =>
+              (row.paraId && p.id === row.paraId) ||
+              (row.paraKodu && p.kod.toUpperCase() === row.paraKodu.trim().toUpperCase())
+          );
+          if (found) {
+            rate = resolveCurrencyRate(found, tip, newKurTuru);
+          }
+        }
+        const kurStr = rate > 0 ? rate.toFixed(kurKurusSayisi) : row.kur;
+        const bmvOraniToUse = row.bmvOrani;
+        const kmvOraniToUse = row.kmvOrani;
         const calculated = calculateRowValues({
           miktar: row.miktar,
           kur: kurStr,
           paraKodu: row.paraKodu,
-          bmvOrani: row.bmvOrani,
-          kmvOrani: row.kmvOrani,
+          bmvOrani: bmvOraniToUse,
+          kmvOrani: kmvOraniToUse,
           komisyonOrani: row.komisyonOrani,
+          customTip: tip,
         });
         return {
           ...row,
           kur: kurStr,
           tutar: calculated.tutar,
+          bmvOrani: row.bmvOrani ? row.bmvOrani : "",
           bmv: calculated.bmv,
           kmv: calculated.kmv,
-          kmvOrani: calculated.kmvOrani,
+          kmvOrani: row.kmvOrani ? row.kmvOrani : "",
           komisyon: calculated.komisyon,
         };
       })
@@ -4685,11 +4707,29 @@ export const DovizFisiPage: React.FC = () => {
       if (!vergiKimlikNo || !vergiKimlikNo.trim()) missingFields.push("T.C. Kimlik / VKN");
       if (!detayAdres || !detayAdres.trim()) missingFields.push("Müşteri Adresi");
       if (!detayHukukiYapi && !detayHukukiYapiId) missingFields.push("Hukuki Yapı");
+      if (!detayCinsiyet || !detayCinsiyet.trim()) missingFields.push("Cinsiyet");
+      if (!detayMeslek && !detayMeslekId && !detayMeslekUnvani.trim()) missingFields.push("Meslek / Meslek Ünvanı");
 
-      if (missingFields.length > 0) {
-        setMasakMissingFields(missingFields);
-        setShowMasakMissingModal(true);
-        return;
+      const compDef = companyDefinitionsRef.current || companyDefinitions || CompanyService.cachedDefinitions;
+      const isYasaklama = Boolean(compDef?.VERGI_SINIRI_ASILINCA_YASAKLA);
+
+      if (isYasaklama) {
+        if (missingFields.length > 0) {
+          setMasakMissingFields(missingFields);
+          setShowMasakMissingModal(true);
+          return;
+        }
+      } else {
+        // Vergi sınırı tanımlarında değer yok ise (veya döviz büfesi tanımı):
+        // Limit aşımında uyarı verilir ve eksik kimlik bilgileri varsa girilmesi istenir. Fiş girişi yasaklanmaz ve kaydedilebilir.
+        if (missingFields.length > 0 && !forceMasakApprove) {
+          setMasakMissingFields(missingFields);
+          setIsPendingDirectPrint(andDirectPrint);
+          setPendingPrinter(targetPrinter || null);
+          setPendingCopies(targetCopies || 1);
+          setShowMasakConfirmModal(true);
+          return;
+        }
       }
 
       // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır (Önceden sorgulanmışsa yeniden bekletmeden devam eder)
@@ -4932,12 +4972,17 @@ export const DovizFisiPage: React.FC = () => {
           };
         });
 
+        const effectiveMerkezUsdKuru = getMerkezUsdKuru(tip, kurTuru);
+        const effectiveGiseUsdKuru = getGiseUsdKuru(tip, kurTuru);
+
         const payload: SaveDovizFisPayload = {
           fisId: fisId || undefined,
           vezneId: activeVezneId,
           tip,
           tarih: finalTarih,
           zaman: finalZaman,
+          merkezUsdKuru: effectiveMerkezUsdKuru,
+          giseUsdKuru: effectiveGiseUsdKuru,
           seriNo: seriNo.trim() || undefined,
           belgeNo: belgeNo.trim() || undefined,
           gelisNedeni: gelisNedeni.trim() || undefined,
@@ -4958,7 +5003,11 @@ export const DovizFisiPage: React.FC = () => {
           ilce: detayIlce.trim() || undefined,
           postaKoduId: finalPostaKoduId,
           postaKodu: detayPostaKodu.trim() || undefined,
+          cinsiyet: detayCinsiyet.trim() || undefined,
           meslekId: finalMeslekId,
+          meslek: (detayMeslek.trim() || detayMeslekUnvani.trim()) || undefined,
+          meslekUnvani: detayMeslekUnvani.trim() || undefined,
+          calistigiKurum: detayCalistigiKurum.trim() || undefined,
           bankaHesabiId: finalBankaHesabiId,
           vergiKimlikNo: vergiKimlikNo.trim() || undefined,
           pasaportNo: detayPasaportNo.trim() || undefined,
@@ -6656,9 +6705,31 @@ export const DovizFisiPage: React.FC = () => {
       }
     }
 
-    if (e.key === "Enter" || e.key === "ArrowDown") {
-      if (e.key === "ArrowDown" && e.currentTarget instanceof HTMLSelectElement) {
-        return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const nextIdx = currentIdx + 1;
+      const nextEl = document.querySelector<HTMLElement>(`[data-detay-idx="${nextIdx}"]`);
+      if (nextEl) {
+        nextEl.focus();
+        if (
+          nextEl instanceof HTMLInputElement &&
+          (nextEl.type === "text" || nextEl.type === "email" || nextEl.type === "number")
+        ) {
+          nextEl.select();
+        }
+      } else {
+        // Last field: close Detay modal
+        setShowDetayModal(false);
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      if (e.currentTarget instanceof HTMLSelectElement) {
+        const sel = e.currentTarget;
+        if (sel.selectedIndex < sel.options.length - 1) {
+          return;
+        }
       }
       e.preventDefault();
       const nextIdx = currentIdx + 1;
@@ -6671,13 +6742,16 @@ export const DovizFisiPage: React.FC = () => {
         ) {
           nextEl.select();
         }
-      } else if (e.key === "Enter") {
-        // Last field: close Detay modal
-        setShowDetayModal(false);
       }
-    } else if (e.key === "ArrowUp") {
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
       if (e.currentTarget instanceof HTMLSelectElement) {
-        return;
+        const sel = e.currentTarget;
+        if (sel.selectedIndex > 0) {
+          return;
+        }
       }
       e.preventDefault();
       const prevIdx = currentIdx - 1;
@@ -6691,6 +6765,7 @@ export const DovizFisiPage: React.FC = () => {
           prevEl.select();
         }
       }
+      return;
     }
   };
 
@@ -7115,10 +7190,10 @@ export const DovizFisiPage: React.FC = () => {
                   }}
                 >
                   {/* Tarih / Saat */}
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  <div className="d-flex flex-row align-items-center gap-1.5">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                      style={{ minWidth: "82px", width: "82px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       Tarih / Saat
                     </label>
@@ -7147,10 +7222,10 @@ export const DovizFisiPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  <div className="d-flex flex-row align-items-center gap-1.5">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12px", color: "#334155" }}
+                      style={{ minWidth: "82px", width: "82px", flexShrink: 0, fontSize: "12px", color: "#334155" }}
                       title={tip === 1 ? "Satışın dayanağı" : "Geliş nedeni"}
                     >
                       {tip === 1 ? "Satış dayanağı" : "Geliş nedeni"}
@@ -7166,15 +7241,15 @@ export const DovizFisiPage: React.FC = () => {
                         maxLength={100}
                         onChange={(e) => setGelisNedeni(e.target.value.slice(0, 100))}
                         className="px-2.5 py-1"
-                        style={{ minWidth: 0, maxWidth: "240px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ minWidth: 0, width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       />
                     </div>
                   </div>
 
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  <div className="d-flex flex-row align-items-center gap-1.5">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                      style={{ minWidth: "82px", width: "82px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       Kur türü
                     </label>
@@ -7183,16 +7258,16 @@ export const DovizFisiPage: React.FC = () => {
                         size="sm"
                         disabled={isLocked}
                         value={kurTuru}
-                        onChange={(e) => setKurTuru(Number(e.target.value))}
+                        onChange={(e) => handleKurTuruChange(Number(e.target.value))}
                         onKeyDown={(e) => {
                           if (e.key === " " || e.code === "Space" || e.keyCode === 32) {
                             e.preventDefault();
                             e.stopPropagation();
-                            setKurTuru(kurTuru === 0 ? 1 : 0);
+                            handleKurTuruChange(kurTuru === 0 ? 1 : 0);
                           }
                         }}
                         className="fw-semibold px-2.5 py-1"
-                        style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                        style={{ minWidth: 0, maxWidth: "180px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                       >
                         <option value={0}>Efektif Kurları</option>
                         <option value={1}>Döviz Kurları</option>
@@ -7214,14 +7289,14 @@ export const DovizFisiPage: React.FC = () => {
                   }}
                 >
                   {/* Seri No ve Cari Kodu Yan Yana Tek Satırda */}
-                  <div className="d-flex flex-row align-items-center gap-2" style={{ height: "30px" }}>
+                  <div className="d-flex flex-row align-items-center gap-1.5" style={{ height: "30px" }}>
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "80px", width: "80px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                      style={{ minWidth: "54px", width: "54px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       Seri no
                     </label>
-                    <div style={{ width: "110px", flexShrink: 0 }}>
+                    <div style={{ width: "95px", flexShrink: 0 }}>
                       {isDuzeltmeMode ? (
                         <InputGroup size="sm" style={{ height: "30px" }}>
                           <Form.Control
@@ -7276,7 +7351,7 @@ export const DovizFisiPage: React.FC = () => {
                       Cari Kodu
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "135px" }}>
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "155px" }}>
                         <Form.Control
                           ref={cariKodRef}
                           type="text"
@@ -7371,15 +7446,15 @@ export const DovizFisiPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  <div className="d-flex flex-row align-items-center gap-1.5">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "80px", width: "80px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                      style={{ minWidth: "54px", width: "54px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       Ünvan
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "260px" }}>
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "260px", width: "100%" }}>
                         <Form.Control
                           ref={unvanRef}
                           type="text"
@@ -7490,11 +7565,11 @@ export const DovizFisiPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  <div className="d-flex flex-row align-items-center gap-1.5">
                     <label
                       htmlFor="doviz-fis-tip-select"
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "80px", width: "80px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                      style={{ minWidth: "54px", width: "54px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       Fiş tipi
                     </label>
@@ -7522,7 +7597,7 @@ export const DovizFisiPage: React.FC = () => {
                           }
                         }}
                         className="fw-bold text-uppercase px-2 py-1"
-                        style={{ minWidth: 0, maxWidth: "120px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
+                        style={{ minWidth: 0, maxWidth: "135px", width: "100%", height: "30px", fontSize: "12px", borderColor: "#cbd5e1" }}
                       >
                         <option value="0">ALIŞ</option>
                         <option value="1">SATIŞ</option>
@@ -7544,16 +7619,16 @@ export const DovizFisiPage: React.FC = () => {
                   }}
                 >
                   {/* Belge no */}
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  <div className="d-flex flex-row align-items-center gap-1.5">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                      style={{ minWidth: "86px", width: "86px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       Belge no
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
                       {isDuzeltmeMode ? (
-                        <InputGroup size="sm" style={{ height: "30px", maxWidth: "160px" }}>
+                        <InputGroup size="sm" style={{ height: "30px", maxWidth: "185px" }}>
                           <Form.Control
                             type="text"
                             autoComplete="off"
@@ -7592,7 +7667,7 @@ export const DovizFisiPage: React.FC = () => {
                           maxLength={30}
                           onChange={(e) => setBelgeNo(e.target.value.slice(0, 30))}
                           className="font-monospace fw-bold px-2.5 py-1"
-                          style={{ minWidth: 0, maxWidth: "160px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
+                          style={{ minWidth: 0, maxWidth: "185px", width: "100%", height: "30px", fontSize: "12.5px", borderColor: "#cbd5e1" }}
                           placeholder="Otomatik (Boş ise atanır)"
                           title="Belge No (Boş bırakılırsa numaradörden otomatik atanır)"
                         />
@@ -7600,15 +7675,15 @@ export const DovizFisiPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  <div className="d-flex flex-row align-items-center gap-1.5">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                      style={{ minWidth: "86px", width: "86px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       VKN / TCKN
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "185px" }}>
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "220px" }}>
                         <Form.Control
                           ref={vknRef}
                           type="text"
@@ -7684,15 +7759,15 @@ export const DovizFisiPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="d-flex flex-row align-items-center gap-2">
+                  <div className="d-flex flex-row align-items-center gap-1.5">
                     <label
                       className="small fw-semibold mb-0 text-nowrap"
-                      style={{ minWidth: "105px", width: "105px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
+                      style={{ minWidth: "86px", width: "86px", flexShrink: 0, fontSize: "12.5px", color: "#334155" }}
                     >
                       İstatistik kodu
                     </label>
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "160px", width: "160px" }}>
+                      <InputGroup size="sm" style={{ height: "30px", maxWidth: "185px", width: "185px" }}>
                         <Form.Control
                           ref={istatistikRef}
                           type="text"
@@ -8840,11 +8915,26 @@ export const DovizFisiPage: React.FC = () => {
               </div>
 
               <div className="d-flex align-items-center mb-2">
+                <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Cinsiyet</span>
+                <Form.Select
+                  size="sm"
+                  data-detay-idx={7}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 7)}
+                  value={detayCinsiyet}
+                  onChange={(e) => setDetayCinsiyet(e.target.value)}
+                >
+                  <option value="">Seçiniz...</option>
+                  <option value="Erkek">Erkek</option>
+                  <option value="Kadın">Kadın</option>
+                </Form.Select>
+              </div>
+
+              <div className="d-flex align-items-center mb-2">
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>T.C.Kimlik no</span>
                 <InputGroup size="sm">
                   <Form.Control
-                    data-detay-idx={7}
-                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 7)}
+                    data-detay-idx={8}
+                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 8)}
                     className={`font-monospace ${tcknDogrulandi === true ? "is-valid" : tcknDogrulandi === false ? "is-invalid" : ""}`}
                     value={vergiKimlikNo}
                     maxLength={11}
@@ -8892,8 +8982,8 @@ export const DovizFisiPage: React.FC = () => {
               <div className="d-flex align-items-center mb-2">
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Geçerlilik tarihi</span>
                 <Form.Control
-                  data-detay-idx={8}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 8)}
+                  data-detay-idx={9}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 9)}
                   type={gecerlilikFocused || detayGecerlilikTarihi ? "date" : "text"}
                   size="sm"
                   placeholder=""
@@ -8908,8 +8998,8 @@ export const DovizFisiPage: React.FC = () => {
               <div className="d-flex align-items-center mb-2">
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Doğum tarihi</span>
                 <Form.Control
-                  data-detay-idx={9}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 9)}
+                  data-detay-idx={10}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 10)}
                   type={dogumFocused || detayDogumTarihi ? "date" : "text"}
                   size="sm"
                   placeholder=""
@@ -8925,8 +9015,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Doğum yeri</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={10}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 10)}
+                  data-detay-idx={11}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 11)}
                   value={detayDogumYeri}
                   maxLength={100}
                   onChange={(e) => setDetayDogumYeri(e.target.value.slice(0, 100))}
@@ -8937,6 +9027,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Belge türü</span>
                 <Form.Select
                   size="sm"
+                  data-detay-idx={12}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 12)}
                   value={detayKimlikBelgeTuru}
                   onChange={(e) => setDetayKimlikBelgeTuru(Number(e.target.value))}
                 >
@@ -8951,8 +9043,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Kimlik kaynağı</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={11}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 11)}
+                  data-detay-idx={13}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 13)}
                   value={detayKimlikKaynagi}
                   maxLength={50}
                   onChange={(e) => setDetayKimlikKaynagi(e.target.value.slice(0, 50))}
@@ -8963,8 +9055,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Kimlik seri no</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={12}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 12)}
+                  data-detay-idx={14}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 14)}
                   value={detayKimlikSeriNo}
                   maxLength={30}
                   onChange={(e) => setDetayKimlikSeriNo(e.target.value.slice(0, 30))}
@@ -8975,8 +9067,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Baba adı</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={13}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 13)}
+                  data-detay-idx={15}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 15)}
                   value={detayBabaAdi}
                   maxLength={50}
                   onChange={(e) => setDetayBabaAdi(e.target.value.slice(0, 50))}
@@ -8987,8 +9079,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Anne adı</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={14}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 14)}
+                  data-detay-idx={16}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 16)}
                   value={detayAnneAdi}
                   maxLength={50}
                   onChange={(e) => setDetayAnneAdi(e.target.value.slice(0, 50))}
@@ -8999,8 +9091,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Vergi dairesi</span>
                 <InputGroup size="sm">
                   <Form.Control
-                    data-detay-idx={15}
-                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 15, "vergiDairesi")}
+                    data-detay-idx={17}
+                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 17, "vergiDairesi")}
                     value={detayVergiDairesi}
                     maxLength={100}
                     onChange={(e) => {
@@ -9035,8 +9127,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Adres</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={16}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 16)}
+                  data-detay-idx={18}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 18)}
                   value={detayAdres}
                   maxLength={250}
                   onChange={(e) => setDetayAdres(e.target.value.slice(0, 250))}
@@ -9047,8 +9139,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Posta kodu</span>
                 <InputGroup size="sm">
                   <Form.Control
-                    data-detay-idx={17}
-                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 17, "postaKodu")}
+                    data-detay-idx={19}
+                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 19, "postaKodu")}
                     value={detayPostaKodu}
                     maxLength={20}
                     onChange={(e) => {
@@ -9096,8 +9188,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>İlçe</span>
                 <InputGroup size="sm">
                   <Form.Control
-                    data-detay-idx={18}
-                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 18, "ilce")}
+                    data-detay-idx={20}
+                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 20, "ilce")}
                     value={detayIlce}
                     maxLength={50}
                     onChange={(e) => {
@@ -9126,8 +9218,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>İl</span>
                 <InputGroup size="sm">
                   <Form.Control
-                    data-detay-idx={19}
-                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 19, "il")}
+                    data-detay-idx={21}
+                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 21, "il")}
                     value={detayIl}
                     maxLength={50}
                     onChange={(e) => {
@@ -9160,8 +9252,8 @@ export const DovizFisiPage: React.FC = () => {
                 <Form.Control
                   type="email"
                   size="sm"
-                  data-detay-idx={20}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 20)}
+                  data-detay-idx={22}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 22)}
                   value={detayEposta}
                   maxLength={100}
                   onChange={(e) => setDetayEposta(e.target.value.slice(0, 100))}
@@ -9172,8 +9264,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Telefon</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={21}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 21)}
+                  data-detay-idx={23}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 23)}
                   value={detayTelefon}
                   maxLength={20}
                   onChange={(e) => setDetayTelefon(e.target.value.replace(/[^0-9+\s-]/g, "").slice(0, 20))}
@@ -9184,8 +9276,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Vekil</span>
                 <Form.Select
                   size="sm"
-                  data-detay-idx={22}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 22)}
+                  data-detay-idx={24}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 24)}
                   value={detayVekil}
                   onChange={(e) => setDetayVekil(e.target.value)}
                 >
@@ -9198,8 +9290,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Vekil tipi</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={23}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 23)}
+                  data-detay-idx={25}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 25)}
                   value={detayVekilTipi}
                   maxLength={30}
                   onChange={(e) => setDetayVekilTipi(e.target.value.slice(0, 30))}
@@ -9210,8 +9302,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Vekil adı</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={24}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 24)}
+                  data-detay-idx={26}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 26)}
                   value={detayVekilAdi}
                   maxLength={50}
                   onChange={(e) => setDetayVekilAdi(e.target.value.slice(0, 50))}
@@ -9222,8 +9314,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Vergi kimlik no</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={25}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 25)}
+                  data-detay-idx={27}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 27)}
                   value={detayVekilKimlikNo}
                   maxLength={11}
                   onChange={(e) => setDetayVekilKimlikNo(e.target.value.replace(/\D/g, "").slice(0, 11))}
@@ -9234,8 +9326,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Meslek</span>
                 <InputGroup size="sm">
                   <Form.Control
-                    data-detay-idx={26}
-                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 26, "meslek")}
+                    data-detay-idx={28}
+                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 28, "meslek")}
                     value={detayMeslek}
                     maxLength={50}
                     onChange={(e) => {
@@ -9264,11 +9356,37 @@ export const DovizFisiPage: React.FC = () => {
               </div>
 
               <div className="d-flex align-items-center mb-2">
+                <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Meslek ünvanı</span>
+                <Form.Control
+                  size="sm"
+                  data-detay-idx={29}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 29)}
+                  value={detayMeslekUnvani}
+                  maxLength={100}
+                  placeholder="Meslek / ünvan"
+                  onChange={(e) => setDetayMeslekUnvani(e.target.value.slice(0, 100))}
+                />
+              </div>
+
+              <div className="d-flex align-items-center mb-2">
+                <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Çalıştığı kurum</span>
+                <Form.Control
+                  size="sm"
+                  data-detay-idx={30}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 30)}
+                  value={detayCalistigiKurum}
+                  maxLength={150}
+                  placeholder="Çalıştığı kurum / iş yeri"
+                  onChange={(e) => setDetayCalistigiKurum(e.target.value.slice(0, 150))}
+                />
+              </div>
+
+              <div className="d-flex align-items-center mb-2">
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Dernek Amacı</span>
                 <Form.Control
                   size="sm"
-                  data-detay-idx={27}
-                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 27)}
+                  data-detay-idx={31}
+                  onKeyDown={(e) => handleDetayFieldKeyDown(e, 31)}
                   value={detayDernekAmaci}
                   maxLength={100}
                   onChange={(e) => setDetayDernekAmaci(e.target.value.slice(0, 100))}
@@ -9279,8 +9397,8 @@ export const DovizFisiPage: React.FC = () => {
                 <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>Banka hesabı</span>
                 <InputGroup size="sm">
                   <Form.Control
-                    data-detay-idx={28}
-                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 28, "bankaHesabi")}
+                    data-detay-idx={32}
+                    onKeyDown={(e) => handleDetayFieldKeyDown(e, 32, "bankaHesabi")}
                     value={detayBankaHesabi}
                     disabled={!kYetki.bankaHesabiSecme}
                     title={kYetki.bankaHesabiSecme ? undefined : "Fiş banka hesabı seçme yetkiniz yok"}
@@ -9343,7 +9461,9 @@ export const DovizFisiPage: React.FC = () => {
                 setDetayKimlikBelgeDosyaAdi(p.belgeDosyaAdi);
               }}
               layout="horizontal"
-              labelWidth="110px"
+              labelWidth="165px"
+              detayIdx={33}
+              onKeyDown={(e) => handleDetayFieldKeyDown(e, 33)}
             />
           </div>
         </Modal.Body>
@@ -10053,7 +10173,10 @@ export const DovizFisiPage: React.FC = () => {
         detayDogumYeri={detayDogumYeri}
         detayBabaAdi={detayBabaAdi}
         detayAnneAdi={detayAnneAdi}
+        detayCinsiyet={detayCinsiyet}
         detayMeslek={detayMeslek}
+        detayMeslekUnvani={detayMeslekUnvani}
+        detayCalistigiKurum={detayCalistigiKurum}
         detayTelefon={detayTelefon}
         detayIlce={detayIlce}
         detayIl={detayIl}
@@ -10352,6 +10475,16 @@ export const DovizFisiPage: React.FC = () => {
           <h6 className="fw-bold mb-2">
             İşlem MASAK {masakLimitLabel} Aşmaktadır!
           </h6>
+          {masakMissingFields && masakMissingFields.length > 0 && (
+            <div className="alert alert-warning py-1 px-3 small mb-2 text-start">
+              <strong>Eksik Kimlik Bilgileri:</strong>
+              <ul className="mb-0 ps-3 mt-1">
+                {masakMissingFields.map((f, i) => (
+                  <li key={i}>{f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p className="small text-muted mb-3">
             Müşteri kimlik ve adres bilgileri mevzuat gereğince işlemle birlikte kayıt altına alınacaktır.
           </p>

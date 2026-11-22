@@ -22,6 +22,8 @@ export interface KimlikDegistirmeNedeniBelgeProps {
   disabled?: boolean;
   layout?: "horizontal" | "vertical";
   labelWidth?: number | string;
+  detayIdx?: number;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLElement>) => void;
 }
 
 export const KIMLIK_DEGISTIRME_NEDENLERI = [
@@ -43,7 +45,9 @@ export const KimlikDegistirmeNedeniBelgeSection: React.FC<KimlikDegistirmeNedeni
   onBelgeChange,
   disabled = false,
   layout = "vertical",
-  labelWidth = 135,
+  labelWidth = 165,
+  detayIdx,
+  onKeyDown,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -98,6 +102,8 @@ export const KimlikDegistirmeNedeniBelgeSection: React.FC<KimlikDegistirmeNedeni
   const renderDropdown = () => (
     <Form.Select
       size="sm"
+      data-detay-idx={detayIdx}
+      onKeyDown={onKeyDown}
       value={neden || ""}
       onChange={(e) => onNedenChange(e.target.value)}
       disabled={disabled}
@@ -326,15 +332,15 @@ export const KimlikDegistirmeNedeniBelgeSection: React.FC<KimlikDegistirmeNedeni
         />
 
         <Row className="g-2 align-items-center">
-          {/* Sol Kolon: Üstteki alanlarla birebir aynı genişlikte ve hizada */}
+          {/* Sol Kolon */}
           <Col xs={12} md={6}>
             <div className="d-flex align-items-center">
               <label
                 style={{
-                  width: labelWidth,
-                  minWidth: labelWidth,
+                  minWidth: "max-content",
                   fontSize: "12px",
                   fontWeight: 600,
+                  flexShrink: 0,
                 }}
                 className="text-secondary text-nowrap mb-0 me-2"
               >

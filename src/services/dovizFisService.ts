@@ -78,6 +78,10 @@ export interface DovizFisModel {
   arbitrajId?: number | null;
   isArbitraj?: boolean;
   telefonNo?: string;
+  cinsiyet?: string;
+  meslek?: string;
+  meslekUnvani?: string;
+  calistigiKurum?: string;
   meslekId?: number | null;
   dogumTarihi?: string | null;
   dogumYeri?: string;
@@ -182,6 +186,10 @@ export interface SaveDovizFisPayload {
   gmFaturaNo?: string;
   arbitrajId?: number | null;
   telefonNo?: string;
+  cinsiyet?: string;
+  meslek?: string;
+  meslekUnvani?: string;
+  calistigiKurum?: string;
   meslekId?: number | null;
   dogumTarihi?: string | null;
   dogumYeri?: string;
@@ -403,6 +411,10 @@ export interface KayitsizMusteriItem {
   vergiKimlikNo?: string;
   adres?: string;
   telefon?: string;
+  cinsiyet?: string;
+  meslek?: string;
+  meslekUnvani?: string;
+  calistigiKurum?: string;
 }
 
 export interface IstatistikSecimItem {

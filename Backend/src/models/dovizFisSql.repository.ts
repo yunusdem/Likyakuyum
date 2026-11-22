@@ -104,6 +104,10 @@ export interface DovizFisModel {
   arbitrajId?: number | null;
   isArbitraj?: boolean | null;
   telefonNo?: string;
+  cinsiyet?: string;
+  meslek?: string;
+  meslekUnvani?: string;
+  calistigiKurum?: string;
   meslekId?: number | null;
   dogumTarihi?: string | null;
   dogumYeri?: string;
@@ -215,6 +219,10 @@ export interface SaveDovizFisDto {
   arbitrajId?: number | null;
   isArbitraj?: boolean | null;
   telefonNo?: string;
+  cinsiyet?: string;
+  meslek?: string;
+  meslekUnvani?: string;
+  calistigiKurum?: string;
   meslekId?: number | null;
   dogumTarihi?: string | null;
   dogumYeri?: string;
@@ -349,6 +357,12 @@ export class DovizFisSqlRepository {
             ALTER TABLE [dbo].[TODVZ_FIS] ADD [ARBITRAJ_ID] INT NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'BANKA_ACIKLAMA')
             ALTER TABLE [dbo].[TODVZ_FIS] ADD [BANKA_ACIKLAMA] VARCHAR(250) NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'CINSIYET')
+            ALTER TABLE [dbo].[TODVZ_FIS] ADD [CINSIYET] VARCHAR(20) NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'MESLEK_UNVANI')
+            ALTER TABLE [dbo].[TODVZ_FIS] ADD [MESLEK_UNVANI] VARCHAR(100) NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'CALISTIGI_KURUM')
+            ALTER TABLE [dbo].[TODVZ_FIS] ADD [CALISTIGI_KURUM] VARCHAR(150) NULL;
         END
       `);
 
@@ -1664,6 +1678,9 @@ export class DovizFisSqlRepository {
         dto.isArbitraj || (dto.gelisNedeni && dto.gelisNedeni.toLowerCase().includes("arbitraj")) ? 1 : 0
       );
       procReq.input("TELEFON_NO", sql.VarChar(30), cleanTel);
+      procReq.input("CINSIYET", sql.VarChar(20), (dto.cinsiyet || "").trim().slice(0, 20) || null);
+      procReq.input("MESLEK_UNVANI", sql.VarChar(100), (dto.meslekUnvani || "").trim().slice(0, 100) || null);
+      procReq.input("CALISTIGI_KURUM", sql.VarChar(150), (dto.calistigiKurum || "").trim().slice(0, 150) || null);
       procReq.input("MESLEK_ID", sql.Int, toValidId(dto.meslekId));
       procReq.input("CLEAN_BANKA_ACIKLAMA", sql.VarChar(250), dto.bankaAciklama ? dto.bankaAciklama.trim().slice(0, 250) : null);
       procReq.input("DOGUM_TARIHI", sql.DateTime, safeDate(dto.dogumTarihi));
@@ -2450,6 +2467,9 @@ export class DovizFisSqlRepository {
             POSTA_KODU = COALESCE(@CLEAN_POSTA_KODU, POSTA_KODU),
             ILCE = COALESCE(@CLEAN_ILCE, ILCE),
             IL = COALESCE(@CLEAN_IL, IL),
+            CINSIYET = COALESCE(@CINSIYET, CINSIYET),
+            MESLEK_UNVANI = COALESCE(@MESLEK_UNVANI, MESLEK_UNVANI),
+            CALISTIGI_KURUM = COALESCE(@CALISTIGI_KURUM, CALISTIGI_KURUM),
             BANKA_ACIKLAMA = COALESCE(@CLEAN_BANKA_ACIKLAMA, BANKA_ACIKLAMA),
             GM_BEYANNAME_NO = @GM_BEYANNAME_NO,
             GM_BEYANNAME_TARIH = @GM_BEYANNAME_TARIH,
@@ -2964,6 +2984,9 @@ export class DovizFisSqlRepository {
       arbitrajId: row.ARBITRAJ_ID || null,
       isArbitraj: Boolean(row.IS_ARBITRAJ || (row.GELIS_NEDENI && String(row.GELIS_NEDENI).toLowerCase().includes("arbitraj")) || (row.ARBITRAJ_ID && Number(row.ARBITRAJ_ID) > 0) || arbitrajSatirlar.length > 0),
       telefonNo: row.TELEFON_NO || "",
+      cinsiyet: (row.CINSIYET || "").trim(),
+      meslekUnvani: (row.MESLEK_UNVANI || "").trim(),
+      calistigiKurum: (row.CALISTIGI_KURUM || "").trim(),
       meslekId: row.MESLEK_ID || null,
       dogumTarihi: formatDbDate(row.DOGUM_TARIHI),
       dogumYeri: row.DOGUM_YERI || "",

@@ -3020,7 +3020,7 @@ export const ArbitrajModal: React.FC<ArbitrajModalProps> = ({
                 setDetayKimlikBelgeDosyaAdi(p.belgeDosyaAdi);
               }}
               layout="horizontal"
-              labelWidth="115px"
+              labelWidth="165px"
             />
           </div>
         </Modal.Body>

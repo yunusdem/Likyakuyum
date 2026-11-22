@@ -35,6 +35,9 @@ export interface CariKartItem {
   karaListede: boolean;
   sektorId: number | null;
   meslekId: number | null;
+  cinsiyet?: string | null;
+  meslekUnvani?: string | null;
+  calistigiKurum?: string | null;
   kimlikGecerlilikTarihi: string | null;
   faaliyetBelgesiAlindi: boolean;
   vergiLevhasiAlindi: boolean;
@@ -114,6 +117,9 @@ export interface CariKartFormData {
   karaListede: boolean;
   sektorId: number | null;
   meslekId: number | null;
+  cinsiyet?: string | null;
+  meslekUnvani?: string | null;
+  calistigiKurum?: string | null;
   kimlikGecerlilikTarihi: string | null;
   faaliyetBelgesiAlindi: boolean;
   vergiLevhasiAlindi: boolean;
