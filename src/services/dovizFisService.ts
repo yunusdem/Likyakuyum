@@ -89,6 +89,8 @@ export interface DovizFisModel {
   anneAdi?: string;
   sirketTuru?: number | null;
   dernekAmaci?: string;
+  /** e-Döviz "e-Belge Not" (F8 Detay; Backend göç 036) */
+  eBelgeNot?: string;
   yetkiliKisi?: string;
   yetkiliKisiId?: number | null;
   kimlikKaynagi?: string;
@@ -198,6 +200,8 @@ export interface SaveDovizFisPayload {
   kimlikGecerlilikTarihi?: string | null;
   sirketTuru?: number | null;
   dernekAmaci?: string;
+  /** e-Döviz "e-Belge Not" (F8 Detay; Backend göç 036) */
+  eBelgeNot?: string;
   yetkiliKisi?: string;
   yetkiliKisiId?: number | null;
   kimlikKaynagi?: string;

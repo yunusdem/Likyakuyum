@@ -143,6 +143,16 @@ const URUN_PARASI = `COALESCE(U1.PARA_ID, U2.PARA_ID, U3.PARA_ID, U4.PARA_ID, U5
  *    (artı giriş, eksi çıkış). Bunlar olmadan anlık bakiye belgesiz değişikliklerle belgelerden ayrışıyordu (canlı test 01.10.2026).
  * `tipFiltresi` true ise yalnızca döviz, sarraf ve perakende fişi satırları (`@tip` parametresine göre alış / satış) döner.
  */
+/**
+ * Adetle tutulan (tür 0 döviz / 3 ziynet) Sarraf ürün / ödeme satırının raporda kullanılan kuru. Kullanıcı Tanımları'ndaki "Altın hesaplama
+ * şekli" Has Kuru olan kullanıcının ziynet satırı KUR'a has kurunu, TUTAR'a adet × has katsayısı × has kurunu yazar (yusuf, göç 035): KUR × adet
+ * tutarı vermez, Kur kolonu has kurunu gösterir, Kâr/Zarar maliyeti bilinmeyen satışta maliyeti has kurundan alıp sahte kâr yazar. Böyle
+ * satırda (KUR × adet tutardan 1 TL'den fazla ayrılıyorsa) kur = tutar ÷ adet; öteki satırlarda KUR aynen (eski kayıtlarda ikisi zaten eşit).
+ * Tür boşsa dokunulmaz; öteki satırda `kur` ifadesi olduğu gibi döner. (Yusuf commit denetimi 23.11.2026)
+ */
+export const sarrafAdetliKurSql = (kur: string, adet: string, tutar: string, urunTipi: string): string =>
+  `CASE WHEN ${urunTipi} IN (0,3) AND ISNULL(${adet},0)>0 AND ABS(ISNULL(${kur},0)*${adet}-ISNULL(${tutar},0))>1 THEN ISNULL(${tutar},0)/${adet} ELSE ${kur} END`;
+
 export function vezneHareketleriSql(d: BelgeTablolari, tipFiltresi = false): string {
   const tip = (kolon: string) => (tipFiltresi ? ` AND (@tip IS NULL OR ${kolon}=@tip)` : "");
   const bos = `CAST(NULL AS int), '', '', 0, 0, 0`; // fisTip, belgeNo, unvan, tutar, komisyon, bmv
@@ -167,13 +177,14 @@ export function vezneHareketleriSql(d: BelgeTablolari, tipFiltresi = false): str
       return `SELECT 5, SF.SARRAF_FISI_ID, SS.SATIR_NO, 0, SF.VEZNE_ID, SF.TARIH, SF.SAAT, SS.URUN_ID,
        CASE WHEN SF.TIP=0 THEN ${mikExpr} ELSE 0 END,
        CASE WHEN SF.TIP=0 THEN 0 ELSE ${mikExpr} END,
-       SS.KUR, RTRIM(ISNULL(SF.FIS_NO,'')), NULL, CAST(SF.TIP AS int), RTRIM(ISNULL(SF.IRSALIYE_NO,'')), RTRIM(ISNULL(SF.UNVAN,'')), ISNULL(SS.TUTAR,0), 0, 0
+       ${sarrafAdetliKurSql("SS.KUR", mikExpr, "SS.TUTAR", "ISNULL(SS.URUN_TIPI, SP.URUN_TIPI)")}, RTRIM(ISNULL(SF.FIS_NO,'')), NULL, CAST(SF.TIP AS int), RTRIM(ISNULL(SF.IRSALIYE_NO,'')), RTRIM(ISNULL(SF.UNVAN,'')), ISNULL(SS.TUTAR,0), 0, 0
      FROM dbo.TODVZ_SARRAF_FISI SF JOIN dbo.TODVZ_SARRAF_FISI_SATIRI SS ON SS.SARRAF_FISI_ID=SF.SARRAF_FISI_ID LEFT JOIN dbo.TODVZ_PARA SP ON SP.PARA_ID=SS.URUN_ID
      WHERE SS.URUN_ID IS NOT NULL${tip("SF.TIP")}`;
     })(),
     `SELECT 5, SF.SARRAF_FISI_ID, OS.SATIR_NO, 1, SF.VEZNE_ID, SF.TARIH, SF.SAAT, OS.PARA_ID, CASE WHEN SF.TIP=1 THEN OS.MIKTAR ELSE 0 END, CASE WHEN SF.TIP=1 THEN 0 ELSE OS.MIKTAR END,
-       OS.KUR, RTRIM(ISNULL(SF.FIS_NO,'')), NULL, CAST(SF.TIP AS int), RTRIM(ISNULL(SF.IRSALIYE_NO,'')), RTRIM(ISNULL(SF.UNVAN,'')), ISNULL(OS.TUTAR,0), 0, 0
-     FROM dbo.TODVZ_SARRAF_FISI SF JOIN dbo.TODVZ_ODEME_SATIRI OS ON OS.SARRAF_FISI_ID=SF.SARRAF_FISI_ID WHERE OS.ISLEME_YERI=0 AND OS.PARA_ID IS NOT NULL${tip("SF.TIP")}`);
+       ${sarrafAdetliKurSql("OS.KUR", "OS.MIKTAR", "OS.TUTAR", "OP.URUN_TIPI")}, RTRIM(ISNULL(SF.FIS_NO,'')), NULL, CAST(SF.TIP AS int), RTRIM(ISNULL(SF.IRSALIYE_NO,'')), RTRIM(ISNULL(SF.UNVAN,'')), ISNULL(OS.TUTAR,0), 0, 0
+     FROM dbo.TODVZ_SARRAF_FISI SF JOIN dbo.TODVZ_ODEME_SATIRI OS ON OS.SARRAF_FISI_ID=SF.SARRAF_FISI_ID LEFT JOIN dbo.TODVZ_PARA OP ON OP.PARA_ID=OS.PARA_ID
+     WHERE OS.ISLEME_YERI=0 AND OS.PARA_ID IS NOT NULL${tip("SF.TIP")}`);
   if (d.perakende) {
     const fTip = `CASE WHEN F.FATURA_TIPI=1 THEN 1 ELSE 0 END`;
     const q = `COALESCE(${d.perakendeStok ? "S.STOK_MIKTAR" : "NULL"}, CASE WHEN S.GRAM > 0 THEN S.GRAM ELSE S.MIKTAR END)`;

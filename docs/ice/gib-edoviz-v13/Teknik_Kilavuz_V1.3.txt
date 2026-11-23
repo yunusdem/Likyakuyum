@@ -1,0 +1,947 @@
+   e-DÖVİZ VE KIYMETLİ
+   MADEN ALIM-SATIM
+
+      BELGESİ TEKNİK
+          KILAVUZU
+
+                       Eylül 2026
+                        ANKARA
+             GELİR İDARESİ BAŞKANLIĞI
+Uygulama ve Veri Yönetimi Daire Başkanlığı (III)
+Versiyon     Yayım    Eklenen/Silinen/Değişen Bölüm                            Açıklama
+   1.0       Tarihi
+          29.09.2021                      --                  Kılavuzun ilk yayım tarihi
+
+                                          --                  Kılavuzda “e-Döviz Alım-Satım
+
+1.1 31.01.2023            1.Giriş bölümünde değişiklik        Belgesi” ifadesi yerine “ e-Döviz ve
+                                     yapılmıştır.
+                                                              Kıymetli Maden Alım-Satım Belgesi”
+                      3.4.ProfileID bölümünde değişiklik
+                                     yapılmıştır.             eklenmiştir.
+
+                           3.10.CreditNoteTypeCode            “Ayrıca belgenin içinde yer aldığı
+                       bölümünde değişiklik yapılmıştır.
+                                                              zarfa “3900892152” VKN’li “Gelir
+                          3.18.PaymentExchangeRate
+                       bölümünde değişiklik yapılmıştır.      İdaresi Başkanlığı Sanal Alıcı”sı
+
+1.1 31.01.2023             3.17. PricingExchangeRate          yazılarak, Elektronik Döviz alım/satım
+                       bölümünde değişiklik yapılmıştır.
+1.1 31.01.2023                                                belgeleri Gelir İdaresi Başkanlığı’na
+1.1 31.01.2023        4. e-Döviz ve Kıymetli Maden Alım
+1.1 31.01.2023          Satım Belgesi Standardı başlıklı      gönderilecektir.”           açıklaması
+                                bölüm eklenmiştir.
+1.2 12.05.2023                                                kaldırılmıştır.
+                      3.14. AccountingSupplierParty alanı
+1.2 12.05.2023                   güncellenmiştir.             “EKIYMETLIMADENBELGE”
+1.3 25.09.2026
+1.3 25.09.2026        3.16. PaymentMeans bölümünde            senaryosu eklenmiştir.
+1.3 25.09.2026                 değişiklik yapılmıştır.
+1.3 25.09.2026                                                Belge tip kodları ALIM, SATIM olarak
+                           3.17. PricingExchangeRate
+                       bölümünde değişiklik yapılmıştır.      güncellenmiştir.
+
+                           3.18. PricingExchangeRate          Kıymetli maden alım/satım işleminde
+                       bölümünde değişiklik yapılmıştır.
+                                                              kullanılması gereken ürün birim
+
+                                                              kodları eklenmiştir.
+
+                                                              “EKIYMETLIMADENBELGE”
+
+                                                              senaryosu “SATIM” tipi olarak
+
+                                                              düzenlenecek belgede bu alana külçe
+
+                                                              altın karşılığı girilmesine yönelik
+
+                                                              açıklama eklenmiştir.
+
+                                                              İlgili bölümde e-Döviz ve Kıymetli
+
+                                                              Maden Alım Satım Belgesi Standardı
+
+                                                              açıklanmıştır.
+
+                                                              İlgili bölüme yetkili müessesenin
+
+                                                              dosya numarası ve şube bilgisi
+
+                                                              yazılmasına yönelik açıklama
+
+                                                              eklenmiştir.
+
+                                                              Ödeme yöntemi ile ilgili açıklamalar
+
+                                                              eklenmiştir.
+
+                                                              İlgili bölümde USD karşılığı yazılırken
+
+                                                              dikkat edilmesi gereken hususlar
+
+                                                              eklenmiştir.
+
+                                                              İlgili bölümde Türk Lirası karşılığı
+
+                                                              yazılırken dikkat edilmesi gereken
+
+                                                              hususlar eklenmiştir.
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu                              Eylül/2026
+Versiyon : 1.3                                                                               2 / 21
+İçindekiler
+
+1.Giriş ............................................................................................................................... 4
+2. e-Döviz ve Kıymetli Maden Alım Satım Belgesi Veri Formatı........................................... 4
+
+   2.1. XSD Gösterimi .................................................................................................................... 6
+   2.2. e-Döviz ve Kıymetli Maden Alım-Satım Belgesi Elemanları-Genel......................................... 7
+3. e-Döviz ve Kıymetli Maden Alım Satım Belgesi Elemanları-Detay ................................... 8
+   3.1. UBLExtensions ................................................................................................................... 8
+   3.2. UBLVersionID ..................................................................................................................... 9
+   3.3. CustomizationID............................................................................................................... 10
+   3.4. ProfileID .......................................................................................................................... 10
+   3.5. ID .................................................................................................................................... 10
+   3.6. CopyIndicator .................................................................................................................. 11
+   3.7. UUID................................................................................................................................ 11
+   3.8. IssueDate......................................................................................................................... 11
+   3.9. IssueTime ........................................................................................................................ 11
+   3.10. CreditNoteTypeCode ...................................................................................................... 12
+   3.11. Note .............................................................................................................................. 12
+   3.12. AdditionalDocumentReference....................................................................................... 12
+   3.13. Signature ....................................................................................................................... 14
+   3.14. AccountingSupplierParty ................................................................................................ 15
+   3.15. AccountingCustomerParty .............................................................................................. 16
+   3.16. PaymentMeans .............................................................................................................. 17
+   3.17. PricingExchangeRate ...................................................................................................... 18
+   3.18. PaymentExchangeRate ................................................................................................... 19
+   3.19. TaxTotal......................................................................................................................... 20
+   3.20. LegalMonetaryTotal ....................................................................................................... 20
+   3.21. CreditNoteLine ............................................................................................................... 21
+4. e-Döviz ve Kıymetli Maden Alım Satım Belgesi Standardı ............................................. 21
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   3 / 21
+1.Giriş
+
+509 sıra numaralı Vergi Usul Kanunu Genel Tebliği ile getirilen Elektronik Döviz ve Kıymetli
+Maden Alım-Satım Belgesi (e-Döviz ve Kıymetli Maden Alım-Satım Belgesi) Uygulaması
+kapsamında döviz ve kıymetli maden alım-satım belgelerinin elektronik ortamda elektronik
+belge olarak oluşturulmasına ilişkin teknik hususlar bu kılavuzda açıklanmıştır.
+
+Elektronik Döviz ve Kıymetli Maden alım/satım belgeleri, elektronik belge olarak bu kılavuzda
+belirtilen şekilde düzenlenip, muhatabına talebi doğrultusunda elektronik veya kağıt ortamda
+iletilecektir.
+
+Bu kılavuz, e-Döviz ve Kıymetli Maden Alım-Satım Belgesi Uygulamasına ilişkin yazılım
+geliştireceklerin teknik konularda ihtiyaç duyabilecekleri bilgileri vermek amacıyla
+hazırlanmıştır.
+
+Kılavuzda yer alan açıklamaların anlaşılabilmesi için XML (eXtensible Markup Language-
+Genişletilebilir İşaretleme Dili) ve adı geçen diğer kavramlar hakkında temel düzeyde bilgi
+sahibi olunması gerekmektedir.
+
+Kılavuzda verilen örnekler, şema yapısında yer alan elemanların kullanım şeklini gösterme
+amacıyla hazırlanmıştır.
+
+2. e-Döviz ve Kıymetli Maden Alım Satım Belgesi Veri Formatı
+
+Bu kılavuz, e-Döviz ve Kıymetli Maden alım-satım belgesinde geçen elemanlara ait XSD,
+tanımlama, kullanım şekilleri, kardinaliteler hakkında bilgi vermek ve örnek kullanım şekillerini
+göstermek amacı ile hazırlanmıştır.
+
+Kılavuz içerisinde döviz ve kıymetli maden alım-satım belgesine ilişkin her bir eleman
+açıklanırken aşağıdaki tablo yapısı kullanılmıştır.
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   4 / 21
+[Eleman: UBL adı]                               [Eleman: Türkçe karşılığı]
+Diyagram
+Kardinalite        Bu satırda anlatılan elemanın diyagramı sunulmaktadır.
+                   Bu bölümde elemanın kardinalitesi sunulmaktadır.
+Açıklama           Kardinaliteler aşağıdaki şekilde olabilir:
+Kullanım           Zorunlu(1): Eleman zorunlu ve mutlaka bir tane bulunmak
+Örnek              zorundadır.
+                   Zorunlu(1..n): Eleman zorunlu ve en az bir tane bulunmak zorundadır.
+                   Eleman birden fazla tekrarlayabilir.
+                   Seçimli(0..1): Eleman seçimlidir ve en çok bir tane bulunabilir.
+                   Seçimli(0..n): Eleman seçimlidir ve birden fazla tekrarlayabilir.
+                   Bağımlı(1): Eleman bağımlıdır ve mutlaka 1 tane bulunabilir.
+                   Bağımlı(0..1): Eleman bağımlıdır ve en çok bir tane bulunabilir.
+                   Bağımlı(0..n):Eleman bağımlıdır ve birden fazla tekrarlayabilir.
+                   Elemanın ne amaçla kullanıldığı bu bölümde açıklanmaktadır.
+                   Elemanın nasıl kullanılacağı, diğer elemanlar arasındaki ilişkiler,
+                   elemanın veri tipi, elemandaki kısıtlar detaylı olarak bu bölümde
+                   açıklanır. Karmaşık elemanların gösterdiği ortak sınıflar ayrıca “Bknz.”
+                   ile referans verilmektedir.
+
+                   Eleman için bir veya daha çok XML örneği bu bölümde sunulmaktadır.
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   5 / 21
+2.1. XSD Gösterimi
+
+e-Döviz ve Kıymetli Maden alım-satım belgesine ait XSD şemasının ana elemanlarının gösterimi
+aşağıdaki gibidir.
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   6 / 21
+2.2. e-Döviz ve Kıymetli Maden Alım-Satım Belgesi Elemanları-Genel
+
+e-Döviz ve Kıymetli Maden Alım-Satım Belgesine ait XSD şemasında yer alan ana elemanların
+
+Türkçe karşılıkları ve içeriğine ilişkin açıklamalar, aşağıdaki tabloda yer almaktadır.
+
+No        Eleman Adı   Türkçe Karşılığı                           İçerik
+
+1 UBLExtensions        UBL Genişletme UBL Genişletme Alanı – Bu alanda XAdES
+
+                       Alanı             formatında Elektronik İmza bilgileri
+
+                                         bulunmaktadır.
+
+2 UBLVersionID         UBL Versiyon      UBL Versiyon Numarası
+
+                       Numarası
+
+3 CustomizationID      Özelleştirme      UBL Özelleştirme Numarası
+
+                       Numarası
+
+4 ProfileID            Senaryo           Kullanılan Senaryo
+
+5 ID                   Döviz ve Kıymetli Döviz ve Kıymetli Maden Alım-Satım Belgesine
+
+                       Maden Alım-       Ait Numara
+
+                       Satım Belgesi
+
+                       Numarası
+
+6 CopyIndicator        Asıl / Suret      Döviz ve Kıymetli Maden Alım-Satım Belgesinin
+
+                                         Asıl veya Suret Bilgisi
+
+7 UUID                 Evrensel Tekil    Döviz ve Kıymetli Maden Alım-Satım Belgesinin
+
+                       Tanımlama         Evrensel Tekliğini Sağlayan Numara
+
+                       Numarası (ETTN)
+
+8 IssueDate            Düzenleme Tarihi Döviz ve Kıymetli Maden Alım-Satım Belgesinin
+
+                                         Düzenleme Tarihi
+
+9 IssueTime            Düzenleme         Döviz ve Kıymetli Maden Alım-Satım Belgesinin
+
+                       Zamanı            Düzenleme Zamanı
+
+10 CreditNoteTypeCode  Tip Kodu          Döviz ve Kıymetli Maden Alım-Satım Belgesinin
+
+                                         Tip Kodu
+
+11 Note                Not               Döviz ve Kıymetli Maden Alım-Satım Belgesi ile
+
+                                         İlgili Genel Açıklamalar
+
+12 AdditionalDocumentRefer İlave         Döviz ve Kıymetli Maden Alım-Satım Belgesine
+
+    ence               Doküman/Bilgiler Eklenmek İstenen Diğer Belge veya Bilgileri
+
+13 Signature           Mali Mühür/       Mali Mühür ve/veya Elektronik İmza ile Bunlara
+
+                       Elektronik İmza Ait Sertifika Bilgileri
+
+14 AccountingSupplierParty Döviz ve Kıymetli Döviz ve Kıymetli Maden Alım-Satım Belgesini
+
+                       Maden             Düzenleyen Banka ya da Yetkili Müessese
+
+                       Alım/Satım        Bilgileri
+
+                       Belgesini
+
+                       Düzenleyen Banka
+
+                       ya da Yetkili
+
+                       Müessese
+
+15 AccountingCustomerParty Döviz ve Kıymetli Döviz ve Kıymetli Maden Alım-Satım Belgesine
+
+                       Maden             Konu Dövizi ve Kıymetli Madeni Alan/Satan
+
+                       Alım/Satım        Taraf Bilgileri
+
+                       Belgesi
+
+                       Düzenlenen Taraf
+
+16 PaymentMeans        Ödeme Şekli       Döviz ve Kıymetli Maden Alım-Satım
+
+                                         Belgesindeki Ödeme Şekline Ait Bilgileri
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu                             Eylül/2026
+Versiyon : 1.3                                                                              7 / 21
+No  Eleman Adı             Türkçe Karşılığı                              İçerik
+
+17 PricingExchangeRate  Döviz Kuru           “EDOVIZBELGE” senaryosunda bu alana USD
+                                             karşılığı girilir.
+18 PaymentExchangeRate  Döviz Kuru           “EKIYMETLIMADENBELGE” senaryosu “SATIM”
+                                             tipi olarak düzenlenecek belgede bu alana külçe
+19 TaxTotal             Toplam Vergi         altın karşılığı girilir.
+20 LegalMonetaryTotal   Parasal Toplamlar    Döviz ve Kıymetli Maden Alım-Satım
+21 CreditNoteLine       Döviz ve Kıymetli    Belgesindeki Türk Lirası Karşılığı Bilgisi girilir.
+                        Maden                Vergi ve Toplamlar Bilgileri
+                        Alım/Satım           Tutarların Toplam Bilgileri
+                        Belgesi kalemleri    Döviz ve Kıymetli Maden Alım-Satım
+                                             Belgesindeki Kalemlerin Bilgileri
+
+3. e-Döviz ve Kıymetli Maden Alım Satım Belgesi Elemanları-Detay
+
+    3.1. UBLExtensions
+
+    UBLExtensions       UBL Genişletme Alanı
+
+    Diyagram
+
+    Kardinalite         Zorunlu (1)
+    Açıklama
+                        Bu alana XAdES formatında mali mühür/ elektronik imza bilgileri
+    Kullanım            yazılacaktır.
+    Örnek
+                        Bknz. Ortak Sınıflar: UBLExtension
+
+                        <ext:UBLExtensions>
+                        <ext:UBLExtension>
+                        <ext:ExtensionContent>
+                        <ds:Signature Id="h12345">
+                        <ds:SignedInfo>
+                        <ds:CanonicalizationMethod
+                        Algorithm="http://www.w3.org/TR/2001/REC-xml-
+                        c14n20010315#WithComments"/>
+                        <ds:SignatureMethod Algorithm="
+                        http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+                        <ds:Reference URI="">
+                        <ds:Transforms>
+                        <ds:Transform
+                        Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   8 / 21
+                   signature"/>
+                   </ds:Transforms>
+                   <ds:DigestMethod
+                   Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+                   <ds:DigestValue>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0dU
+                   1GU
+                   XhEUzhi</ds:DigestValue>
+                   </ds:Reference>
+                   <ds:Reference URI="12345KeyInfo ">
+                   <ds:DigestMethod
+                   Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+                   <ds:DigestValue>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0dU
+                   1GU
+                   XhEUzhi</ds:DigestValue>
+                   </ds:Reference>
+                   </ds:SignedInfo>
+                   <ds:SignatureValue>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0
+                   dU1
+                   GUXhEUzhi</ds:SignatureValue>
+                   <ds:KeyInfo Id="h12345KeyInfo">
+                   <ds:X509Data>
+                   <ds:X509Certificate>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0
+                   dU1
+                   GUXhEUzhi</ds:X509Certificate>
+                   </ds:X509Data>
+                   <ds:KeyValue>
+                   <ds:RSAKeyValue>
+                   <ds:Modulus>UjBsR09EbGhjZ0dTQUxNQUFBUUNBRU1tQ1p0dU1G
+                   UXhE
+                   Uzhi</ds:Modulus>
+                   <ds:Exponent>AQAB</ds:Exponent>
+                   </ds:RSAKeyValue>
+                   </ds:KeyValue>
+                   </ds:KeyInfo>
+                   </ds:Signature>
+                   </ext:ExtensionContent>
+                   </ext:UBLExtension>
+                   </ext:UBLExtensions>
+
+3.2. UBLVersionID
+
+UBLVersionID       UBL Versiyon Numarası
+
+Diyagram           Zorunlu (1)
+                   XSD dokümanının UBL sürümü yazılacaktır.
+Kardinalite        Bu değer için “2.1” kullanılacaktır.
+Açıklama           <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
+Kullanım
+Örnek
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   9 / 21
+3.3. CustomizationID
+
+CustomizationID       Özelleştirme Numarası
+
+Diyagram
+
+Kardinalite           Zorunlu (1)
+Açıklama              UBL’ in özelleştirme numarasıdır.
+Kullanım              Bu değer için “TR1.2.1” kullanılacaktır.
+Örnek                 <cbc:CustomizationID>TR1.2.1</cbc:CustomizationID>
+
+3.4. ProfileID        Senaryo
+
+ ProfileID            Zorunlu (1)
+ Diyagram             Kullanılan senaryodur.
+ Kardinalite          Döviz alım satım işlemi olması durumunda bu alana “EDOVIZBELGE”,
+ Açıklama             kıymetli maden alım satım işlemi olması durumunda
+ Kullanım             “EKIYMETLIMADENBELGE” girilecektir.
+                      <cbc:ProfileID>EDOVIZBELGE</cbc: ProfileID>
+ Örnek                <cbc:ProfileID> EKIYMETLIMADENBELGE </cbc: ProfileID>
+
+3.5. ID               Döviz Alım Satım Belgesi Numarası
+
+ID                    Zorunlu (1)
+ Diyagram             Üç haneli alfa numerik birim kod ile 13 haneli müteselsil numaranın
+ Kardinalite          birleşiminden meydana gelen Döviz ve Kıymetli Maden Alım Satım
+ Açıklama             Belgesi Numarası bu elemana yazılacaktır. Müteselsil numaranın ilk
+                      dört hanesi Döviz ve Kıymetli Maden Alım/Satım Belgesinin
+ Kullanım             düzenlendiği yılı kalan dokuz hane ise müteselsil numarayı ifade
+ Örnek                etmektedir. Döviz ve Kıymetli Maden Alım Satım Belgesi düzenleyen
+                      bünyesinde aynı Döviz ve Kıymetli Maden Alım Satım Belgesi numarası
+                      birden fazla kullanılamaz.
+                      AlphaNumeric
+                      <cbc:ID>DAB2022000000001</cbc:ID>
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   10 / 21
+3.6. CopyIndicator  Asıl/Suret
+
+CopyIndicator       Zorunlu (1)
+ Diyagram           Bu elemanda düzenlenen Döviz ve Kıymetli Maden Alım Satım
+ Kardinalite        Belgesinin asıl veya suret olduğu gösterilecektir.
+ Açıklama           Asıl ise “false”, suret ise “true”
+                    <cbc:CopyIndicator>false</cbc:CopyIndicator>
+ Kullanım
+ Örnek
+
+3.7. UUID
+
+UUID                Evrensel Tekil Tanımlama Numarası
+Diyagram
+Kardinalite         Zorunlu (1)
+Açıklama            Evrensel Tekil Tanımlama Numarası (ETTN), düzenlenen Döviz ve
+                    Kıymetli Maden Alım/Satım Belgesinin evrensel eşsizliğini sağlayan
+Kullanım            numaradır. Bu numara döviz ve kıymetli maden alım satım belgesi
+Örnek               düzenleyen tarafından standartlara uygun olarak üretilecektir.
+                    GUID formatı
+                    <cbc:UUID>e093a490-dd99-11dd-ad8b-0800200c9a66</cbc:UUID>
+
+3.8. IssueDate      Düzenlenme Tarihi
+
+IssueDate           Zorunlu (1)
+ Diyagram           Bu elemana döviz ve kıymetli maden alım satım belgesinin düzenleme
+ Kardinalite        tarihi yazılacaktır.
+ Açıklama           Yıl-Ay-Gün (YYYY-AA-GG)
+                    <cbc:IssueDate>2022-01-01</cbc:IssueDate>
+ Kullanım
+ Örnek
+
+3.9. IssueTime       Düzenlenme Zamanı
+
+ IssueTime          Seçimli (1)
+                    Bu elemana döviz ve kıymetli maden alım satım belgesinin düzenleme
+ Diyagram           saati yazılacaktır.
+                    Saat:Dakika:Saniye
+ Kardinalite        <cbc:IssueTime>14:50:00</cbc:IssueTime>
+ Açıklama
+
+ Kullanım
+ Örnek
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   11 / 21
+3.10. CreditNoteTypeCode
+
+CreditNoteTypeCode  CreditNote Tipi Kodu
+Diyagram
+Kardinalite         Zorunlu (1)
+Açıklama            Bu elemana belgenin döviz alım/satım, kıymetli maden alım/satım
+                    belgesi olduğunu belirtir ALIM, SATIM yazılacaktır.
+Kullanım            ALIM, SATIM
+Örnek               <cbc:CreditNoteTypeCode>ALIM</cbc:CreditNoteTypeCode>
+                    <cbc:CreditNoteTypeCode>SATIM</cbc:CreditNoteTypeCode>
+
+3.11. Note
+
+Note                Açıklama
+Diyagram
+Kardinalite         Seçimli (0…n)
+Açıklama            Yer verilmek istenen genel açıklamalar için bu eleman kullanılacaktır.
+                    Birden fazla açıklama yapılmak istenmesi halinde elemanın tekrar
+Kullanım            kullanımı mümkündür.
+Örnek               Serbest Metin
+                    <cbc:Note>….</cbc:Note>
+
+3.12. AdditionalDocumentReference
+
+AdditionalDocumentReference İlave Doküman
+
+Diyagram
+
+Kardinalite         Seçimli (0…n)
+Açıklama
+                    Döviz ve kıymetli maden alım satım belgesine eklenmek istenen diğer
+                    belgeler için bu eleman kullanılabilecektir.
+                    Döviz ve kıymetli maden alım belgesine ISTATISTIKNO, GELDIGIULKE,
+                    GELISNEDENI, yazılacaktır. Döviz ve kıymetli maden alım belgesi
+                    ihracat ya da yabancı sermaye bedeli için düzenlendiği durumda,
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   12 / 21
+Kullanım  yukarıdaki bilgilere ek olarak Gümrük Beyanname Tarih/No, Döviz
+Örnek     Beyan Tutanağı Tarih/Sayı, Gümrük Müdürlüğü Teyit Yazısı Tarih/Sayı
+          bilgilerini ifade eden sırasıyla GUMRUKBEYANNAMETARIHI,
+          GUMRUKBEYANNAMENO, DBTTARIH, DBTSAYI, GMTYTARIH,
+          GMTYSAYI yazılacaktır.
+          Bknz. Ortak Sınıflar: DocumentReference
+          </cac:AdditionalDocumentReference>
+
+                    <cac:AdditionalDocumentReference>
+                              <cbc:ID>yatırım</cbc:ID>
+                              <cbc:IssueDate/>
+
+                    <cbc:DocumentTypeCode>GELISNEDENI</cbc:DocumentTypeC
+          ode>
+
+                    </cac:AdditionalDocumentReference>
+                              <cac:AdditionalDocumentReference>
+                              <cbc:ID/>
+                                                  <cbc:IssueDate>2022-01-
+
+          01</cbc:IssueDate>
+
+                    <cbc:DocumentType>GBTARIHI</cbc:DocumentType>
+                    </cac:AdditionalDocumentReference>
+
+                              <cac:AdditionalDocumentReference>
+                                        <cbc:ID>123456</cbc:ID>
+
+                              <cbc:IssueDate/>
+
+                    <cbc:DocumentType>GBNO</cbc:DocumentType>
+                    </cac:AdditionalDocumentReference>
+
+                              <cac:AdditionalDocumentReference>
+                              <cbc:ID/>
+
+                                                  <cbc:IssueDate>2022-01-
+          01</cbc:IssueDate>
+
+                    <cbc:DocumentType>DBTTARIH</cbc:DocumentType>
+                    </cac:AdditionalDocumentReference>
+
+                              <cac:AdditionalDocumentReference>
+                                                  <cbc:ID>654321</cbc:ID>
+
+                              <cbc:IssueDate/>
+
+                    <cbc:DocumentType>DBTSAYI</cbc:DocumentType>
+                    </cac:AdditionalDocumentReference>
+
+                              <cac:AdditionalDocumentReference>
+                              <cbc:ID/>
+
+                                                  <cbc:IssueDate>2022-01-
+          01</cbc:IssueDate>
+
+                    <cbc:DocumentType>GMTYTARIH</cbc:DocumentType>
+                    </cac:AdditionalDocumentReference>
+
+                              <cac:AdditionalDocumentReference>
+                                        <cbc:ID>987654</cbc:ID>
+
+                              <cbc:IssueDate/>
+
+                    <cbc:DocumentType>GMTYSAYI</cbc:DocumentType>
+                    </cac:AdditionalDocumentReference>
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   13 / 21
+3.13. Signature  Mali Mühür/İmza
+
+Signature
+
+Diyagram
+
+Kardinalite      Zorunlu (1…n)
+Açıklama
+                 Bu elemanda kullanılan mali mühür ve/veya elektronik imza ile
+Kullanım         sertifikalara ilişkin bilgilere yer verilecektir.
+Örnek
+                 Bknz. Ortak Sınıflar: Signature
+
+                 <cac:Signature>
+                 <cbc:ID>1288331521</cbc:ID>
+                 <cac:SignatoryParty>
+                 <cac:PartyIdentification>
+                 <cbc:ID schemeID="VKN">9205121120</cbc:ID>
+                 </cac:PartyIdentification>
+                 <cac:PostalAddress>
+                 <cbc:StreetName>Ihlamur Mahallesi Selvi
+                 Caddesi Sedir Sokak</cbc:StreetName>
+                 <cbc:BuildingNumber>
+                 75/A</cbc:BuildingNumber>
+                 <cbc:CitySubdivisionName>
+                 Kızılay</cbc:CitySubdivisionName>
+                 <cbc:CityName>Ankara</cbc:CityName>
+                 <cbc:PostalZone>06100</cbc:PostalZone>
+                 <cac:Country>
+                 <cbc:Name>Türkiye</cbc:Name>
+                 </cac:Country>
+                 </cac:PostalAddress>
+                 </cac:SignatoryParty>
+                 <cac:DigitalSignatureAttachment>
+                 <cac:ExternalReference>
+                 <cbc:URI>#12345</cbc:URI>
+                 </cac:ExternalReference>
+                 </cac:DigitalSignatureAttachment>
+                 </cac:Signature>
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   14 / 21
+3.14. AccountingSupplierParty
+
+AccountingSupplierParty Düzenleyen Taraf
+
+Diyagram
+
+Kardinalite  Zorunlu (1)
+Açıklama     Döviz ve Kıymetli Maden Alım/Satım Belgesini düzenleyen Banka ya da
+             Yetkili Müessese Bilgileri için bu eleman kullanılacaktır.
+Kullanım
+Örnek        “PartyIdentification” alanında schemeID “SUBENO” yazılarak Yetkili
+             müessesenin dosya numarası (Yetkili Müessese Bilgi Sistemi
+             (YMBS)’de “Şirket Profili” sekmesinden görüntülenebilmektedir.)
+             ve şube bilgisi bu elemana yazılacaktır.
+
+             Bknz. Ortak Sınıflar: SupplierParty
+
+             <cac:AccountingSupplierParty>
+                                <cac:Party>
+
+                                          <cac:PartyIdentification>
+                                                   <cbc:ID
+
+             schemeID="VKN">1111111111</cbc:ID>
+
+                                          </cac:PartyIdentification>
+                                          <cac:PartyIdentification>
+
+                                                   <cbc:ID
+
+             schemeID="SUBENO">B2560</cbc:ID> <!-- Yetkili Müessese Şube
+             Kodu -->
+
+                                          </cac:PartyIdentification>
+
+                                          <cac:PartyName>
+                                                   <cbc:Name>EBELGE
+
+             TEST</cbc:Name>
+
+                                          </cac:PartyName>
+                                          <cac:PostalAddress>
+
+                      <cbc:StreetName>Etlik</cbc:StreetName>
+                                                   <cbc:BuildingName>Gelir İdaresi Ek.
+
+             Hizmet Binası</cbc:BuildingName>
+
+                      <cbc:CitySubdivisionName>Dışkapı</cbc:CitySubdivisionNa
+             me>
+
+             <cbc:CityName>Ankara</cbc:CityName>
+                                          <cbc:Region>KASABA</cbc:Region>
+                                          <cac:Country>
+
+             <cbc:IdentificationCode>TR</cbc:IdentificationCode>
+
+             <cbc:Name>Türkiye</cbc:Name>
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu          Eylül/2026
+Versiyon : 1.3                                                           15 / 21
+                                              </cac:Country>
+                                     </cac:PostalAddress>
+                                     <cac:PartyTaxScheme>
+
+                                              <cac:TaxScheme>
+
+                    <cbc:Name>Başkent</cbc:Name>
+                                                 </cac:TaxScheme>
+
+                                       </cac:PartyTaxScheme>
+                                       <cac:Contact>
+
+             Mail>  <cbc:ElectronicMail>efatura@gelirler.gov.tr</cbc:Electronic
+
+                                       </cac:Contact>
+                             </cac:Party>
+                    </cac:AccountingSupplierParty>
+
+3.15. AccountingCustomerParty
+
+AccountingCustomerParty Alıcı Taraf
+
+Diyagram
+
+Kardinalite  Zorunlu (1)
+Açıklama
+             Döviz ve Kıymetli Maden Alım/Satım Belgesine konu dövizi veya
+Kullanım     kıymetli madeni alan/satan taraf bilgileri için bu eleman kullanılacaktır.
+Örnek        Müşteri türü bilgisine “BANKA”, “GERCEKKISI”, “TUZELKISI”,
+             “YETKILIMUESSESE” yazılacaktır.
+
+             Bknz. Ortak Sınıflar: CustomerParty
+
+             <cac:AccountingCustomerParty>
+             <cac:Party>
+             <cbc:WebsiteURI/>
+             <cac:PartyIdentification>
+             <cbc:ID schemeID="TCKN">14604153088</cbc:ID>
+             </cac:PartyIdentification>
+             <cac:PartyIdentification>
+             <cbc:ID schemeID="MUSTERITURU">GERCEKKISI</cbc:ID>
+             </cac:PartyIdentification>
+             <cac:PostalAddress>
+             <cbc:StreetName></cbc:StreetName>
+             <cbc:CitySubdivisionName>Merkez</cbc:CitySubdivisionName>
+             <cbc:CityName>Niğde</cbc:CityName>
+             <cbc:Region> </cbc:Region>
+             <cac:Country>
+             <cbc:Name>Türkiye</cbc:Name>
+             </cac:Country>
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu       Eylül/2026
+Versiyon : 1.3                                                        16 / 21
+                    </cac:PostalAddress>
+                    <cac:Person>
+                    <cbc:FirstName> </cbc:FirstName>
+                    <cbc:FamilyName> </cbc:FamilyName>
+                    </cac:Person>
+                    </cac:Party>
+                    </cac:AccountingCustomerParty>
+
+3.16. PaymentMeans
+
+PaymentMeans        Ödeme Şekli
+
+Diyagram
+
+Kardinalite         Zorunlu(1): PaymentMeansCode
+Açıklama            Seçimli(0..1): PaymentDueDate
+                    Seçimli(0..1): PaymentChannelCode
+Kullanım            Seçimli(0..1): InstructionNote
+                    Seçimli(0..1): PayerFinancialAccount
+                    Seçimli(0..1): PayeeFinancialAccount
+                    Döviz ve Kıymetli Maden Alım Satım belgesinde “PaymentMeans”
+                    alanı çoklanarak hem müşterinin hem de yetkili müessesenin ödeme
+                    yöntemi bilgileri aşağıdaki tabloda yer alan kod bilgileri kullanılarak
+                    yazılacaktır.
+
+                    Ödeme Yöntemi                             Kod        Açıklama
+                    Nakit                                            10  In Cash
+                    Banka Kartı                                      55  Debit Card
+                    Havale                                           46  Interbank Debit Transfer
+                    Ödeme Sistemleri                                 68  Online Payments Service
+
+                    Kıymetli maden alım satım işlemlerinde fiziki altın teslimleri için
+                    “Nakit” ödeme yöntemi seçilecektir.
+
+                    Bknz. Ortak Sınıflar: PaymentMeans
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu             Eylül/2026
+Versiyon : 1.3                                                              17 / 21
+Örnek         <cac:PaymentMeans>
+                                 <!-- Zorunlu olacak Müşteri Ödeme Şekli -->
+                                 <cbc:PaymentMeansCode
+
+              listID="UN/4461">10</cbc:PaymentMeansCode>
+                                 <!-- Zorunlu olacak ve 10, 55, 46 ve 68 kodlarından
+
+              birini kullanabilir.-->
+                                 <cac:PayerFinancialAccount>
+                                           <!-- Zorunlu olacak -->
+                                           <!-- sabit deger -->
+                                           <cbc:ID>0</cbc:ID>
+                                           <!-- Zorunlu olacak -->
+                                 </cac:PayerFinancialAccount>
+
+                       </cac:PaymentMeans>
+                       <cac:PaymentMeans>
+
+                                 <!-- Zorunlu olacak Döviz Bürosu ödeme şekli -->
+                                 <cbc:PaymentMeansCode
+              listID="UN/4461">46</cbc:PaymentMeansCode>
+                                 <!-- Zorunlu olacak ve 10, 55, 46 ve 68 kodlarından
+              birini kullanabilir.-->
+                                 <cac:PayeeFinancialAccount>
+
+                                           <!-- Zorunlu olacak -->
+                                           <!-- sabit deger -->
+
+                       <cbc:ID>TR000000000000000000000000</cbc:ID>
+                                           <!-- Zorunlu olacak -->
+
+                                 </cac:PayeeFinancialAccount>
+                       </cac:PaymentMeans>
+
+3.17. PricingExchangeRate
+
+ExchangeRate  Döviz Kuru
+
+Diyagram
+
+Kardinalite    Zorunlu(1): SourceCurrencyCode
+Açıklama       Zorunlu(1): TargetCurrencyCode
+               Zorunlu(1): CalculationRate
+               Seçimli(0..1): Date
+              “EDOVIZBELGE” senaryosunda bu alana USD karşılığı girilir. USD
+              karşılığı belirlenirken Alım belgelerinde belge düzenlenme zamanı
+              itibarıyla yetkili müessese tarafından ilan edilen ABD Doları alış
+              kurunun, satış belgelerinde belge düzenlenme zamanı itibarıyla yetkili
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   18 / 21
+Kullanım      müessese tarafından ilan edilen ABD Doları satış kurunun dikkate
+Örnek         alınması gerekmektedir.
+              “EKIYMETLIMADENBELGE” senaryosu “SATIM” tipi olarak
+              düzenlenecek belgede bu alana külçe altın karşılığı (Birim Fiyat) girilir.
+
+              Bknz. Ortak Sınıflar: ExchangeRate
+
+              <cac: PricingExchangeRate>
+              <cbc:SourceCurrencyCode>EUR</cbc:SourceCurrencyCode>
+              <cbc:TargetCurrencyCode>USD</cbc:TargetCurrencyCode>
+              <cbc:CalculationRate>1.17123</cbc:CalculationRate>
+              </cac: PricingExchangeRate>
+
+3.18. PaymentExchangeRate
+
+ExchangeRate  Döviz Kuru
+
+Diyagram
+
+Kardinalite    Zorunlu(1): SourceCurrencyCode
+Açıklama       Zorunlu(1): TargetCurrencyCode
+               Zorunlu(1): CalculationRate
+Kullanım       Seçimli(0..1): Date
+Örnek         Bu alan altında yer alan “SourceCurrencyCode” elemanına yazan para
+              biriminin “TargetCurrencyCode” elemanında yazan para birimine
+              dönüşüm oranı yazılır.
+              Kıymetli maden alım/satım işlemi olması durumunda;
+              22 ayar çeyrek altın için XAU_22C
+              22 ayar yarım altın için XAU_22Y
+              22 ayar tam altın için XAU_22T
+              22 ayar ikibuçukluk altın için XAU_22I
+              22 ayar beşlik altın için XAU_22B
+              24 ayar gram altın için XAU_24G
+              Külçe altın için XAU_24G_1000
+              yazılması gerekmektedir
+              Bknz. Ortak Sınıflar: ExchangeRate
+
+              <cac: PaymentExchangeRate>
+              <cbc:SourceCurrencyCode>EUR</cbc:SourceCurrencyCode>
+              <cbc:TargetCurrencyCode>TRY</cbc:TargetCurrencyCode>
+              <cbc:CalculationRate>10,33122</cbc:CalculationRate>
+              </cac: PaymentExchangeRate>
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   19 / 21
+3.19. TaxTotal  Toplam Vergi
+
+TaxTotal
+
+Diyagram
+
+Kardinalite     Zorunlu (1…n)
+Açıklama
+                Bu elemana vergi ve diğer yasal yükümlülükler ile ilgili bilgiler
+Kullanım        yazılacaktır.
+Örnek
+                Bknz. Ortak Sınıflar: TaxTotal
+
+                <cac:TaxTotal>
+                <cbc:TaxAmount currencyID="TRY">140</cbc:TaxAmount>
+                <cac:TaxSubtotal>
+                <cbc:TaxableAmount
+                currencyID="TRY">1750</cbc:TaxableAmount>
+                <cbc:TaxAmount currencyID="TRY">3,5</cbc:TaxAmount>
+                <cbc:CalculationSequenceNumeric>1</cbc:CalculationSequenceNu
+                meric>
+                <cbc:Percent>0,2</cbc:Percent>
+                <cac:TaxCategory>
+                <cac:TaxScheme>
+                <cbc:Name>BSMV</cbc:Name>
+                <cbc:TaxTypeCode>0021</cbc:TaxTypeCode>
+                </cac:TaxScheme>
+                </cac:TaxCategory>
+                </cac:TaxSubtotal>
+                </cac:TaxTotal>
+
+3.20. LegalMonetaryTotal
+
+LegalMonetaryTotal Parasal Toplamlar
+
+Diyagram
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   20 / 21
+Kardinalite           Zorunlu (1)
+Açıklama
+Kullanım              Bu elemanda tutarların toplamları yer alacaktır.
+Örnek
+                      Bknz. Ortak Sınıflar: LegalMonetaryTotal
+
+                      <cac:LegalMonetaryTotal>
+                                         <cbc:LineExtensionAmount
+
+                      currencyID="TRY">1033.12</cbc:LineExtensionAmount>
+                                         <cbc:TaxExclusiveAmount
+
+                      currencyID="TRY">0</cbc:TaxExclusiveAmount>
+                                         <cbc:TaxInclusiveAmount
+
+                      currencyID="TRY">0</cbc:TaxInclusiveAmount>
+                                         <cbc:PayableAmount
+
+                      currencyID="EUR">100</cbc:PayableAmount>
+                               </cac:LegalMonetaryTotal>
+
+3.21. CreditNoteLine
+
+CreditNoteLine        Kalem Bilgileri
+
+Diyagram
+
+Kardinalite           Zorunlu (1…n)
+Açıklama              Bu elemanda döviz ve kıymetli maden alım/satım belgesinde yer alan
+                      kalemlere ait bilgiler yer alacaktır.
+Kullanım              Bknz. Ortak Sınıflar: CreditNoteLine
+Örnek
+
+4. e-Döviz ve Kıymetli Maden Alım Satım Belgesi Standardı
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Uygulamasında kullanılan elektronik belge
+formatı, üzerinde mali mühür/NES taşımaya, belge üzerinde doğrulamaya, görüntülemeye,
+istenen işlenebilir veri formatını taşımaya ve kâğıt baskı almaya imkân veren genel tanınırlığa
+sahip bir format olmalıdır. e-Döviz ve Kıymetli Maden Alım Satım Belgesi formatı olarak XSD
+de belirtilen format kullanılmalıdır. Bu veriler XADES-BES standardı kullanılarak mali
+mühür/NES ile imzalanmalıdır.
+
+e-Döviz ve Kıymetli Maden Alım Satım Belgesi Teknik Kılavuzu  Eylül/2026
+Versiyon : 1.3                                                   21 / 21
+

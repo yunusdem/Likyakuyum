@@ -812,6 +812,8 @@ export const DovizFisiPage: React.FC = () => {
   const [detayMeslekId, setDetayMeslekId] = useState<number | null>(null);
   const [merkezKurSatirlar, setMerkezKurSatirlar] = useState<KurRowItem[]>([]);
   const [detayDernekAmaci, setDetayDernekAmaci] = useState<string>("");
+  // e-Döviz "e-Belge Not" (F8 Detay → belgenin Notlar kısmı; docs/EDOVIZ_SURUM2_YOL_HARITASI.md K8)
+  const [detayEBelgeNot, setDetayEBelgeNot] = useState<string>("");
   const [detayBankaHesabi, setDetayBankaHesabi] = useState<string>("");
   const [detayBankaHesabiId, setDetayBankaHesabiId] = useState<number | null>(null);
 
@@ -1229,6 +1231,7 @@ export const DovizFisiPage: React.FC = () => {
     setDetayCalistigiKurum("");
     setDetayMeslekId(null);
     setDetayDernekAmaci("");
+    setDetayEBelgeNot("");
     setDetayBankaHesabi("");
     setDetayBankaHesabiId(null);
     setTcknDogrulandi(null);
@@ -1917,6 +1920,7 @@ export const DovizFisiPage: React.FC = () => {
       if ((fis as any).dernekAmaci) {
         setDetayDernekAmaci((fis as any).dernekAmaci);
       }
+      setDetayEBelgeNot(String((fis as any).eBelgeNot || ""));
       if ((fis as any).eposta) {
         setDetayEposta((fis as any).eposta);
       }
@@ -5026,6 +5030,8 @@ export const DovizFisiPage: React.FC = () => {
           kimlikGecerlilikTarihi: detayGecerlilikTarihi.trim() ? formatIsoDate(detayGecerlilikTarihi) : undefined,
           sirketTuru: detaySirketTuru ? Number(detaySirketTuru) || undefined : undefined,
           dernekAmaci: detayDernekAmaci.trim() || undefined,
+          // Boş da gönderilir: notu silmek kayıtta da silsin
+          eBelgeNot: detayEBelgeNot.trim(),
           yetkiliKisi: detayYetkiliKisi.trim() || undefined,
           yetkiliKisiId: finalYetkiliKisiId,
           kimlikBelgeTuru: detayKimlikBelgeTuru || undefined,
@@ -9443,6 +9449,17 @@ export const DovizFisiPage: React.FC = () => {
                     Bakiye
                   </Button>
                 </InputGroup>
+              </div>
+
+              <div className="d-flex align-items-center mb-2">
+                <span className="text-secondary small text-nowrap" style={{ width: "110px" }}>e-Belge Not</span>
+                <Form.Control
+                  size="sm"
+                  value={detayEBelgeNot}
+                  maxLength={500}
+                  title="e-Döviz belgesinin Notlar kısmına yazılır"
+                  onChange={(e) => setDetayEBelgeNot(e.target.value.slice(0, 500))}
+                />
               </div>
             </Col>
           </Row>

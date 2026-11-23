@@ -2,7 +2,7 @@ import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
 import { type RaporParametreler, TL_PARA_SQL, aralikOzeti, filtreler, gunOnce, kurTarihlerde, kurTarihte, ozetEk, sinirla, vezneBakiyeleri } from "../raporOrtak.js";
-import { PERAKENDE_SATIR_PARASI, YEREL_GUN, belgeTablolari } from "../kaynak.js";
+import { PERAKENDE_SATIR_PARASI, YEREL_GUN, belgeTablolari, sarrafAdetliKurSql } from "../kaynak.js";
 import { BOLUM_ADI, acikBolumler } from "../fisKaynak.js";
 import { kuyumParasiMi } from "../paraGrup.js";
 
@@ -226,7 +226,7 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
           CASE WHEN ISNULL(SS.URUN_TIPI, P.URUN_TIPI) IN (1,2) THEN ISNULL(SS.MIKTAR,0)
                WHEN ISNULL(SS.URUN_TIPI, P.URUN_TIPI) IN (0,3) THEN CASE WHEN ISNULL(SS.ADET,0)>0 THEN SS.ADET ELSE CASE WHEN ISNULL(SS.MIKTAR,0)>0 THEN SS.MIKTAR ELSE 1 END END
                ELSE ISNULL(SS.MIKTAR,0) END miktar, ISNULL(SS.URUN_TIPI, P.URUN_TIPI) urunTipi,
-          ISNULL(SS.KUR,0) kur, ISNULL(SS.TUTAR,0) tutar,
+          ${sarrafAdetliKurSql("ISNULL(SS.KUR,0)", "CASE WHEN ISNULL(SS.ADET,0)>0 THEN SS.ADET ELSE CASE WHEN ISNULL(SS.MIKTAR,0)>0 THEN SS.MIKTAR ELSE 1 END END", "SS.TUTAR", "ISNULL(SS.URUN_TIPI, P.URUN_TIPI)")} kur, ISNULL(SS.TUTAR,0) tutar,
           CASE ${kolon.sarrafIscilikTutari ? "WHEN ISNULL(SS.ISCILIK_TUTARI,0)>0 THEN SS.ISCILIK_TUTARI " : ""}WHEN ISNULL(SS.ISCILIK_HAS_GRAM,0)>0 THEN SS.ISCILIK_HAS_GRAM*${hasKuru}
                WHEN ISNULL(SS.ISCILIK_MIKTARI,0)>0 THEN SS.ISCILIK_MIKTARI ELSE 0 END iscilik
         FROM dbo.TODVZ_SARRAF_FISI SF JOIN dbo.TODVZ_SARRAF_FISI_SATIRI SS ON SS.SARRAF_FISI_ID=SF.SARRAF_FISI_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=SS.URUN_ID

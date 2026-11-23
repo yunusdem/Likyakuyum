@@ -115,6 +115,8 @@ export interface DovizFisModel {
   anneAdi?: string;
   sirketTuru?: number | null;
   dernekAmaci?: string;
+  /** e-Döviz "e-Belge Not" (F8 Detay; göç 036, docs/EDOVIZ_SURUM2_YOL_HARITASI.md K8) */
+  eBelgeNot?: string;
   yetkiliKisi?: string;
   yetkiliKisiId?: number | null;
   kimlikKaynagi?: string;
@@ -230,6 +232,8 @@ export interface SaveDovizFisDto {
   anneAdi?: string;
   sirketTuru?: number | null;
   dernekAmaci?: string;
+  /** e-Döviz "e-Belge Not" (F8 Detay; göç 036, docs/EDOVIZ_SURUM2_YOL_HARITASI.md K8) */
+  eBelgeNot?: string;
   yetkiliKisi?: string;
   yetkiliKisiId?: number | null;
   kimlikKaynagi?: string;
@@ -2628,6 +2632,23 @@ export class DovizFisSqlRepository {
             logger.warn("TODVZ_FIS supplementary update warning:", updErr);
           }
 
+          // e-Belge Not (F8 Detay; docs/EDOVIZ_SURUM2_YOL_HARITASI.md K8). Alan gönderilmediyse (eski istemci) dokunulmaz,
+          // boş gönderildiyse silinir. Kolon göç 036 ile gelir; göç çalışmamış veritabanında sessizce atlanır.
+          if (dto.eBelgeNot !== undefined) {
+            try {
+              const notReq = pool.request();
+              notReq.input("NOT_ID", sql.Int, savedFisId);
+              notReq.input("E_BELGE_NOT", sql.NVarChar(500), String(dto.eBelgeNot ?? "").replace(/\s+/g, " ").trim().slice(0, 500) || null);
+              await notReq.query(`
+                IF COL_LENGTH('dbo.TODVZ_FIS', 'E_BELGE_NOT') IS NOT NULL
+                  EXEC sp_executesql N'UPDATE [dbo].[TODVZ_FIS] SET E_BELGE_NOT = @N WHERE FIS_ID = @I',
+                    N'@N NVARCHAR(500), @I INT', @N = @E_BELGE_NOT, @I = @NOT_ID;
+              `);
+            } catch (notErr) {
+              logger.warn("TODVZ_FIS e-Belge Not yazılamadı:", notErr);
+            }
+          }
+
           // Arbitraj Satırları Yönetimi (Müstakil TODVZ_FIS_ARBITRAJ tablosu)
           if (Array.isArray(dto.arbitrajSatirlar)) {
             try {
@@ -2994,6 +3015,7 @@ export class DovizFisSqlRepository {
       anneAdi: row.ANNE_ADI || "",
       sirketTuru: row.SIRKET_TURU ?? null,
       dernekAmaci: row.DERNEK_AMACI || "",
+      eBelgeNot: row.E_BELGE_NOT || "",
       yetkiliKisi: row.YETKILI_KISI || "",
       yetkiliKisiId: row.YETKILI_KISI_ID || null,
       kimlikKaynagi: row.KIMLIK_KAYNAGI || "",
