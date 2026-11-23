@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { Engel } from "./aktarimInceleme.js";
 import { AktarimIzi, izCikar, izYaz } from "./aktarimIzi.js";
+import { sifirlanmazMi } from "./aktarimKilit.js";
 import { AktarimPlani, PlanSecenekleri, TabloPlani, kopyalamaKomutu, planOlustur } from "./aktarimPlani.js";
 import { n, q, semaOku, tabloBul, tamAd } from "./aktarimSema.js";
 
@@ -19,7 +20,8 @@ export interface AktarimAdimi {
 
 export interface TabloSonucu {
   tablo: string;
-  islem: TabloPlani["islem"];
+  /** SIFIRLA: kilit açık aktarımda şablondaki (ilk açılış) hâline döndürülen tablo (§13 K26) */
+  islem: TabloPlani["islem"] | "SIFIRLA";
   kaynakSatir: number;
   silinen: number;
   yazilan: number;
@@ -44,6 +46,11 @@ export interface AktarimSecenekleri {
   dogrula?: (tx: sql.Transaction, plan: AktarimPlani) => Promise<DogrulamaOzeti>;
   /** Aktarıma özel değer kuralları (ör. Diğer veritabanı) */
   planSecenekleri?: PlanSecenekleri;
+  /**
+   * Kilit açık aktarım (§13 K26): yedekten kopyalanmayan her tablo (sistem / lisans / destek tabloları hariç) aynı işlemde şablon
+   * veritabanındaki hâline döndürülür (şablonda olmayan tablo boşalır). Firma ilk açıldığı hâle döner, üstüne yedek yazılır.
+   */
+  sifirla?: { sablonDb: string } | null;
 }
 
 export interface AktarimSonucu {
@@ -83,9 +90,16 @@ export const planHazirla = async (
   pool: sql.ConnectionPool,
   kaynakDb: string,
   hedefDb: string,
-  planSecenekleri: PlanSecenekleri = {}
+  planSecenekleri: PlanSecenekleri = {},
+  /** Sıfırlayan aktarım: şablonda kalan / temizlenen tablo kararı firmanın bugünkü satırlarına göre değil, şablonun (ilk açılış) satırlarına göre verilir */
+  satirKaynagiDb: string | null = null
 ): Promise<{ plan: AktarimPlani; engeller: Engel[] }> => {
-  const plan = planOlustur(kaynakDb, hedefDb, await semaOku(pool, kaynakDb), await semaOku(pool, hedefDb), planSecenekleri);
+  const hedefSema = await semaOku(pool, hedefDb);
+  if (satirKaynagiDb) {
+    const sablon = await semaOku(pool, satirKaynagiDb);
+    for (const t of hedefSema.values()) t.satir = tabloBul(sablon, t.ad)?.satir ?? 0;
+  }
+  const plan = planOlustur(kaynakDb, hedefDb, await semaOku(pool, kaynakDb), hedefSema, planSecenekleri);
   const engeller = [...plan.engeller];
   // Motor yalnız dbo şemasını okur: başka şemada dolu tablo varsa sessizce atlanmasın (19.11.2026 denetimi)
   const disSema = (await new sql.Request(pool).query(`
@@ -118,7 +132,13 @@ export const aktar = async (s: AktarimSecenekleri): Promise<AktarimSonucu> => {
 
   // 1) Plan + denetimler (yazma yok)
   ilerle("PLAN", 2, "Tablo ve kolon eşlemesi hazırlanıyor");
-  const { plan, engeller } = await planHazirla(s.pool, s.kaynakDb, s.hedefDb, s.planSecenekleri);
+  if (s.sifirla) {
+    const sb = (await new sql.Request(s.pool).query(`SELECT DB_ID(${n(s.sifirla.sablonDb)}) AS I, HAS_DBACCESS(${n(s.sifirla.sablonDb)}) AS E`)).recordset[0];
+    if (sb.I === null || Number(sb.E) !== 1) {
+      throw new Error(`Şablon veritabanı (${s.sifirla.sablonDb}) sunucuda yok ya da okunamıyor; kilit açık aktarım firmayı ilk hâline döndüremez. Hiçbir şey yazılmadı.`);
+    }
+  }
+  const { plan, engeller } = await planHazirla(s.pool, s.kaynakDb, s.hedefDb, s.planSecenekleri, s.sifirla?.sablonDb ?? null);
   if (engeller.some((e) => e.seviye === "ENGEL")) throw new AktarimEngeli(engeller);
   const notlar: string[] = engeller.filter((e) => e.seviye === "UYARI").map((e) => e.mesaj);
   const kopyalanan = plan.tablolar.filter((t) => t.islem === "KOPYALA");
@@ -178,6 +198,50 @@ export const aktar = async (s: AktarimSecenekleri): Promise<AktarimSonucu> => {
     for (const t of silinecek) silinen.set(t.tablo.toUpperCase(), toplam(await r().batch(`SET NOCOUNT OFF; DELETE FROM ${tamAd(s.hedefDb, t.tablo)};`)));
     for (const t of plan.tablolar.filter((x) => x.islem === "SABLON_TEMIZLE")) {
       tablolar.push({ tablo: t.tablo, islem: t.islem, kaynakSatir: 0, silinen: silinen.get(t.tablo.toUpperCase()) || 0, yazilan: 0 });
+    }
+
+    // 5b) Kilit açık aktarım (§13 K26): yedekten gelmeyen tablolar şablondaki (ilk açılış) hâline döner. Tetik ve kısıtlar kapalı;
+    //     kısıtlar sonda doğrulanarak açılır (şablon satırı aktarılan veriyle tutmazsa hepsi geri alınır).
+    if (s.sifirla) {
+      adim = "SIFIRLA";
+      ilerle(adim, 15, "Firma ilk açıldığı hâline döndürülüyor (şablon)");
+      const sablonSema = await semaOku(tx, s.sifirla.sablonDb);
+      const hedefSema = await semaOku(tx, s.hedefDb);
+      let sablondan = 0;
+      let sifirlanan = 0;
+      for (const t of plan.tablolar.filter((x) => x.islem === "SABLON_KORU" && !sifirlanmazMi(x.tablo))) {
+        const H_T = tamAd(s.hedefDb, t.tablo);
+        const sil = toplam(await r().batch(`SET NOCOUNT OFF; DELETE FROM ${H_T};`));
+        const st = tabloBul(sablonSema, t.tablo);
+        const ht = tabloBul(hedefSema, t.tablo)!;
+        let beklenen = 0;
+        let yazilan = 0;
+        if (st) {
+          beklenen = Number((await r().query(`SELECT COUNT_BIG(*) AS N FROM ${tamAd(s.sifirla.sablonDb, st.ad)}`)).recordset[0].N) || 0;
+          if (beklenen > 0) {
+            const ortak = ht.kolonlar.filter(
+              (k) => !k.hesaplanan && k.tip !== "timestamp" && st.kolonlar.some((x) => x.ad.toUpperCase() === k.ad.toUpperCase() && !x.hesaplanan && x.tip !== "timestamp")
+            );
+            const kimlik = ortak.some((k) => k.kimlik);
+            const kolon = ortak.map((k) => q(k.ad)).join(", ");
+            yazilan = toplam(
+              await r().batch(
+                `${kimlik ? `SET IDENTITY_INSERT ${H_T} ON; ` : ""}SET NOCOUNT OFF; INSERT INTO ${H_T} (${kolon}) SELECT ${kolon} FROM ${tamAd(s.sifirla.sablonDb, st.ad)};` +
+                  (kimlik ? ` SET IDENTITY_INSERT ${H_T} OFF;` : "")
+              )
+            );
+            if (yazilan !== beklenen) throw new Error(`${t.tablo}: şablondaki ${beklenen} satırdan ${yazilan} satır yazıldı.`);
+            sablondan += yazilan;
+          }
+        }
+        if (sil > 0 || yazilan > 0) sifirlanan++;
+        tablolar.push({ tablo: t.tablo, islem: "SIFIRLA", kaynakSatir: beklenen, silinen: sil, yazilan });
+      }
+      const toplamSilinen = tablolar.filter((x) => x.islem === "SIFIRLA").reduce((a, x) => a + x.silinen, 0);
+      notlar.push(
+        `Kilit açık: firma ilk açıldığı hâline döndürüldü — yedekten gelmeyen ${tablolar.filter((x) => x.islem === "SIFIRLA").length} tablo şablondaki hâline getirildi ` +
+          `(${toplamSilinen} eski satır silindi, şablondan ${sablondan} satır yazıldı; değişen tablo ${sifirlanan}).`
+      );
     }
 
     adim = "KOPYALA";

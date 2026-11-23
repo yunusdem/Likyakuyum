@@ -106,7 +106,10 @@ export type AdminIslem =
   | "VERI_AKTARIM_YUKLENDI"
   | "VERI_AKTARILDI"
   | "VERI_AKTARIM_HATA"
-  | "VERI_AKTARIM_DOGRULANDI";
+  | "VERI_AKTARIM_DOGRULANDI"
+  // Aktarım kilidini açma / kapama (§13, K25–K28)
+  | "AKTARIM_KILIDI_ACILDI"
+  | "AKTARIM_KILIDI_KAPATILDI";
 
 /** SILINECEK: panelden silme istendi, 30 gün geri alınabilir · SILINDI: veritabanı kaldırıldı (kayıt arşivde) */
 export type FirmaDurum = "AKTIF" | "DONDURULMUS" | "PASIF" | "SILINECEK" | "SILINDI";

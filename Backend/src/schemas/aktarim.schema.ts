@@ -29,4 +29,13 @@ export const aktarSchema = z.object({
   }),
 });
 
-export const isSchema = z.object({ params: firmaParam.extend({ isId: z.string().regex(/^[a-f0-9]{16}$/, "Geçersiz iş kimliği.") }) });
+// Aktarım kilidi (§13): onay = firma kodu, neden zorunlu
+export const kilitAcSchema = z.object({
+  params: firmaParam,
+  body: z.object({
+    onay: z.string().trim().min(1, "Onay için firma kodunu yazın.").max(50),
+    neden: z.string().trim().min(5, "Kilidi neden açtığınızı yazın (en az 5 karakter).").max(500),
+  }),
+});
+
+export const isSchema =z.object({ params: firmaParam.extend({ isId: z.string().regex(/^[a-f0-9]{16}$/, "Geçersiz iş kimliği.") }) });

@@ -11,6 +11,7 @@ import {
   DogrulamaRaporu,
   Engel,
   IncelemeSonucu,
+  KilitDurumu,
   YuklemeBilgisi,
 } from "../services/aktarimApi";
 
@@ -122,12 +123,18 @@ const DogrulamaPaneli: React.FC<{ rapor: DogrulamaRaporu; baslik: string }> = ({
   );
 };
 
-const IncelemePaneli: React.FC<{ s: IncelemeSonucu }> = ({ s }) => {
+const IncelemePaneli: React.FC<{ s: IncelemeSonucu; kilitAcik: boolean }> = ({ s, kilitAcik }) => {
   const o = s.ozet;
   // Çalışma alanı (A): kendi gönderim günlüğü yok, belgeleri eşi (resmî alan) gönderir; "gönderilmemiş" sayısı yanıltıcı olur
   const calismaAlani = !!o && (o.alan.fisleriAktarilacak === true || (!o.eDoviz.logVar && o.bagliVeritabanlari.length > 0));
   return (
     <div>
+      {kilitAcik && s.engeller.some((e) => e.kod === "CANLI_FIRMA" && e.seviye === "ENGEL") && (
+        <Alert variant="info" className="py-2 small mb-2">
+          Aktarım kilidi bu incelemeden sonra açıldı: aşağıdaki "kullanım / e-belge" engelleri artık aktarımı durdurmaz. Güncel hâlini görmek için yüklemede
+          İncele'ye yeniden basın.
+        </Alert>
+      )}
       <EngelListesi engeller={s.engeller} />
       {o && (
         <>
@@ -219,7 +226,9 @@ const IncelemePaneli: React.FC<{ s: IncelemeSonucu }> = ({ s }) => {
           {s.firmaDolu && (s.firmaDolu.fis > 0 || s.firmaDolu.sarrafFisi > 0) && (
             <Alert variant="warning" className="small mt-3 mb-0">
               Bu firmada şu an {sayi(s.firmaDolu.fis)} döviz fişi ve {sayi(s.firmaDolu.sarrafFisi)} sarraf fişi var. Aktarım bunları silip yedektekilerle
-              değiştirir (yeniden aktarım). Aktarımdan önce firmanın yedeği otomatik alınır.
+              değiştirir (yeniden aktarım)
+              {kilitAcik ? "; kilit açık olduğu için bizim sistemdeki bütün kayıtlar ve ayarlar da silinir, firma ilk açıldığı hâline döner" : ""}. Aktarımdan önce
+              firmanın yedeği otomatik alınır.
             </Alert>
           )}
         </>
@@ -233,7 +242,8 @@ const RaporPaneli: React.FC<{ r: AktarimRaporu }> = ({ r }) => (
     {r.basarili ? (
       <Alert variant="success" className="py-2 small mb-2">
         Aktarım tamamlandı ({yerelZaman(r.zaman)}, @{r.yapan}): {r.aktarim?.tablolar.filter((t) => t.islem === "KOPYALA").length} tablo,{" "}
-        {sayi(r.aktarim?.tablolar.reduce((x, t) => x + t.yazilan, 0))} satır, {Math.round((r.aktarim?.sureMs || 0) / 1000)} sn.
+        {sayi(r.aktarim?.tablolar.filter((t) => t.islem === "KOPYALA").reduce((x, t) => x + t.yazilan, 0))} satır, {Math.round((r.aktarim?.sureMs || 0) / 1000)} sn.
+        {(r.aktarim?.tablolar.some((t) => t.islem === "SIFIRLA") ?? false) ? " Firma ilk açıldığı hâline döndürülüp yazıldı (kilit açıktı)." : ""}
         {r.dogrulama?.basarili ? " Doğrulama: kaynakla birebir aynı." : ""}
       </Alert>
     ) : null}
@@ -293,6 +303,20 @@ const FirmaVeriAktar: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
   const [taslakOnay, setTaslakOnay] = useState(false);
   const [firmaOnay, setFirmaOnay] = useState(false);
   const dosyaGirdisi = useRef<HTMLInputElement>(null);
+  // Aktarım kilidi (§13)
+  const [kilit, setKilit] = useState<KilitDurumu | null>(null);
+  const [kilitModal, setKilitModal] = useState(false);
+  const [kilitOnay, setKilitOnay] = useState("");
+  const [kilitNeden, setKilitNeden] = useState("");
+  const [kilitIsleniyor, setKilitIsleniyor] = useState(false);
+
+  const kilitGetir = useCallback(async () => {
+    try {
+      setKilit(await aktarimApi.kilit(firmaId));
+    } catch {
+      setKilit(null);
+    }
+  }, [firmaId]);
 
   const listele = useCallback(async () => {
     try {
@@ -300,7 +324,34 @@ const FirmaVeriAktar: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
     } catch (err: any) {
       setHata(err?.message || "Yüklemeler getirilemedi.");
     }
-  }, [firmaId]);
+    kilitGetir();
+  }, [firmaId, kilitGetir]);
+
+  const kilitAc = async () => {
+    setKilitIsleniyor(true);
+    setHata(null);
+    try {
+      setKilit(await aktarimApi.kilitAc(firmaId, { onay: kilitOnay, neden: kilitNeden }));
+      setKilitModal(false);
+    } catch (err: any) {
+      setHata(err?.message || "Kilit açılamadı.");
+    } finally {
+      setKilitIsleniyor(false);
+    }
+  };
+
+  const kilitKapat = async () => {
+    if (!window.confirm("Aktarım kilidi kapatılsın mı? Aynı müşteri numarasındaki firmaların kilidi de kapanır; bundan sonra firma kullanıldıysa aktarım yine durdurulur.")) return;
+    setKilitIsleniyor(true);
+    setHata(null);
+    try {
+      setKilit(await aktarimApi.kilitKapat(firmaId));
+    } catch (err: any) {
+      setHata(err?.message || "Kilit kapatılamadı.");
+    } finally {
+      setKilitIsleniyor(false);
+    }
+  };
 
   const raporAc = useCallback(
     async (yuklemeId: string) => {
@@ -395,9 +446,13 @@ const FirmaVeriAktar: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
   const taslakVar = (ins?.engeller || []).some((e) => e.kod === "TASLAK_KURAL");
   // Yanlış firmaya yedek şüphesi: pencerede ayrı onayla geçilir
   const yanlisFirma = (ins?.engeller || []).filter((e) => e.kod === "YANLIS_FIRMA");
-  const ONAYLI_ENGELLER = ["TASLAK_KURAL", "YANLIS_FIRMA"];
+  // Kilit açıkken kullanım / e-belge kilidi (CANLI_FIRMA) aktarımı durdurmaz; sunucu aktarım anında kilide yeniden bakar
+  const ONAYLI_ENGELLER = ["TASLAK_KURAL", "YANLIS_FIRMA", ...(kilit?.acik ? ["CANLI_FIRMA"] : [])];
   const aktarilabilir = !!ins?.ozet?.eskiProgram && !(ins?.engeller || []).some((e) => e.seviye === "ENGEL" && !ONAYLI_ENGELLER.includes(e.kod));
   const bagli = (ins?.ozet?.bagliVeritabanlari.length || 0) > 0;
+  const kilitAcik = !!kilit?.acik;
+  const esKilitKapali = kilitAcik && esFirmaId !== "" && !(kilit?.grup.find((g) => g.firmaId === esFirmaId)?.acik ?? false);
+  const kilitEBelge = (kilit?.grup || []).filter((g) => (g.eBelgeGonderilen || 0) > 0);
 
   return (
     <div>
@@ -410,6 +465,63 @@ const FirmaVeriAktar: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
         <Alert variant="danger" dismissible onClose={() => setHata(null)} className="small">
           {hata}
         </Alert>
+      )}
+
+      {kilit && (
+        <div data-test="aktarim-kilit" className={`border rounded-3 p-3 mb-3 small ${kilitAcik ? "border-danger bg-danger-subtle" : ""}`}>
+          <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
+            <div style={{ flex: "1 1 320px" }}>
+              <div className="fw-semibold mb-1">
+                Aktarım kilidi: {kilitAcik ? <Badge bg="danger">Açık</Badge> : <Badge bg="secondary">Kapalı</Badge>}
+              </div>
+              {kilitAcik ? (
+                <>
+                  <div>
+                    Açan <strong>{kilit.acan || "-"}</strong>, {yerelZaman(kilit.zaman)}
+                    {kilit.neden ? <> · Neden: {kilit.neden}</> : null}
+                  </div>
+                  <div className="mt-1">
+                    Kilit açıkken her aktarım bu firmadaki <strong>bütün eski verileri ve ayarları siler</strong>; firma ilk açıldığı hâline döner ve yedekteki veri
+                    yazılır. Giriş hesapları korunur. İşiniz bitince kilidi kapatın.
+                  </div>
+                </>
+              ) : (
+                <div className="text-muted">
+                  Firma aktarımdan sonra kullanıldıysa ya da bizim sistemle e-belge gönderildiyse aktarım durdurulur (girilen kayıtlar korunur). Deneme verisinin
+                  üstüne yeni veri yazmak için kilidi açın.
+                </div>
+              )}
+              {kilit.grup.length > 1 && (
+                <div className="mt-1">
+                  Aynı müşteri numarasındaki firmalar birlikte açılır / kapanır:{" "}
+                  {kilit.grup.map((g) => (
+                    <Badge key={g.firmaId} bg={g.acik ? "danger" : "light"} text={g.acik ? undefined : "dark"} className="me-1 fw-normal">
+                      {g.firmaKodu} ({g.dbName}) {g.acik ? "açık" : "kapalı"}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+            {kilitAcik ? (
+              <Button size="sm" variant="outline-secondary" disabled={calisiyor || kilitIsleniyor} onClick={kilitKapat}>
+                Kilidi Kapat
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline-danger"
+                disabled={calisiyor || kilitIsleniyor}
+                onClick={() => {
+                  setKilitOnay("");
+                  setKilitNeden("");
+                  setKilitModal(true);
+                }}
+              >
+                Kilidi Aç
+              </Button>
+            )}
+          </div>
+        </div>
       )}
 
       <div
@@ -564,7 +676,7 @@ const FirmaVeriAktar: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
                   {rapor.rapor?.basarili ? "Yeniden Aktar" : "Aktar"}
                 </Button>
               </div>
-              <IncelemePaneli s={rapor.inceleme} />
+              <IncelemePaneli s={rapor.inceleme} kilitAcik={kilitAcik} />
             </>
           ) : (
             <div className="text-muted small">Bu yükleme henüz incelenmedi.</div>
@@ -590,10 +702,24 @@ const FirmaVeriAktar: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
           <Modal.Title as="h5">{firma.unvan}: veri aktarımı</Modal.Title>
         </Modal.Header>
         <Modal.Body className="small">
-          <p>
-            Yedek, <strong>{firma.dbName}</strong> veritabanına aktarılacak. Bu firmadaki mevcut fiş ve tanımlar yedektekilerle değişir; aktarımdan önce firmanın yedeği
-            alınır ve firmadaki açık oturumlar kapatılır.
-          </p>
+          {kilitAcik ? (
+            <Alert variant="danger" className="py-2">
+              <strong>Kilit açık:</strong> <strong>{firma.dbName}</strong> veritabanındaki BÜTÜN eski veriler ve ayarlar silinecek (fişler, faturalar, e-Belge
+              kayıtları, POS, e-Belge/ICE ayarı, fiş tasarımı, kullanıcı görünümü…); firma ilk açıldığı hâline dönecek ve yedekteki veri yazılacak. Giriş hesapları
+              korunur. Aktarımdan önce firmanın yedeği alınır ve açık oturumlar kapatılır.
+            </Alert>
+          ) : (
+            <p>
+              Yedek, <strong>{firma.dbName}</strong> veritabanına aktarılacak. Bu firmadaki mevcut fiş ve tanımlar yedektekilerle değişir; aktarımdan önce firmanın
+              yedeği alınır ve firmadaki açık oturumlar kapatılır.
+            </p>
+          )}
+          {esKilitKapali && (
+            <Alert variant="warning" className="py-2">
+              Seçilen eş firmanın aktarım kilidi kapalı: eş aktarımdan sonra kullanıldıysa aktarım durdurulur. Eşin kilidini de açmak için Veri Aktar'dan kilidi
+              kapatıp yeniden açın.
+            </Alert>
+          )}
           {bagli && (
             <div className="border rounded p-2 mb-3">
               <div className="mb-2">
@@ -659,7 +785,55 @@ const FirmaVeriAktar: React.FC<{ firma: FirmaDto }> = ({ firma }) => {
             Vazgeç
           </Button>
           <Button className="btn-adm" disabled={!eskiKapandi || (taslakVar && !taslakOnay) || (yanlisFirma.length > 0 && !firmaOnay) || onay.trim().toUpperCase() !== firma.firmaKodu.toUpperCase()} onClick={aktarBaslat}>
-            Aktar
+            {kilitAcik ? "Sıfırla ve Aktar" : "Aktar"}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={kilitModal} onHide={() => setKilitModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title as="h5">{firma.unvan}: aktarım kilidini aç</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="small">
+          <Alert variant="danger" className="py-2">
+            Kilit açıkken yapılan her aktarım firmadaki <strong>bütün eski verileri ve ayarları siler</strong>: fişler, faturalar, e-Belge kayıtları, ödeme, hızlı
+            satış, sayım, stok kartları ve hareketleri, POS ve e-Belge (ICE) ayarı, fiş tasarımı, kullanıcı görünümü ve yetki ayarları. Firma ilk açıldığı hâline döner,
+            üstüne yedekteki veri yazılır. Giriş hesapları korunur. Kilit siz kapatana kadar açık kalır.
+          </Alert>
+          {kilitEBelge.length > 0 && (
+            <Alert variant="warning" className="py-2">
+              Bizim sistemle gönderilmiş e-belge var:{" "}
+              {kilitEBelge.map((g) => `${g.firmaKodu} ${sayi(g.eBelgeGonderilen)} belge`).join(", ")}. Bu belgelerin bizim sistemdeki kayıtları da silinir (GİB'deki
+              belgeler değişmez).
+            </Alert>
+          )}
+          {(kilit?.grup.length || 0) > 1 && (
+            <p>
+              Aynı müşteri numarasındaki şu firmaların da kilidi açılacak:{" "}
+              <strong>{kilit?.grup.filter((g) => g.firmaId !== firmaId).map((g) => `${g.firmaKodu} (${g.dbName})`).join(", ")}</strong>
+            </p>
+          )}
+          <Form.Group controlId="kilitNeden" className="mb-2">
+            <Form.Label>Neden (işlem kaydına yazılır)</Form.Label>
+            <Form.Control as="textarea" rows={2} size="sm" maxLength={500} value={kilitNeden} onChange={(e) => setKilitNeden(e.target.value)} placeholder="Ör. deneme aktarımı; müşterinin güncel verisi yüklenecek" />
+          </Form.Group>
+          <Form.Group controlId="kilitOnay">
+            <Form.Label>
+              Onaylamak için firma kodunu yazın: <strong>{firma.firmaKodu}</strong>
+            </Form.Label>
+            <Form.Control size="sm" autoComplete="off" value={kilitOnay} onChange={(e) => setKilitOnay(e.target.value)} />
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setKilitModal(false)}>
+            Vazgeç
+          </Button>
+          <Button
+            variant="danger"
+            disabled={kilitIsleniyor || kilitNeden.trim().length < 5 || kilitOnay.trim().toUpperCase() !== firma.firmaKodu.toUpperCase()}
+            onClick={kilitAc}
+          >
+            Kilidi Aç
           </Button>
         </Modal.Footer>
       </Modal>

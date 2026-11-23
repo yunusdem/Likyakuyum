@@ -134,6 +134,17 @@ export interface AktarimRaporu {
   zaman: string;
 }
 
+/** Aktarım kilidi (§13): açıkken kullanım / e-belge kilitleri uygulanmaz, aktarım firmayı ilk açıldığı hâline döndürüp yazar */
+export interface KilitDurumu {
+  acik: boolean;
+  acan: string | null;
+  zaman: string | null;
+  neden: string | null;
+  /** Aynı müşteri numarasındaki firmalar (birlikte açılır / kapanır), bu firma dahil */
+  grup: { firmaId: number; firmaKodu: string; unvan: string; dbName: string; acik: boolean; eBelgeGonderilen: number | null }[];
+  eBelgeGonderilen: number | null;
+}
+
 const oturumBitti = (status: number) => {
   if (status === 401) window.dispatchEvent(new Event(OTURUM_BITTI_OLAYI));
 };
@@ -183,6 +194,9 @@ export const aktarimApi = {
   isDurumu: (firmaId: number, isId: string) => istek<AktarimIsi>("GET", `/firmalar/${firmaId}/aktarim/isler/${isId}`),
   rapor: (firmaId: number, yuklemeId: string) =>
     istek<{ inceleme: IncelemeSonucu | null; rapor: AktarimRaporu | null; dogrulama: DogrulamaRaporu | null }>("GET", `/firmalar/${firmaId}/aktarim/yuklemeler/${yuklemeId}/rapor`),
+  kilit: (firmaId: number) => istek<KilitDurumu>("GET", `/firmalar/${firmaId}/aktarim/kilit`),
+  kilitAc: (firmaId: number, girdi: { onay: string; neden: string }) => istek<KilitDurumu>("POST", `/firmalar/${firmaId}/aktarim/kilit/ac`, girdi),
+  kilitKapat: (firmaId: number) => istek<KilitDurumu>("POST", `/firmalar/${firmaId}/aktarim/kilit/kapat`, {}),
 
   /**
    * Dosyayı 8 MB'lık parçalar hâlinde yükler (iki parça aynı anda; her parça SHA-256 ile denetlenir, hata olursa 3 kez yeniden denenir).

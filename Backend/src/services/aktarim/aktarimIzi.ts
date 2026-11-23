@@ -262,15 +262,20 @@ export const izYenile = async (pool: sql.ConnectionPool, db: string): Promise<bo
  * Firmadan bizim sistemle (taslak olmayan) e-belge gönderilmiş mi (K22). Gönderilmişse firma canlıdır: CANLI_FIRMA ENGEL.
  * Aktarım izinden bağımsız ikinci kilit (iz silinse de çalışır).
  */
-export const eBelgeGonderimi = async (pool: sql.ConnectionPool, db: string): Promise<Engel[]> => {
+/** Firmadan bizim sistemle gönderilmiş (taslak olmayan) e-belge sayısı. */
+export const gonderilenEBelgeSayisi = async (pool: sql.ConnectionPool, db: string): Promise<number> => {
   const kolonVar = async (kolon: string) =>
     (await new sql.Request(pool).query(`SELECT COL_LENGTH(${n(`${db}.dbo.TODVZ_EBELGE_GIDEN`)}, ${n(kolon)}) AS L`)).recordset[0].L !== null;
-  if (!(await kolonVar("GONDERIM_DURUMU"))) return [];
+  if (!(await kolonVar("GONDERIM_DURUMU"))) return 0;
   // Taslak (deneme) gönderimleri sayılmaz: yalnız gerçekten kesilmiş belgeler firmayı "canlı" yapar
   const taslakDisi = (await kolonVar("TASLAK_MI")) ? " AND ISNULL(TASLAK_MI, 0) = 0" : "";
-  const giden = Number(
+  return Number(
     (await new sql.Request(pool).query(`SELECT COUNT_BIG(*) AS N FROM ${tamAd(db, "TODVZ_EBELGE_GIDEN")} WHERE GONDERIM_DURUMU = 'GONDERILDI'${taslakDisi}`)).recordset[0].N
   ) || 0;
+};
+
+export const eBelgeGonderimi = async (pool: sql.ConnectionPool, db: string): Promise<Engel[]> => {
+  const giden = await gonderilenEBelgeSayisi(pool, db);
   if (!giden) return [];
   return [
     {
