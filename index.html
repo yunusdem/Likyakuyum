@@ -2,6 +2,21 @@
 <html lang="tr" class="expanded">
   <head>
     <meta charset="UTF-8" />
+    <!-- likyaerp.com (www'siz) uygulama alan adı: tanıtım sayfaları www.likyaerp.com'da kendi stiliyle açılır (23.11.2026; burada stilsiz
+         kalıyordu). Uygulama dosyası inmeden hemen geçer. Uygulama adresleri (/login …) ve masaüstüne yüklenmiş uygulama penceresi
+         yönlendirilmez. Kural src/erp-site/yardimci/wwwYonlendir.ts ile aynı. -->
+    <script>
+      (function () {
+        var l = window.location;
+        if (l.hostname.toLowerCase() !== "likyaerp.com") return;
+        if (!/^\/(urunler\/[^/]+|karsilastir|entegrasyonlar|hakkimizda|iletisim|kvkk|gizlilik)?\/?$/i.test(l.pathname)) return;
+        var pencere = window.navigator.standalone === true || ["standalone", "window-controls-overlay", "minimal-ui"].some(function (m) {
+          return !!(window.matchMedia && window.matchMedia("(display-mode: " + m + ")").matches);
+        });
+        if (pencere) return;
+        l.replace("https://www.likyaerp.com" + l.pathname + l.search + l.hash);
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/images/logo/logo.svg" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

@@ -12,10 +12,17 @@ import { Iletisim } from "./sayfalar/Iletisim";
 import { Gizlilik, Kvkk } from "./sayfalar/Yasal";
 import { Bulunamadi } from "./sayfalar/Bulunamadi";
 import { analitikKur, sayfaGoruntulendi } from "./yardimci/analitik";
+import { uygulamaPenceresiMi, wwwAdresi } from "./yardimci/wwwYonlendir";
 
 /** www.likyaerp.com düzeni ve yolları (docs/LIKYAERP_TANITIM_SITESI.md §4). */
 export const ErpDuzen: React.FC = () => {
-  const { pathname, hash } = useLocation();
+  const { pathname, hash, search } = useLocation();
+  // likyaerp.com (www'siz, uygulama) içinden tanıtım sayfasına gelinirse (ör. giriş ekranındaki "Ana Sayfaya Dön") www'deki stilli siteye geç
+  const www = typeof window !== "undefined" ? wwwAdresi({ hostname: window.location.hostname, pathname, search, hash }, uygulamaPenceresiMi()) : null;
+
+  useEffect(() => {
+    if (www) window.location.replace(www);
+  }, [www]);
 
   useEffect(() => {
     analitikKur();
@@ -31,6 +38,8 @@ export const ErpDuzen: React.FC = () => {
     const t = window.setTimeout(() => sayfaGoruntulendi(pathname), 50);
     return () => window.clearTimeout(t);
   }, [pathname, hash]);
+
+  if (www) return null;
 
   return (
     <>
