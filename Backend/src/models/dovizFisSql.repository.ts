@@ -130,6 +130,8 @@ export interface DovizFisModel {
   toplamTutar: number;
   yuvarlama: number;
   odemeTutari: number;
+  alinanPara?: number;
+  paraUstu?: number;
   bankaAciklama?: string | null;
   bsmvTutar: number;
   iptal: boolean;
@@ -243,6 +245,8 @@ export interface SaveDovizFisDto {
   supheliIslemlerYetkiliId?: number | null;
   yuvarlamaAraligi?: number;
   yuvarlamaEsigi?: number;
+  alinanPara?: number;
+  paraUstu?: number;
   eFaturaPostaKutusu?: string;
   belgeTuru?: number;
   kimlikGecerlilikTarihi?: string | null;
@@ -367,6 +371,26 @@ export class DovizFisSqlRepository {
             ALTER TABLE [dbo].[TODVZ_FIS] ADD [MESLEK_UNVANI] VARCHAR(100) NULL;
           IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'CALISTIGI_KURUM')
             ALTER TABLE [dbo].[TODVZ_FIS] ADD [CALISTIGI_KURUM] VARCHAR(150) NULL;
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'ALINAN_PARA')
+            ALTER TABLE [dbo].[TODVZ_FIS] ADD [ALINAN_PARA] DECIMAL(18,4) NOT NULL CONSTRAINT DF_TODVZ_FIS_ALINAN_PARA DEFAULT(0);
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TODVZ_FIS' AND COLUMN_NAME = 'PARA_USTU')
+            ALTER TABLE [dbo].[TODVZ_FIS] ADD [PARA_USTU] DECIMAL(18,4) NOT NULL CONSTRAINT DF_TODVZ_FIS_PARA_USTU DEFAULT(0);
+        END
+      `);
+
+      await pool.request().query(`
+        CREATE OR ALTER PROCEDURE [dbo].[SODVZ_FIS_PARA_USTU_KAYDET]
+          @FIS_ID INT,
+          @ALINAN_PARA DECIMAL(18,4) = 0,
+          @PARA_USTU DECIMAL(18,4) = 0
+        AS
+        BEGIN
+          SET NOCOUNT ON;
+          IF @FIS_ID IS NULL OR @FIS_ID <= 0 RETURN;
+          UPDATE [dbo].[TODVZ_FIS]
+          SET [ALINAN_PARA] = ISNULL(@ALINAN_PARA, 0),
+              [PARA_USTU]   = ISNULL(@PARA_USTU, 0)
+          WHERE [FIS_ID] = @FIS_ID;
         END
       `);
 
@@ -2649,6 +2673,25 @@ export class DovizFisSqlRepository {
             }
           }
 
+          // Para Üstü / Alınan Para (F12 Para Üstü modalı; göç 037)
+          if (dto.alinanPara !== undefined || dto.paraUstu !== undefined) {
+            try {
+              const puReq = pool.request();
+              puReq.input("PU_FIS_ID", sql.Int, savedFisId);
+              puReq.input("PU_ALINAN", sql.Decimal(18, 4), parseSafeDecimal(dto.alinanPara, 0));
+              puReq.input("PU_USTU", sql.Decimal(18, 4), parseSafeDecimal(dto.paraUstu, 0));
+              await puReq.query(`
+                IF OBJECT_ID('dbo.SODVZ_FIS_PARA_USTU_KAYDET', 'P') IS NOT NULL
+                  EXEC [dbo].[SODVZ_FIS_PARA_USTU_KAYDET] @FIS_ID = @PU_FIS_ID, @ALINAN_PARA = @PU_ALINAN, @PARA_USTU = @PU_USTU;
+                ELSE IF COL_LENGTH('dbo.TODVZ_FIS', 'ALINAN_PARA') IS NOT NULL AND COL_LENGTH('dbo.TODVZ_FIS', 'PARA_USTU') IS NOT NULL
+                  EXEC sp_executesql N'UPDATE [dbo].[TODVZ_FIS] SET ALINAN_PARA = @A, PARA_USTU = @P WHERE FIS_ID = @I',
+                    N'@A DECIMAL(18,4), @P DECIMAL(18,4), @I INT', @A = @PU_ALINAN, @P = @PU_USTU, @I = @PU_FIS_ID;
+              `);
+            } catch (puErr) {
+              logger.warn("TODVZ_FIS para üstü yazılamadı:", puErr);
+            }
+          }
+
           // Arbitraj Satırları Yönetimi (Müstakil TODVZ_FIS_ARBITRAJ tablosu)
           if (Array.isArray(dto.arbitrajSatirlar)) {
             try {
@@ -3034,6 +3077,8 @@ export class DovizFisSqlRepository {
       toplamTutar: Number(row.TOPLAM_TUTAR) || 0,
       yuvarlama: Number(row.YUVARLAMA) || 0,
       odemeTutari: Number(row.ODEME_TUTARI) || 0,
+      alinanPara: Number(row.ALINAN_PARA) || 0,
+      paraUstu: Number(row.PARA_USTU) || 0,
       bankaAciklama: row.BANKA_ACIKLAMA ? String(row.BANKA_ACIKLAMA).trim() : null,
       bsmvTutar: bsmvSum,
       iptal: Boolean(row.IPTAL),

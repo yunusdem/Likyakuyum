@@ -41,7 +41,7 @@ const dovizCiktiSema = z.object({
   lines: z.array(z.object({
     paraKodu: metinAlani(10), paraAdi: metinAlani(100), miktar: sayiAlani, kur: sayiAlani, tutar: sayiAlani,
   }).passthrough()).max(200),
-  toplamTutar: sayiAlani, odemeTutari: sayiAlani, bsmvTutari: sayiAlani, komisyonTutari: sayiAlani, giseUsdKuru: sayiAlani,
+  toplamTutar: sayiAlani, odemeTutari: sayiAlani, alinanPara: sayiAlani, paraUstu: sayiAlani, bsmvTutari: sayiAlani, komisyonTutari: sayiAlani, giseUsdKuru: sayiAlani,
   dovizKurusSayisi: sayiAlani, kurKurusSayisi: sayiAlani, tlKurusSayisi: sayiAlani,
 }).passthrough();
 

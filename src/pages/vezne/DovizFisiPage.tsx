@@ -64,6 +64,7 @@ import { TlHesabiModal } from "./TlHesabiModal";
 import { BankaTlHesabiModal, BankaTlHesabiApplyPayload } from "./BankaTlHesabiModal";
 import { ArbitrajModal, ArbitrajApplyResult } from "./ArbitrajModal";
 import { ParaSaymaModal, ParaSaymaCurrencyItem } from "./ParaSaymaModal";
+import { ParaUstuModal } from "./ParaUstuModal";
 import { CompanyService, TodvzTanimDto } from "../../services/companyService";
 import { CariService, CariKartItem } from "../../services/cariService";
 import { KimlikDegistirmeNedeniBelgeSection } from "../../components/cari/KimlikDegistirmeNedeniBelgeSection";
@@ -914,6 +915,13 @@ export const DovizFisiPage: React.FC = () => {
   const tlHesabiTargetRowRef = useRef<number | "new">("new");
   const [showParaSaymaModal, setShowParaSaymaModal] = useState<boolean>(false);
   const [banknotSaymaCounts, setBanknotSaymaCounts] = useState<Record<string, Record<number, number>>>({});
+  const [showParaUstuModal, setShowParaUstuModal] = useState<boolean>(false);
+  const [alinanPara, setAlinanPara] = useState<number>(0);
+  const [paraUstu, setParaUstu] = useState<number>(0);
+  const [kurSapmaPopup, setKurSapmaPopup] = useState<{
+    uyarilar: string[];
+    resolve: (onay: boolean) => void;
+  } | null>(null);
 
   // Helper to reliably focus grid cells and set proper cursor position
   const focusCell = useCallback(
@@ -1257,6 +1265,9 @@ export const DovizFisiPage: React.FC = () => {
     setBankaAciklama("");
     setBankaDagitimSatirlari([]);
     setVezneNakitTutari(null);
+    setShowParaUstuModal(false);
+    setAlinanPara(0);
+    setParaUstu(0);
     setCurrentIndex(-1);
     // Yeni fişte vezne kullanıcının veznesine döner (düzeltmede açılan fişin veznesi kalmasın)
     if (kullaniciVezneRef.current !== undefined) {
@@ -1890,6 +1901,8 @@ export const DovizFisiPage: React.FC = () => {
         setBankaDagitimSatirlari([]);
       }
       setVezneNakitTutari((fis as any).odemeTutari !== undefined && (fis as any).odemeTutari !== null ? Number((fis as any).odemeTutari) : null);
+      setAlinanPara(Number((fis as any).alinanPara) || 0);
+      setParaUstu(Number((fis as any).paraUstu) || 0);
       if ((fis as any).bankaAciklama) {
         setBankaAciklama(String((fis as any).bankaAciklama).trim());
       } else {
@@ -4691,7 +4704,9 @@ export const DovizFisiPage: React.FC = () => {
         if (d.uyari) uyarilar.push({ satir: s, uyari: d.uyari });
       }
       if (uyarilar.length > 0) {
-        const onay = window.confirm(`${uyarilar.map((u) => u.uyari).join("\n")}\n\nYine de kaydedilsin mi?`);
+        const onay = await new Promise<boolean>((resolve) => {
+          setKurSapmaPopup({ uyarilar: uyarilar.map((u) => u.uyari), resolve });
+        });
         if (!onay) {
           const rIdx = lines.findIndex((l) => l.id === uyarilar[0].satir.rowId);
           if (rIdx >= 0) {
@@ -5050,6 +5065,8 @@ export const DovizFisiPage: React.FC = () => {
           gmFaturaNo: gmFaturaNo.trim() || undefined,
           toplamTutar: Number(totalTutar) || 0,
           odemeTutari: vezneNakitTutari !== null ? vezneNakitTutari : (Number(sonToplam) || 0),
+          alinanPara: Number(alinanPara) || 0,
+          paraUstu: Number(paraUstu) || 0,
           bankaAciklama: bankaAciklama.trim() || undefined,
           yuvarlama: 0,
           satirlar: validLines.map((l, idx) => {
@@ -5179,6 +5196,8 @@ export const DovizFisiPage: React.FC = () => {
         totalMasraf: totalMasraf,
         sonToplam: sonToplam,
         odemeTutari: sonToplam,
+        alinanPara: alinanPara,
+        paraUstu: paraUstu,
         bsmvTutari: calculatedBsmv,
         kmvTutari: totalKmv,
         komisyonTutari: totalKomisyon,
@@ -5873,6 +5892,7 @@ export const DovizFisiPage: React.FC = () => {
     setShowBankaTlHesabiModal(false);
     setShowDetayModal(false);
     setShowParaSaymaModal(false);
+    setShowParaUstuModal(false);
     setShowIstatistikModal(false);
     setShowArbitrajModal(false);
     setShowSearchModal(false);
@@ -6098,6 +6118,8 @@ export const DovizFisiPage: React.FC = () => {
       totalMasraf: totalMasraf,
       sonToplam: sonToplam,
       odemeTutari: sonToplam,
+      alinanPara: alinanPara,
+      paraUstu: paraUstu,
       bsmvTutari: calculatedBsmv,
       kmvTutari: totalKmv,
       komisyonTutari: totalKomisyon,
@@ -6136,7 +6158,7 @@ export const DovizFisiPage: React.FC = () => {
         message: `⚠️ Fiş yazdırılamadı: ${printErr?.message || "bilinmeyen hata"}`,
       });
     }
-  }, [lines, paraList, fisId, tip, tarih, saat, seriNo, belgeNo, unvan, vergiKimlikNo, detayIl, detayIlce, detayUyruk, detayPasaportNo, detayMeslek, detayCariTipi, vezneKod, istatistikKodu, totalTutar, sonToplam, calculatedBsmv, totalKmv, totalKomisyon, kurTuru, vezneList, vezneId, user, printers, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi, savedArbitrajInfo, isArbitrajActive]);
+  }, [lines, paraList, fisId, tip, tarih, saat, seriNo, belgeNo, unvan, vergiKimlikNo, detayIl, detayIlce, detayUyruk, detayPasaportNo, detayMeslek, detayCariTipi, vezneKod, istatistikKodu, totalTutar, sonToplam, alinanPara, paraUstu, calculatedBsmv, totalKmv, totalKomisyon, kurTuru, vezneList, vezneId, user, printers, dovizKurusSayisi, kurKurusSayisi, tlKurusSayisi, savedArbitrajInfo, isArbitrajActive]);
 
   const handleOpenPrintPreview = useCallback(() => {
     const usdPara = paraList.find((p) => p.kod?.toUpperCase() === "USD");
@@ -6253,6 +6275,8 @@ export const DovizFisiPage: React.FC = () => {
       totalMasraf: totalMasraf,
       sonToplam: sonToplam,
       odemeTutari: sonToplam,
+      alinanPara: alinanPara,
+      paraUstu: paraUstu,
       bsmvTutari: calculatedBsmv,
       kmvTutari: totalKmv,
       komisyonTutari: totalKomisyon,
@@ -6281,6 +6305,8 @@ export const DovizFisiPage: React.FC = () => {
     totalTutar,
     totalMasraf,
     sonToplam,
+    alinanPara,
+    paraUstu,
     calculatedBsmv,
     totalKmv,
     totalKomisyon,
@@ -6498,12 +6524,11 @@ export const DovizFisiPage: React.FC = () => {
       }
 
       if (isF12) {
-        const activeEl = document.activeElement as HTMLElement | null;
-        if (triggerAdjacentBinoculars(activeEl)) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
+        e.preventDefault();
+        e.stopPropagation();
+        closeAllModals();
+        setShowParaUstuModal(true);
+        return;
       }
 
       // F8 Detay Modalı açar
@@ -8640,6 +8665,16 @@ export const DovizFisiPage: React.FC = () => {
                 </Button>
                 <Button
                   size="sm"
+                  variant={paraUstu > 0 ? "success" : "light"}
+                  className={`px-2 py-0.5 border fw-bold ${paraUstu > 0 ? "text-white" : "text-dark"}`}
+                  style={{ fontSize: "11.5px" }}
+                  onClick={() => setShowParaUstuModal(true)}
+                  title="Para Üstü Hesabı (F12)"
+                >
+                  F12) Para Üstü{paraUstu > 0 ? ` (${formatTutar(paraUstu, tlKurusSayisi)} TL)` : ""}
+                </Button>
+                <Button
+                  size="sm"
                   variant="primary"
                   className="px-2.5 py-0.5 border text-white fw-bold shadow-xs d-inline-flex align-items-center gap-1"
                   style={{ fontSize: "11.5px", backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
@@ -10160,6 +10195,8 @@ export const DovizFisiPage: React.FC = () => {
         totalMasraf={printSnapshot?.totalMasraf ?? totalMasraf}
         sonToplam={printSnapshot?.sonToplam ?? sonToplam}
         odemeTutari={printSnapshot?.odemeTutari ?? sonToplam}
+        alinanPara={printSnapshot?.alinanPara ?? alinanPara}
+        paraUstu={printSnapshot?.paraUstu ?? paraUstu}
         bsmvTutari={printSnapshot?.bsmvTutari ?? calculatedBsmv}
         kmvTutari={printSnapshot?.kmvTutari ?? totalKmv}
         komisyonTutari={printSnapshot?.komisyonTutari ?? totalKomisyon}
@@ -10378,6 +10415,72 @@ export const DovizFisiPage: React.FC = () => {
       />
 
       {/* F9) Para Sayma (Banknot Say) Modalı */}
+      <ParaUstuModal
+        show={showParaUstuModal}
+        onClose={() => setShowParaUstuModal(false)}
+        fisToplamTutar={sonToplam}
+        initialAlinanPara={alinanPara}
+        initialParaUstu={paraUstu}
+        tlKurusSayisi={tlKurusSayisi}
+        onApply={({ alinanPara: ap, paraUstu: pu }) => {
+          setAlinanPara(ap);
+          setParaUstu(pu);
+        }}
+      />
+
+      {/* Kur Sapma Onay Popup Modalı */}
+      <Modal
+        show={kurSapmaPopup !== null}
+        onHide={() => {
+          const r = kurSapmaPopup?.resolve;
+          setKurSapmaPopup(null);
+          r?.(false);
+        }}
+        centered
+        backdrop="static"
+        style={{ zIndex: 1080 }}
+      >
+        <Modal.Header closeButton className="bg-warning-subtle py-2 px-3">
+          <Modal.Title className="fs-6 fw-bold text-dark d-flex align-items-center gap-2 mb-0">
+            <IconAlertTriangle size={18} className="text-warning" />
+            <span>Kur Farkı Onayı</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-3">
+          <div className="mb-2" style={{ whiteSpace: "pre-line", fontSize: "13.5px" }}>
+            {kurSapmaPopup?.uyarilar.join("\n")}
+          </div>
+          <div className="fw-semibold text-dark mt-2" style={{ fontSize: "13.5px" }}>
+            Yine de kaydedilsin mi?
+          </div>
+        </Modal.Body>
+        <Modal.Footer className="py-2 px-3 bg-light d-flex justify-content-end gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              const r = kurSapmaPopup?.resolve;
+              setKurSapmaPopup(null);
+              r?.(false);
+            }}
+          >
+            İptal
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            autoFocus
+            className="fw-bold px-3"
+            onClick={() => {
+              const r = kurSapmaPopup?.resolve;
+              setKurSapmaPopup(null);
+              r?.(true);
+            }}
+          >
+            Tamam
+          </Button>
+        </Modal.Footer>
+      </Modal>
       <ParaSaymaModal
         show={showParaSaymaModal}
         onClose={() => setShowParaSaymaModal(false)}

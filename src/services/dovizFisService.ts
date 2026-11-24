@@ -103,6 +103,8 @@ export interface DovizFisModel {
   toplamTutar: number;
   yuvarlama: number;
   odemeTutari: number;
+  alinanPara?: number;
+  paraUstu?: number;
   bankaAciklama?: string | null;
   bsmvTutar: number;
   iptal: boolean;
@@ -212,6 +214,8 @@ export interface SaveDovizFisPayload {
   kimlikBelgeDosyaAdi?: string | null;
   masakListesindeVar?: boolean;
   kullaniciId?: number;
+  alinanPara?: number;
+  paraUstu?: number;
   arbitrajSatirlar?: any[];
   satirlar: {
     satirNo?: number;

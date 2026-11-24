@@ -56,6 +56,8 @@ export interface DovizFisiPrintModalProps {
   totalMasraf?: number;
   sonToplam?: number;
   odemeTutari?: number;
+  alinanPara?: number;
+  paraUstu?: number;
   bsmvTutari?: number;
   kmvTutari?: number;
   komisyonTutari?: number;

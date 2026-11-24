@@ -482,6 +482,28 @@
       "cokSatir": true
     },
     {
+      "id": "alt-alis-pu",
+      "tip": "tablo",
+      "kosul": "{{toplam.paraUstuVar}}",
+      "daralt": true,
+      "x": 2,
+      "y": 434,
+      "g": 213.77,
+      "etiketG": 120,
+      "satirH": 11,
+      "boyut": 8.0,
+      "cerceve": "yok",
+      "hizaDeger": "right",
+      "satirlar": [
+        {
+          "etiket": "A.P.: {{toplam.alinanPara|tl}}",
+          "deger": "P.U.: {{toplam.paraUstu|tl}}",
+          "kalin": true,
+          "kosul": "!{{satim}}"
+        }
+      ]
+    },
+    {
       "id": "alt-kutu-satis",
       "tip": "kutu",
       "kosul": "{{satim}}",
@@ -563,6 +585,7 @@
       "id": "alt-satis-ap",
       "tip": "tablo",
       "kosul": "{{satim}}",
+      "daralt": true,
       "x": 2,
       "y": 453,
       "g": 213.77,
@@ -573,8 +596,8 @@
       "hizaDeger": "right",
       "satirlar": [
         [
-          "A.P.: {{toplam.genel|tl}}",
-          "P.U.: 0,00",
+          "A.P.: {{toplam.alinanPara|tl}}",
+          "P.U.: {{toplam.paraUstu|tl}}",
           true
         ]
       ]
