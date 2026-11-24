@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Modal, Form, Button } from "react-bootstrap";
-import { IconCash, IconX, IconCheck, IconRotate } from "@tabler/icons-react";
+import { IconCash, IconX, IconCheck } from "@tabler/icons-react";
 import { parseDecimal, formatTutar } from "../../utils/numericInput";
 
 export interface ParaUstuApplyPayload {
@@ -12,6 +12,7 @@ interface ParaUstuModalProps {
   show: boolean;
   onClose: () => void;
   fisToplamTutar: number;
+  isDuzeltmeMode?: boolean;
   initialAlinanPara?: number;
   initialParaUstu?: number;
   tlKurusSayisi?: number;
@@ -22,6 +23,7 @@ export const ParaUstuModal: React.FC<ParaUstuModalProps> = ({
   show,
   onClose,
   fisToplamTutar,
+  isDuzeltmeMode = false,
   initialAlinanPara = 0,
   initialParaUstu = 0,
   tlKurusSayisi = 2,
@@ -32,9 +34,9 @@ export const ParaUstuModal: React.FC<ParaUstuModalProps> = ({
 
   useEffect(() => {
     if (!show) return;
-    if (initialAlinanPara > 0) {
+    if (isDuzeltmeMode && initialAlinanPara > 0) {
       setAlinanParaStr(formatTutar(initialAlinanPara, tlKurusSayisi));
-    } else if (initialParaUstu > 0 && fisToplamTutar > 0) {
+    } else if (isDuzeltmeMode && initialParaUstu > 0 && fisToplamTutar > 0) {
       setAlinanParaStr(formatTutar(fisToplamTutar + initialParaUstu, tlKurusSayisi));
     } else {
       setAlinanParaStr("");
@@ -43,50 +45,51 @@ export const ParaUstuModal: React.FC<ParaUstuModalProps> = ({
       alinanInputRef.current?.focus();
       alinanInputRef.current?.select();
     }, 80);
-  }, [show, initialAlinanPara, initialParaUstu, fisToplamTutar, tlKurusSayisi]);
+  }, [show, isDuzeltmeMode, initialAlinanPara, initialParaUstu, fisToplamTutar, tlKurusSayisi]);
 
   const alinanNum = Math.max(0, parseDecimal(alinanParaStr));
   const toplamNum = Math.max(0, Number(fisToplamTutar) || 0);
   const paraUstuNum = alinanNum > toplamNum ? Math.round((alinanNum - toplamNum) * 100) / 100 : 0;
   const eksikNum = alinanNum > 0 && alinanNum < toplamNum ? Math.round((toplamNum - alinanNum) * 100) / 100 : 0;
+  const bosMu = alinanParaStr.trim() === "" || alinanNum === 0;
 
-  const handleKaydet = useCallback(() => {
-    onApply({
-      alinanPara: alinanNum,
-      paraUstu: paraUstuNum,
-    });
-    onClose();
-  }, [alinanNum, paraUstuNum, onApply, onClose]);
+  const handleTamamiNakit = useCallback(() => {
+    onApply({ alinanPara: toplamNum, paraUstu: 0 });
+  }, [toplamNum, onApply]);
 
-  const handleTemizle = useCallback(() => {
-    setAlinanParaStr("");
-    onApply({ alinanPara: 0, paraUstu: 0 });
-    onClose();
-  }, [onApply, onClose]);
+  const handleOnayla = useCallback(() => {
+    if (bosMu) {
+      onApply({ alinanPara: toplamNum, paraUstu: 0 });
+    } else {
+      onApply({ alinanPara: alinanNum, paraUstu: paraUstuNum });
+    }
+  }, [bosMu, toplamNum, alinanNum, paraUstuNum, onApply]);
 
   useEffect(() => {
     if (!show) return;
+    const openedAt = Date.now();
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat || Date.now() - openedAt < 250) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
         onClose();
-      } else if (e.key === "F1" || e.key === "Enter") {
+      } else if (e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
-        handleKaydet();
+        handleOnayla();
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [show, onClose, handleKaydet]);
+  }, [show, onClose, handleOnayla]);
 
   return (
-    <Modal show={show} onHide={onClose} centered backdrop="static" size="sm" style={{ zIndex: 1065 }}>
+    <Modal show={show} onHide={onClose} centered backdrop="static" size="sm" style={{ zIndex: 1085 }}>
       <Modal.Header closeButton className="py-2 px-3 bg-light">
         <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2 mb-0">
           <IconCash size={18} className="text-success" />
-          <span>Para Üstü Hesabı (F12)</span>
+          <span>Para Üstü</span>
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-3">
@@ -108,15 +111,20 @@ export const ParaUstuModal: React.FC<ParaUstuModalProps> = ({
             size="sm"
             type="text"
             inputMode="decimal"
-            placeholder="0,00"
+            placeholder="Boş = Tamamı nakit ödendi"
             value={alinanParaStr}
             onChange={(e) => setAlinanParaStr(e.target.value)}
             className="text-end fw-bold font-monospace border-primary"
             style={{ fontSize: "15px" }}
           />
+          <div className="text-muted mt-1" style={{ fontSize: "11px" }}>
+            {isDuzeltmeMode
+              ? "Mevcut tutarı kaydetmek için Enter'a basın veya yeni tutar girin."
+              : "Tamamı nakit ödendiyse boş bırakıp doğrudan Enter'a basabilirsiniz."}
+          </div>
         </div>
 
-        <div className="p-2 rounded border bg-light mt-3">
+        <div className="p-2 rounded border bg-light mt-2">
           <div className="d-flex justify-content-between align-items-center">
             <span className="small fw-bold text-secondary">Para Üstü (TL):</span>
             <span className={`fs-5 fw-bold font-monospace ${paraUstuNum > 0 ? "text-success" : "text-dark"}`}>
@@ -131,16 +139,22 @@ export const ParaUstuModal: React.FC<ParaUstuModalProps> = ({
           )}
         </div>
       </Modal.Body>
-      <Modal.Footer className="py-2 px-3 bg-light d-flex justify-content-between">
-        <Button size="sm" variant="outline-secondary" onClick={handleTemizle} className="d-inline-flex align-items-center gap-1">
-          <IconRotate size={14} /> Sıfırla
+      <Modal.Footer className="py-2 px-3 bg-light d-flex justify-content-between flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline-success"
+          onClick={handleTamamiNakit}
+          className="fw-semibold"
+          title="Alınan parayı fiş toplamına eşitle (Para üstü 0,00) ve yazdır"
+        >
+          Tamamı Nakit Ödendi
         </Button>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 ms-auto">
           <Button size="sm" variant="secondary" onClick={onClose} className="d-inline-flex align-items-center gap-1">
             <IconX size={14} /> İptal
           </Button>
-          <Button size="sm" variant="success" onClick={handleKaydet} className="d-inline-flex align-items-center gap-1 fw-bold">
-            <IconCheck size={14} /> Kaydet (Enter)
+          <Button size="sm" variant="success" onClick={handleOnayla} className="d-inline-flex align-items-center gap-1 fw-bold">
+            <IconCheck size={14} /> {bosMu ? "Tamamı Nakit (Enter)" : "Kaydet & Yazdır (Enter)"}
           </Button>
         </div>
       </Modal.Footer>

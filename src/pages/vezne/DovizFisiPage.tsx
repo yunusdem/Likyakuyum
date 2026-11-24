@@ -915,7 +915,9 @@ export const DovizFisiPage: React.FC = () => {
   const tlHesabiTargetRowRef = useRef<number | "new">("new");
   const [showParaSaymaModal, setShowParaSaymaModal] = useState<boolean>(false);
   const [banknotSaymaCounts, setBanknotSaymaCounts] = useState<Record<string, Record<number, number>>>({});
-  const [showParaUstuModal, setShowParaUstuModal] = useState<boolean>(false);
+  const [paraUstuPrompt, setParaUstuPrompt] = useState<{
+    resolve: (res: { alinanPara: number; paraUstu: number } | null) => void;
+  } | null>(null);
   const [alinanPara, setAlinanPara] = useState<number>(0);
   const [paraUstu, setParaUstu] = useState<number>(0);
   const [kurSapmaPopup, setKurSapmaPopup] = useState<{
@@ -1265,7 +1267,7 @@ export const DovizFisiPage: React.FC = () => {
     setBankaAciklama("");
     setBankaDagitimSatirlari([]);
     setVezneNakitTutari(null);
-    setShowParaUstuModal(false);
+    setParaUstuPrompt(null);
     setAlinanPara(0);
     setParaUstu(0);
     setCurrentIndex(-1);
@@ -4802,6 +4804,24 @@ export const DovizFisiPage: React.FC = () => {
     }
 
     try {
+      // F10 ile Satış fişi kaydedilirken (arbitraj değilse) Para Üstü modalını aç:
+      // Kullanıcı isterse alınan parayı girer, isterse tamamı nakit ödendiyse Enter ile geçer.
+      const isSatisFisi = Number(tip) === 1;
+      let effectiveAlinanPara = isSatisFisi && !isArbitrajActive ? (Number(alinanPara) || 0) : 0;
+      let effectiveParaUstu = isSatisFisi && !isArbitrajActive ? (Number(paraUstu) || 0) : 0;
+      if (andDirectPrint && isSatisFisi && !isArbitrajActive) {
+        const puResult = await new Promise<{ alinanPara: number; paraUstu: number } | null>((resolve) => {
+          setParaUstuPrompt({ resolve });
+        });
+        if (!puResult) {
+          return;
+        }
+        effectiveAlinanPara = puResult.alinanPara;
+        effectiveParaUstu = puResult.paraUstu;
+        setAlinanPara(effectiveAlinanPara);
+        setParaUstu(effectiveParaUstu);
+      }
+
       setIsSaving(true);
       let finalIlId = (detayIlId && Number(detayIlId) > 0) ? Number(detayIlId) : undefined;
       if (!finalIlId && detayIl.trim()) {
@@ -5065,8 +5085,8 @@ export const DovizFisiPage: React.FC = () => {
           gmFaturaNo: gmFaturaNo.trim() || undefined,
           toplamTutar: Number(totalTutar) || 0,
           odemeTutari: vezneNakitTutari !== null ? vezneNakitTutari : (Number(sonToplam) || 0),
-          alinanPara: Number(alinanPara) || 0,
-          paraUstu: Number(paraUstu) || 0,
+          alinanPara: effectiveAlinanPara,
+          paraUstu: effectiveParaUstu,
           bankaAciklama: bankaAciklama.trim() || undefined,
           yuvarlama: 0,
           satirlar: validLines.map((l, idx) => {
@@ -5196,8 +5216,8 @@ export const DovizFisiPage: React.FC = () => {
         totalMasraf: totalMasraf,
         sonToplam: sonToplam,
         odemeTutari: sonToplam,
-        alinanPara: alinanPara,
-        paraUstu: paraUstu,
+        alinanPara: effectiveAlinanPara,
+        paraUstu: effectiveParaUstu,
         bsmvTutari: calculatedBsmv,
         kmvTutari: totalKmv,
         komisyonTutari: totalKomisyon,
@@ -5892,7 +5912,6 @@ export const DovizFisiPage: React.FC = () => {
     setShowBankaTlHesabiModal(false);
     setShowDetayModal(false);
     setShowParaSaymaModal(false);
-    setShowParaUstuModal(false);
     setShowIstatistikModal(false);
     setShowArbitrajModal(false);
     setShowSearchModal(false);
@@ -6524,11 +6543,12 @@ export const DovizFisiPage: React.FC = () => {
       }
 
       if (isF12) {
-        e.preventDefault();
-        e.stopPropagation();
-        closeAllModals();
-        setShowParaUstuModal(true);
-        return;
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (triggerAdjacentBinoculars(activeEl)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
       }
 
       // F8 Detay Modalı açar
@@ -8665,16 +8685,6 @@ export const DovizFisiPage: React.FC = () => {
                 </Button>
                 <Button
                   size="sm"
-                  variant={paraUstu > 0 ? "success" : "light"}
-                  className={`px-2 py-0.5 border fw-bold ${paraUstu > 0 ? "text-white" : "text-dark"}`}
-                  style={{ fontSize: "11.5px" }}
-                  onClick={() => setShowParaUstuModal(true)}
-                  title="Para Üstü Hesabı (F12)"
-                >
-                  F12) Para Üstü{paraUstu > 0 ? ` (${formatTutar(paraUstu, tlKurusSayisi)} TL)` : ""}
-                </Button>
-                <Button
-                  size="sm"
                   variant="primary"
                   className="px-2.5 py-0.5 border text-white fw-bold shadow-xs d-inline-flex align-items-center gap-1"
                   style={{ fontSize: "11.5px", backgroundColor: "#2563eb", borderColor: "#1d4ed8" }}
@@ -10416,15 +10426,21 @@ export const DovizFisiPage: React.FC = () => {
 
       {/* F9) Para Sayma (Banknot Say) Modalı */}
       <ParaUstuModal
-        show={showParaUstuModal}
-        onClose={() => setShowParaUstuModal(false)}
+        show={paraUstuPrompt !== null}
+        onClose={() => {
+          const r = paraUstuPrompt?.resolve;
+          setParaUstuPrompt(null);
+          r?.(null);
+        }}
         fisToplamTutar={sonToplam}
+        isDuzeltmeMode={isDuzeltmeMode}
         initialAlinanPara={alinanPara}
         initialParaUstu={paraUstu}
         tlKurusSayisi={tlKurusSayisi}
         onApply={({ alinanPara: ap, paraUstu: pu }) => {
-          setAlinanPara(ap);
-          setParaUstu(pu);
+          const r = paraUstuPrompt?.resolve;
+          setParaUstuPrompt(null);
+          r?.({ alinanPara: ap, paraUstu: pu });
         }}
       />
 

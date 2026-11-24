@@ -244,8 +244,8 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
   const qr = erisimAdresi || JSON.stringify({ belgeNo, tip: tipAdi, tarih, vkn: firma.vkn, musteri: kimlik, tutar: yuvarla(genel), ettn: ettn || null });
   const subeKodu = firma.subeKodu || "1";
 
-  const paraUstu = isArbitraj ? null : paraUstuHam;
-  const alinanPara = !isArbitraj && alinanParaHam > 0 ? yuvarla(alinanParaHam) : genel;
+  const paraUstu = !satim || isArbitraj ? null : paraUstuHam;
+  const alinanPara = satim && !isArbitraj && alinanParaHam > 0 ? yuvarla(alinanParaHam) : genel;
 
   return {
     belgeTuru: "DOVIZ_FIS", fisId: Number(g.fisId) || 0, satim, fisTipi: satim ? 1 : 0, tipAdi,
@@ -264,7 +264,7 @@ export function dovizFisVerisi(g: DovizFisGirdisi, firma: FirmaKimlik, kayit: { 
       mersisSicil: [firma.mersis, firma.ticaretSicilNo].filter(Boolean).join(" / "),
     },
     musteri, satirlar,
-    toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv: kmvYok ? null : kmv, kmvVar: satim && kmv > 0, masraf, sonToplam, genel, alinanPara, paraUstu, paraUstuVar: !isArbitraj && paraUstuHam > 0, yaziyla: fisYaziyla(sonToplam) },
+    toplam: { tl: tutar, tutar, bsmv, bsmvVar: satim && bsmv > 0, komisyon, kmv: kmvYok ? null : kmv, kmvVar: satim && kmv > 0, masraf, sonToplam, genel, alinanPara, paraUstu, paraUstuVar: satim && !isArbitraj && paraUstuHam > 0, yaziyla: fisYaziyla(sonToplam) },
     basamak, qr, erisimAdresi, onizleme: false, iptal: false,
   };
 }
