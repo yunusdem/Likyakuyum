@@ -190,7 +190,7 @@ export function metinGenisligi(metin, boyut, yaziTipi = "sans", kalin = false) {
     let t = 0;
     for (const p of kalinParcala(metin))
         for (const h of p.metin)
-            t += mono ? 600 : harfGenisligi(h, kalin || p.kalin) * oran;
+            t += mono ? (kalin || p.kalin ? 635 : 615) : harfGenisligi(h, kalin || p.kalin) * oran;
     return (t * boyut) / 1000;
 }
 /**

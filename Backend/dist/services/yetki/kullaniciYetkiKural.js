@@ -669,6 +669,11 @@ const GUMUS_KODLARI = ["GUMUS", "GÜMÜŞ", "HAS GÜMÜŞ", "HAS GUMUS", "GMS"];
  * gümüş satırı altın kuruna çekilirdi. (ortak alan denetimi 19.11.2026, #34)
  * Fişin başlık kuru tek değerdir, gişe alış–satış aralığı değildir: o yolda alis/satis boş döner ("Gişe kuru dışında olabilir"
  * kuralı başlık kurundan alınan satıra uygulanmaz; Esnek / Yüzde yine başlık kurunu esas alır). (#21)
+ * Ziynet: Kullanıcı Tanımları'ndaki "Altın hesaplama şekli" (yusuf, göç 035) Has Kuru ise Sarraf fişi ziynet satırını ve ödeme
+ * satırını has kuruyla (adet × has katsayısı × has kuru), Ürün Kuru ise ürünün kendi kuruyla fiyatlar; Hızlı Satış ve e-Banka
+ * ziynet satırını kendi kuruyla gönderir. Yalnız kendi kuru denetlenince "Yok" yetkili kasiyerin has kurlu ziynet satırı çeyrek
+ * fiyatına çekilip tutarı katsayı oranında şişiyordu: girilen kur Has Kuru'na kendi kurundan yakınsa has kuruyla denetlenir
+ * (gümüşteki gibi). Adından ziynet olan kart (türü boş / Döviz) ön yüzdeki gibi ziynet sayılır. (Yusuf commit denetimi 23.11.2026)
  */
 export const sarrafGiseKuru = (kurlar, urun, tip, fiHasKuru, fiGumusKuru, girilen) => {
     if (!urun)
@@ -686,8 +691,8 @@ export const sarrafGiseKuru = (kurlar, urun, tip, fiHasKuru, fiGumusKuru, girile
     };
     const urunTipi = Number(urun.urunTipi);
     const gumus = urunTipi === 2 || kod.includes("GUMUS") || kod.includes("GÜMÜŞ") || buyuk(urun.ad).includes("GÜMÜŞ");
-    const isZiynet = urunTipi === 3;
-    const isPara = urunTipi === 0;
+    const isZiynet = urunTipi === 3 || (urunTipi !== 1 && urunTipi !== 2 && !gumus && ziynetAdiMi(urun.kod, urun.ad));
+    const isPara = urunTipi === 0 && !isZiynet;
     // Altın (urunTipi === 1 veya ziynet/döviz harici) ve gümüş:
     // Sarraf fişinde altın ve gümüş kalemleri her zaman Has Kuru ile işlem görür! (#34)
     const isAltin = urunTipi === 1 || (!isZiynet && !isPara && !gumus);
@@ -705,11 +710,47 @@ export const sarrafGiseKuru = (kurlar, urun, tip, fiHasKuru, fiGumusKuru, girile
             return gumusKuru;
         return has;
     }
-    // Sadece Ziynet veya Döviz ise ürünün anlık fiyat listesindeki kendi kuru denetlenir
+    // Ziynet veya Döviz ise ürünün anlık fiyat listesindeki kendi kuru denetlenir
     const kendi = satir(kurlar.find((k) => (urun.paraId && k.paraId === urun.paraId) || (kod && buyuk(k.kod) === kod)));
+    if (isZiynet && kendi) {
+        // Has Kuru ile fiyatlanan ziynet (Altın hesaplama şekli: Has Kuru): girilen kur has kuruna yakınsa has kuruyla denetlenir
+        const has = fiHasKuru && fiHasKuru > 0
+            ? { kur: fiHasKuru, alis: null, satis: null }
+            : satir(kurlar.find((k) => HAS_KODLARI.includes(buyuk(k.kod))));
+        const k = Number(girilen) || 0;
+        if (has && k > 0 && Math.abs(k - has.kur) < Math.abs(k - kendi.kur))
+            return has;
+    }
     if (kendi)
         return kendi;
     return null;
+};
+/** Döviz kodları: adından ziynet aranmaz */
+const DOVIZ_KODLARI_ZIYNET_DISI = ["TL", "TRY", "TRL", "USD", "EUR", "GBP", "CHF", "AUD", "CAD", "JPY", "SAR", "AED", "RUB", "KWD", "NOK", "DKK", "SEK"];
+const ZIYNET_KELIMELERI = [
+    "ÇEYREK", "CEYREK", "YARIM", "TAM ALTIN", "TAMALTIN", "TAM_ALTIN",
+    "ATA ALTIN", "ATA_ALTIN", "ATALIRA", "ATA LİRA", "ATA LIRA", "ATACEYREK", "ATA ÇEYREK", "ATA YARIM", "ATAYARIM",
+    "CUMHURİYET", "CUMHURIYET", "GREMSE", "KRAMSE", "ZİYNET", "ZIYNET", "SARRAFİYE", "SARRAFIYE",
+    "REŞAT", "RESAT", "HAMİT", "HAMIT", "AZİZ", "AZIZ", "BEŞLİ", "BESLI", "İKİBUÇUK", "IKIBUCUK", "2.5 ALTIN", "2,5 ALTIN",
+];
+const ZIYNET_KODLARI = ["CEYREK", "ÇEYREK", "YARIM", "TAM", "ATA", "GREMSE", "ZIYNET", "BESLI", "BEŞLİ", "CUMHURIYET", "RESAT", "REŞAT"];
+/**
+ * Türü Altın / Gümüş / Ziynet olarak tanımlanmamış kartın adından / kodundan ziynet mi (SarrafFisiPage isZiynetProduct'ın
+ * kod–ad kuralı): döviz kodu, gümüş, külçe, hurda, bilezik ve has altın ziynet değildir.
+ */
+export const ziynetAdiMi = (kodHam, adHam) => {
+    const k = String(kodHam ?? "").trim().toUpperCase();
+    const n = String(adHam ?? "").trim().toUpperCase();
+    if (DOVIZ_KODLARI_ZIYNET_DISI.includes(k))
+        return false;
+    const ikisi = (w) => k.includes(w) || n.includes(w);
+    if (["GUMUS", "GÜMÜŞ", "KULCE", "KÜLÇE", "HURDA", "BILEZIK", "BİLEZİK", "HAS ALTIN"].some(ikisi))
+        return false;
+    if (k === "24" || k === "HAS" || k === "24AYAR")
+        return false;
+    return ZIYNET_KELIMELERI.some(ikisi)
+        || ZIYNET_KODLARI.some((c) => k === c || k.startsWith(c + "_") || k.endsWith("_" + c))
+        || ["ÇEY", "CEY", "YAR", "ATA", "GRE", "ZIY", "CUMH"].some((p) => k.startsWith(p));
 };
 /**
  * Farklı dövizli (çapraz) emanet dekontta iki tarafın karşılığı (miktar × satır kuru) firma toleransı içinde eşit olmalı;

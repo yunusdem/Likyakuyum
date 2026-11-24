@@ -1,5 +1,5 @@
 import { TL_PARA_SQL } from "./raporOrtak.js";
-import { PERAKENDE_SATIR_PARASI, belgeTablolari } from "./kaynak.js";
+import { PERAKENDE_SATIR_PARASI, belgeTablolari, sarrafAdetliKurSql } from "./kaynak.js";
 /**
  * Sektör bölümleri için birleşik fiş kaynağı (docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md K1 / K10 / B22, docs/RAPOR_ESITLEME_UYGULAMA.md 1.7).
  * Fiş okuyan raporlar `dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S` yerine buradaki `F` ve `S` türetilmiş tablolarını kullanır; kolon adları
@@ -81,11 +81,13 @@ export async function fisKaynagi(pool, p, secenek) {
         OUTER APPLY (SELECT SUM(ISNULL(SX.TUTAR,0)) tutar FROM dbo.TODVZ_SARRAF_FISI_SATIRI SX WHERE SX.SARRAF_FISI_ID=SF.SARRAF_FISI_ID AND SX.URUN_ID IS NOT NULL) ST`);
         const urunTipi = k.satirUrunTipi && k.paraUrunTipi ? "ISNULL(SS.URUN_TIPI, PX.URUN_TIPI)" : k.satirUrunTipi ? "SS.URUN_TIPI" : k.paraUrunTipi ? "PX.URUN_TIPI" : "NULL";
         const hasKuru = k.hasKuru ? "ISNULL(SF.ALTIN_HAS_KURU,0)" : "0";
+        // Adetli (tür 0 / 3) satırın miktarı; kur ziynette has kuruyla kesilmiş satırda tutar ÷ adet (sarrafAdetliKurSql)
+        const SARRAF_ADET = "CASE WHEN ISNULL(SS.ADET,0)>0 THEN SS.ADET ELSE CASE WHEN ISNULL(SS.MIKTAR,0)>0 THEN SS.MIKTAR ELSE 1 END END";
         sParcalar.push(`SELECT ${kayma}+SS.SARRAF_FISI_ID, CAST(2 AS int), SS.SATIR_NO, SS.URUN_ID,
       CASE WHEN ${urunTipi} IN (1,2) THEN ISNULL(SS.MIKTAR,0)
            WHEN ${urunTipi} IN (0,3) THEN CASE WHEN ISNULL(SS.ADET,0)>0 THEN SS.ADET ELSE CASE WHEN ISNULL(SS.MIKTAR,0)>0 THEN SS.MIKTAR ELSE 1 END END
            ELSE ISNULL(SS.MIKTAR,0) END,
-      ISNULL(SS.KUR,0), CAST(0 AS float), ISNULL(SS.TUTAR,0), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float),
+      ${sarrafAdetliKurSql("ISNULL(SS.KUR,0)", SARRAF_ADET, "SS.TUTAR", urunTipi)}, CAST(0 AS float), ISNULL(SS.TUTAR,0), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float),
       CASE ${k.iscilikTutari ? "WHEN ISNULL(SS.ISCILIK_TUTARI,0)>0 THEN SS.ISCILIK_TUTARI " : ""}WHEN ISNULL(SS.ISCILIK_HAS_GRAM,0)>0 THEN SS.ISCILIK_HAS_GRAM*${hasKuru}
            WHEN ISNULL(SS.ISCILIK_MIKTARI,0)>0 THEN SS.ISCILIK_MIKTARI ELSE 0 END,
       CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float)

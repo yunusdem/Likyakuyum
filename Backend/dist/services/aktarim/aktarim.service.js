@@ -20,7 +20,8 @@ import { ciftKontrolleri, digerVeritabaniKurali } from "./aktarimCift.js";
 import { aktarimBildirimi, sonKontrol, sonKontrolOzeti } from "./aktarimSonKontrol.js";
 import { firmaDbIleCalistir } from "../admin/firmaBaglanti.service.js";
 import { ciftSecenekleri, standartEkAdimlar } from "./aktarimCli.js";
-import { BOS_GECMIS, canliFirmaEngelleri, eBelgeGonderimi, izYenile, sonradanKullanim } from "./aktarimIzi.js";
+import { BOS_GECMIS, canliFirmaEngelleri, eBelgeGonderimi, gonderilenEBelgeSayisi, izYenile, sonradanKullanim } from "./aktarimIzi.js";
+import { kilitKaldir, kilitOku, kilitYaz, sifirlanmazMi } from "./aktarimKilit.js";
 /**
  * Admin paneli: firmanın içinden eski programın yedeğini yükleyip aktarma (docs/VERITABANI_TASIMA_YOL_HARITASI.md, K6).
  * Yüklemeler <YEDEK_KLASORU>\Aktarim altında tutulur (SQL Server bu klasörü okuyabilmeli, bölüm 6).
@@ -270,11 +271,153 @@ export const firmaKullanimi = async (pool, firmaDb, plan) => {
     return e;
 };
 const firmaKodlari = async () => new Map((await FirmaService.listele()).map((f) => [f.firmaId, f.firmaKodu]));
+const kilitZamani = (z) => {
+    const d = new Date(z);
+    return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" });
+};
+/**
+ * Kilit açıkken (§13 K25) canlı firma kilitleri (K22 e-belge, K24 sonradan kullanım) engel değil uyarıdır; firmadaki bizim kayıtlar
+ * (FIRMADA_KAYIT) da aktarımla silinir. En başa kilidin kendisi ve aktarımın ne yapacağı yazılır.
+ */
+export const kilitAcikEngeller = (engeller, kilit, sifirlanacakTablo) => {
+    const donusmus = engeller.map((e) => {
+        if (e.kod === "CANLI_FIRMA") {
+            const mesaj = e.mesaj.replace(/ Firma kullanımda:[\s\S]*$/, "").replace(/;? ?bu firmaya aktarım yapılamaz\.?$/, ".");
+            return { kod: "CANLI_FIRMA", seviye: "UYARI", mesaj: `Kilit açık olduğu için engel değil: ${mesaj}` };
+        }
+        if (e.kod === "FIRMADA_KAYIT") {
+            const liste = /\(([^)]*)\)/.exec(e.mesaj)?.[1];
+            return { kod: "FIRMADA_KAYIT", seviye: "UYARI", mesaj: `Firmada bizim sistemde girilmiş kayıtlar var${liste ? ` (${liste})` : ""}; kilit açık olduğu için aktarım bunları da silecek.` };
+        }
+        return e;
+    });
+    return [
+        {
+            kod: "KILIT_ACIK",
+            seviye: "UYARI",
+            mesaj: `Aktarım kilidi açık (${kilit.acan || "?"}, ${kilitZamani(kilit.zaman)}${kilit.neden ? `; neden: ${kilit.neden}` : ""}). Aktarım bu firmadaki BÜTÜN eski verileri ` +
+                `ve ayarları silip yedektekileri yazacak: yedekten gelmeyen ${sifirlanacakTablo} tablo firmanın ilk açıldığı hâline döner (e-Belge/ICE, POS, fiş tasarımı, ` +
+                `kullanıcı görünümü, kur ayarları yeniden girilir). Giriş hesapları korunur. Aktarımdan önce firmanın yedeği alınır.`,
+        },
+        ...donusmus,
+    ];
+};
+/** K27: firmanın kendisi + aynı müşteri numarasındaki (silinmemiş, bulut) eşleri. Müşteri numarası yoksa yalnız kendisi. */
+const kilitGrubu = async (firma) => {
+    if (!firma.musteriNo)
+        return [firma];
+    const tum = await FirmaService.listele();
+    const esler = tum.filter((f) => f.firmaId !== firma.firmaId && f.musteriNo === firma.musteriNo && f.baglantiModu === "cloud" && f.durum !== "SILINDI" && f.durum !== "SILINECEK");
+    return [firma, ...esler];
+};
+const dbVar = async (pool, db) => (await new sql.Request(pool).query(`SELECT DB_ID(${n(db)}) AS I`)).recordset[0].I !== null;
 export class AktarimService {
     /** Firmanın kendi SQL girişiyle (uygulamanın o firma için kullandığı bağlantı) sorgu; aktarım sonrası "doğru yer" kontrolü kullanır. */
     static firmaIleOku = firmaDbIleCalistir;
     /** Merkez işlem kaydındaki son başarılı aktarımın zamanı (canlı firma kilidi, rapor dosyası kalmamışsa). */
     static aktarimKaydi = (firmaId) => AdminLogSqlRepository.sonIslemZamani("VERI_AKTARILDI", "FIRMA", firmaId);
+    /** Kilit açık aktarımda firmanın döndürüleceği şablon veritabanı (yeni firmalar bundan açılır; klon.service LIKYA_SABLON) */
+    static sablonDb = "LIKYA_SABLON";
+    // ---------------------------------------------------------------- aktarım kilidi (§13, K25–K28)
+    static async kilitDurumu(firmaId) {
+        if (!klonYapilandirildiMi())
+            throw ApiError.badRequest("Bu sunucuda veritabanı işlemleri kapalı (klonlama hesabı tanımlı değil).");
+        const firma = await aktarilabilirFirma(firmaId);
+        const grup = await kilitGrubu(firma);
+        const pool = await havuz();
+        try {
+            const satirlar = [];
+            let kendi = null;
+            for (const f of grup) {
+                const var_ = await dbVar(pool, f.dbName);
+                const k = var_ ? await kilitOku(pool, f.dbName).catch(() => null) : null;
+                if (f.firmaId === firmaId)
+                    kendi = k;
+                const eb = var_ ? await gonderilenEBelgeSayisi(pool, f.dbName).catch(() => null) : null;
+                satirlar.push({ firmaId: f.firmaId, firmaKodu: f.firmaKodu, unvan: f.unvan, dbName: f.dbName, acik: !!k, eBelgeGonderilen: eb });
+            }
+            return {
+                acik: !!kendi,
+                acan: kendi?.acan ?? null,
+                zaman: kendi?.zaman ?? null,
+                neden: kendi?.neden ?? null,
+                grup: satirlar,
+                eBelgeGonderilen: satirlar.find((s) => s.firmaId === firmaId)?.eBelgeGonderilen ?? null,
+            };
+        }
+        finally {
+            await pool.close().catch(() => undefined);
+        }
+    }
+    /** Kilidi açar (onay: firma kodu, neden zorunlu). K27: aynı müşteri numarasındaki eşlerin de kilidi açılır. */
+    static async kilitAc(yapan, firmaId, girdi) {
+        if (!klonYapilandirildiMi())
+            throw ApiError.badRequest("Bu sunucuda veritabanı işlemleri kapalı (klonlama hesabı tanımlı değil).");
+        const firma = await aktarilabilirFirma(firmaId);
+        if (String(girdi.onay || "").trim().toUpperCase() !== firma.firmaKodu.toUpperCase())
+            throw ApiError.badRequest("Onay için firma kodunu doğru yazın.");
+        const neden = String(girdi.neden || "").trim();
+        if (neden.length < 5)
+            throw ApiError.badRequest("Kilidi neden açtığınızı yazın (en az 5 karakter).");
+        const grup = await kilitGrubu(firma);
+        if (grup.some((f) => calisanFirmalar.has(f.firmaId)))
+            throw ApiError.conflict("Firmada ya da eşinde çalışan bir aktarım işi var; bitmesini bekleyin.");
+        const bilgi = { acan: yapan.kullaniciAdi, zaman: new Date().toISOString(), neden };
+        const pool = await havuz();
+        try {
+            for (const f of grup) {
+                if (!(await dbVar(pool, f.dbName))) {
+                    if (f.firmaId === firmaId)
+                        throw ApiError.badRequest(`Firmanın veritabanı (${f.dbName}) sunucuda yok.`);
+                    continue;
+                }
+                await kilitYaz(pool, f.dbName, bilgi);
+                await AdminLogSqlRepository.islemLogu({
+                    adminId: yapan.adminId,
+                    islem: "AKTARIM_KILIDI_ACILDI",
+                    hedefTur: "FIRMA",
+                    hedefId: f.firmaId,
+                    yeni: { neden, dbName: f.dbName, acilanFirma: firma.firmaKodu, grup: grup.map((x) => x.firmaKodu) },
+                }).catch(() => undefined);
+            }
+        }
+        finally {
+            await pool.close().catch(() => undefined);
+        }
+        return AktarimService.kilitDurumu(firmaId);
+    }
+    /** Kilidi kapatır; K27: aynı müşteri numarasındaki eşlerin kilidi de kapanır. Sonraki aktarımlarda kullanım / e-belge kilitleri yine uygulanır. */
+    static async kilitKapat(yapan, firmaId) {
+        if (!klonYapilandirildiMi())
+            throw ApiError.badRequest("Bu sunucuda veritabanı işlemleri kapalı (klonlama hesabı tanımlı değil).");
+        const firma = await aktarilabilirFirma(firmaId);
+        const grup = await kilitGrubu(firma);
+        if (grup.some((f) => calisanFirmalar.has(f.firmaId)))
+            throw ApiError.conflict("Firmada ya da eşinde çalışan bir aktarım işi var; bitmesini bekleyin.");
+        const pool = await havuz();
+        try {
+            for (const f of grup) {
+                if (!(await dbVar(pool, f.dbName)))
+                    continue;
+                const onceki = await kilitOku(pool, f.dbName).catch(() => null);
+                if (!onceki)
+                    continue;
+                await kilitKaldir(pool, f.dbName);
+                await AdminLogSqlRepository.islemLogu({
+                    adminId: yapan.adminId,
+                    islem: "AKTARIM_KILIDI_KAPATILDI",
+                    hedefTur: "FIRMA",
+                    hedefId: f.firmaId,
+                    eski: { acan: onceki.acan, zaman: onceki.zaman, neden: onceki.neden },
+                    yeni: { dbName: f.dbName, kapatilanFirma: firma.firmaKodu },
+                }).catch(() => undefined);
+            }
+        }
+        finally {
+            await pool.close().catch(() => undefined);
+        }
+        return AktarimService.kilitDurumu(firmaId);
+    }
     // ---------------------------------------------------------------- yükleme (Faz 1)
     static async yuklemeBaslat(firmaId, girdi) {
         await aktarilabilirFirma(firmaId);
@@ -373,6 +516,11 @@ export class AktarimService {
                         sonuc.engeller.push(...(await firmaKullanimi(pool, firma.dbName, plan)));
                         // Canlı firma kilidi (K24): son aktarımdan sonra firmada kayıt girildiyse aktarım yapılamaz
                         sonuc.engeller.push(...(await sonradanKullanim(pool, firma.dbName, await aktarimGecmisi(y, firmaId))));
+                        // Kilit açıksa (§13 K25) bu kilitler uyarıya döner; aktarım firmayı sıfırlayıp yazar
+                        const kilit = await kilitOku(pool, firma.dbName).catch(() => null);
+                        if (kilit) {
+                            sonuc.engeller = kilitAcikEngeller(sonuc.engeller, kilit, plan.tablolar.filter((t) => t.islem === "SABLON_KORU" && !sifirlanmazMi(t.tablo)).length);
+                        }
                         sonuc.plan = {
                             kopyalanacak: plan.tablolar.filter((t) => t.islem === "KOPYALA").length,
                             sablonTemizlenecek: plan.tablolar.filter((t) => t.islem === "SABLON_TEMIZLE").map((t) => t.tablo),
@@ -452,11 +600,21 @@ export class AktarimService {
                     throw new Error("Yedek aktarılamaz (engel var).");
                 // Canlı firma koruması: inceleme eski olabilir, aktarım anında yeniden bakılır. e-belge gönderilmişse ya da son aktarımdan
                 // sonra firmada kayıt girildiyse (K24) aktarım yapılamaz. Çiftte aktarım eşin veritabanına da yazar: eş de aynı kilide bakılır.
-                const canli = await canliFirmaEngelleri(pool, firma.dbName, await aktarimGecmisi(y, firmaId));
-                if (esFirma) {
+                // Kilit açıksa (§13 K25) bu firmanın kilitleri uygulanmaz ve aktarım firmayı sıfırlar; eş kendi kilidiyle değerlendirilir.
+                const kilit = await kilitOku(pool, firma.dbName).catch(() => null);
+                const esKilit = esFirma ? await kilitOku(pool, esFirma.dbName).catch(() => null) : null;
+                const canli = kilit ? [] : await canliFirmaEngelleri(pool, firma.dbName, await aktarimGecmisi(y, firmaId));
+                if (esFirma && !esKilit) {
                     for (const e of await canliFirmaEngelleri(pool, esFirma.dbName, await aktarimGecmisi(y, esFirma.firmaId))) {
-                        canli.push({ ...e, mesaj: `Eş firma ${esFirma.firmaKodu}: ${e.mesaj}` });
+                        canli.push({ ...e, mesaj: `Eş firma ${esFirma.firmaKodu}: ${e.mesaj}${kilit ? " Eş firmanın aktarım kilidi kapalı; Veri Aktar'dan kilidini açın." : ""}` });
                     }
+                }
+                if (kilit) {
+                    rapor.engeller.push({
+                        kod: "KILIT_ACIK",
+                        seviye: "UYARI",
+                        mesaj: `Aktarım kilidi açıktı (${kilit.acan || "?"}, ${kilitZamani(kilit.zaman)}${kilit.neden ? `; neden: ${kilit.neden}` : ""}): kullanım ve e-belge kilitleri uygulanmadı, firma ilk açıldığı hâline döndürülüp yedek yazıldı.`,
+                    });
                 }
                 if (canli.length) {
                     rapor.engeller.push(...canli);
@@ -487,6 +645,7 @@ export class AktarimService {
                     onYedekYolu: onYedek,
                     ilerleme: (a) => ilerle(is, a.adim, 10 + Math.round(a.yuzde * 0.85), a.mesaj),
                     planSecenekleri: { degerKurallari: [digerVeritabaniKurali(cift)], taslakOnay: !!girdi.taslakOnay },
+                    sifirla: kilit ? { sablonDb: AktarimService.sablonDb } : null,
                     ekAdimlar: (tx) => standartEkAdimlar(tx, gecici, firma.dbName, cift),
                     dogrula: async (tx, plan) => {
                         dogrulamaTutucu.r = await dogrula(tx, plan, { ekKontroller: (bg) => ciftKontrolleri(bg, { kaynakDb: gecici, hedefDb: firma.dbName, cift }) });
@@ -555,7 +714,9 @@ export class AktarimService {
                         yuklemeId,
                         dosyaAdi: b.dosyaAdi,
                         eskiDb: ozet.yedek.dbAdi,
-                        satir: rapor.aktarim.tablolar.reduce((x, t) => x + t.yazilan, 0),
+                        satir: rapor.aktarim.tablolar.filter((t) => t.islem === "KOPYALA").reduce((x, t) => x + t.yazilan, 0),
+                        kilitAcik: !!kilit,
+                        sifirlanan: rapor.aktarim.tablolar.filter((t) => t.islem === "SIFIRLA").length,
                         dogrulamaFark: rapor.dogrulama?.ozet.fark ?? null,
                         sonKontrol: rapor.sonKontrol?.metin ?? null,
                         cift: rapor.cift ? { es: rapor.cift.esHedefDb, rol: rapor.cift.rol } : null,

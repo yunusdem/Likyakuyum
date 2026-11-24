@@ -192,10 +192,15 @@ export class EbelgeKaynakRepository {
      */
     static async dovizDetay(k, ctx) {
         const pool = await this.pool(ctx);
+        // e-Belge Not (docs/EDOVIZ_SURUM2_YOL_HARITASI.md K8): kolon göç 036 ile eklenir; göç çalışmamış veritabanında boş.
+        const notKolonu = (await pool.request().query(`SELECT COL_LENGTH('dbo.TODVZ_FIS', 'E_BELGE_NOT') AS L`)).recordset[0]?.L != null
+            ? "F.E_BELGE_NOT AS FIS_E_BELGE_NOT" : "CAST(NULL AS NVARCHAR(500)) AS FIS_E_BELGE_NOT";
         const res = await pool.request().input("id", sql.Int, k.belgeId).input("tip", sql.Int, k.belgeTuru)
             .input("no", sql.VarChar(40), k.belgeNo?.trim() || null).query(`
       -- ICE, Ek_Bilgiler.Istatistik_No'yu belge türüyle doğrular; kod fişin istatistik tanımından gelir.
-      SELECT TOP 2 D.*, RTRIM(I.KOD) AS ISTATISTIK_KOD, I.FIS_TIPI AS ISTATISTIK_FIS_TIPI
+      -- Banka hesabı: e-Döviz 2.0 ödeme yöntemi (seçiliyse TL tarafı havale, K2).
+      SELECT TOP 2 D.*, RTRIM(I.KOD) AS ISTATISTIK_KOD, I.FIS_TIPI AS ISTATISTIK_FIS_TIPI,
+             F.BANKA_HESABI_ID AS FIS_BANKA_HESABI_ID, F.GISE_USD_KURU AS FIS_GISE_USD_KURU, ${notKolonu}
       FROM dbo.VODVZ_GONDERIME_HAZIR_E_DOVIZ_FISI D
       LEFT JOIN dbo.TODVZ_FIS F ON F.FIS_ID=D.BELGE_ID
       LEFT JOIN dbo.TODVZ_ISTATISTIK I ON I.ISTATISTIK_ID=F.ISTATISTIK_ID

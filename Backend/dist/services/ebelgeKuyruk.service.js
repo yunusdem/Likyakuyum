@@ -12,7 +12,7 @@ import { getEarsivRaporStatu, sendDocumentEmail, sendEarsiv, sendEarsivIptal, } 
 import { getDespatchAdviceStatus, irsaliyeGonderimSatirlari, sendDespatchAdvice } from "./ice/ice.irsaliye.js";
 import { getGiderPusulasiCikti, sendGiderPusulasi } from "./ice/ice.giderpusulasi.js";
 import { cancelMustahsil, sendMustahsil } from "./ice/ice.mustahsil.js";
-import { getEDovizStatus, sendEDoviz, sendEDovizIptal } from "./ice/ice.edoviz.js";
+import { EDovizOnKontrolHatasi, getEDovizStatus, sendEDoviz, sendEDovizIptal } from "./ice/ice.edoviz.js";
 import { toBase64 } from "./ice/ubl/invoiceBuilder.js";
 import { DestekOlay } from "./destek/destekOlay.js";
 import { kopyaKaydet } from "./firmaKlasoru.js";
@@ -177,7 +177,17 @@ export const ADAPTORLER = {
         // XML saklanmaz; gönderim girdisi kuyruğa yazılır. Sahipsiz eski kayıt yalnızca sorgulanır.
         gonderilebilir: (_k, veri) => !!veri?.dovizGirdi,
         async gonder(config, kayit, veri) {
-            const sonuc = await sendEDoviz(config, veri.dovizGirdi);
+            let sonuc;
+            try {
+                sonuc = await sendEDoviz(config, veri.dovizGirdi);
+            }
+            catch (e) {
+                // 2.0 ön kontrolü (GİB 30.11.2026 kuralları) ICE'ye gitmeden durdurdu: numara yanmadı, sonuç kesin.
+                // Diğer hatalar (ağ vb.) eskisi gibi belirsiz sayılsın diye yeniden fırlatılır.
+                if (e instanceof EDovizOnKontrolHatasi)
+                    return { durum: "HATA", mesaj: `${e.message} Fişi düzeltip yeniden gönderiniz.` };
+                throw e;
+            }
             const ham = sonuc?.CreditNoteType_responseTypes?.CreditNoteType_responseType;
             const satirlar = Array.isArray(ham) ? ham : ham ? [ham] : [];
             const s = degerlendir(sonuc, satirlar, kayit.uuid, kayit.belgeNo, true);

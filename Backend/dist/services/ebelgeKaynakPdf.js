@@ -139,7 +139,8 @@ export function eDovizBelgePdf(g, ek = {}) {
             ['Döviz/Kıymetli Maden Cinsi', t.kod],
             ['Uygulanan Kur', trSayi(t.tlKarsilikKuru, 4)],
             ['ABD Doları Karşılığı', `${trSayi(usdKarsiligi)} USD`],
-            ['TL Karşılığı', `${trSayi(t.lineExtensionAmount)} TL`],
+            // Satımda LineExtension döviz cinsindendir (GİB v1.3 yönlü tutar: Payable TL, LineExtension döviz); TL karşılığı vergi hariç tutardır.
+            ['TL Karşılığı', `${trSayi(satim ? t.taxExclusiveAmount : t.lineExtensionAmount)} TL`],
             ['BSMV', `${trSayi(t.vergiTutari)} TL`],
             ['NET TUTAR', `${trSayi(t.taxInclusiveAmount)} TL`],
         ];
@@ -158,8 +159,14 @@ export function eDovizBelgePdf(g, ek = {}) {
         y += 12;
         doc.text(`VEZNE : ${g.ekBilgiler?.vezne || ''}`, sol, y, { width: genislik });
         y += 12;
-        doc.text(`Uyruk : ${g.musteri.ulke || ''}`, sol, y, { width: genislik });
-        y += 16;
+        doc.text(`Uyruk : ${g.musteri.uyruk || g.musteri.ulke || ''}`, sol, y, { width: genislik });
+        y += 12;
+        // e-Belge Not (F8 Detay; ICE'ye Notlar olarak gider)
+        for (const not of g.notlar || []) {
+            doc.text(`Not : ${not}`, sol, y, { width: genislik });
+            y += doc.heightOfString(`Not : ${not}`, { width: genislik }) + 2;
+        }
+        y += 4;
         if (ek.hesapVkn && g.uuid) {
             doc.fillColor('#333').text(`e-Döviz ve Kıymetli Maden belgesine http://ebelge.iceteknoloji.com.tr/edoviz/ettn/${ek.hesapVkn}/${g.uuid} adresinden erişebilirsiniz.`, sol, y, { width: genislik });
         }

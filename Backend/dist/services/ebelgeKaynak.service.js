@@ -652,6 +652,41 @@ export function dovizGirdisi(kaynak, gonderici) {
         throw ApiError.badRequest(`Fişin istatistik kodu (${istatistikNo}) ${turAdi(istatistikTipi)} türüne ait; bu bir ${turAdi(fisTipi)} fişi. ` +
             `ICE bunu "ISTATISTIKNO ile Belge türü uyumsuzluğu" diye reddeder ve belge numarası yanar. Fişte ${turAdi(fisTipi)} istatistiği seçin.`);
     }
+    // e-Döviz 2.0 (docs/EDOVIZ_SURUM2_YOL_HARITASI.md): alanlar her girdide hesaplanır; hangi gövdenin gideceğine
+    // gönderim anında ICE adresinin WSDL'i karar verir (kuyruğa yazılan girdi iki sürüme de yeter).
+    // K3 hesap kuru (yönlü): görünümün yönlü tutarlarından (ALIM: Payable döviz / LineExtension TL, SATIM: tersi; satımda
+    // TaxExclusive = Payable). Nominal kur değil, gerçek tutarların oranı: TL'si yuvarlanmış fişte (5 × 43,5 = 217,5 → 218)
+    // nominal kur hesap kuralını geçemez. 2.0'da ICE'ye Tutar_Bilgileri.TL_Karsilik_Kuru olarak gider; Kur_Bilgisi'ne
+    // görünen TL kuru yazılır (ice.edoviz.ts, ICE TEST 23.11.2026).
+    const hesapKuru = payable > 0 && lineExt > 0 ? Math.round((lineExt / payable) * 1e6) / 1e6 : 0;
+    // K4 uyruk: fişin F8 Uyruk alanı (görünüm NationalityID). Boşsa yalnız Türk vatandaşı TCKN'si (99 ile başlamayan
+    // 11 hane) TR sayılır; yabancı kimlik no'lu müşteride tahmin edilmez, 2.0 ön kontrolü gönderimi durdurur.
+    const uyrukHam = temiz(b.Customer_Person_NationalityID).toUpperCase();
+    const uyruk = uyrukHam || (/^\d{11}$/.test(musteriVkn) && !musteriVkn.startsWith("99") ? "TR" : "");
+    // K2 ödeme yöntemleri: fişte banka hesabı seçiliyse TL tarafı havale/EFT, değilse nakit; döviz tarafı nakit.
+    // Alımda müşteri döviz verir (döviz tarafı), büro TL öder; satımda müşteri TL öder, büro döviz verir.
+    const tlTarafi = Number(b.FIS_BANKA_HESABI_ID) > 0 ? "EFTHAVALE" : "NAKIT";
+    const musteriYontemi = fisTipi === 1 ? tlTarafi : "NAKIT";
+    const buroYontemi = fisTipi === 1 ? "NAKIT" : tlTarafi;
+    // K8 e-Belge Not: F8 Detay'da yazılan serbest not ICE'ye Notlar olarak gider (her iki sürümde).
+    const eBelgeNot = temiz(b.FIS_E_BELGE_NOT).replace(/\s+/g, " ");
+    // K12 USD karşılık kuru (2.0; GİB PricingExchangeRate "USD karşılığı"): döviz kuru ÷ fişin USD gişe kuru (TODVZ_FIS.GISE_USD_KURU,
+    // gerçek veride her fişte dolu); USD belgede 1. ICE send_edoviz bu alan yokken belgeyi kaydedemiyor (ICE TEST 23.11.2026, V2).
+    // Sağlayıcının görünümü USD dışı dövizde 0 veriyor; 1.0 gövdesi eskisi gibi dolarKarsilikKuru'yu kullanır.
+    const giseUsd = sayi(b.FIS_GISE_USD_KURU) ?? 0;
+    const usdKuru = dovizKodu === "USD" ? 1 : giseUsd > 0 ? Math.round((tlKarsilikKuru / giseUsd) * 1e6) / 1e6 : 0;
+    // K9 şahıs müessese (11 haneli TCKN): GİB v1.3 "AccountingSupplierParty/Party altında TCKN varsa Person alanı zorunludur"
+    // (ICE TEST, 23.11.2026, Lidya hesabı). Firma tablosunda yalnız unvan var; fatura akışıyla aynı kural
+    // (ebelge.service goncericiTamamla): unvanın son kelimesi soyad, öncesi ad.
+    let muesseseAd;
+    let muesseseSoyad;
+    if (/^\d{11}$/.test(yetkiliVkn)) {
+        const parcalar = temiz(b.Supplier_PartyName).split(/\s+/).filter(Boolean);
+        if (parcalar.length > 1) {
+            muesseseSoyad = parcalar.pop();
+            muesseseAd = parcalar.join(" ");
+        }
+    }
     return {
         belgeNo,
         uuid: kaynakEttn || temiz(b.UUID) || randomUUID(),
@@ -664,9 +699,12 @@ export function dovizGirdisi(kaynak, gonderici) {
         creditNoteTypeCode: Number(b.FIS_TIPI) === 1 ? "DOVIZSATIMBELGESI" : "DOVIZALIMBELGESI",
         duzenlemeTarihi: isoTarih(b.IssueDate || b.TARIH, "Düzenleme tarihi"),
         duzenlemeSaati: isoTarih(b.IssueTime || b.TARIH, "Düzenleme saati"),
+        notlar: eBelgeNot ? [eBelgeNot] : [],
         yetkiliMuessese: {
             vknTckn: yetkiliVkn,
             unvan: temiz(b.Supplier_PartyName),
+            ad: muesseseAd,
+            soyad: muesseseSoyad,
             adres: temiz(b.Supplier_StreetName),
             ulke: temiz(b.Supplier_CountryName),
             sehir: temiz(b.Supplier_CityName),
@@ -690,6 +728,7 @@ export function dovizGirdisi(kaynak, gonderici) {
             vergiDairesi: temiz(b.Customer_TaxSchemeName),
             telefon: temiz(b.Customer_Telephone),
             eposta: temiz(b.Customer_ElectronicMail),
+            uyruk,
         },
         alisSatis: {
             dovizKodu,
@@ -700,8 +739,14 @@ export function dovizGirdisi(kaynak, gonderici) {
             vergiMatrah,
             dovizMiktar: miktar,
         },
-        // Döviz alım/satımı vezneden nakit yapılır; bedel işlem anında ödenir.
-        odeme: { yontemi: 'NAKIT', sonOdemeTarihi: isoTarih(b.IssueDate || b.TARIH, 'Son ödeme tarihi'), yetkiliMuesseseDosyaNo: dosyaNo },
+        // 1.0: döviz alım/satımı vezneden nakit yapılır; bedel işlem anında ödenir. 2.0: iki tarafın yöntemi (K2).
+        odeme: {
+            yontemi: 'NAKIT',
+            sonOdemeTarihi: isoTarih(b.IssueDate || b.TARIH, 'Son ödeme tarihi'),
+            yetkiliMuesseseDosyaNo: dosyaNo,
+            musteriYontemi,
+            buroYontemi,
+        },
         // Her iki türde gönderilir; türü yukarıda fişin istatistik tanımıyla doğrulandı.
         istatistikNo,
         ekBilgiler,
@@ -721,6 +766,8 @@ export function dovizGirdisi(kaynak, gonderici) {
             // çünkü ICE vergi kodunu tabloda arıyor ve boş/eksik kodda null referans veriyor.
             vergiAdi: temiz(b.TaxTypeName || b.VERGI_ADI) || "BSMV",
             vergiKodu: temiz(b.TaxTypeCode || b.VERGI_KODU) || "0021",
+            hesapKuru,
+            usdKuru,
             lineExtensionAmount: lineExt,
             taxExclusiveAmount: taxExcl,
             taxInclusiveAmount: taxIncl,

@@ -207,13 +207,17 @@ export const izYenile = async (pool, db) => {
  * Firmadan bizim sistemle (taslak olmayan) e-belge gönderilmiş mi (K22). Gönderilmişse firma canlıdır: CANLI_FIRMA ENGEL.
  * Aktarım izinden bağımsız ikinci kilit (iz silinse de çalışır).
  */
-export const eBelgeGonderimi = async (pool, db) => {
+/** Firmadan bizim sistemle gönderilmiş (taslak olmayan) e-belge sayısı. */
+export const gonderilenEBelgeSayisi = async (pool, db) => {
     const kolonVar = async (kolon) => (await new sql.Request(pool).query(`SELECT COL_LENGTH(${n(`${db}.dbo.TODVZ_EBELGE_GIDEN`)}, ${n(kolon)}) AS L`)).recordset[0].L !== null;
     if (!(await kolonVar("GONDERIM_DURUMU")))
-        return [];
+        return 0;
     // Taslak (deneme) gönderimleri sayılmaz: yalnız gerçekten kesilmiş belgeler firmayı "canlı" yapar
     const taslakDisi = (await kolonVar("TASLAK_MI")) ? " AND ISNULL(TASLAK_MI, 0) = 0" : "";
-    const giden = Number((await new sql.Request(pool).query(`SELECT COUNT_BIG(*) AS N FROM ${tamAd(db, "TODVZ_EBELGE_GIDEN")} WHERE GONDERIM_DURUMU = 'GONDERILDI'${taslakDisi}`)).recordset[0].N) || 0;
+    return Number((await new sql.Request(pool).query(`SELECT COUNT_BIG(*) AS N FROM ${tamAd(db, "TODVZ_EBELGE_GIDEN")} WHERE GONDERIM_DURUMU = 'GONDERILDI'${taslakDisi}`)).recordset[0].N) || 0;
+};
+export const eBelgeGonderimi = async (pool, db) => {
+    const giden = await gonderilenEBelgeSayisi(pool, db);
     if (!giden)
         return [];
     return [

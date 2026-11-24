@@ -37,6 +37,15 @@ export class AktarimController {
     static isDurumu = asyncHandler(async (req, res) => {
         return ApiResponse.ok(res, "İş durumu.", AktarimService.isDurumu(firmaId(req), String(req.params.isId || "")));
     });
+    static kilitDurumu = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Aktarım kilidi durumu.", await AktarimService.kilitDurumu(firmaId(req)));
+    });
+    static kilitAc = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Aktarım kilidi açıldı.", await AktarimService.kilitAc(req.admin, firmaId(req), req.body));
+    });
+    static kilitKapat = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Aktarım kilidi kapatıldı.", await AktarimService.kilitKapat(req.admin, firmaId(req)));
+    });
     static rapor = asyncHandler(async (req, res) => {
         return ApiResponse.ok(res, "Rapor getirildi.", await AktarimService.raporlar(firmaId(req), yuklemeId(req)));
     });

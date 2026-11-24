@@ -1,7 +1,7 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import { tarihTr, kurCoz, hedefPara, sinirla, TL_PARA_SQL, aralikOzeti, filtreler, paraKumesi, ozetEk, ek, vezneBakiyeleri, VEZNE_BAKIYE_DIPNOT, } from "../raporOrtak.js";
-import { FIS_BELGELERI, VEZNE_BELGE, VEZNE_HAREKET_KOLONLARI, belgeTablolari, saatTr, vezneHareketleriSql } from "../kaynak.js";
+import { FIS_BELGELERI, VEZNE_BELGE, VEZNE_HAREKET_KOLONLARI, belgeTablolari, saatTr, sarrafAdetliKurSql, vezneHareketleriSql } from "../kaynak.js";
 import { paraBasliklariEkle, paraGrubunaGoreSirala, paraGrupBilgisi } from "../paraGrup.js";
 import { ISCILIK_SEKLI, sarrafIscilikTutari } from "./analiz.js";
 /**
@@ -291,7 +291,7 @@ export const VEZNE_TEMEL_SORGULARI = {
           ISNULL(S.ADET,0) adet, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.MILYEM,0) milyem, ISNULL(S.HAS_GRAM,0) hasGram,
           ISNULL(S.ISCILIK_HESAPLAMA_SEKLI,0) sekilKod, ISNULL(S.ISCILIK_MIKTARI,0) iscilikMiktari,
           ISNULL(S.ISCILIK_HAS_GRAM,0) iscilikHasGram, ${itVar ? "ISNULL(S.ISCILIK_TUTARI,0)" : "0"} iscilikTutariKayit, ISNULL(F.ALTIN_HAS_KURU,0) hasKuru,
-          ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar, RTRIM(ISNULL(U.AD, '')) kaydeden
+          ${sarrafAdetliKurSql("ISNULL(S.KUR,0)", "CASE WHEN ISNULL(S.ADET,0)>0 THEN S.ADET ELSE CASE WHEN ISNULL(S.MIKTAR,0)>0 THEN S.MIKTAR ELSE 1 END END", "S.TUTAR", "ISNULL(S.URUN_TIPI, P.URUN_TIPI)")} kur, ISNULL(S.TUTAR,0) tutar, RTRIM(ISNULL(U.AD, '')) kaydeden
         FROM dbo.TODVZ_SARRAF_FISI F
           JOIN dbo.TODVZ_SARRAF_FISI_SATIRI S ON S.SARRAF_FISI_ID=F.SARRAF_FISI_ID
           LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.URUN_ID
@@ -314,7 +314,7 @@ export const VEZNE_TEMEL_SORGULARI = {
           COALESCE(OS.MILYEM, CAST(ROUND(ISNULL(P.HAS_ORANI,0)*1000, 0) AS int)) milyem,
           COALESCE(OS.HAS_GRAM, ISNULL(OS.MIKTAR,0)*ISNULL(P.HAS_ORANI,0)) hasGram,
           0 sekilKod, 0 iscilikMiktari, 0 iscilikHasGram, 0 iscilikTutariKayit, ISNULL(F.ALTIN_HAS_KURU,0) hasKuru,
-          ISNULL(OS.KUR,0) kur, ISNULL(OS.TUTAR,0) tutar, RTRIM(ISNULL(U.AD, '')) kaydeden
+          ${sarrafAdetliKurSql("ISNULL(OS.KUR,0)", "OS.MIKTAR", "OS.TUTAR", "P.URUN_TIPI")} kur, ISNULL(OS.TUTAR,0) tutar, RTRIM(ISNULL(U.AD, '')) kaydeden
         FROM dbo.TODVZ_SARRAF_FISI F
           JOIN dbo.TODVZ_ODEME_SATIRI OS ON OS.SARRAF_FISI_ID=F.SARRAF_FISI_ID
           JOIN dbo.TODVZ_PARA P ON P.PARA_ID=OS.PARA_ID

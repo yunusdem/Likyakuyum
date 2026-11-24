@@ -308,7 +308,7 @@ export function metinGenisligi(metin: string, boyut: number, yaziTipi: string = 
   const mono = yaziTipi === "mono" || !!yt?.mono;
   const oran = yt?.oran ?? 1;
   let t = 0;
-  for (const p of kalinParcala(metin)) for (const h of p.metin) t += mono ? 600 : harfGenisligi(h, kalin || p.kalin) * oran;
+  for (const p of kalinParcala(metin)) for (const h of p.metin) t += mono ? (kalin || p.kalin ? 635 : 615) : harfGenisligi(h, kalin || p.kalin) * oran;
   return (t * boyut) / 1000;
 }
 
