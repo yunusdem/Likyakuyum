@@ -4804,12 +4804,12 @@ export const DovizFisiPage: React.FC = () => {
     }
 
     try {
-      // F10 ile Satış fişi kaydedilirken (arbitraj değilse) Para Üstü modalını aç:
+      // F10 ile Satış fişi kaydedilirken (arbitrajlı satış dahil) Para Üstü modalını aç:
       // Kullanıcı isterse alınan parayı girer, isterse tamamı nakit ödendiyse Enter ile geçer.
       const isSatisFisi = Number(tip) === 1;
-      let effectiveAlinanPara = isSatisFisi && !isArbitrajActive ? (Number(alinanPara) || 0) : 0;
-      let effectiveParaUstu = isSatisFisi && !isArbitrajActive ? (Number(paraUstu) || 0) : 0;
-      if (andDirectPrint && isSatisFisi && !isArbitrajActive) {
+      let effectiveAlinanPara = isSatisFisi ? (Number(alinanPara) || 0) : 0;
+      let effectiveParaUstu = isSatisFisi ? (Number(paraUstu) || 0) : 0;
+      if (andDirectPrint && isSatisFisi) {
         const puResult = await new Promise<{ alinanPara: number; paraUstu: number } | null>((resolve) => {
           setParaUstuPrompt({ resolve });
         });
