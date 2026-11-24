@@ -330,7 +330,7 @@ export async function vezneBakiyeleri(pool: sql.ConnectionPool, tarih: string, p
     WHERE CAST(H.tarih AS date)<=@t ${f}
     GROUP BY H.vezneId, V.KOD, V.AD, H.paraId, P.KOD, P.AD, P.SIRA_NO
     ORDER BY V.KOD, ISNULL(P.SIRA_NO,99), P.KOD;`);
-  return res.recordset as { vezneId: number; vezneKod: string; vezneAd: string; paraId: number; paraKod: string; paraAd: string; miktar: number }[];
+  return res.recordset as { vezneId: number; vezneKod: string; vezneAd: string; paraId: number; paraKod: string; paraAd: string; siraNo: number; miktar: number }[];
 }
 export const VEZNE_BAKIYE_DIPNOT = "Bakiye hesabı: seçilen tarihe kadar vezneyi etkileyen tüm hareketler toplanır — döviz fişleri (bankadan ödenen TL ödemesi ve satırlar hariç), sarraf fişleri (ürün satırları ve vezneden yapılan ödemeler), perakende fişleri (barkodsuz satırlar ve vezneden tahsilat), barkodlu ürün tanımları (ayar stoğundan düşüş), vezne transferleri (alan +, veren −), nakit cari hareketler (alacak giriş, borç çıkış), kasa hesap hareketleri (KDV TL'ye; fişlerin işçilik kayıtları hariç), emanet dekontları (alma giriş, verme çıkış) ve bakiye düzeltmeleri (Vezne İzleme'den elle yapılan değişiklikler ve açılış farkı).";
 

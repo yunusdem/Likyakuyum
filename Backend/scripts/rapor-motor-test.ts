@@ -209,6 +209,21 @@ for (const seed of RAPOR_SEED) {
   esit("kz seçilen USD M (devir|mevcut|F) ve T kâr", `${ku("M").devir.toFixed(2)}|${ku("M").kapanis.toFixed(2)}|${ku("M").sonuc.toFixed(2)}|${u.kmt[u.kmt.length - 1].sonuc.toFixed(2)}`, "361.48|331.63|33.72|-29.85");
   const l = karZararHesapla(h, { ...ayar, bolumler: new Set([2, 3]) });
   esit("kz lisans süzmesi: ticari bölümü düşer, KMT kalır", `${l.satirlar.some(x => x.bolum === 4)}|${l.kmt.length}`, "false|15");
+  {
+    // Devir = firma pozisyonu (vezne + cari; eski DEVIR_MIKTARI, kullanıcı kararı 24.11.2026): fiş geçmişinin yerine geçer, alış / satış / F değişmez;
+    // pozisyonu olup fişi olmayan para (CHF) tabloya girer, pozisyonu verilmeyen para (HAS) devri 0
+    const pz = karZararHesapla(h, { ...ayar, devirKur: new Map([...ayar.devirKur, [7, 45]]), kapanisKur: new Map([...ayar.kapanisKur, [7, 46]]),
+      devirMiktarlari: new Map([[2, { paraKod: "USD", siraNo: 1, miktar: 300 }], [7, { paraKod: "CHF", siraNo: 3, miktar: 50 }]]) });
+    const pk = (para: string, kmt: string) => { const i = pz.kmt.findIndex(x => x.para === para); return pz.kmt[i + ["K", "M", "T"].indexOf(kmt)]; };
+    esit("kz pozisyon devri: USD M (devir|alış|satış|mevcut|F)", `${pk("USD", "M").devir}|${pk("USD", "M").alis}|${pk("USD", "M").satis}|${pk("USD", "M").kapanis}|${pk("USD", "M").sonuc}`, "300|120|150|270|150");
+    esit("kz pozisyon devri: USD E = devir × (ort alış − devir kuru) + mevcut × (kapanış − ort alış)", pk("USD", "K").sonuc, 720);
+    esit("kz pozisyon devri: fişsiz CHF tabloda (devir|mevcut|E)", `${pk("CHF", "M").devir}|${pk("CHF", "M").kapanis}|${pk("CHF", "K").sonuc}`, "50|50|50");
+    esit("kz pozisyon devri: pozisyonu verilmeyen HAS devri 0", `${pk("HAS", "M").devir}|${pk("HAS", "M").kapanis}`, "0|-10");
+    esit("kz pozisyon devri: kalan = pozisyon + alış − satış", pz.satirlar.find(x => x.bolum === 3 && x.paraKod === "USD")!.kalanMiktar, 270);
+    esit("kz pozisyon devri: para sırası (Döviz sıra no, sonra Kuyum)", pz.kmt.filter(x => x.para && x.kmt === "K" && !String(x.para).startsWith("Toplam")).map(x => x.para).join(), "USD,CHF,HAS");
+    esit("kz pozisyon devri: pozisyonu sıfır, fişi olmayan para tabloda yok",
+      karZararHesapla(h, { ...ayar, devirMiktarlari: new Map([[9, { paraKod: "CAD", siraNo: 4, miktar: 0 }]]) }).kmt.some(x => x.para === "CAD"), false);
+  }
   const d = { sarraf: true, perakende: true, ticariSatir: true };
   esit("açık bölümler: kısıt yok", [...acikBolumler(null, d)].join(), "1,2,3,4");
   esit("açık bölümler: Kuyum (döviz fişi yok)", [...acikBolumler(["vezne:vezne/sarraf-fisi-kayit", "vezne:vezne/perakende-fisi-kayit", "ticari:ticari/satis-fisi"], d)].join(), "2,3,4");

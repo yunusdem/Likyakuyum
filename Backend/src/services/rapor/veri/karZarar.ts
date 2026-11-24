@@ -1,8 +1,8 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
-import { type RaporParametreler, TL_PARA_SQL, aralikOzeti, filtreler, gunOnce, kurTarihlerde, kurTarihte, ozetEk, sinirla, vezneBakiyeleri } from "../raporOrtak.js";
-import { PERAKENDE_SATIR_PARASI, YEREL_GUN, belgeTablolari, sarrafAdetliKurSql } from "../kaynak.js";
+import { type RaporParametreler, TL_PARA_SQL, aralikOzeti, filtreler, gunOnce, kurTarihlerde, kurTarihte, ozetEk, paraKumesi, sinirla, vezneBakiyeleri } from "../raporOrtak.js";
+import { CARI_HAREKET_KOLONLARI, PERAKENDE_SATIR_PARASI, YEREL_GUN, belgeTablolari, cariHareketleriSql, sarrafAdetliKurSql } from "../kaynak.js";
 import { BOLUM_ADI, acikBolumler } from "../fisKaynak.js";
 import { kuyumParasiMi } from "../paraGrup.js";
 
@@ -53,6 +53,12 @@ export interface KzAyarlar {
   hedef: { id: number; kod: string };
   /** Dönem başındaki TL mevcudu (eski "TL" satırının devri) */
   tlDevir: number;
+  /**
+   * Para başına devir miktarı = dönem öncesi gün sonunda firmanın gerçek pozisyonu (vezne mevcudu + cari bakiyesi; eski DEVIR_MIKTARI).
+   * Verilirse KMT/EFT'deki devir (ve kapanış / kalan) fiş geçmişinden değil buradan alınır; pozisyonu olup dönemde hareketi olmayan para da tabloya girer.
+   * Verilmezse devir = dönem öncesi fiş alışları − satışları.
+   */
+  devirMiktarlari?: Map<number, { paraKod: string; siraNo: number; miktar: number }>;
   /** Ticari malların K/M/T toplamı (stok hareketlerinden; yoksa yok) */
   ticari?: { devirTutar: number; alisTutar: number; satisTutar: number; satisMaliyeti: number; kapanisTutar: number };
   /** Gösterilecek bölümler (lisans, K10); boş = hepsi */
@@ -73,7 +79,7 @@ export function karZararHesapla(hareketler: KzHareket[], a: KzAyarlar) {
   type Satir = { bolum: number; bolumAd: string; paraId: number; paraKod: string; paraAd: string; siraNo: number; alisMiktar: number; alisTutar: number; satisMiktar: number; satisTutar: number;
     satisMaliyeti: number; brutKar: number; iscilik: number; komisyon: number; vergiler: number; netKar: number; ortMaliyet: number; kalanMiktar: number; ortAlisKuru: number; ortSatisKuru: number; brutKarHedef: number; netKarHedef: number };
   const satirlar = new Map<string, Satir>();
-  // Para bazında havuz özeti (KMT/EFT): devir = dönem öncesi alış − satış; alış/satış dönem içi; barkodlu / ticari (sabit maliyetli) satırlar girmez
+  // Para bazında havuz özeti (KMT/EFT): devir = dönem öncesi alış − satış (a.devirMiktarlari verildiyse firma pozisyonu); alış/satış dönem içi; barkodlu / ticari (sabit maliyetli) satırlar girmez
   type ParaOzet = { paraId: number; paraKod: string; siraNo: number; devirMiktar: number; alisMiktar: number; alisTutar: number; satisMiktar: number; satisTutar: number };
   const paralar = new Map<number, ParaOzet>();
   const satirAl = (h: KzHareket) => {
@@ -105,6 +111,13 @@ export function karZararHesapla(hareketler: KzHareket[], a: KzAyarlar) {
     if (h.tip === 0) { r.alisMiktar += miktar; r.alisTutar += tutar; }
     else { r.satisMiktar += miktar; r.satisTutar += tutar; r.satisMaliyeti += maliyet; r.brutKar += tutar - maliyet; }
     r.iscilik += Number(h.iscilik) || 0; r.komisyon += Number(h.komisyon) || 0; r.vergiler += Number(h.vergiler) || 0;
+  }
+  // Devir = firmanın gerçek pozisyonu (verildiyse): fiş geçmişinden türetilen devrin yerine geçer. Fiş dışı hareketler (kasa hesabı: sermaye, masraf;
+  // cari alacak / borç) devre girer; alış / satış ve havuz maliyeti değişmez. Pozisyonu olup dönemde fişi olmayan para tabloya eklenir.
+  if (a.devirMiktarlari) {
+    for (const po of paralar.values()) po.devirMiktar = a.devirMiktarlari.get(po.paraId)?.miktar ?? 0;
+    for (const [id, d] of a.devirMiktarlari)
+      if (id !== a.tlId && !paralar.has(id)) paralar.set(id, { paraId: id, paraKod: d.paraKod, siraNo: d.siraNo, devirMiktar: d.miktar, alisMiktar: 0, alisTutar: 0, satisMiktar: 0, satisTutar: 0 });
   }
   const hedefKur = a.hedef.id === a.tlId ? 1 : a.kapanisKur.get(a.hedef.id) ?? 0;
   const cevir = (tl: number) => (hedefKur > 0 ? tl / hedefKur : 0);
@@ -351,10 +364,31 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
     const devirKur = await kurTarihte(pool, gunOnce(p.baslangic)), kapanisKur = await kurTarihte(pool, p.bitis, { sonraki: true });
     const hedefId = p.hedefParaId && p.hedefParaId !== tlId ? p.hedefParaId : tlId;
     const hedefKod = hedefId === tlId ? "TL" : String((await pool.request().input("id", sql.Int, hedefId).query(`SELECT RTRIM(KOD) kod FROM dbo.TODVZ_PARA WHERE PARA_ID=@id`)).recordset[0]?.kod || "TL");
-    // Dönem başındaki TL mevcudu (eski "TL" satırı): vezne bakiyesi (vezne süzgeciyle)
-    const tlDevir = (await vezneBakiyeleri(pool, gunOnce(p.baslangic), p)).filter(v => Number(v.paraId) === tlId).reduce((s, v) => s + (Number(v.miktar) || 0), 0);
+    // Devir (eski DEVIR_MIKTARI, TL satırı dahil): dönem öncesi gün sonunda firmanın gerçek pozisyonu = vezne mevcudu + cari bakiyesi (carilerin bize borcu +,
+    // bizden alacağı −). Sermaye / masraf gibi kasa hesabı hareketleri ve cari alacak / borçlar böylece devre girer. DEMİRTAŞ 23.11.2026 yedeğinde eski yordamla
+    // para para birebir (A ve R, TL dahil; kullanıcı kararı 24.11.2026). Vezne süzülmüşse yalnız süzülen veznelerin mevcudu (cari bakiyesi bir veznenin
+    // değil firmanın olduğundan eklenmez). Para süzgeci hareketlerle aynı; TL satırı süzülmez.
+    const devirGunu = gunOnce(p.baslangic);
+    const paraSet = await paraKumesi(pool, p);
+    const paraUygun = (id: number) => (!p.paraId || id === p.paraId) && (!paraSet || paraSet.has(id));
+    const vezneSuzgeci = !!(p.vezneId || p.vezneIdler?.length || p.vezneBaslangic?.trim() || p.vezneBitis?.trim());
+    const tlMi = (id: number, kod: string) => id === tlId || ["TL", "TRY"].includes(String(kod || "").trim().toUpperCase());
+    const devirMiktarlari = new Map<number, { paraKod: string; siraNo: number; miktar: number }>();
+    let tlDevir = 0;
+    const pozisyonEkle = (id: number, kod: string, siraNo: number, miktar: number) => {
+      if (tlMi(id, kod)) { tlDevir += miktar; return; }
+      if (!paraUygun(id)) return;
+      const o = devirMiktarlari.get(id) || { paraKod: String(kod || "").trim(), siraNo, miktar: 0 }; o.miktar += miktar; devirMiktarlari.set(id, o);
+    };
+    for (const v of await vezneBakiyeleri(pool, devirGunu, p)) pozisyonEkle(Number(v.paraId), v.paraKod, Number(v.siraNo ?? 99), Number(v.miktar) || 0);
+    if (!vezneSuzgeci) {
+      const c = await pool.request().input("t", sql.Date, devirGunu).query(`;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (${cariHareketleriSql(d)})
+        SELECT CH.paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE -CH.meblag END) net
+        FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.paraId, P.KOD, P.SIRA_NO`);
+      for (const x of c.recordset) pozisyonEkle(Number(x.paraId), x.paraKod, Number(x.siraNo ?? 99), Number(x.net) || 0);
+    }
 
-    const { satirlar, kmt } = karZararHesapla(hareketler, { baslangic: p.baslangic, devirKur, kapanisKur, tlId, hedef: { id: hedefId, kod: hedefKod }, tlDevir, ticari, bolumler, kuyumParalar });
+    const { satirlar, kmt } = karZararHesapla(hareketler, { baslangic: p.baslangic, devirKur, kapanisKur, tlId, hedef: { id: hedefId, kod: hedefKod }, tlDevir, devirMiktarlari, ticari, bolumler, kuyumParalar });
     const hedefSecili = hedefId !== tlId;
     const bolumOzeti = [...bolumler].sort().map(b => BOLUM_ADI[b]).join(" / ");
     return {
