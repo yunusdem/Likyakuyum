@@ -286,15 +286,11 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
         ? (selectedDbPrinter.cihazAdi?.trim() || selectedDbPrinter.ad?.trim() || null)
         : (selectedPrinterId ? String(selectedPrinterId) : (resolvedResult?.printerName || null));
 
-      const isPos = selectedDbPrinter
-        ? selectedDbPrinter.belgeYaziciModu !== 0
-        : (resolvedResult ? resolvedResult.recommendedPrintType === "POS" : true);
-
       const res = await fisiYazdir(hazir, {
         printerId: selectedDbPrinter ? selectedDbPrinter.id : null,
         printerName: targetPrinterName,
         copies: 1,
-        isPos,
+        isPos: true,
       });
       if (res.success) {
         onHide();

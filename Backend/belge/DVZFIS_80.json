@@ -124,9 +124,21 @@
         "Tel               : {{firma.telefon}}",
         "?Web Sitesi        : {{firma.web}}",
         "?E-posta           : {{firma.eposta}}",
-        "VD / VKN          : {{firma.vdVkn}}",
-        "?Mersis/Tic.Sic.No : {{firma.mersisSicil}}"
+        "VD / VKN          : {{firma.vdVkn}}"
       ]
+    },
+    {
+      "id": "firma-mersis",
+      "ad": "Mersis / Tic.Sic.No",
+      "tip": "metin",
+      "kosul": "{{firma.mersisSicil}}",
+      "daralt": true,
+      "x": 0,
+      "y": 146,
+      "g": 217.77,
+      "metin": "Mersis/Tic.Sic.No : {{firma.mersisSicil}}",
+      "boyut": 6.5,
+      "cokSatir": true
     },
     {
       "id": "belge-kutusu",
@@ -248,7 +260,7 @@
       "y": 294,
       "g": 217.77,
       "metin": "ETTN : {{ettn}}",
-      "boyut": 7.1,
+      "boyut": 6.5,
       "kalin": true,
       "cokSatir": true
     },

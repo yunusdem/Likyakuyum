@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.2.2";
+const CURRENT_VERSION = "1.2.3";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -1402,9 +1402,11 @@ async function executePrintJobInternal(job) {
 
         // Edge/Chromium ile piksel piksel birebir önizleme görüntüsü oluştur (80mm POS ve A4 için görsel motor)
         const chromiumPath = findChromiumPath();
+        let chromeProfileDir = "";
         if (chromiumPath && isPos) {
           try {
             pngFile = path.join(tmpDir, `print_${timestamp}.png`);
+            chromeProfileDir = path.join(tmpDir, `chrome_prof_${timestamp}`);
             const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
 
             // Şablonun gerçek yüksekliğini HTML içinden dinamik olarak hesapla (boş beyaz fazlalığı önler)
@@ -1420,36 +1422,37 @@ async function executePrintJobInternal(job) {
             }
             calculatedHeight = Math.max(200, Math.min(3500, calculatedHeight));
 
-            const fastChromiumArgs = [
-              "--headless=new",
-              "--disable-gpu",
-              "--no-sandbox",
-              "--allow-file-access-from-files",
-              "--hide-scrollbars",
-              `--window-size=304,${calculatedHeight}`,
-              "--force-device-scale-factor=2",
-              "--disable-extensions",
-              "--disable-background-networking",
-              "--disable-component-update",
-              "--disable-default-apps",
-              "--disable-sync",
-              "--no-first-run",
-              "--no-default-browser-check",
-              "--mute-audio",
-              "--run-all-compositor-stages-before-draw",
-              "--virtual-time-budget=1200",
-              `--screenshot=${pngFile}`,
-              fileUrl,
-            ];
-            await new Promise((resolve) => {
-              const child = spawn(chromiumPath, fastChromiumArgs, {
+            const runChromiumShot = (headlessFlag) => new Promise((resolve) => {
+              const args = [
+                headlessFlag,
+                `--user-data-dir=${chromeProfileDir}`,
+                "--disable-gpu",
+                "--no-sandbox",
+                "--allow-file-access-from-files",
+                "--hide-scrollbars",
+                `--window-size=304,${calculatedHeight}`,
+                "--force-device-scale-factor=2",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-default-apps",
+                "--disable-sync",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--mute-audio",
+                "--run-all-compositor-stages-before-draw",
+                "--virtual-time-budget=2000",
+                `--screenshot=${pngFile}`,
+                fileUrl,
+              ];
+              const child = spawn(chromiumPath, args, {
                 windowsHide: true,
                 stdio: "ignore",
               });
               const timer = setTimeout(() => {
                 try { child.kill(); } catch {}
                 resolve();
-              }, 8000);
+              }, 10000);
               child.on("close", () => {
                 clearTimeout(timer);
                 resolve();
@@ -1459,12 +1462,19 @@ async function executePrintJobInternal(job) {
                 resolve();
               });
             });
+
+            await runChromiumShot("--headless=new");
+            if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
+              await runChromiumShot("--headless");
+            }
+            try { fs.rmSync(chromeProfileDir, { recursive: true, force: true }); } catch {}
             if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
               console.warn("[printercekmeApp] Uyarı: POS PNG çıktısı üretilemedi, boyut yetersiz.");
               pngFile = "";
             }
           } catch (e) {
             console.warn("[printercekmeApp] POS PNG oluşturma hatası:", e.message);
+            try { if (chromeProfileDir) fs.rmSync(chromeProfileDir, { recursive: true, force: true }); } catch {}
             pngFile = "";
           }
         } else if (chromiumPath && !isPos) {

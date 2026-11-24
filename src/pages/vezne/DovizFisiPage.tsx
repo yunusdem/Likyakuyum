@@ -5201,31 +5201,13 @@ export const DovizFisiPage: React.FC = () => {
           localStorage.getItem("likya_terminal_last_printer");
 
         if (printerToUse) {
-          isPos = printerToUse.belgeYaziciModu !== 0;
+          isPos = true;
           resolvedEffectiveName = printerToUse.cihazAdi || printerToUse.ad || null;
           if (!targetCopies && printerToUse.kopyaSayisi && Number(printerToUse.kopyaSayisi) > 0) {
             copiesToUse = Number(printerToUse.kopyaSayisi);
           }
         } else if (savedTermPrinter) {
           resolvedEffectiveName = savedTermPrinter;
-          const matchedSaved = printers.find(
-            (p) =>
-              String(p.id) === String(savedTermPrinter) ||
-              (p.cihazAdi && p.cihazAdi.trim().toLowerCase() === savedTermPrinter.trim().toLowerCase()) ||
-              (p.ad && p.ad.trim().toLowerCase() === savedTermPrinter.trim().toLowerCase())
-          );
-          if (matchedSaved) {
-            isPos = matchedSaved.belgeYaziciModu !== 0;
-          } else {
-            const resolved = resolveEffectivePrinter({
-              pageType: "doviz",
-              tip,
-              vezne: vezneList.find((v) => v.id === vezneId) || (vezneList.length > 0 ? vezneList[0] : null),
-              user,
-              printers,
-            });
-            isPos = resolved.recommendedPrintType === "POS";
-          }
         } else {
           const resolved = resolveEffectivePrinter({
             pageType: "doviz",
@@ -5237,7 +5219,6 @@ export const DovizFisiPage: React.FC = () => {
           printerToUse = resolved.printer;
           resolvedEffectiveName = resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null;
           copiesToUse = resolved.kopyaSayisi || 1;
-          isPos = resolved.recommendedPrintType === "POS";
         }
 
         // Fiş firmanın şablonundan basılır (önizlemeyle aynı düzen; docs/FIS_TASARIM_YOL_HARITASI.md).
@@ -5247,7 +5228,7 @@ export const DovizFisiPage: React.FC = () => {
           const sonuc = await fisiYazdir(fisCikti, {
             printerName: resolvedEffectiveName || printerToUse?.cihazAdi || printerToUse?.ad || null,
             copies: copiesToUse,
-            isPos,
+            isPos: true,
           });
           if (!sonuc.success) yazdirmaHatasi = sonuc.message;
         } catch (printErr: any) {
@@ -5797,7 +5778,7 @@ export const DovizFisiPage: React.FC = () => {
           await fisiYazdir(fisCikti, {
             printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || null,
             copies: resolved.kopyaSayisi || 1,
-            isPos: resolved.recommendedPrintType === "POS",
+            isPos: true,
           });
         } catch (printErr: any) {
           console.warn("Arbitraj fişi yazdırma hatası:", printErr);
@@ -6136,7 +6117,7 @@ export const DovizFisiPage: React.FC = () => {
       const sonuc = await fisiYazdir(fisCikti, {
         printerName: resolved.printer?.cihazAdi || resolved.printer?.ad || resolved.printerName || null,
         copies: resolved.kopyaSayisi || 1,
-        isPos: resolved.recommendedPrintType === "POS",
+        isPos: true,
       });
       if (sonuc.success) {
         setNotification({
