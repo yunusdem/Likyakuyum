@@ -1,7 +1,7 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporSonucVeri, RaporTanim } from "../raporTanim.js";
-import { type RaporParametreler, ek, gunOnce, hedefPara, kurCoz, kurTarihte, ozetEk, paraKumesi, sinirla, tarihTr, vezneBakiyeleri, VEZNE_BAKIYE_DIPNOT } from "../raporOrtak.js";
+import { type RaporParametreler, ek, gunOnce, hedefPara, kurCoz, kurTablosuSql, kurTarihte, ozetEk, paraKumesi, sinirla, tarihTr, vezneBakiyeleri, VEZNE_BAKIYE_DIPNOT } from "../raporOrtak.js";
 import { maliyetYurut } from "./analiz.js";
 import { CARI_HAREKET_KOLONLARI, belgeTablolari, cariHareketleriSql } from "../kaynak.js";
 import { paraBasliklariEkle, paraGrupBilgisi } from "../paraGrup.js";
@@ -26,12 +26,16 @@ async function pozisyonlar(pool: sql.ConnectionPool, p: RaporParametreler, secen
   for (const v of await vezneBakiyeleri(pool, tarih, p)) al({ ...v, siraNo: (v as any).siraNo }).vezne += Number(v.miktar) || 0;
 
   // Cari: cari hareketler + virman dekontu + bankadan ödenen döviz fişi + sarraf fişi cari ödemesi (kaynak.ts — Cari Bakiye ile aynı kapsam)
+  // Cari alacak / borç = cari × para bakiyelerinin artı / eksi toplamı (eski FİRMA SON DURUM ile birebir; önceden tüm zamanların brüt borç / alacak hareketi
+  // toplanıyordu — DEMİRTAŞ'ta 339 milyon TL; denetim 24.11.2026). Net değişmez.
   const cari = await pool.request().input("t", sql.Date, tarih).query(`
     ;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (${cariHareketleriSql(await belgeTablolari(pool))})
-    SELECT CH.paraId, RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo,
-      SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE 0 END) borc, SUM(CASE WHEN CH.tip=1 THEN CH.meblag ELSE 0 END) alacak
-    FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId
-    WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.paraId, P.KOD, P.AD, P.SIRA_NO;`);
+    SELECT B.paraId, RTRIM(ISNULL(P.KOD,'')) paraKod, RTRIM(ISNULL(P.AD,'')) paraAd, ISNULL(P.SIRA_NO,99) siraNo,
+      SUM(CASE WHEN B.bakiye>0.000001 THEN B.bakiye ELSE 0 END) borc, SUM(CASE WHEN B.bakiye<-0.000001 THEN -B.bakiye ELSE 0 END) alacak
+    FROM (SELECT CH.cariKartId, CH.paraId, SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE -CH.meblag END) bakiye
+          FROM CH WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.cariKartId, CH.paraId) B
+    JOIN dbo.TODVZ_PARA P ON P.PARA_ID=B.paraId
+    GROUP BY B.paraId, P.KOD, P.AD, P.SIRA_NO;`);
   // Carilerin bize borcu = bizim alacağımız; carilerin alacağı = bizim borcumuz
   for (const r of cari.recordset) { const o = al(r); o.cariAlacak += Number(r.borc) || 0; o.cariBorc += Number(r.alacak) || 0; }
 
@@ -91,19 +95,21 @@ const ikiYon = (kayitlar: any[], tlId: number) => {
   alis.set(tlId, 1); satis.set(tlId, 1);
   return { alis, satis };
 };
-/** Kur seçiminin (kurCoz) kullandığı kur tablosundaki efektif alış ve satış kurları (efektif yoksa döviz kuru); TL = 1. Yalnızca SELECT. */
-export async function gununKurlari(pool: sql.ConnectionPool, p: RaporParametreler, tlId: number) {
+/** Kur seçiminin (kurCoz — aynı `secenek` ile) kullandığı kur tablosundaki efektif alış ve satış kurları (efektif yoksa döviz kuru); TL = 1. Yalnızca SELECT. */
+export async function gununKurlari(pool: sql.ConnectionPool, p: RaporParametreler, tlId: number, secenek: { sonraki?: boolean } = {}) {
+  const sonraki = !!secenek.sonraki && p.kurTuru === 2 && !!(p.kurTarihi || p.tarih);
+  const tablo = sonraki ? kurTablosuSql("@t", { sonraki: true, tur: "2" }) : `(SELECT TOP 1 T.KUR_TABLOSU_ID FROM dbo.TODVZ_KUR_TABLOSU T
+      WHERE T.TUR=@tur AND (@tur=0 OR @t IS NULL OR CAST(T.TARIH AS date)<=@t) ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC)`;
   const r = await pool.request().input("tur", sql.TinyInt, p.kurTuru === 2 ? 2 : 0).input("t", sql.Date, p.kurTarihi || p.tarih || null).query(`
     SELECT K.PARA_ID id, ${KUR_ALIS_SQL} alis, ${KUR_SATIS_SQL} satis FROM dbo.TODVZ_KUR K
-    WHERE K.KUR_TABLOSU_ID=(SELECT TOP 1 T.KUR_TABLOSU_ID FROM dbo.TODVZ_KUR_TABLOSU T
-      WHERE T.TUR=@tur AND (@tur=0 OR @t IS NULL OR CAST(T.TARIH AS date)<=@t) ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC)`);
+    WHERE K.KUR_TABLOSU_ID=${tablo}`);
   return ikiYon(r.recordset, tlId);
 }
-/** kurTarihte ile aynı kur tablosu (tarihe eşit / önceki en yakın): efektif alış ve satış kurları; TL = 1. Devir / mevcut günü değerlemeleri için. Yalnızca SELECT. */
-export async function tarihKurlari(pool: sql.ConnectionPool, tarih: string, tlId: number) {
+/** kurTarihte ile aynı kur tablosu (tarihe eşit / önceki en yakın; `secenek.sonraki` ile o gün yoksa sonraki ilk tablo): efektif alış ve satış kurları; TL = 1. Yalnızca SELECT. */
+export async function tarihKurlari(pool: sql.ConnectionPool, tarih: string, tlId: number, secenek: { sonraki?: boolean } = {}) {
   const r = await pool.request().input("t", sql.Date, tarih).query(`
     SELECT K.PARA_ID id, ${KUR_ALIS_SQL} alis, ${KUR_SATIS_SQL} satis FROM dbo.TODVZ_KUR K
-    WHERE K.KUR_TABLOSU_ID=(SELECT TOP 1 T.KUR_TABLOSU_ID FROM dbo.TODVZ_KUR_TABLOSU T WHERE CAST(T.TARIH AS date)<=@t ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC)`);
+    WHERE K.KUR_TABLOSU_ID=${kurTablosuSql("@t", secenek)}`);
   return ikiYon(r.recordset, tlId);
 }
 /**
@@ -216,13 +222,13 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
     return { ...sonuc, satirlar: paraBasliklariEkle(satirlar, { grupla: s => pg.grup(s), alan: "paraKod" }) };
   },
 
-  /** Long / short denge analizi — döviz ve kıymetli maden pozisyonu (TL hariç); vadeli dekontlar ayrı kolon; ortalama maliyete göre değerleme farkı */
+  /** Long / short denge analizi — TL, döviz ve kıymetli maden pozisyonu (TL eski rapordaki gibi tabloda ve rapor altı toplamlarında; denetim 24.11.2026); vadeli dekontlar ayrı kolon; ortalama maliyete göre değerleme farkı */
   async LONSHO1(pool, p, t) {
     // İki tarih arası (kullanıcı kararı 19.09.2026, eski rapordaki gibi): devir = ilk tarihten önceki günün kapanışı, mevcut = son tarih. Eski çağrılar için tek `tarih` de kabul edilir.
     const bit = p.bitis || p.tarih, bas = p.baslangic || bit;
     if (!bit || !bas) throw ApiError.badRequest("Tarih aralığı zorunludur.");
     p = { ...p, tarih: bit };
-    const kur = await kurCoz(pool, { ...p, kurTarihi: p.kurTarihi || bit });
+    const kur = await kurCoz(pool, { ...p, kurTarihi: p.kurTarihi || bit }, { sonraki: true });
     // Ortalama maliyet: kâr-zarar ile aynı ağırlıklı ortalama, kayıtların başından seçilen tarihe kadar. Kaynak birleşik fiş (canlı test 05.11.2026):
     // döviz fişi + sarraf fişi + perakende fişi alış / satışları, lisansa göre (fisKaynagi). Ticari fiş girmez (satır miktarı tutardır, döviz / maden alışı değildir).
     // Yalnız döviz bölümü açıkken kaynak TODVZ_FIS'in kendisidir → sonuç öncekiyle aynı.
@@ -233,11 +239,11 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
       WHERE ISNULL(F.IPTAL,0)=0 AND S.PARA_ID IS NOT NULL AND CAST(F.TARIH AS date)<=@t ORDER BY S.PARA_ID, F.TARIH, F.FIS_ID, S.SATIR_NO;`);
     const ortMaliyet = new Map<number, number>();
     for (const h of maliyetYurut(fis.recordset.map((r: any) => ({ paraId: Number(r.paraId), tip: Number(r.tip), miktar: Number(r.miktar), tutar: Number(r.tutar), kur: Number(r.kur) })))) ortMaliyet.set(h.paraId, h.ortMaliyet);
-    const devirGun = gunOnce(bas), devirKur = await kurTarihte(pool, devirGun), mevcutKur = await kurTarihte(pool, bit);
+    const devirGun = gunOnce(bas), devirKur = await kurTarihte(pool, devirGun), mevcutKur = await kurTarihte(pool, bit, { sonraki: true });
     const devirler = new Map<number, number>((await pozisyonlar(pool, { ...p, tarih: devirGun }, { banka: false, vadeli: false })).map(o => [o.paraId, o.vezne + o.cariAlacak - o.cariBorc]));
     // Eski "Long / Short seçeneği": Hepsi / Long (sembol L) / Short (sembol S) — satır süzgeci; rapor altı da süzülen satırlardan hesaplanır (rpt kayıt seçimi)
     const lsSecim = ekDeger(p, "longShort");
-    const satirlar = (await pozisyonlar(pool, p, { banka: false, vadeli: true })).filter(o => o.paraId !== kur.tlId).map(o => {
+    const satirlar = (await pozisyonlar(pool, p, { banka: false, vadeli: true })).map(o => {
       // Eksi vezne mevcudu Long'da değil, mutlak değeriyle Short'ta (canlı test 05.11.2026); net değişmez
       const { longMiktar: longM, shortMiktar: shortM } = longShortBilesenleri(o), ls = lsDurumu(longM, shortM), vadeliNet = o.vadeliAlacak - o.vadeliBorc;
       const k = kur.kurlar.get(o.paraId) ?? 0, ks = kur.satisKurlari.get(o.paraId) ?? 0, om = ortMaliyet.get(o.paraId) ?? 0;
@@ -252,7 +258,7 @@ export const YONETICI_SORGULARI: Record<string, Sorgu> = {
     // (denge farkı), Denge → TL → denge parası; hepsi Alış iken bugünkü sonuç (kurTarihte: efektif alış). Satış kurları yalnız seçilince okunur.
     const yLong = cevrimSecimi(ekDeger(p, "longCevrim"), "alis"), yShort = cevrimSecimi(ekDeger(p, "shortCevrim"), "alis"), yDenge = cevrimSecimi(ekDeger(p, "dengeCevrim"), "alis");
     const satisGerek = [yLong, yShort, yDenge].includes("satis");
-    const devirSatis = satisGerek ? (await tarihKurlari(pool, devirGun, kur.tlId)).satis : devirKur, mevcutSatis = satisGerek ? (await tarihKurlari(pool, bit, kur.tlId)).satis : mevcutKur;
+    const devirSatis = satisGerek ? (await tarihKurlari(pool, devirGun, kur.tlId)).satis : devirKur, mevcutSatis = satisGerek ? (await tarihKurlari(pool, bit, kur.tlId, { sonraki: true })).satis : mevcutKur;
     const hedef = await hedefPara(pool, p, kur);
     const dengeOzeti = dengeKalemleri(satirlar, { tlId: kur.tlId, hedefId: hedef.id, hedefKod: hedef.kod,
       devirKur: { kur: devirKur, alis: devirKur, satis: devirSatis }, mevcutKur: { kur: mevcutKur, alis: mevcutKur, satis: mevcutSatis },

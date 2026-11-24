@@ -3,6 +3,7 @@
   "ad": "Vezne Hareket Listesi",
   "aciklama": "Vezne defteri: döviz, sarraf ve perakende fişi, ürün tanımı, transfer, nakit cari, kasa hesap hareketleri ve emanet dekontları; vezne bazında giriş / çıkış miktarları.",
   "kagit": "A4-yatay",
+  "ustSinir": 20000,
   "parametreler": [
     {
       "ad": "baslangic",

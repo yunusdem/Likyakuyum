@@ -138,6 +138,17 @@ const ozetMetni = (s: Record<string, any>[]) => s.map(x => (x._stil ? `[${x.kale
   esit("FIRVAR1 özet satırında paraId yok", g.some(x => "paraId" in x), false);
   const gk = varlikOzetiKur(varlik, { ...ortak, hedefId: TL, hedefKod: "TL", tlDoviz: "kur", dovizDoviz: "kur", toplamSatiri: false, grupla: x => pg.grup(x) });
   esit("FIRVAR1 toplam satırı kapalıyken Toplam başlığı da yok", gk.map(x => (x._stil ? `[${x.kalem}]` : x.kalem)).join(" "), "[Döviz] TL USD [Kuyum] HAS");
+  // Brüt borç / alacak (eski yordamın BORC / ALACAK alanları — denetim 24.11.2026): verilince netten türetilmez; değerleri günün kuruyla;
+  // devreden ve net kâr / zarar değişmez. Devir ve devreden sıfır ama gün içinde alınıp satılan para satırı da görünür.
+  const brut = varlikOzetiKur([
+    { paraId: TL, paraKod: "TL", devir: 1025, devreden: 820, borc: 1000, alacak: 1205 },
+    { paraId: USD, paraKod: "USD", devir: 100, devreden: 150, borc: 70, alacak: 20 },
+    { paraId: EUR, paraKod: "EUR", devir: 0, devreden: 0, borc: 5, alacak: 5 },
+  ], { ...ortak, hedefId: TL, hedefKod: "TL", tlDoviz: "kur", dovizDoviz: "kur", toplamSatiri: true });
+  const eurKur = Number(gun.kur.get(EUR) ?? 0);
+  esit("FIRVAR1 brüt borç / alacak satırları", ozetMetni(brut.filter(x => x.devir !== null)), `TL:1025|1000|1205|820|820 ; USD:100|70|20|150|6000 ; EUR:0|5|5|0|0`);
+  esit("FIRVAR1 brüt borç / alacak değerleri günün kuruyla", y6(al(brut, "Borç değeri"), al(brut, "Alacak değeri")), y6(1000 + 70 * 40 + 5 * eurKur, 1205 + 20 * 40 + 5 * eurKur));
+  esit("FIRVAR1 brütte devreden ve net kâr / zarar değişmez", y6(al(brut, "Devreden değeri"), al(brut, "Toplam Net Kâr / Zarar")), y6(820 + 6000, 820 + 6000 - (1025 + 100 * 39)));
 }
 
 // ── FIRVAR1 ana tablo: gruplar ardışık + grup içinde para başlıkları

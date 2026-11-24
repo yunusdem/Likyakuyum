@@ -139,14 +139,34 @@ export async function usdKuruCozucu(pool: sql.ConnectionPool, satirlar: any[]) {
   };
 }
 
-/** Kur tablosu: kurTuru 0 = anlık gişe (en son), 2 = saklanan (kurTarihi'ne eşit/önceki en yakın gün). */
-export async function kurCoz(pool: sql.ConnectionPool, p: RaporParametreler) {
+/**
+ * Kur tablosu seçen alt sorgu (KUR_TABLOSU_ID): `t` gününe eşit / önceki en yakın tablo; `sonraki` ise o gün tablo yoksa SONRAKİ ilk tablonun günü, sonrası da yoksa
+ * önceki en yakın gün (aynı günde birden çok tablo varsa en son girilen). `tur` verilirse yalnız o türdeki tablolar. `t` SQL ifadesidir (ör. "@t").
+ * "Sonraki" kuralı eski yönetici raporlarının (FİRMA VARLIKLARI, KÂR / ZARAR, LONG / SHORT) günün / kapanışın kurudur: Pazar ya da tatil günü tablo yoksa
+ * pazartesinin kuru kullanılır (kullanıcı kararı 24.11.2026; eski yordamlarla doğrulandı). Devir kuru her zaman önceki en yakın tablodur.
+ */
+export const kurTablosuSql = (t: string, o: { sonraki?: boolean; tur?: string } = {}) => {
+  const tx = (a: string) => (o.tur ? ` AND ${a}.TUR=${o.tur}` : "");
+  if (!o.sonraki) return `(SELECT TOP 1 T.KUR_TABLOSU_ID FROM dbo.TODVZ_KUR_TABLOSU T WHERE CAST(T.TARIH AS date)<=${t}${tx("T")} ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC)`;
+  const gun = `ISNULL((SELECT MIN(CAST(X.TARIH AS date)) FROM dbo.TODVZ_KUR_TABLOSU X WHERE CAST(X.TARIH AS date)>=${t}${tx("X")}),
+      (SELECT MAX(CAST(X.TARIH AS date)) FROM dbo.TODVZ_KUR_TABLOSU X WHERE CAST(X.TARIH AS date)<=${t}${tx("X")}))`;
+  return `(SELECT TOP 1 T.KUR_TABLOSU_ID FROM dbo.TODVZ_KUR_TABLOSU T WHERE CAST(T.TARIH AS date)=${gun}${tx("T")} ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC)`;
+};
+
+/**
+ * Kur tablosu: kurTuru 0 = anlık gişe (en son), 2 = saklanan (kurTarihi'ne eşit/önceki en yakın gün; `secenek.sonraki` ile o gün tablo yoksa sonraki ilk
+ * tablo — kurTablosuSql). Anlık gişe kuru seçimi değişmez.
+ */
+export async function kurCoz(pool: sql.ConnectionPool, p: RaporParametreler, secenek: { sonraki?: boolean } = {}) {
   const tur = p.kurTuru === 2 ? 2 : 0;
   const ikisi = p.kurAlani === "ikisi";
   // Eski raporlar efektif kuru kullanır (SODVZCR_* yordamları EFEKTIF_ALIS / EFEKTIF_SATIS döndürür); efektif girilmemişse döviz kuruna düşülür
   const alan = p.kurAlani === "satis" ? "COALESCE(NULLIF(EFEKTIF_SATIS,0),DOVIZ_SATIS)" : "COALESCE(NULLIF(EFEKTIF_ALIS,0),DOVIZ_ALIS)";
   const req = pool.request().input("tur", sql.TinyInt, tur).input("t", sql.Date, p.kurTarihi || p.tarih || null);
-  const res = await req.query(`
+  const sonraki = !!secenek.sonraki && tur === 2 && !!(p.kurTarihi || p.tarih);
+  const res = await req.query(sonraki
+    ? `SELECT T.KUR_TABLOSU_ID id, T.TARIH tarih FROM dbo.TODVZ_KUR_TABLOSU T WHERE T.KUR_TABLOSU_ID=${kurTablosuSql("@t", { sonraki: true, tur: "2" })};`
+    : `
     SELECT TOP 1 T.KUR_TABLOSU_ID id, T.TARIH tarih FROM dbo.TODVZ_KUR_TABLOSU T
     WHERE T.TUR=@tur AND (@tur=0 OR @t IS NULL OR CAST(T.TARIH AS date)<=@t)
     ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC;`);
@@ -167,11 +187,14 @@ export async function kurCoz(pool: sql.ConnectionPool, p: RaporParametreler) {
 
 /** Bir önceki gün (YYYY-AA-GG) — "devir" = dönem başından önceki günün kapanışı */
 export const gunOnce = (gun: string) => { const d = new Date(`${gun}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
-/** Verilen tarihe eşit/önceki en yakın kur tablosundaki efektif alış kurları (efektif yoksa döviz alış); TL = 1. Devir / kapanış değerlemeleri için (eski yordamlardaki DEVIR_* / MEVCUT_* / KAPANIS kurları). */
-export async function kurTarihte(pool: sql.ConnectionPool, tarih: string) {
+/**
+ * Verilen tarihe eşit/önceki en yakın kur tablosundaki efektif alış kurları (efektif yoksa döviz alış); TL = 1. Devir / kapanış değerlemeleri için (eski yordamlardaki
+ * DEVIR_* / MEVCUT_* / KAPANIS kurları). `secenek.sonraki`: o gün tablo yoksa sonraki ilk tablo (yönetici raporlarında kapanış / mevcut günü — kurTablosuSql).
+ */
+export async function kurTarihte(pool: sql.ConnectionPool, tarih: string, secenek: { sonraki?: boolean } = {}) {
   const r = await pool.request().input("t", sql.Date, tarih).query(`
     SELECT K.PARA_ID id, COALESCE(NULLIF(K.EFEKTIF_ALIS,0),K.DOVIZ_ALIS) kur FROM dbo.TODVZ_KUR K
-    WHERE K.KUR_TABLOSU_ID=(SELECT TOP 1 T.KUR_TABLOSU_ID FROM dbo.TODVZ_KUR_TABLOSU T WHERE CAST(T.TARIH AS date)<=@t ORDER BY T.TARIH DESC, T.KUR_TABLOSU_ID DESC)`);
+    WHERE K.KUR_TABLOSU_ID=${kurTablosuSql("@t", secenek)}`);
   const m = new Map<number, number>(r.recordset.map((x: any) => [Number(x.id), Number(x.kur) || 0]));
   m.set(Number((await pool.request().query(`SELECT ${TL_PARA_SQL} id`)).recordset[0]?.id || 1), 1);
   return m;

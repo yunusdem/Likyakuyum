@@ -13,6 +13,8 @@ export interface HesapItem {
   toplamGiris?: number;
   toplamCikis?: number;
   bakiye?: number;
+  /** Para bazında bakiye (sıfır olanlar yok); bakiye / toplamlar yalnız TL */
+  bakiyeler?: { paraKod: string; bakiye: number }[];
   ekleyenId?: number | null;
   eklemeZamani?: string | null;
   guncelleyenId?: number | null;

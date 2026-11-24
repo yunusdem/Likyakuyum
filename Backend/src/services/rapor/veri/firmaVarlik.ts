@@ -21,9 +21,11 @@ export const varlikCinsi = (deger: string): VarlikCinsi => (deger === "kasa" || 
 /** Varlık cinsinin kapsadığı kaynaklar: kasa = vezne mevcutları, cari = cari alacak / borçlar. Saf fonksiyon. */
 export const varlikKapsami = (cins: VarlikCinsi) => ({ kasa: cins !== "cari", cari: cins !== "kasa" });
 
-export interface VarlikParasi { paraId: number; paraKod: string; devir: number; devreden: number }
+/** Para başına devir / devreden; `borc` / `alacak` günün brüt hareketidir (verilmezse devreden − devir netinden türetilir) */
+export interface VarlikParasi { paraId: number; paraKod: string; devir: number; devreden: number; borc?: number; alacak?: number }
 /**
- * Eski "FİRMA VARLIKLARI" rapor altı. Para satırları: Devir (önceki günün kapanışı) → Borç / Alacak (günün net hareketi) → Devreden + devredenin seçilen paradaki değeri.
+ * Eski "FİRMA VARLIKLARI" rapor altı. Para satırları: Devir (önceki günün kapanışı) → Borç / Alacak (günün brüt hareketi; eski yordamın BORC / ALACAK
+ * alanları, Firma Varlıkları denetimi 24.11.2026) → Devreden + devredenin seçilen paradaki değeri.
  * Kalemler (rpt formülleri): Devir değeri = Σ @SecilenKapanisDevri (devir × devir günü kuru); Açılış devri değeri = Σ @SecilenAcilisDevri (devir × günün kuru);
  * Kapanış / açılış evalüasyonu = açılış − devir değeri; Borç / Alacak değeri = Σ @SecilenBorc / @SecilenAlacak; Devreden değeri = açılış + borç − alacak;
  * Toplam Net Kâr / Zarar = devreden değeri − devir değeri, işaretli tek satır (eski @ToplamNetKarZarar; kâr artı, zarar eksi — canlı test 05.11.2026).
@@ -36,8 +38,8 @@ export function varlikOzetiKur(paralar: VarlikParasi[], a: { tlId: number; hedef
   const paraSatirlari: (Record<string, any> & { paraId: number })[] = [];
   let dDeger = 0, dBugun = 0, vDeger = 0, bDeger = 0, aDeger = 0;
   for (const o of paralar) {
-    const d0 = o.devir, d1 = o.devreden, h = d1 - d0, borc = h > 0 ? h : 0, alacak = h < 0 ? -h : 0;
-    if (Math.abs(d0) < 0.000001 && Math.abs(d1) < 0.000001) continue;
+    const d0 = o.devir, d1 = o.devreden, h = d1 - d0, borc = o.borc ?? (h > 0 ? h : 0), alacak = o.alacak ?? (h < 0 ? -h : 0);
+    if (Math.abs(d0) < 0.000001 && Math.abs(d1) < 0.000001 && Math.abs(borc) < 0.000001 && Math.abs(alacak) < 0.000001) continue;
     paraSatirlari.push({ paraId: o.paraId, kalem: o.paraKod, devir: d0, borc, alacak, devreden: d1, deger: cevir(d1, o.paraId, a.kurlar) });
     dDeger += cevir(d0, o.paraId, a.devirKurlar); dBugun += cevir(d0, o.paraId, a.kurlar); vDeger += cevir(d1, o.paraId, a.kurlar);
     bDeger += cevir(borc, o.paraId, a.kurlar); aDeger += cevir(alacak, o.paraId, a.kurlar);
@@ -63,7 +65,8 @@ export const FIRMA_VARLIK_SORGULARI: Record<string, Sorgu> = {
   /** R5 Firma varlıkları — vezne bakiyeleri + cari alacak/borç, seçilen kurla TL */
   async FIRVAR1(pool, p, t) {
     if (!p.tarih) throw ApiError.badRequest("Tarih zorunludur.");
-    const kur = await kurCoz(pool, p);
+    // Günün kuru (saklanan kur seçiliyken): o gün tablo yoksa sonraki ilk tablo — eski FİRMA VARLIKLARI gibi (kurTablosuSql, kullanıcı kararı 24.11.2026)
+    const kur = await kurCoz(pool, p, { sonraki: true });
     // Eski "Varlık cinsi": Kasa → yalnız vezne mevcutları, Cari → yalnız cari alacak / borçlar (ana tablo ve rapor altı birlikte süzülür)
     const cins = varlikCinsi(ekDeger(p, "varlikCinsi")), kapsam = varlikKapsami(cins);
     const vezneler = kapsam.kasa ? await vezneBakiyeleri(pool, p.tarih, p) : [];
@@ -72,21 +75,26 @@ export const FIRMA_VARLIK_SORGULARI: Record<string, Sorgu> = {
     const satirlar: any[] = vezneler.filter(v => Math.abs(v.miktar) > 0.000001 && paraUygun(Number(v.paraId))).map(v => ({
       kaynak: `Vezne ${v.vezneKod} — ${v.vezneAd}`, grup: "1-Vezneler", paraId: Number(v.paraId), paraKod: v.paraKod, miktar: Number(v.miktar), kur: kur.kurlar.get(v.paraId) ?? 0,
       tlKarsiligi: Number(v.miktar) * (kur.kurlar.get(v.paraId) ?? 0), kurSatis: kur.satisKurlari.get(v.paraId) ?? 0, tlSatis: Number(v.miktar) * (kur.satisKurlari.get(v.paraId) ?? 0) }));
-    const ch = `;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (${cariHareketleriSql(await belgeTablolari(pool))})`;
+    const belgeler = await belgeTablolari(pool);
+    const ch = `;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (${cariHareketleriSql(belgeler)})`;
+    // Cari alacaklarımız = bakiyesi borçta olan carilerin bakiyeleri toplamı, cari borçlarımız = bakiyesi alacakta olanlarınki (cari × para bakiyesi).
+    // Önceden tüm zamanların brüt borç / alacak hareket toplamı basılıyordu (DEMİRTAŞ'ta 340 milyon TL; gerçek alacak 965 bin TL — denetim 24.11.2026).
     const cari = !kapsam.cari ? { recordset: [] as any[] } : await pool.request().input("t", sql.Date, p.tarih).query(`${ch}
-      SELECT CH.paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
-        SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE 0 END) borc, SUM(CASE WHEN CH.tip=1 THEN CH.meblag ELSE 0 END) alacak
-      FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId
-      WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.paraId, P.KOD, P.SIRA_NO ORDER BY ISNULL(P.SIRA_NO,99), P.KOD;`);
+      SELECT B.paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
+        SUM(CASE WHEN B.bakiye>0.000001 THEN B.bakiye ELSE 0 END) borc, SUM(CASE WHEN B.bakiye<-0.000001 THEN -B.bakiye ELSE 0 END) alacak
+      FROM (SELECT CH.cariKartId, CH.paraId, SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE -CH.meblag END) bakiye
+            FROM CH WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.cariKartId, CH.paraId) B
+      JOIN dbo.TODVZ_PARA P ON P.PARA_ID=B.paraId
+      GROUP BY B.paraId, P.KOD, P.SIRA_NO ORDER BY ISNULL(P.SIRA_NO,99), P.KOD;`);
     for (const r of cari.recordset) {
       if (!paraUygun(Number(r.paraId))) continue;
       const k = kur.kurlar.get(Number(r.paraId)) ?? 0, ks = kur.satisKurlari.get(Number(r.paraId)) ?? 0;
       if (Number(r.borc)) satirlar.push({ kaynak: "Cari alacaklarımız (carilerin bize borcu)", grup: "2-Cari alacaklar", paraId: Number(r.paraId), paraKod: r.paraKod, miktar: Number(r.borc), kur: k, tlKarsiligi: Number(r.borc) * k, kurSatis: ks, tlSatis: Number(r.borc) * ks });
       if (Number(r.alacak)) satirlar.push({ kaynak: "Cari borçlarımız (carilerin bizden alacağı)", grup: "3-Cari borçlar", paraId: Number(r.paraId), paraKod: r.paraKod, miktar: -Number(r.alacak), kur: k, tlKarsiligi: -Number(r.alacak) * k, kurSatis: ks, tlSatis: -Number(r.alacak) * ks });
     }
-    // Eski "FİRMA VARLIKLARI" metrikleri: para başına Devir (önceki günün kapanışı) → Borç / Alacak (seçilen günün net hareketi) → Devreden; rapor altında
+    // Eski "FİRMA VARLIKLARI" metrikleri: para başına Devir (önceki günün kapanışı) → Borç / Alacak (seçilen günün brüt hareketi) → Devreden; rapor altında
     // devir değeri (devir günü kuruyla), kapanış / açılış evalüasyonu (aynı devrin bugünkü kurla değeri − devir günü kuruyla değeri), devreden değeri ve toplam net kâr / zarar.
-    // Varlık = vezne mevcudu + cari alacaklarımız − cari borçlarımız. Borç / alacak net harekettir (eski yordam brüt veriyor olabilir — canlıda karşılaştırılacak).
+    // Varlık = vezne mevcudu + cari alacaklarımız − cari borçlarımız.
     const net = async (gun: string) => { const m = new Map<string, { paraId: number; paraKod: string; miktar: number }>();
       // Seçilen günün vezne bakiyeleri yukarıda zaten okundu (aynı sorgu); yalnız devir günü için yeniden çalıştırılır
       for (const v of !kapsam.kasa ? [] : gun === p.tarih ? vezneler : await vezneBakiyeleri(pool, gun, p)) { if (!paraUygun(Number(v.paraId))) continue; const o = m.get(v.paraKod) || { paraId: Number(v.paraId), paraKod: v.paraKod, miktar: 0 }; o.miktar += Number(v.miktar) || 0; m.set(v.paraKod, o); }
@@ -95,15 +103,42 @@ export const FIRMA_VARLIK_SORGULARI: Record<string, Sorgu> = {
         FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId WHERE CAST(CH.tarih AS date)<=@t GROUP BY CH.paraId, P.KOD`);
       for (const r of c.recordset) { if (!paraUygun(Number(r.paraId))) continue; const o = m.get(r.paraKod) || { paraId: Number(r.paraId), paraKod: r.paraKod, miktar: 0 }; o.miktar += Number(r.net) || 0; m.set(r.paraKod, o); }
       return m; };
-    const devirGun = gunOnce(p.tarih), devirler = await net(devirGun), devredenler = await net(p.tarih), devirKur = await kurTarihte(pool, devirGun), hedef = await hedefPara(pool, p, kur);
+    // Seçilen günün brüt hareketi — eski yordamın BORC / ALACAK alanları (DEMİRTAŞ 23.11.2026 yedeğinde para para birebir doğrulandı, denetim 24.11.2026):
+    // borç = vezne girişleri + cari borç hareketleri, alacak = vezne çıkışları + cari alacak hareketleri. Nakit cari hareket iki yanda da görünür (netinde
+    // birbirini götürür). Vezneler arası transfer firma içidir, brüte girmez; vezne süzülmüşse süzülen veznelerin transfer neti eklenir ki
+    // devir + borç − alacak = devreden kalsın.
+    const gunHareketi = async () => { const m = new Map<string, { paraId: number; borc: number; alacak: number }>();
+      const ekle = (paraId: number, kod: string, b: number, a: number) => { const o = m.get(kod) || { paraId, borc: 0, alacak: 0 }; o.borc += b; o.alacak += a; m.set(kod, o); };
+      if (kapsam.kasa) {
+        const req = pool.request().input("t", sql.Date, p.tarih);
+        const f = filtreler(req, p, { vezne: "V" });
+        const r = await req.query(`;WITH H (${VEZNE_HAREKET_KOLONLARI}) AS (${vezneHareketleriSql(belgeler)})
+          SELECT H.paraId, RTRIM(ISNULL(P.KOD,'')) paraKod,
+            SUM(CASE WHEN H.belgeTipi=1 THEN 0 ELSE ISNULL(H.giris,0) END) giris, SUM(CASE WHEN H.belgeTipi=1 THEN 0 ELSE ISNULL(H.cikis,0) END) cikis,
+            SUM(CASE WHEN H.belgeTipi=1 THEN ISNULL(H.giris,0)-ISNULL(H.cikis,0) ELSE 0 END) transfer
+          FROM H LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=H.vezneId LEFT JOIN dbo.TODVZ_PARA P ON P.PARA_ID=H.paraId
+          WHERE CAST(H.tarih AS date)=@t ${f}
+          GROUP BY H.paraId, P.KOD;`);
+        for (const x of r.recordset) { if (!paraUygun(Number(x.paraId))) continue; const tr = Number(x.transfer) || 0;
+          ekle(Number(x.paraId), x.paraKod, (Number(x.giris) || 0) + Math.max(tr, 0), (Number(x.cikis) || 0) + Math.max(-tr, 0)); }
+      }
+      if (kapsam.cari) {
+        const r = await pool.request().input("t", sql.Date, p.tarih).query(`${ch} SELECT CH.paraId, RTRIM(P.KOD) paraKod,
+            SUM(CASE WHEN CH.tip=0 THEN CH.meblag ELSE 0 END) borc, SUM(CASE WHEN CH.tip=1 THEN CH.meblag ELSE 0 END) alacak
+          FROM CH JOIN dbo.TODVZ_PARA P ON P.PARA_ID=CH.paraId WHERE CAST(CH.tarih AS date)=@t GROUP BY CH.paraId, P.KOD`);
+        for (const x of r.recordset) { if (!paraUygun(Number(x.paraId))) continue; ekle(Number(x.paraId), x.paraKod, Number(x.borc) || 0, Number(x.alacak) || 0); }
+      }
+      return m; };
+    const devirGun = gunOnce(p.tarih), devirler = await net(devirGun), devredenler = await net(p.tarih), gun = await gunHareketi(), devirKur = await kurTarihte(pool, devirGun), hedef = await hedefPara(pool, p, kur);
     // Çevrim seçimleri (eski "TL -> Döviz" / "Döviz -> Döviz"): ikisi de "Kur seçimine göre" iken günün kuru kur seçiminden, devir günü kuru efektif alıştan gelir (bugünkü sonuç);
     // Alış / Satış seçilince hem günün hem devir gününün kur tablosundan o yön okunur.
     const tlDoviz = cevrimSecimi(ekDeger(p, "tlDovizCevrim")), dovizDoviz = cevrimSecimi(ekDeger(p, "dovizDovizCevrim"));
-    const kurlar = await kurSetiKur([tlDoviz, dovizDoviz], kur.kurlar, () => gununKurlari(pool, p, kur.tlId));
+    const kurlar = await kurSetiKur([tlDoviz, dovizDoviz], kur.kurlar, () => gununKurlari(pool, p, kur.tlId, { sonraki: true }));
     const devirKurlar = await kurSetiKur([tlDoviz, dovizDoviz], devirKur, () => tarihKurlari(pool, devirGun, kur.tlId));
     const pg = await paraGrupBilgisi(pool);
-    const paralar: VarlikParasi[] = [...new Set([...devirler.keys(), ...devredenler.keys()])].map(kod => ({ paraId: (devredenler.get(kod) || devirler.get(kod))!.paraId, paraKod: kod,
-      devir: devirler.get(kod)?.miktar ?? 0, devreden: devredenler.get(kod)?.miktar ?? 0 }));
+    const paralar: VarlikParasi[] = [...new Set([...devirler.keys(), ...devredenler.keys(), ...gun.keys()])].map(kod => ({
+      paraId: (devredenler.get(kod) || devirler.get(kod) || gun.get(kod))!.paraId, paraKod: kod,
+      devir: devirler.get(kod)?.miktar ?? 0, devreden: devredenler.get(kod)?.miktar ?? 0, borc: gun.get(kod)?.borc ?? 0, alacak: gun.get(kod)?.alacak ?? 0 }));
     const varlikOzeti = varlikOzetiKur(paralar, { tlId: kur.tlId, hedefId: hedef.id, hedefKod: hedef.kod, devirEtiketi: tarihTr(devirGun), kurlar, devirKurlar, tlDoviz, dovizDoviz,
       toplamSatiri: onayAcik(ekDeger(p, "toplamSatiri"), true), grupla: x => pg.grup(x) });
     // Ana tablo: gruplar ardışık (motor ardışık satırları gruplar), her grubun içinde para satırları Döviz / Kuyum başlıkları altında (K11)

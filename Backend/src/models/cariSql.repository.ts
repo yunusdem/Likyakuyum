@@ -2,6 +2,7 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { CARI_HAREKET_KOLONLARI, belgeTablolari, cariHareketleriSql } from "../services/rapor/kaynak.js";
 
 export interface TodvzCariKartEntity {
   CARI_KART_ID: number;
@@ -337,81 +338,18 @@ export class CariSqlRepository {
 
       // Calculate real-time balances for all cariler across all sources
       try {
-        // TL parasının kimliği (services/rapor/raporOrtak.ts TL_PARA_SQL ile aynı ifade) (ortak alan denetimi 19.11.2026, #15)
+        // Bakiye kaynağı Cari Bakiye raporu, Cari Hareket ekranı ve mobil ile aynıdır (services/rapor/kaynak.ts cariHareketleriSql — eski VODVZ_00_CARI_HAREKET ile
+        // birebir): cari hareket, virman dekontu (yeni sürümü olan eski sürüm hariç), yalnız bankadan ödenen döviz fişi (bankanın carisine), sarraf / perakende /
+        // ticari fişin cari ödemesi. Önceden bu liste müşteri carisi seçilmiş her döviz fişinin TL tutarını cariye yazıyor, dekontu almıyordu; DEMİRTAŞ'ta 7 caride
+        // 2,89 milyon TL farklı görünüyordu (denetim 24.11.2026; 19.11.2026 kararıyla Cari Hareket ekranı zaten rapor kuralına çekilmişti).
+        const belgeler = await belgeTablolari(pool);
         const bakiyeQuery = `
-          DECLARE @TL_PARA_ID INT = ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID), 1);
-          WITH AllMovements AS (
-            -- 1. TODVZ_CARI_HAREKET
-            SELECT 
-              H.[CARI_KART_ID],
-              S.[PARA_ID],
-              CASE WHEN H.[TIP] = 0 THEN S.[MEBLAG] ELSE 0 END AS [BORC],
-              CASE WHEN H.[TIP] = 1 THEN S.[MEBLAG] ELSE 0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_CARI_HAREKET_SATIRI] S WITH (NOLOCK)
-            INNER JOIN [dbo].[TODVZ_CARI_HAREKET] H WITH (NOLOCK) ON S.[CARI_HAREKET_ID] = H.[CARI_HAREKET_ID]
-            WHERE H.[CARI_KART_ID] IS NOT NULL
-
-            UNION ALL
-
-            -- 2. TODVZ_SARRAF_FISI (Ödeme / Tahsilat satırları: Satış -> Borç, Alış -> Alacak)
-            SELECT 
-              COALESCE(NULLIF(OS.[CARI_KART_ID], 0), NULLIF(SF.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
-              ISNULL(OS.[PARA_ID], 1) AS [PARA_ID],
-              CASE WHEN SF.[TIP] = 1 THEN ISNULL(NULLIF(OS.[ADET], 0), ISNULL(NULLIF(OS.[MIKTAR], 0), OS.[TUTAR])) ELSE 0.0 END AS [BORC],
-              CASE WHEN SF.[TIP] = 0 THEN ISNULL(NULLIF(OS.[ADET], 0), ISNULL(NULLIF(OS.[MIKTAR], 0), OS.[TUTAR])) ELSE 0.0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_ODEME_SATIRI] OS WITH (NOLOCK)
-            INNER JOIN [dbo].[TODVZ_SARRAF_FISI] SF WITH (NOLOCK) ON OS.[SARRAF_FISI_ID] = SF.[SARRAF_FISI_ID]
-            WHERE (OS.[CARI_KART_ID] IS NOT NULL AND OS.[CARI_KART_ID] > 0)
-               OR (SF.[CARI_KART_ID] IS NOT NULL AND SF.[CARI_KART_ID] > 0 AND (OS.[ODEME_ARACI_TURU] = 1 OR OS.[ISLEME_YERI] = 1 OR OS.[CARI_KART_ID] IS NULL))
-
-            UNION ALL
-
-            -- 3. TODVZ_FIS (Döviz Fişi): TUTAR satırın TL karşılığıdır, TL parasının satırına yazılır (önceden döviz parasının
-            --    satırına yazılıyor, ör. 100 USD satırı "4.100 USD" görünüyordu) (ortak alan denetimi 19.11.2026, #15)
-            SELECT
-              F.[CARI_KART_ID],
-              @TL_PARA_ID AS [PARA_ID],
-              CASE WHEN F.[TIP] = 1 THEN FS.[TUTAR] ELSE 0 END AS [BORC],
-              CASE WHEN F.[TIP] = 0 THEN FS.[TUTAR] ELSE 0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_FIS_SATIRI] FS WITH (NOLOCK)
-            INNER JOIN [dbo].[TODVZ_FIS] F WITH (NOLOCK) ON FS.[FIS_ID] = F.[FIS_ID]
-            WHERE F.[CARI_KART_ID] IS NOT NULL AND F.[CARI_KART_ID] > 0 AND ISNULL(F.[IPTAL], 0) = 0
-
-            UNION ALL
-
-            -- 4a. TODVZ_FATURA (Perakende Faturası Ana Kalemleri)
-            SELECT 
-              FAT.[CARI_KART_ID],
-              1 AS [PARA_ID], -- TL
-              CASE WHEN FAT.[FATURA_TIPI] = 1 THEN FAT.[GENEL_TOPLAM] ELSE 0 END AS [BORC],
-              CASE WHEN FAT.[FATURA_TIPI] = 2 THEN FAT.[GENEL_TOPLAM] ELSE 0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_FATURA] FAT WITH (NOLOCK)
-            WHERE FAT.[CARI_KART_ID] IS NOT NULL AND FAT.[CARI_KART_ID] > 0
-
-            UNION ALL
-
-            -- 4b. TODVZ_FATURA (Perakende Faturası Ödeme Satırları)
-            SELECT 
-              COALESCE(NULLIF(FO.[CARI_KART_ID], 0), NULLIF(FAT.[CARI_KART_ID], 0)) AS [CARI_KART_ID],
-              1 AS [PARA_ID], -- TL
-              CASE WHEN FAT.[FATURA_TIPI] = 2 THEN FO.[TUTAR] ELSE 0 END AS [BORC],
-              CASE WHEN FAT.[FATURA_TIPI] = 1 THEN FO.[TUTAR] ELSE 0 END AS [ALACAK]
-            FROM [dbo].[TODVZ_FATURA_ODEME] FO WITH (NOLOCK)
-            INNER JOIN [dbo].[TODVZ_FATURA] FAT WITH (NOLOCK) ON FO.[FATURA_ID] = FAT.[FATURA_ID]
-            WHERE (FO.[CARI_KART_ID] IS NOT NULL AND FO.[CARI_KART_ID] > 0)
-               OR (FAT.[CARI_KART_ID] IS NOT NULL AND FAT.[CARI_KART_ID] > 0 AND (FO.[ODEME_ARACI_TURU] = 1 OR FO.[CARI_KART_ID] IS NOT NULL))
-          )
-          SELECT 
-            M.[CARI_KART_ID],
-            M.[PARA_ID],
-            LTRIM(RTRIM(ISNULL(P.[KOD], 'TL'))) AS [PARA_KOD],
-            ISNULL(P.[HAS_ORANI], 0) AS [HAS_ORANI],
-            SUM(M.[BORC]) AS [TOPLAM_BORC],
-            SUM(M.[ALACAK]) AS [TOPLAM_ALACAK]
-          FROM AllMovements M
-          LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON M.[PARA_ID] = P.[PARA_ID]
-          WHERE M.[CARI_KART_ID] IS NOT NULL
-          GROUP BY M.[CARI_KART_ID], M.[PARA_ID], P.[KOD], P.[HAS_ORANI];
+          ;WITH CH (${CARI_HAREKET_KOLONLARI}) AS (${cariHareketleriSql(belgeler)})
+          SELECT CH.cariKartId AS [CARI_KART_ID], CH.paraId AS [PARA_ID], LTRIM(RTRIM(ISNULL(P.[KOD], 'TL'))) AS [PARA_KOD], ISNULL(P.[HAS_ORANI], 0) AS [HAS_ORANI],
+            SUM(CASE WHEN CH.tip = 0 THEN CH.meblag ELSE 0 END) AS [TOPLAM_BORC], SUM(CASE WHEN CH.tip = 1 THEN CH.meblag ELSE 0 END) AS [TOPLAM_ALACAK]
+          FROM CH LEFT JOIN [dbo].[TODVZ_PARA] P WITH (NOLOCK) ON P.[PARA_ID] = CH.paraId
+          WHERE CH.cariKartId IS NOT NULL
+          GROUP BY CH.cariKartId, CH.paraId, P.[KOD], P.[HAS_ORANI];
         `;
 
         const bakiyeResult = await pool.request().query<any>(bakiyeQuery);

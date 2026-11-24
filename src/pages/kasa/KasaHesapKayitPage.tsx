@@ -273,11 +273,23 @@ export const KasaHesapKayitPage: React.FC = () => {
       header: "Bakiye",
       width: "130px",
       align: "right",
-      render: (it) => (
-        <span className={`fw-semibold ${Number(it.bakiye || 0) < 0 ? "text-danger" : "text-success"}`}>
-          {Number(it.bakiye || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
-        </span>
-      ),
+      // Para bazında: farklı paralar toplanmaz (TL 3.643.364 ile USD 23.515 tek sayı olmuyordu); yalnız TL varsa eskisi gibi tek sayı
+      render: (it) => {
+        const satirlar = it.bakiyeler ?? [];
+        if (!satirlar.length || (satirlar.length === 1 && satirlar[0].paraKod === "TL")) {
+          const b = satirlar[0]?.bakiye ?? Number(it.bakiye || 0);
+          return <span className={`fw-semibold ${b < 0 ? "text-danger" : "text-success"}`}>{b.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}</span>;
+        }
+        return (
+          <div className="d-flex flex-column align-items-end lh-sm">
+            {satirlar.map((s) => (
+              <span key={s.paraKod} className={`fw-semibold text-nowrap ${s.bakiye < 0 ? "text-danger" : "text-success"}`}>
+                {s.bakiye.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {s.paraKod}
+              </span>
+            ))}
+          </div>
+        );
+      },
     },
   ];
 

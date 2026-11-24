@@ -3,6 +3,7 @@ import { ApiError } from "../../../utils/ApiError.js";
 import type { RaporGrup, RaporSonucVeri, RaporTanim } from "../raporTanim.js";
 import { type RaporParametreler, FIS_USD_KOLON_SQL, adetOzeti, usdKuruCozucu, aralikOzeti, ek, ekOnay, filtreler, idFiltre, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
 import { fisKaynagi, type FisKaynagi } from "../fisKaynak.js";
+import { SATIR_SERI, kmvKuraDahilSql } from "../kaynak.js";
 import { paraBasliklariEkle, paraGrupBilgisi, type ParaGrubu } from "../paraGrup.js";
 
 /**
@@ -319,7 +320,7 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
     const f = filtreler(req, p, { cari: "C", vezne: "V", para: "S.PARA_ID" }) + idFiltre(req, p.istatistikIdler, "F.ISTATISTIK_ID", "is");
     const cariSecili = !!(p.cariIdler?.length || p.cariSonId || p.cariKartId);
     const res = await req.query(`
-      SELECT F.BOLUM bolum, F.FIS_ID fisId, S.SATIR_NO satirNo, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CAST(F.TARIH AS date) gun, F.TIP tipKod, RTRIM(ISNULL(F.SERI_NO,'')) seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo,
+      SELECT F.BOLUM bolum, F.FIS_ID fisId, S.SATIR_NO satirNo, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CAST(F.TARIH AS date) gun, F.TIP tipKod, ${SATIR_SERI(k.d)} seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo,
         RTRIM(ISNULL(F.UNVAN,'')) unvan, RTRIM(ISNULL(F.VERGI_KIMLIK_NO,'')) kimlikNo, RTRIM(ISNULL(C.KOD,'')) cariKod,
         RTRIM(ISNULL(I.KOD,'')) istatistikKod, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
         ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar, ISNULL(S.KOMISYON,0) komisyon, ISNULL(S.BMV,0) bmv, ISNULL(S.KMV,0) kmv, ISNULL(S.KDV,0) kdv,
@@ -358,7 +359,7 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
     const req = tipGirdisi(pool.request().input("bas", sql.Date, bas).input("bit", sql.Date, bit).input("iptal", sql.Int, iptal ? 1 : 0), p);
     const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" });
     const res = await req.query(`
-      SELECT F.BOLUM bolum, F.FIS_ID fisId, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CAST(F.TARIH AS date) gun, F.TIP tipKod, RTRIM(ISNULL(F.SERI_NO,'')) seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan,
+      SELECT F.BOLUM bolum, F.FIS_ID fisId, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CAST(F.TARIH AS date) gun, F.TIP tipKod, ${SATIR_SERI(k.d)} seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.UNVAN,'')) unvan,
         RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(V.AD,'')) vezneAd, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar,
         ISNULL(S.KOMISYON,0) komisyon, ISNULL(S.BMV,0) bmv, ISNULL(S.KMV,0) kmv, ISNULL(S.KDV,0) kdv
       FROM ${satirJoin(k)}
@@ -391,7 +392,7 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
     const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" }) + idFiltre(req, p.istatistikIdler, "F.ISTATISTIK_ID", "is");
     const res = await req.query(`
       SELECT F.BOLUM bolum, F.FIS_ID fisId, ISNULL(F.ISTATISTIK_ID,0) istatistikId, RTRIM(ISNULL(I.KOD,'')) istatistikKod, RTRIM(ISNULL(I.ACIKLAMA,'')) istatistikAd, F.TIP tipKod, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
-        F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CAST(F.TARIH AS date) gun, RTRIM(ISNULL(F.SERI_NO,'')) seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo,
+        F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CAST(F.TARIH AS date) gun, ${SATIR_SERI(k.d)} seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo,
         ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar, ISNULL(S.KOMISYON,0) komisyon, ISNULL(S.BMV,0) bmv, ISNULL(S.KMV,0) kmv, ISNULL(S.KDV,0) kdv
       FROM ${satirJoin(k)}
       WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip) ${f}
@@ -421,8 +422,10 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
 
   /**
    * İstatistik bazında KMV raporu — eski "İSTATİSTİK BAZINDA KMV RAPORU" metrikleri: satır = fiş satırı (tarih, saat, vezne, ünvan, vergi / TC no, ülke, belge no, seri no,
-   * para, miktar, kur, tutar, KMV, fiş toplamı, istatistik). Eski @FisToplami / @Tutar formülleri KMV'nin kura dahil olup olmamasına bakar; bu sistemde KMV hiçbir zaman
-   * kura dahil değildir (fiş çıktısı: "Kmv kura dahil değildir") → Tutar = satır tutarı, Fiş toplamı = tutar + KMV. İşlem türü eski rapordaki gibi Alış / Satış / Hepsi.
+   * para, miktar, kur, tutar, KMV, fiş toplamı, istatistik). Eski @FisToplami / @Tutar formülleri gibi KMV'nin kura dahil olup olmamasına bakılır: fişte
+   * KMV kura dahilse (kmvKuraDahilSql: KMV_UYGULAMA_SEKLI = 1, eski şemada KMV_KURA_DAHIL = 1) satır tutarı KMV'yi içerir → Tutar = satır tutarı − KMV,
+   * Fiş toplamı = satır tutarı; değilse Tutar = satır tutarı, Fiş toplamı = tutar + KMV (denetim 24.11.2026: eski programdan gelen ve 19.11.2026 sonrası "kura dahil"
+   * kaydedilen fişlerde KMV iki kez sayılıyordu). İşlem türü eski rapordaki gibi Alış / Satış / Hepsi.
    * Sıralama (yok / döviz bazında / vezne bazında) ikinci grup seviyesini, "isim beyan edilmemişleri para bazında topla" kırılımı belirler (eski @Grup / @Kirilim):
    * toplanan satır tek satırda (Σ miktar, ortalama kur, Σ tutar, Σ KMV, Σ fiş toplamı), fişleri altındaki tabloda. Döviz fişine özgüdür (dbo.TODVZ_FIS).
    * Önceki özet (istatistik × para × KMV oranı: fiş adedi, miktar, matrah, KMV) rapor sonundaki tablodadır.
@@ -432,16 +435,20 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
     const siralama = secim(p.siralama, KMV_SIRALAMALARI), isimsizTopla = ekIsaretli(p, "isimsizTopla");
     const req = tipGirdisi(pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis), p);
     const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" }) + idFiltre(req, p.istatistikIdler, "F.ISTATISTIK_ID", "is");
-    const ulkeVar = (await pool.request().query(`SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_ULKE','U') IS NULL THEN 0 ELSE 1 END v`)).recordset[0]?.v;
+    const kuraDahil = await kmvKuraDahilSql(pool);
+    const { ulkeVar, satirSeriVar } = (await pool.request().query(`SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_ULKE','U') IS NULL THEN 0 ELSE 1 END ulkeVar,
+      CASE WHEN COL_LENGTH('dbo.TODVZ_FIS_SATIRI','SERI_NO') IS NULL THEN 0 ELSE 1 END satirSeriVar`)).recordset[0] || {};
     const res = await req.query(`
       SELECT F.FIS_ID fisId, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CAST(F.TARIH AS date) gun, F.TIP tipKod, RTRIM(ISNULL(V.KOD,'')) vezneKod, RTRIM(ISNULL(F.UNVAN,'')) unvan,
+        ${kuraDahil} kmvKuraDahil,
         COALESCE(NULLIF(RTRIM(F.VERGI_KIMLIK_NO),''), NULLIF(RTRIM(F.PASAPORT_NO),''), '') kimlikNo, ${ulkeVar ? "RTRIM(ISNULL(UL.AD,''))" : "''"} ulke,
-        RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.SERI_NO,'')) seriNo, RTRIM(P.KOD) paraKod, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur,
+        RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, ${SATIR_SERI({ satirSeri: !!satirSeriVar })} seriNo, RTRIM(P.KOD) paraKod, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur,
         ISNULL(S.TUTAR,0) tutar, ISNULL(S.KMV,0) kmv, ISNULL(S.KMV_ORANI,0) kmvOrani, RTRIM(ISNULL(I.KOD,'')) istatistikKod, RTRIM(ISNULL(I.ACIKLAMA,'')) istatistikAd
       FROM ${DOVIZ_SATIR_JOIN} ${ulkeVar ? "LEFT JOIN dbo.TODVZ_ULKE UL ON UL.ULKE_ID=F.ULKE_ID" : ""}
       WHERE ISNULL(F.IPTAL,0)=0 AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip) ${f}
       ORDER BY I.KOD, CAST(F.TARIH AS date), ISNULL(F.ZAMAN,F.TARIH), F.BELGE_NO, F.SERI_NO, S.SATIR_NO;`);
-    const ham = res.recordset.map((r: any) => { const tutar = Number(r.tutar) || 0, kmv = Number(r.kmv) || 0;
+    const ham = res.recordset.map((r: any) => { const satirTutari = Number(r.tutar) || 0, kmv = Number(r.kmv) || 0, kuraDahil = Number(r.kmvKuraDahil) === 1;
+      const tutar = kuraDahil ? satirTutari - kmv : satirTutari;
       return { ...r, saat: r.saatZaman, gunIso: gunIso(r.gun), tip: tipAdi(r.tipKod), miktar: Number(r.miktar) || 0, kur: Number(r.kur) || 0, tutar, kmv, kmvOrani: Number(r.kmvOrani) || 0, fisToplami: tutar + kmv,
         istatistikBaslik: r.istatistikKod ? `${r.istatistikKod} — ${r.istatistikAd}` : "İstatistik kodu yok" }; });
     const oz = new Map<string, any>();
@@ -451,7 +458,7 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
     const ozet = [...oz.values()].map(({ fisler, ...o }) => ({ ...o, adet: fisler.size }));
     const satirlar = kmvKirilimla(kmvSirala(ham, siralama), { siralama, isimsizTopla });
     return sonuc(sinirla(satirlar, t, `${aralikOzeti(p)}${tipOzeti(p) || " · Alış + Satış"}${ozetEk(p) || " · Tüm vezneler"}${adetOzeti(p.istatistikIdler, "istatistik")}${siralama === "doviz" ? " · Döviz bazında" : siralama === "vezne" ? " · Vezne bazında" : ""}${isimsizTopla ? " · İsimsizler para bazında" : ""}`,
-      "Her satır bir fiş satırıdır. Tutar = satır tutarı (KMV hariç; bu sistemde KMV kura dahil değildir), Fiş toplamı = tutar + KMV. Kambiyo muameleleri vergisi yalnızca satış fişlerinde doğar; rapor sonundaki özet yalnızca KMV'li satırları (istatistik × para × KMV oranı) toplar. İptal fişler hariçtir.",
+      "Her satır bir fiş satırıdır. Tutar = KMV hariç tutar (KMV kura dahil fişte satır tutarından KMV düşülür), Fiş toplamı = tutar + KMV. Kambiyo muameleleri vergisi yalnızca satış fişlerinde doğar; rapor sonundaki özet yalnızca KMV'li satırları (istatistik × para × KMV oranı) toplar. İptal fişler hariçtir.",
       ozet.length ? paraBasliklariEkle(ozet, { grupla: paraGruplayici(await paraGrupBilgisi(pool)), alan: "paraKod", bolumle: ["istatistik"] }) : ozet), { gruplar: kmvGruplari(siralama) });
   },
 
@@ -476,15 +483,19 @@ export const FIS_SORGULARI: Record<string, Sorgu> = {
     const req = tipGirdisi(pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis).input("iptal", sql.Int, iptal ? 1 : 0), p)
       .input("arama", sql.NVarChar(100), p.arama?.trim() ? `%${p.arama.trim()}%` : null);
     const f = filtreler(req, p, { vezne: "V", para: "S.PARA_ID" }) + idFiltre(req, p.istatistikIdler, "F.ISTATISTIK_ID", "is");
+    // Eski SODVZCR_VERGI_NUMARASI_RAPORU, istatistiğinin fiş dizayn tipi 1 olan döviz fişlerini (DEMİRTAŞ'ta "DENE / DENEME") almaz — denetim 24.11.2026,
+    // A 01–23.11: 42 satır; çıkarılınca 2.174 = 2.174. Kolon yoksa süzgeç yok.
+    const dizaynVar = (await pool.request().query(`SELECT CASE WHEN COL_LENGTH('dbo.TODVZ_ISTATISTIK','FIS_DIZAYN_TIPI') IS NULL THEN 0 ELSE 1 END v`)).recordset[0]?.v;
+    const denemeHaric = dizaynVar ? `AND NOT (F.BOLUM=1 AND EXISTS (SELECT 1 FROM dbo.TODVZ_ISTATISTIK IX WHERE IX.ISTATISTIK_ID=F.ISTATISTIK_ID AND IX.FIS_DIZAYN_TIPI=1))` : "";
     const res = await req.query(`
       SELECT F.BOLUM bolum, F.FIS_ID fisId, COALESCE(NULLIF(RTRIM(F.VERGI_KIMLIK_NO),''), NULLIF(RTRIM(F.PASAPORT_NO),''), '') kimlikNo,
         CASE WHEN NULLIF(RTRIM(F.VERGI_KIMLIK_NO),'') IS NULL AND NULLIF(RTRIM(F.PASAPORT_NO),'') IS NOT NULL THEN 1 ELSE 0 END pasaport,
         RTRIM(ISNULL(F.UNVAN,'')) unvan, RTRIM(ISNULL(F.VERGI_KIMLIK_NO,'')) vergiNo, RTRIM(ISNULL(F.PASAPORT_NO,'')) pasaportNo, RTRIM(ISNULL(VD.AD,'')) vergiDairesi,
-        F.TIP tipKod, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, RTRIM(ISNULL(F.SERI_NO,'')) seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
+        F.TIP tipKod, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, ${SATIR_SERI(k.d)} seriNo, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo,
         ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, ISNULL(S.TUTAR,0) tutar, ISNULL(S.BMV,0) bmv, ISNULL(S.KMV,0) kmv, ISNULL(S.KOMISYON,0) komisyon, ${FIS_USD_KOLON_SQL}
       FROM ${satirJoin(k)} LEFT JOIN dbo.TODVZ_TABLO_MADDESI VD ON VD.TABLO_MADDESI_ID=F.VERGI_DAIRESI_ID
       WHERE ISNULL(F.IPTAL,0)=@iptal AND CAST(F.TARIH AS date) BETWEEN @bas AND @bit AND (@tip IS NULL OR F.TIP=@tip)
-        AND (@arama IS NULL OR F.VERGI_KIMLIK_NO LIKE @arama OR F.PASAPORT_NO LIKE @arama OR F.UNVAN LIKE @arama) ${f}
+        AND (@arama IS NULL OR F.VERGI_KIMLIK_NO LIKE @arama OR F.PASAPORT_NO LIKE @arama OR F.UNVAN LIKE @arama) ${denemeHaric} ${f}
       ORDER BY F.BOLUM, F.TARIH, F.SERI_NO, F.FIS_ID, S.SATIR_NO;`);
     const usdKuruBul = await usdKuruCozucu(pool, res.recordset);
     const grupla = paraGruplayici(await paraGrupBilgisi(pool));

@@ -3,6 +3,7 @@
   "ad": "Vezne Hareket (Has)",
   "aciklama": "Vezne hareket listesi (Has bazında) — belge ve banka hesabı olmadan, milyem ve has karşılığı ile vezne bazında giriş / çıkış miktarları.",
   "kagit": "A4-yatay",
+  "ustSinir": 20000,
   "parametreler": [
     {
       "ad": "baslangic",

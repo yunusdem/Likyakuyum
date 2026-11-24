@@ -335,7 +335,7 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
           SUM(CASE WHEN ${YEREL_GUN("H.TARIH")}<=@bit THEN ISNULL(H.GIRIS,0)-ISNULL(H.CIKIS,0) ELSE 0 END) mevcut
         FROM dbo.TODVZ_STOK_HAREKET H JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID=H.STOK_KART_ID LEFT JOIN dbo.TODVZ_PARA KP ON KP.PARA_ID=K.PARA_ID
         GROUP BY K.STOK_KART_ID, K.SON_ALIS_FIYATI, K.ALIS_FIYATI, KP.KOD`);
-      const kurBit = await kurTarihte(pool, p.bitis), kurBas = await kurTarihte(pool, gunOnce(p.baslangic));
+      const kurBit = await kurTarihte(pool, p.bitis, { sonraki: true }), kurBas = await kurTarihte(pool, gunOnce(p.baslangic));
       const paraIdleri = new Map<string, number>();
       for (const x of (await pool.request().query(`SELECT PARA_ID id, RTRIM(UPPER(KOD)) kod FROM dbo.TODVZ_PARA`)).recordset) paraIdleri.set(String(x.kod), Number(x.id));
       const kurOf = (m: Map<number, number>, kod: string) => (["TL", "TRY"].includes(kod.toUpperCase()) ? 1 : m.get(paraIdleri.get(kod.toUpperCase()) || 0) ?? 0);
@@ -347,7 +347,8 @@ export const KARZAR_SORGULARI: Record<string, Sorgu> = {
     }
 
     // Kurlar ve seçilen para
-    const devirKur = await kurTarihte(pool, gunOnce(p.baslangic)), kapanisKur = await kurTarihte(pool, p.bitis);
+    // Kapanış kuru: bitiş günü tablo yoksa sonraki ilk tablo (eski KÂR / ZARAR gibi — kurTablosuSql, kullanıcı kararı 24.11.2026); devir kuru önceki en yakın tablo
+    const devirKur = await kurTarihte(pool, gunOnce(p.baslangic)), kapanisKur = await kurTarihte(pool, p.bitis, { sonraki: true });
     const hedefId = p.hedefParaId && p.hedefParaId !== tlId ? p.hedefParaId : tlId;
     const hedefKod = hedefId === tlId ? "TL" : String((await pool.request().input("id", sql.Int, hedefId).query(`SELECT RTRIM(KOD) kod FROM dbo.TODVZ_PARA WHERE PARA_ID=@id`)).recordset[0]?.kod || "TL");
     // Dönem başındaki TL mevcudu (eski "TL" satırı): vezne bakiyesi (vezne süzgeciyle)

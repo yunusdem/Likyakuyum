@@ -108,7 +108,8 @@ export const VEZNE_TEMEL_SORGULARI: Record<string, Sorgu> = {
   async VEZBAK1(pool, p, t) {
     if (!p.tarih) throw ApiError.badRequest("Tarih zorunludur.");
     const kur = await kurCoz(pool, p);
-    const rows = await vezneBakiyeleri(pool, p.tarih, p);
+    // Bakiyesi sıfır olan vezne × para listelenmez — eski SODVZCR_VEZNE_BAKIYE_TARIH_BAZLI gibi (denetim 24.11.2026: DEMİRTAŞ 23.11'de eski 14 satır, bizde 42)
+    const rows = (await vezneBakiyeleri(pool, p.tarih, p)).filter(r => Math.abs(Number(r.miktar) || 0) > 0.000001);
     const paraSet = await paraKumesi(pool, p);
     const hedef = await hedefPara(pool, p, kur);
     const satirlar = rows.filter(r => (!p.paraId || r.paraId === p.paraId) && (!paraSet || paraSet.has(Number(r.paraId)))).map(r => ({ ...r, miktar: Number(r.miktar), kur: kur.kurlar.get(r.paraId) ?? 0,

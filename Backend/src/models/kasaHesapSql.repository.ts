@@ -27,9 +27,12 @@ export interface HesapModel {
   iskontoKodu?: string | null;
   iskontoTanim?: string | null;
   iskontoOrani?: number | null;
+  /** TL hareketlerinin giriş / çıkış toplamı ve bakiyesi (farklı paralar toplanmaz) */
   toplamGiris?: number;
   toplamCikis?: number;
   bakiye?: number;
+  /** Para bazında bakiye (Hesap Bakiye raporu HESBAK1 ile aynı kural: giriş − çıkış, KDV hariç); sıfır olanlar yok */
+  bakiyeler?: { paraKod: string; bakiye: number }[];
   ekleyenId?: number | null;
   eklemeZamani?: string | null;
   guncelleyenId?: number | null;
@@ -663,10 +666,29 @@ export class KasaHesapSqlRepository {
     query += ` ORDER BY H.KOD ASC, H.AD ASC`;
 
     const res = await request.query(query);
+    // Para bazında bakiye: önceden bütün paraların MEBLAG'ı tek sayıda toplanıyordu (DEMİRTAŞ SERMAYE: TL 3.643.364 + USD 23.515 + GBP 7.440 … → "3.678.027";
+    // denetim 24.11.2026). Bakiye / toplamlar artık yalnız TL; dövizler `bakiyeler`de.
+    const paraRes = await pool.request().query(`
+      SELECT H.HESAP_ID, H.PARA_ID, RTRIM(ISNULL(P.KOD,'')) KOD, ISNULL(P.SIRA_NO,99) SIRA_NO,
+        CASE WHEN H.PARA_ID = ISNULL((SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD)) IN ('TL','TRY') ORDER BY PARA_ID), 1) THEN 1 ELSE 0 END TL,
+        SUM(CASE WHEN H.TIP = 0 THEN H.MEBLAG ELSE 0 END) GIRIS, SUM(CASE WHEN H.TIP = 1 THEN H.MEBLAG ELSE 0 END) CIKIS
+      FROM TODVZ_HESAP_HAREKETI H LEFT JOIN TODVZ_PARA P ON P.PARA_ID = H.PARA_ID
+      GROUP BY H.HESAP_ID, H.PARA_ID, P.KOD, P.SIRA_NO
+      ORDER BY H.HESAP_ID, ISNULL(P.SIRA_NO,99), P.KOD`);
+    const paraBazinda = new Map<number, { tl: boolean; kod: string; giris: number; cikis: number }[]>();
+    for (const p of paraRes.recordset || []) {
+      const id = Number(p.HESAP_ID);
+      if (!paraBazinda.has(id)) paraBazinda.set(id, []);
+      paraBazinda.get(id)!.push({ tl: Number(p.TL) === 1, kod: String(p.KOD || "") || "TL", giris: Number(p.GIRIS) || 0, cikis: Number(p.CIKIS) || 0 });
+    }
     return (res.recordset || []).map((r: any) => {
-      const toplamGiris = Number(r.TOPLAM_GIRIS) || 0;
-      const toplamCikis = Number(r.TOPLAM_CIKIS) || 0;
+      const paralar = paraBazinda.get(Number(r.HESAP_ID)) || [];
+      const tl = paralar.find((x) => x.tl);
+      const toplamGiris = tl?.giris ?? 0;
+      const toplamCikis = tl?.cikis ?? 0;
+      const bakiyeler = paralar.map((x) => ({ paraKod: x.kod, bakiye: x.giris - x.cikis })).filter((x) => Math.abs(x.bakiye) > 0.000001);
       return {
+        bakiyeler,
         hesapId: r.HESAP_ID,
         kod: (r.KOD || "").trim(),
         ad: (r.AD || "").trim(),
