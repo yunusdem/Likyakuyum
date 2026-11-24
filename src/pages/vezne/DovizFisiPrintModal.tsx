@@ -236,13 +236,12 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
               margin: 0 auto;
               padding: 4px 0 0 0;
               display: flex;
-              justify-content: center;
+              flex-direction: column;
+              align-items: center;
               box-sizing: border-box;
             }
             .belge-sablon {
               margin: 0 auto !important;
-              transform: scale(0.98) !important;
-              transform-origin: top center !important;
               box-sizing: border-box !important;
             }
           </style>
@@ -287,11 +286,15 @@ export const DovizFisiPrintModal: React.FC<DovizFisiPrintModalProps> = (props) =
         ? (selectedDbPrinter.cihazAdi?.trim() || selectedDbPrinter.ad?.trim() || null)
         : (selectedPrinterId ? String(selectedPrinterId) : (resolvedResult?.printerName || null));
 
+      const isPos = selectedDbPrinter
+        ? selectedDbPrinter.belgeYaziciModu !== 0
+        : (resolvedResult ? resolvedResult.recommendedPrintType === "POS" : true);
+
       const res = await fisiYazdir(hazir, {
         printerId: selectedDbPrinter ? selectedDbPrinter.id : null,
         printerName: targetPrinterName,
         copies: 1,
-        isPos: true,
+        isPos,
       });
       if (res.success) {
         onHide();
