@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.2.3";
+const CURRENT_VERSION = "1.2.4";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -1655,14 +1655,16 @@ ${a4GdiParcasi()}
         $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
         $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
-        # 80mm fiş kâğıdı: tam soldan başlar (0.0) ve 80mm kâğıdı tam kaplar
-        $targetW = [float]$ev.PageBounds.Width
-        if ($targetW -le 50 -or $targetW -gt 320) { $targetW = 283.0 }
+        # 80mm fiş kâğıdı: soldan ~2mm (8.0) boşluk bırakarak başlar ve sağdan taşmadan sığar
+        $leftOffset = 8.0
+        $availW = [float]$ev.PageBounds.Width
+        if ($availW -le 50 -or $availW -gt 320) { $availW = 283.0 }
+        $targetW = [float]($availW - $leftOffset)
         $scale = $targetW / [float]$script:pngImg.Width
         $targetH = [float]($script:pngImg.Height * $scale)
 
-        # Fiş tam soldan (0.0) ve kesim payı için üstten (2.0) başlar
-        $destRect = New-Object System.Drawing.RectangleF(0.0, 2.0, $targetW, $targetH)
+        # Fiş soldan ~2mm (8.0) ve kesim payı için üstten (2.0) başlar
+        $destRect = New-Object System.Drawing.RectangleF($leftOffset, 2.0, $targetW, $targetH)
         $srcRect = New-Object System.Drawing.RectangleF(0.0, 0.0, [float]$script:pngImg.Width, [float]$script:pngImg.Height)
 
         $g.DrawImage($script:pngImg, $destRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
