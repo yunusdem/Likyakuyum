@@ -173,7 +173,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
           >
             <IconPalette size={16} />
           </div>
-          <span>Görünüm & Tema Ayarları</span>
+          <span>Ekran Renk & Tema Ayarları</span>
         </Modal.Title>
       </Modal.Header>
 
@@ -196,7 +196,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                 eventKey="presets"
                 className="py-1.5 px-3 d-flex align-items-center justify-content-center gap-1.5 fw-semibold small"
               >
-                <IconSparkles size={16} /> Hazır Tema Paketleri (Tek Tıkla Seç)
+                <IconSparkles size={16} /> Hazır Temalar
               </Nav.Link>
             </Nav.Item>
             <Nav.Item>
@@ -204,7 +204,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                 eventKey="custom"
                 className="py-1.5 px-3 d-flex align-items-center justify-content-center gap-1.5 fw-semibold small"
               >
-                <IconAdjustments size={16} /> Tüm Görünüm Ayarları (Yazı, Renk, Font, Menü, Grid)
+                <IconAdjustments size={16} /> Renk ve Yazı Ayarları
               </Nav.Link>
             </Nav.Item>
           </Nav>
@@ -346,7 +346,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                         <Form.Check
                           type="checkbox"
                           id="modal_enableProgramTheme"
-                          label={<span className="fw-bold text-dark">Program Görünümü</span>}
+                          label={<span className="fw-bold text-dark">Genel Ekran ve Tablo</span>}
                           checked={appearance.enableProgramTheme}
                           onChange={(e) =>
                             updateAppearanceField("enableProgramTheme", e.target.checked)
@@ -357,7 +357,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                       <div className="d-flex flex-column gap-2">
                         {/* Zemin Rengi */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Zemin rengi</span>
+                          <span className="small fw-semibold text-secondary">Ekran arka plan rengi</span>
                           <div className="d-flex align-items-center gap-2">
                             <input
                               type="color"
@@ -379,7 +379,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         {/* Yazı Rengi */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Yazı rengi</span>
+                          <span className="small fw-semibold text-secondary">Genel yazı rengi</span>
                           <div className="d-flex align-items-center gap-2">
                             <input
                               type="color"
@@ -401,7 +401,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         {/* Program Fontu */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Program fontu</span>
+                          <span className="small fw-semibold text-secondary">Genel yazı tipi</span>
                           <FontSelectDropdown
                             value={appearance.programFont}
                             onChange={(val) => updateAppearanceField("programFont", val)}
@@ -410,7 +410,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         {/* Grid Başlık Rengi */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Grid başlık rengi</span>
+                          <span className="small fw-semibold text-secondary">Tablo başlık rengi</span>
                           <div className="d-flex align-items-center gap-2">
                             <input
                               type="color"
@@ -432,7 +432,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         {/* Grid Zemin Rengi */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Grid zemin rengi</span>
+                          <span className="small fw-semibold text-secondary">Tablo arka plan rengi</span>
                           <div className="d-flex align-items-center gap-2">
                             <input
                               type="color"
@@ -454,7 +454,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         {/* Grid Fontu */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Grid fontu</span>
+                          <span className="small fw-semibold text-secondary">Tablo yazı tipi</span>
                           <FontSelectDropdown
                             value={appearance.gridFont}
                             onChange={(val) => updateAppearanceField("gridFont", val)}
@@ -463,7 +463,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         {/* Pencere Zemin Rengi */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Pencere zemin rengi</span>
+                          <span className="small fw-semibold text-secondary">Açılır pencere arka planı</span>
                           <div className="d-flex align-items-center gap-2">
                             <input
                               type="color"
@@ -485,7 +485,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         {/* Pencere Yazı Rengi */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Pencere yazı rengi</span>
+                          <span className="small fw-semibold text-secondary">Açılır pencere yazısı</span>
                           <div className="d-flex align-items-center gap-2">
                             <input
                               type="color"
@@ -507,7 +507,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         {/* Pencere Fokus Rengi */}
                         <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                          <span className="small fw-semibold text-secondary">Pencere fokus rengi</span>
+                          <span className="small fw-semibold text-secondary">Seçili kutu rengi</span>
                           <div className="d-flex align-items-center gap-2">
                             <input
                               type="color"
@@ -539,7 +539,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                           <Form.Check
                             type="checkbox"
                             id="modal_enableMenuTheme"
-                            label={<span className="fw-bold text-dark">Menü & Sidebar</span>}
+                            label={<span className="fw-bold text-dark">Sol Menü</span>}
                             checked={appearance.enableMenuTheme}
                             onChange={(e) =>
                               updateAppearanceField("enableMenuTheme", e.target.checked)
@@ -549,7 +549,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                         <div className="d-flex flex-column gap-2">
                           <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                            <span className="small fw-semibold text-secondary">Menü zemin rengi</span>
+                            <span className="small fw-semibold text-secondary">Sol menü arka planı</span>
                             <div className="d-flex align-items-center gap-2">
                               <input
                                 type="color"
@@ -570,7 +570,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                           </div>
 
                           <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                            <span className="small fw-semibold text-secondary">Seçilen zemin rengi</span>
+                            <span className="small fw-semibold text-secondary">Seçili menü rengi</span>
                             <div className="d-flex align-items-center gap-2">
                               <input
                                 type="color"
@@ -592,7 +592,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                           {/* Menü Fontu */}
                           <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                            <span className="small fw-semibold text-secondary">Menü fontu</span>
+                            <span className="small fw-semibold text-secondary">Menü yazı tipi</span>
                             <FontSelectDropdown
                               value={appearance.menuFont}
                               onChange={(val) => updateAppearanceField("menuFont", val)}
@@ -601,7 +601,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
                           {/* Menü Başlık Fontu */}
                           <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                            <span className="small fw-semibold text-secondary">Menü başlık fontu</span>
+                            <span className="small fw-semibold text-secondary">Menü başlık yazı tipi</span>
                             <FontSelectDropdown
                               value={appearance.menuHeaderFont}
                               onChange={(val) => updateAppearanceField("menuHeaderFont", val)}
@@ -609,7 +609,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                           </div>
 
                           <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                            <span className="small fw-semibold text-secondary">Başlık zemin rengi</span>
+                            <span className="small fw-semibold text-secondary">Üst başlık rengi</span>
                             <div className="d-flex align-items-center gap-2">
                               <input
                                 type="color"
@@ -630,7 +630,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                           </div>
 
                           <div className="d-flex align-items-center justify-content-between p-2 bg-white rounded border">
-                            <span className="small fw-semibold text-secondary">Arka plan rengi</span>
+                            <span className="small fw-semibold text-secondary">Kenar arka plan rengi</span>
                             <div className="d-flex align-items-center gap-2">
                               <input
                                 type="color"
@@ -658,7 +658,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                           <Form.Check
                             type="checkbox"
                             id="modal_enableBuyHeaderTheme"
-                            label={<span className="fw-bold text-dark">Alış Başlığı</span>}
+                            label={<span className="fw-bold text-dark">Alış Fişi Rengi</span>}
                             checked={appearance.enableBuyHeaderTheme}
                             onChange={(e) =>
                               updateAppearanceField("enableBuyHeaderTheme", e.target.checked)
@@ -668,7 +668,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                         <Row className="g-2">
                           <Col xs={6}>
                             <div className="p-2 bg-white rounded border d-flex align-items-center justify-content-between">
-                              <span className="small text-secondary">Zemin</span>
+                              <span className="small text-secondary">Arka Plan</span>
                               <input
                                 type="color"
                                 value={appearance.buyHeaderBgColor}
@@ -703,7 +703,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                           <Form.Check
                             type="checkbox"
                             id="modal_enableSellHeaderTheme"
-                            label={<span className="fw-bold text-dark">Satış Başlığı</span>}
+                            label={<span className="fw-bold text-dark">Satış Fişi Rengi</span>}
                             checked={appearance.enableSellHeaderTheme}
                             onChange={(e) =>
                               updateAppearanceField("enableSellHeaderTheme", e.target.checked)
@@ -713,7 +713,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                         <Row className="g-2">
                           <Col xs={6}>
                             <div className="p-2 bg-white rounded border d-flex align-items-center justify-content-between">
-                              <span className="small text-secondary">Zemin</span>
+                              <span className="small text-secondary">Arka Plan</span>
                               <input
                                 type="color"
                                 value={appearance.sellHeaderBgColor}
@@ -756,9 +756,9 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
           size="sm"
           onClick={handleSyncWithPano}
           className="d-flex align-items-center gap-1.5"
-          title="Program zemin rengini vitrin TV fiyat panosuna aktarır"
+          title="Ekran arka plan rengini TV fiyat panosuna aktarır"
         >
-          <IconDeviceDesktop size={15} /> Pano Zemin Rengiyle Eşitle
+          <IconDeviceDesktop size={15} /> TV Fiyat Panosuna Aktar
         </Button>
 
         <div className="d-flex align-items-center gap-2">
@@ -769,7 +769,7 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
               onClick={handleSaveAllAppearance}
               className="fw-semibold px-3"
             >
-              Tüm Değişiklikleri Kaydet & Uygula
+              Ayarları Kaydet
             </Button>
           )}
           <Button variant="secondary" size="sm" onClick={onHide}>
