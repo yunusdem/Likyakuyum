@@ -1,14 +1,12 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Modal, Button, Row, Col, Badge } from "react-bootstrap";
 import {
   IconLayoutSidebar,
   IconCheck,
-  IconX,
   IconLayoutNavbar,
-  IconLayoutColumns,
-  IconLayoutGrid,
 } from "@tabler/icons-react";
-import { SIDEBAR_STYLES, SidebarStyleType } from "../../hooks/useSidebarStyle";
+import { SIDEBAR_STYLES, SidebarStyleType, SidebarOrientation, isHeaderNavStyle } from "../../hooks/useSidebarStyle";
+import { SidebarStylePreview } from "./SidebarStylePreview";
 
 interface SidebarStyleSecimModalProps {
   show: boolean;
@@ -24,9 +22,20 @@ export const SidebarStyleSecimModal: React.FC<SidebarStyleSecimModalProps> = ({
   onSelect,
 }) => {
   const currentId = selectedStyle === "drawer" ? "megamenu" : selectedStyle;
+  const [orientationTab, setOrientationTab] = useState<SidebarOrientation>(() =>
+    isHeaderNavStyle(currentId) ? "horizontal" : "vertical"
+  );
+
+  useEffect(() => {
+    if (show) {
+      setOrientationTab(isHeaderNavStyle(currentId) ? "horizontal" : "vertical");
+    }
+  }, [show, currentId]);
+
+  const filteredStyles = SIDEBAR_STYLES.filter((s) => s.orientation === orientationTab);
 
   return (
-    <Modal show={show} onHide={onClose} size="lg" centered backdrop="static" className="sidebar-style-modal">
+    <Modal show={show} onHide={onClose} size="xl" centered backdrop="static" className="sidebar-style-modal">
       <Modal.Header closeButton className="bg-light py-2.5 px-3 border-bottom">
         <div className="d-flex align-items-center gap-2">
           <div
@@ -58,17 +67,45 @@ export const SidebarStyleSecimModal: React.FC<SidebarStyleSecimModalProps> = ({
           }
         `}</style>
 
+        {/* Dikey Menü (Sidebar) / Yatay Menü (Header) Seçici */}
+        <div className="d-flex align-items-center gap-2 mb-3 flex-wrap">
+          <Button
+            variant={orientationTab === "vertical" ? "primary" : "outline-secondary"}
+            size="sm"
+            className="fw-semibold px-3 py-1.5 d-flex align-items-center gap-2 rounded-3"
+            onClick={() => setOrientationTab("vertical")}
+          >
+            <IconLayoutSidebar size={16} />
+            <span>Dikey Menü (Sidebar)</span>
+            <Badge bg={orientationTab === "vertical" ? "light" : "secondary"} text={orientationTab === "vertical" ? "primary" : "light"} pill>
+              {SIDEBAR_STYLES.filter((s) => s.orientation === "vertical").length}
+            </Badge>
+          </Button>
+          <Button
+            variant={orientationTab === "horizontal" ? "primary" : "outline-secondary"}
+            size="sm"
+            className="fw-semibold px-3 py-1.5 d-flex align-items-center gap-2 rounded-3"
+            onClick={() => setOrientationTab("horizontal")}
+          >
+            <IconLayoutNavbar size={16} />
+            <span>Yatay Menü (Header)</span>
+            <Badge bg={orientationTab === "horizontal" ? "light" : "secondary"} text={orientationTab === "horizontal" ? "primary" : "light"} pill>
+              {SIDEBAR_STYLES.filter((s) => s.orientation === "horizontal").length}
+            </Badge>
+          </Button>
+        </div>
+
         <Row className="g-3">
-          {SIDEBAR_STYLES.map((styleItem) => {
+          {filteredStyles.map((styleItem, idx) => {
             const isSelected = currentId === styleItem.id;
             return (
-              <Col key={styleItem.id} xs={12} md={6}>
+              <Col key={styleItem.id} xs={12} md={6} lg={4}>
                 <div
                   onClick={() => {
                     onSelect(styleItem.id);
                     onClose();
                   }}
-                  className={`p-3 rounded-3 border h-100 position-relative style-card-item ${
+                  className={`p-3 rounded-3 border h-100 position-relative style-card-item d-flex flex-column justify-content-between ${
                     isSelected
                       ? "border-primary bg-primary-subtle bg-opacity-25 shadow-sm"
                       : "border-light-subtle bg-white hover-shadow"
@@ -77,131 +114,50 @@ export const SidebarStyleSecimModal: React.FC<SidebarStyleSecimModalProps> = ({
                     borderWidth: isSelected ? "2px" : "1px",
                   }}
                 >
-                  <div className="d-flex align-items-center justify-content-between mb-2">
-                    <span
-                      className={`badge ${
-                        isSelected ? "bg-primary text-white" : "bg-secondary-subtle text-secondary"
-                      } rounded-pill px-2 py-0.5 small`}
-                    >
-                      {styleItem.badge}
-                    </span>
-                    {isSelected ? (
+                  <div>
+                    <div className="d-flex align-items-center justify-content-between mb-2">
                       <span
-                        className="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white shadow-xs"
-                        style={{ width: "22px", height: "22px" }}
+                        className={`badge ${
+                          isSelected ? "bg-primary text-white" : "bg-secondary-subtle text-secondary"
+                        } rounded-pill px-2 py-0.5 small`}
                       >
-                        <IconCheck size={14} strokeWidth={3} />
+                        {styleItem.badge}
                       </span>
-                    ) : (
-                      <Button
-                        variant="outline-primary"
-                        size="sm"
-                        className="py-0 px-2 fw-semibold"
-                        style={{ fontSize: "11px" }}
-                      >
-                        Seç
-                      </Button>
-                    )}
-                  </div>
+                      {isSelected ? (
+                        <span
+                          className="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white shadow-xs"
+                          style={{ width: "22px", height: "22px" }}
+                        >
+                          <IconCheck size={14} strokeWidth={3} />
+                        </span>
+                      ) : (
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          className="py-0 px-2 fw-semibold"
+                          style={{ fontSize: "11px" }}
+                        >
+                          Seç
+                        </Button>
+                      )}
+                    </div>
 
-                  <h6 className={`mb-1 fw-bold ${isSelected ? "text-primary" : "text-dark"}`}>
-                    {styleItem.title}
-                  </h6>
-                  <div className="text-secondary small fw-medium mb-1.5" style={{ fontSize: "12px" }}>
-                    {styleItem.subtitle}
+                    <h6 className={`mb-1 fw-bold ${isSelected ? "text-primary" : "text-dark"}`}>
+                      {idx + 1}. {styleItem.title}
+                    </h6>
+                    <div className="text-secondary small fw-medium mb-1.5" style={{ fontSize: "12px" }}>
+                      {styleItem.subtitle}
+                    </div>
+                    <p
+                      className="text-muted small mb-2.5"
+                      style={{ lineHeight: "1.35", fontSize: "0.8rem", minHeight: "36px" }}
+                    >
+                      {styleItem.description}
+                    </p>
                   </div>
-                  <p
-                    className="text-muted small mb-2.5"
-                    style={{ lineHeight: "1.35", fontSize: "0.8rem", minHeight: "36px" }}
-                  >
-                    {styleItem.description}
-                  </p>
 
                   {/* Mini Şematik Önizleme */}
-                  <div
-                    className="rounded-2 p-1.5 border bg-white d-flex overflow-hidden"
-                    style={{ height: "42px", borderColor: isSelected ? "#93c5fd" : "#e2e8f0" }}
-                  >
-                    {styleItem.id === "hover" && (
-                      <div className="d-flex w-100 gap-1">
-                        <div className="rounded-1 bg-primary" style={{ width: "14px", height: "100%" }} />
-                        <div
-                          className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                          style={{ fontSize: "0.68rem" }}
-                        >
-                          Sayfa Alanı (Fare ile Genişler)
-                        </div>
-                      </div>
-                    )}
-                    {styleItem.id === "classic" && (
-                      <div className="d-flex w-100 gap-1">
-                        <div className="rounded-1 bg-primary" style={{ width: "32px", height: "100%" }} />
-                        <div
-                          className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                          style={{ fontSize: "0.68rem" }}
-                        >
-                          Sayfa Alanı (Sabit Dikey Menü)
-                        </div>
-                      </div>
-                    )}
-                    {styleItem.id === "flyout" && (
-                      <div className="d-flex w-100 gap-1 position-relative">
-                        <div className="rounded-1 bg-primary" style={{ width: "26px", height: "100%" }} />
-                        <div
-                          className="rounded-1 border border-warning shadow-xs bg-white px-1 d-flex align-items-center text-warning-emphasis"
-                          style={{ width: "45px", height: "90%", fontSize: "0.62rem", fontWeight: "bold" }}
-                        >
-                          Kart &gt;
-                        </div>
-                        <div
-                          className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                          style={{ fontSize: "0.68rem" }}
-                        >
-                          Sayfa
-                        </div>
-                      </div>
-                    )}
-                    {styleItem.id === "topbar" && (
-                      <div className="d-flex flex-column w-100 gap-1">
-                        <div className="d-flex w-100 gap-1" style={{ height: "12px" }}>
-                          <div className="rounded-1 bg-success" style={{ width: "24px", height: "100%" }} />
-                          <div className="rounded-1 bg-primary flex-grow-1" style={{ height: "100%" }} />
-                        </div>
-                        <div
-                          className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                          style={{ fontSize: "0.68rem" }}
-                        >
-                          Tam Genişlik Sayfa (En Üstte Sabit Menü)
-                        </div>
-                      </div>
-                    )}
-                    {styleItem.id === "dual" && (
-                      <div className="d-flex w-100 gap-1">
-                        <div className="rounded-1 bg-success" style={{ width: "12px", height: "100%" }} />
-                        <div className="rounded-1 bg-primary-subtle border" style={{ width: "24px", height: "100%" }} />
-                        <div
-                          className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                          style={{ fontSize: "0.68rem" }}
-                        >
-                          Sayfa Alanı
-                        </div>
-                      </div>
-                    )}
-                    {(styleItem.id === "megamenu" || styleItem.id === "drawer") && (
-                      <div className="d-flex flex-column w-100 gap-1">
-                        <div className="d-flex w-100 gap-1" style={{ height: "12px" }}>
-                          <div className="rounded-1 bg-success" style={{ width: "24px", height: "100%" }} />
-                          <div className="rounded-1 bg-info flex-grow-1" style={{ height: "100%" }} />
-                        </div>
-                        <div
-                          className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-primary fw-medium"
-                          style={{ fontSize: "0.68rem" }}
-                        >
-                          Çok Sütunlu Mega Panel
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <SidebarStylePreview styleId={styleItem.id} isSelected={isSelected} />
                 </div>
               </Col>
             );

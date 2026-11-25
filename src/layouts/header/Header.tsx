@@ -47,7 +47,7 @@ import { anaMenuAcik } from "../../../Backend/src/services/yetki/kullaniciYetkiK
 import HeaderThemeSelector from "components/theme/HeaderThemeSelector";
 import { getAppBrand } from "../../utils/brandHelper";
 import { CashDeskService } from "../../services/cashDeskService";
-import useSidebarStyle from "../../hooks/useSidebarStyle";
+import useSidebarStyle, { isHeaderNavStyle } from "../../hooks/useSidebarStyle";
 
 //import custom hooks
 import useMenu from "hooks/useMenu";
@@ -137,11 +137,7 @@ const isHeaderStyle = (s?: string | null): boolean => {
     norm === "drawer" ||
     norm === "4" ||
     norm === "6" ||
-    norm.includes("topbar") ||
-    norm.includes("megamenu") ||
-    norm.includes("drawer") ||
-    norm.includes("header") ||
-    norm.includes("yatay")
+    isHeaderNavStyle(norm)
   );
 };
 
@@ -309,6 +305,7 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
   const isHeaderNav = isHeaderNavProp !== undefined
     ? isHeaderNavProp
     : (isHeaderStyle(liveStyle) || isHeaderStyle(sidebarStyle) || isHeaderStyle(domSidebarStyle));
+  const isRightSidebar = liveStyle === "right" || sidebarStyle === "right" || domSidebarStyle === "right";
 
   const displayName = user?.fullName || user?.username || "Admin";
 
@@ -392,17 +389,10 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
             color: #0284c7;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
           }
-          /* Üst header modlarında (4. Header Üstü Yatay Menü veya 6. Modern Yatay Mega Menü) sadece masaüstünde (>= 1200px) gizle */
+          /* Tüm yatay üst header modlarında sadece masaüstünde (>= 1200px) gizle */
           @media (min-width: 1200px) {
-            html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-            html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-            html[data-sidebar-style="drawer"] .sidebar-toggle-btn,
-            body[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-            body[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-            body[data-sidebar-style="drawer"] .sidebar-toggle-btn,
-            [data-sidebar-style="topbar"] .sidebar-toggle-btn,
-            [data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-            [data-sidebar-style="drawer"] .sidebar-toggle-btn {
+            html[data-nav-orientation="horizontal"] .sidebar-toggle-btn,
+            body[data-nav-orientation="horizontal"] .sidebar-toggle-btn {
               display: none !important;
               visibility: hidden !important;
               opacity: 0 !important;
@@ -417,15 +407,8 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
           /* Küçük ekranlarda (< 1200px) üst menü seçili olsa bile sol menü oku KESİNLİKLE görünür ve tıklanabilir */
           @media (max-width: 1199.98px) {
             .sidebar-toggle-btn,
-            html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-            html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-            html[data-sidebar-style="drawer"] .sidebar-toggle-btn,
-            body[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-            body[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-            body[data-sidebar-style="drawer"] .sidebar-toggle-btn,
-            [data-sidebar-style="topbar"] .sidebar-toggle-btn,
-            [data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-            [data-sidebar-style="drawer"] .sidebar-toggle-btn {
+            html[data-nav-orientation="horizontal"] .sidebar-toggle-btn,
+            body[data-nav-orientation="horizontal"] .sidebar-toggle-btn {
               display: inline-flex !important;
               visibility: visible !important;
               opacity: 1 !important;
@@ -442,7 +425,7 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
               <button
                 type="button"
                 className={`btn btn-light border p-0 d-flex align-items-center justify-content-center rounded-2 sidebar-toggle-btn shadow-xs flex-shrink-0 ${
-                  isHeaderNav ? "d-xl-none" : ""
+                  isHeaderNav || isRightSidebar ? "d-xl-none" : ""
                 }`}
                 onClick={toggleSidebar}
                 title={isExpanded ? "Menüyü Daralt / Kapat" : "Menüyü Genişlet / Aç"}
@@ -702,6 +685,25 @@ const Header: React.FC<HeaderProps> = ({ isHeaderNav: isHeaderNavProp }) => {
               <ListGroup.Item as="li" className="flex-shrink-0">
                 <UserMenu />
               </ListGroup.Item>
+
+              {/* 10. Sağ Sabit Menü: Masaüstünde sidebar açma/kapama ikonu sağda */}
+              {isRightSidebar && !isHeaderNav && (
+                <ListGroup.Item as="li" className="d-none d-xl-flex flex-shrink-0 ms-1">
+                  <button
+                    type="button"
+                    className="btn btn-light border p-0 d-flex align-items-center justify-content-center rounded-2 shadow-xs"
+                    onClick={toggleSidebar}
+                    title={isExpanded ? "Sağ Menüyü Daralt" : "Sağ Menüyü Genişlet"}
+                    style={{ width: "32px", height: "32px" }}
+                  >
+                    {isExpanded ? (
+                      <IconArrowBarRight size={18} strokeWidth={2.2} className="text-dark" />
+                    ) : (
+                      <IconArrowBarLeft size={18} strokeWidth={2.2} className="text-dark" />
+                    )}
+                  </button>
+                </ListGroup.Item>
+              )}
             </ListGroup>
           </div>
 

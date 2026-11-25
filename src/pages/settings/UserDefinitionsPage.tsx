@@ -47,6 +47,7 @@ import {
   IconChevronDown,
   IconBinoculars,
   IconLayoutSidebar,
+  IconLayoutNavbar,
   IconTools,
   IconCoins,
   IconUserCheck,
@@ -65,7 +66,8 @@ import { SistemService } from "../../services/sistemService";
 import { StatisticService, StatisticItem } from "../../services/statisticService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { onlyDecimal, onlyDigits, blockNonNumericKeys } from "../../utils/numericInput";
-import { SIDEBAR_STYLES } from "../../hooks/useSidebarStyle";
+import { SIDEBAR_STYLES, sanitizeSidebarStyle, isHeaderNavStyle } from "../../hooks/useSidebarStyle";
+import { SidebarStylePreview } from "../../components/theme/SidebarStylePreview";
 import { SidebarStyleSecimModal } from "../../components/theme/SidebarStyleSecimModal";
 import { CariKartAtamaModal } from "./CariKartAtamaModal";
 
@@ -395,8 +397,7 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
   if (!u) return u;
   const currentApp = u.appearance || {};
   const rawStyle = currentApp.sidebarStyle;
-  const validStyles = ["hover", "classic", "flyout", "topbar", "dual", "megamenu"];
-  const finalStyle = (rawStyle && validStyles.includes(rawStyle)) ? rawStyle : "classic";
+  const finalStyle = rawStyle ? sanitizeSidebarStyle(rawStyle) : "classic";
   const normalizedRateType = u.ratePermType === "Limitli" ? "Yüzde" : (u.ratePermType || "Var");
   const normalizedRateValue = (u.ratePermValue !== undefined && u.ratePermValue !== null)
     ? String(u.ratePermValue)
@@ -448,6 +449,9 @@ const UserDefinitionsPage: React.FC = () => {
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [showSidebarStyleModal, setShowSidebarStyleModal] = useState<boolean>(false);
+  const [menuOrientationTab, setMenuOrientationTab] = useState<"vertical" | "horizontal">(() =>
+    isHeaderNavStyle(currentUser.appearance?.sidebarStyle) ? "horizontal" : "vertical"
+  );
 
   // Cari Kart Sınırlama / Atama State'leri
   const [showCariAtamaModal, setShowCariAtamaModal] = useState<boolean>(false);
@@ -2713,7 +2717,7 @@ const UserDefinitionsPage: React.FC = () => {
                         Sidebar &amp; Menü Yerleşim Düzeni
                       </h5>
                       <span className="text-muted small">
-                        Kullanım alışkanlığınıza ve ekran boyutunuza en uygun menü düzenini seçebilirsiniz. Seçiminiz anında canlı olarak uygulanır.
+                        Dikey (Sidebar) veya Yatay (Header) menü grubunu seçerek kullanım alışkanlığınıza en uygun düzeni belirleyin.
                       </span>
                     </div>
                     <Badge bg="primary-subtle" className="text-primary border border-primary-subtle px-3 py-1.5 fw-semibold fs-6">
@@ -2721,8 +2725,36 @@ const UserDefinitionsPage: React.FC = () => {
                     </Badge>
                   </div>
 
+                  {/* Dikey Menü (Sidebar) / Yatay Menü (Header) 2'li Kategori Seçici */}
+                  <div className="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                    <Button
+                      variant={menuOrientationTab === "vertical" ? "primary" : "outline-secondary"}
+                      size="sm"
+                      className="fw-semibold px-3 py-1.5 d-flex align-items-center gap-2 rounded-3"
+                      onClick={() => setMenuOrientationTab("vertical")}
+                    >
+                      <IconLayoutSidebar size={16} />
+                      <span>Dikey Menü (Sidebar)</span>
+                      <Badge bg={menuOrientationTab === "vertical" ? "light" : "secondary"} text={menuOrientationTab === "vertical" ? "primary" : "light"} pill>
+                        {SIDEBAR_STYLES.filter((s) => s.orientation === "vertical").length}
+                      </Badge>
+                    </Button>
+                    <Button
+                      variant={menuOrientationTab === "horizontal" ? "primary" : "outline-secondary"}
+                      size="sm"
+                      className="fw-semibold px-3 py-1.5 d-flex align-items-center gap-2 rounded-3"
+                      onClick={() => setMenuOrientationTab("horizontal")}
+                    >
+                      <IconLayoutNavbar size={16} />
+                      <span>Yatay Menü (Header)</span>
+                      <Badge bg={menuOrientationTab === "horizontal" ? "light" : "secondary"} text={menuOrientationTab === "horizontal" ? "primary" : "light"} pill>
+                        {SIDEBAR_STYLES.filter((s) => s.orientation === "horizontal").length}
+                      </Badge>
+                    </Button>
+                  </div>
+
                   <Row className="g-3">
-                    {SIDEBAR_STYLES.map((styleItem) => {
+                    {SIDEBAR_STYLES.filter((s) => s.orientation === menuOrientationTab).map((styleItem, idx) => {
                       const isSelected = (currentUser.appearance?.sidebarStyle || "classic") === styleItem.id;
                       return (
                         <Col key={styleItem.id} xs={12} md={6} lg={4}>
@@ -2770,7 +2802,7 @@ const UserDefinitionsPage: React.FC = () => {
                               </div>
 
                               <h6 className={`mb-1 fw-bold ${isSelected ? "text-primary" : "text-dark"}`}>
-                                {styleItem.title}
+                                {idx + 1}. {styleItem.title}
                               </h6>
                               <div className="text-secondary small fw-medium mb-1.5" style={{ fontSize: "12px" }}>
                                 {styleItem.subtitle}
@@ -2784,90 +2816,7 @@ const UserDefinitionsPage: React.FC = () => {
                             </div>
 
                             {/* Mini Şematik Önizleme */}
-                            <div
-                              className="rounded-2 p-1.5 border bg-white d-flex overflow-hidden mt-auto"
-                              style={{ height: "42px", borderColor: isSelected ? "#93c5fd" : "#e2e8f0" }}
-                            >
-                              {styleItem.id === "hover" && (
-                                <div className="d-flex w-100 gap-1">
-                                  <div className="rounded-1 bg-primary" style={{ width: "14px", height: "100%" }} />
-                                  <div
-                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                                    style={{ fontSize: "0.68rem" }}
-                                  >
-                                    Sayfa Alanı (Fare ile Genişler)
-                                  </div>
-                                </div>
-                              )}
-                              {styleItem.id === "classic" && (
-                                <div className="d-flex w-100 gap-1">
-                                  <div className="rounded-1 bg-primary" style={{ width: "32px", height: "100%" }} />
-                                  <div
-                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                                    style={{ fontSize: "0.68rem" }}
-                                  >
-                                    Sayfa Alanı (Sabit Dikey Menü)
-                                  </div>
-                                </div>
-                              )}
-                              {styleItem.id === "flyout" && (
-                                <div className="d-flex w-100 gap-1 position-relative">
-                                  <div className="rounded-1 bg-primary" style={{ width: "26px", height: "100%" }} />
-                                  <div
-                                    className="rounded-1 border border-warning shadow-xs bg-white px-1 d-flex align-items-center text-warning-emphasis"
-                                    style={{ width: "45px", height: "90%", fontSize: "0.62rem", fontWeight: "bold" }}
-                                  >
-                                    Kart &gt;
-                                  </div>
-                                  <div
-                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                                    style={{ fontSize: "0.68rem" }}
-                                  >
-                                    Sayfa
-                                  </div>
-                                </div>
-                              )}
-                              {styleItem.id === "topbar" && (
-                                <div className="d-flex flex-column w-100 gap-1">
-                                  <div className="d-flex w-100 gap-1" style={{ height: "12px" }}>
-                                    <div className="rounded-1 bg-success" style={{ width: "24px", height: "100%" }} />
-                                    <div className="rounded-1 bg-primary flex-grow-1" style={{ height: "100%" }} />
-                                  </div>
-                                  <div
-                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                                    style={{ fontSize: "0.68rem" }}
-                                  >
-                                    Tam Genişlik Sayfa (En Üstte Sabit Menü)
-                                  </div>
-                                </div>
-                              )}
-                              {styleItem.id === "dual" && (
-                                <div className="d-flex w-100 gap-1">
-                                  <div className="rounded-1 bg-success" style={{ width: "12px", height: "100%" }} />
-                                  <div className="rounded-1 bg-primary-subtle border" style={{ width: "24px", height: "100%" }} />
-                                  <div
-                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-muted"
-                                    style={{ fontSize: "0.68rem" }}
-                                  >
-                                    Sayfa Alanı
-                                  </div>
-                                </div>
-                              )}
-                              {(styleItem.id === "megamenu" || styleItem.id === "drawer") && (
-                                <div className="d-flex flex-column w-100 gap-1">
-                                  <div className="d-flex w-100 gap-1" style={{ height: "12px" }}>
-                                    <div className="rounded-1 bg-success" style={{ width: "24px", height: "100%" }} />
-                                    <div className="rounded-1 bg-info flex-grow-1" style={{ height: "100%" }} />
-                                  </div>
-                                  <div
-                                    className="flex-grow-1 rounded-1 bg-light border border-dashed d-flex align-items-center justify-content-center text-primary fw-medium"
-                                    style={{ fontSize: "0.68rem" }}
-                                  >
-                                    Çok Sütunlu Mega Panel
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                            <SidebarStylePreview styleId={styleItem.id} isSelected={isSelected} />
                           </div>
                         </Col>
                       );

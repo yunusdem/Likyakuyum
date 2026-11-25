@@ -433,8 +433,8 @@ main.custom-container,
 // Desktop Large Screens (>= 1200px)
 // ----------------------------------------------------
 @media (min-width: 1200px) {
-  html.expanded:not([data-sidebar-style="topbar"]):not([data-sidebar-style="megamenu"]):not([data-sidebar-style="drawer"]),
-  html:not(.collapsed):not([data-sidebar-style="topbar"]):not([data-sidebar-style="megamenu"]):not([data-sidebar-style="drawer"]) {
+  html.expanded:not([data-nav-orientation="horizontal"]):not([data-sidebar-style="compact"]):not([data-sidebar-style="wide"]):not([data-sidebar-style="floating"]):not([data-sidebar-style="right"]):not([data-sidebar-style="railgrid"]):not([data-sidebar-style="tree"]):not([data-sidebar-style="command"]),
+  html:not(.collapsed):not([data-nav-orientation="horizontal"]):not([data-sidebar-style="compact"]):not([data-sidebar-style="wide"]):not([data-sidebar-style="floating"]):not([data-sidebar-style="right"]):not([data-sidebar-style="railgrid"]):not([data-sidebar-style="tree"]):not([data-sidebar-style="command"]) {
     #miniSidebar {
       width: 270px !important;
       transform: translateX(0) !important;
@@ -461,32 +461,22 @@ main.custom-container,
     }
   }
 
-  /* Üst Header Modlarında (topbar / megamenu) masaüstünde sidebar ve backdrop ASLA gösterilmez, sayfa sola kaymaz */
-  html[data-sidebar-style="topbar"] #miniSidebar,
-  html[data-sidebar-style="megamenu"] #miniSidebar,
-  html[data-sidebar-style="drawer"] #miniSidebar,
-  html.expanded[data-sidebar-style="topbar"] #miniSidebar,
-  html.expanded[data-sidebar-style="megamenu"] #miniSidebar,
-  html.expanded[data-sidebar-style="drawer"] #miniSidebar {
+  /* Tüm Yatay Üst Header Modlarında masaüstünde sidebar ve backdrop ASLA gösterilmez, sayfa sola kaymaz */
+  html[data-nav-orientation="horizontal"] #miniSidebar,
+  html.expanded[data-nav-orientation="horizontal"] #miniSidebar {
     display: none !important;
     width: 0 !important;
     transform: translateX(-100%) !important;
   }
 
-  html[data-sidebar-style="topbar"] #content,
-  html[data-sidebar-style="megamenu"] #content,
-  html[data-sidebar-style="drawer"] #content,
-  html.expanded[data-sidebar-style="topbar"] #content,
-  html.expanded[data-sidebar-style="megamenu"] #content,
-  html.expanded[data-sidebar-style="drawer"] #content {
+  html[data-nav-orientation="horizontal"] #content,
+  html.expanded[data-nav-orientation="horizontal"] #content {
     margin-left: 0 !important;
     width: 100% !important;
     min-width: 100% !important;
   }
 
-  html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-  html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-  html[data-sidebar-style="drawer"] .sidebar-toggle-btn {
+  html[data-nav-orientation="horizontal"] .sidebar-toggle-btn {
     display: none !important;
     visibility: hidden !important;
   }
@@ -577,9 +567,7 @@ main.custom-container,
 
   // Küçük ekranlarda (< 1200px) üst menü seçili olsa bile sol menü oku kesinlikle görünür
   .sidebar-toggle-btn,
-  html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-  html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-  html[data-sidebar-style="drawer"] .sidebar-toggle-btn {
+  html[data-nav-orientation="horizontal"] .sidebar-toggle-btn {
     display: inline-flex !important;
     visibility: visible !important;
     opacity: 1 !important;

@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { sanitizeSidebarStyle, isHeaderNavStyle } from "../../hooks/useSidebarStyle";
 
 /**
  * Calculates readable contrast text color (dark or light) based on background luminance
@@ -34,10 +35,12 @@ export function applyAppearanceToDOM(appearance?: any) {
       }
     } catch {}
   }
-  const validStyles = ["hover", "classic", "flyout", "topbar", "dual", "megamenu"];
-  const sidebarStyle = (rawStyle && validStyles.includes(rawStyle)) ? rawStyle : "classic";
+  const sidebarStyle = rawStyle ? sanitizeSidebarStyle(rawStyle) : "classic";
+  const navOrientation = isHeaderNavStyle(sidebarStyle) ? "horizontal" : "vertical";
   root.setAttribute("data-sidebar-style", sidebarStyle);
   document.body.setAttribute("data-sidebar-style", sidebarStyle);
+  root.setAttribute("data-nav-orientation", navOrientation);
+  document.body.setAttribute("data-nav-orientation", navOrientation);
 
   if (!appearance) return;
 
@@ -669,42 +672,27 @@ export const UserThemeApplier: React.FC = () => {
         font-weight: 600;
       }
 
-      /* 4. TOPBAR & 6. MEGAMENU MODLARI: Masaüstünde (>=1200px) Dikey Sidebar ASLA Açılmaz, Üst Menü Görünür */
+      /* TÜM YATAY HEADER MODLARI: Masaüstünde (>=1200px) Dikey Sidebar ASLA Açılmaz, Üst Menü Görünür */
       @media (min-width: 1200px) {
-        html[data-sidebar-style="topbar"] #miniSidebar,
-        html[data-sidebar-style="megamenu"] #miniSidebar,
-        html[data-sidebar-style="drawer"] #miniSidebar,
-        html.expanded[data-sidebar-style="topbar"] #miniSidebar,
-        html.expanded[data-sidebar-style="megamenu"] #miniSidebar,
-        html.expanded[data-sidebar-style="drawer"] #miniSidebar {
+        html[data-nav-orientation="horizontal"] #miniSidebar,
+        html.expanded[data-nav-orientation="horizontal"] #miniSidebar {
           display: none !important;
           width: 0 !important;
           transform: translateX(-100%) !important;
         }
-        html[data-sidebar-style="topbar"] .sidebar-backdrop,
-        html[data-sidebar-style="megamenu"] .sidebar-backdrop,
-        html[data-sidebar-style="drawer"] .sidebar-backdrop,
-        html.expanded[data-sidebar-style="topbar"] .sidebar-backdrop,
-        html.expanded[data-sidebar-style="megamenu"] .sidebar-backdrop,
-        html.expanded[data-sidebar-style="drawer"] .sidebar-backdrop {
+        html[data-nav-orientation="horizontal"] .sidebar-backdrop,
+        html.expanded[data-nav-orientation="horizontal"] .sidebar-backdrop {
           display: none !important;
         }
-        html[data-sidebar-style="topbar"] #content,
-        html[data-sidebar-style="megamenu"] #content,
-        html[data-sidebar-style="drawer"] #content,
-        html.expanded[data-sidebar-style="topbar"] #content,
-        html.expanded[data-sidebar-style="megamenu"] #content,
-        html.expanded[data-sidebar-style="drawer"] #content {
+        html[data-nav-orientation="horizontal"] #content,
+        html.expanded[data-nav-orientation="horizontal"] #content {
           margin-left: 0 !important;
+          margin-right: 0 !important;
           width: 100% !important;
           min-width: 100% !important;
         }
-        html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-        html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-        html[data-sidebar-style="drawer"] .sidebar-toggle-btn,
-        body[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-        body[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-        body[data-sidebar-style="drawer"] .sidebar-toggle-btn {
+        html[data-nav-orientation="horizontal"] .sidebar-toggle-btn,
+        body[data-nav-orientation="horizontal"] .sidebar-toggle-btn {
           display: none !important;
         }
       }
@@ -712,12 +700,8 @@ export const UserThemeApplier: React.FC = () => {
       /* Küçük ekranlarda (< 1200px) üst menü seçili olsa bile sol menü oku KESİNLİKLE görünür ve tıklanabilir */
       @media (max-width: 1199.98px) {
         .sidebar-toggle-btn,
-        html[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-        html[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-        html[data-sidebar-style="drawer"] .sidebar-toggle-btn,
-        body[data-sidebar-style="topbar"] .sidebar-toggle-btn,
-        body[data-sidebar-style="megamenu"] .sidebar-toggle-btn,
-        body[data-sidebar-style="drawer"] .sidebar-toggle-btn {
+        html[data-nav-orientation="horizontal"] .sidebar-toggle-btn,
+        body[data-nav-orientation="horizontal"] .sidebar-toggle-btn {
           display: inline-flex !important;
           visibility: visible !important;
           opacity: 1 !important;
@@ -728,9 +712,7 @@ export const UserThemeApplier: React.FC = () => {
       }
 
       .navbar-glass,
-      html[data-sidebar-style="topbar"] .navbar-glass,
-      html[data-sidebar-style="megamenu"] .navbar-glass,
-      html[data-sidebar-style="drawer"] .navbar-glass {
+      html[data-nav-orientation="horizontal"] .navbar-glass {
         left: 0 !important;
         right: 0 !important;
         width: 100% !important;
@@ -740,6 +722,310 @@ export const UserThemeApplier: React.FC = () => {
         -webkit-font-smoothing: antialiased !important;
         -moz-osx-font-smoothing: grayscale !important;
         text-rendering: optimizeLegibility !important;
+      }
+
+      /* 7. ULTRA KOMPAKT DAR MENÜ (Küçük Sidebar: 215px / 54px) */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="compact"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="compact"].expanded #miniSidebar {
+          width: 215px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="compact"]:not(.collapsed) #content,
+        html[data-sidebar-style="compact"].expanded #content {
+          margin-left: 215px !important;
+          width: calc(100% - 215px) !important;
+        }
+        html[data-sidebar-style="compact"].collapsed #miniSidebar {
+          width: 54px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="compact"].collapsed #content {
+          margin-left: 54px !important;
+          width: calc(100% - 54px) !important;
+        }
+        html[data-sidebar-style="compact"] #miniSidebar .brand-logo {
+          min-height: 44px !important;
+          padding: 0.35rem 0.6rem !important;
+        }
+        html[data-sidebar-style="compact"] #miniSidebar .brand-logo .site-logo-img {
+          width: 26px !important;
+          height: 26px !important;
+        }
+        html[data-sidebar-style="compact"] #miniSidebar .brand-logo .site-logo-text {
+          font-size: 0.96rem !important;
+        }
+        html[data-sidebar-style="compact"] #miniSidebar .nav-link,
+        html[data-sidebar-style="compact"] #miniSidebar .accordion-button,
+        html[data-sidebar-style="compact"] #miniSidebar .sidebar-menu-btn {
+          padding: 0.34rem 0.6rem !important;
+          font-size: 0.78rem !important;
+        }
+        html[data-sidebar-style="compact"] #miniSidebar .sidebar-menu-title {
+          font-size: 0.79rem !important;
+        }
+        html[data-sidebar-style="compact"] #miniSidebar .sidebar-icon-pill {
+          width: 22px !important;
+          height: 22px !important;
+          padding: 2px !important;
+        }
+        html[data-sidebar-style="compact"] #miniSidebar .sidebar-submenu-list .nav-link {
+          padding: 0.25rem 0.55rem !important;
+          font-size: 0.75rem !important;
+        }
+      }
+
+      /* 8. GENİŞ KONFORLU MENÜ (Büyük Sidebar: 320px / 72px) */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="wide"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="wide"].expanded #miniSidebar {
+          width: 320px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="wide"]:not(.collapsed) #content,
+        html[data-sidebar-style="wide"].expanded #content {
+          margin-left: 320px !important;
+          width: calc(100% - 320px) !important;
+        }
+        html[data-sidebar-style="wide"].collapsed #miniSidebar {
+          width: 72px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="wide"].collapsed #content {
+          margin-left: 72px !important;
+          width: calc(100% - 72px) !important;
+        }
+        html[data-sidebar-style="wide"] #miniSidebar .brand-logo {
+          min-height: 62px !important;
+          padding: 0.85rem 1.2rem !important;
+        }
+        html[data-sidebar-style="wide"] #miniSidebar .brand-logo .site-logo-img {
+          width: 40px !important;
+          height: 40px !important;
+        }
+        html[data-sidebar-style="wide"] #miniSidebar .brand-logo .site-logo-text {
+          font-size: 1.32rem !important;
+        }
+        html[data-sidebar-style="wide"]:not(.collapsed) #miniSidebar .sidebar-menu-section {
+          padding: 2px 8px !important;
+        }
+        html[data-sidebar-style="wide"]:not(.collapsed) #miniSidebar .accordion-button,
+        html[data-sidebar-style="wide"]:not(.collapsed) #miniSidebar .sidebar-menu-btn {
+          padding: 0.72rem 0.95rem !important;
+          border-radius: 12px !important;
+          border: 1px solid rgba(15, 23, 42, 0.07) !important;
+          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+          margin-bottom: 3px !important;
+        }
+        html[data-sidebar-style="wide"] #miniSidebar .sidebar-icon-pill {
+          width: 34px !important;
+          height: 34px !important;
+          border-radius: 10px !important;
+        }
+        html[data-sidebar-style="wide"] #miniSidebar .sidebar-menu-title {
+          font-size: 0.96rem !important;
+          font-weight: 700 !important;
+        }
+        html[data-sidebar-style="wide"] #miniSidebar .sidebar-submenu-list .nav-link {
+          padding: 0.5rem 0.85rem !important;
+          font-size: 0.88rem !important;
+          border-radius: 8px !important;
+        }
+      }
+
+      /* 9. YÜZEN ADA MENÜ (Floating Rounded Card: 256px / 64px) */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="floating"] #miniSidebar {
+          top: 10px !important;
+          left: 10px !important;
+          bottom: 10px !important;
+          height: calc(100vh - 20px) !important;
+          border-radius: 16px !important;
+          border: 1px solid rgba(15, 23, 42, 0.1) !important;
+          box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.06) !important;
+          overflow: hidden !important;
+          z-index: 1045 !important;
+        }
+        html[data-sidebar-style="floating"] #miniSidebar .brand-logo {
+          border-top-left-radius: 15px !important;
+          border-top-right-radius: 15px !important;
+        }
+        html[data-sidebar-style="floating"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="floating"].expanded #miniSidebar {
+          width: 256px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="floating"]:not(.collapsed) #content,
+        html[data-sidebar-style="floating"].expanded #content {
+          margin-left: 276px !important;
+          width: calc(100% - 276px) !important;
+        }
+        html[data-sidebar-style="floating"].collapsed #miniSidebar {
+          width: 64px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="floating"].collapsed #content {
+          margin-left: 84px !important;
+          width: calc(100% - 84px) !important;
+        }
+      }
+
+      /* 10. SAĞ SABİT MENÜ (Right-Anchored Sidebar: 270px / 60px) */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="right"] #miniSidebar {
+          left: auto !important;
+          right: 0 !important;
+          border-right: none !important;
+          border-left: 1px solid #e2e8f0 !important;
+          box-shadow: -4px 0 18px rgba(15, 23, 42, 0.07) !important;
+        }
+        html[data-sidebar-style="right"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="right"].expanded #miniSidebar {
+          width: 270px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="right"]:not(.collapsed) #content,
+        html[data-sidebar-style="right"].expanded #content {
+          margin-left: 0 !important;
+          margin-right: 270px !important;
+          width: calc(100% - 270px) !important;
+        }
+        html[data-sidebar-style="right"].collapsed #miniSidebar {
+          width: 60px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="right"].collapsed #content {
+          margin-left: 0 !important;
+          margin-right: 60px !important;
+          width: calc(100% - 60px) !important;
+        }
+      }
+
+      /* 13. İKONLU KUTU GRİD MENÜ (RailGrid: 268px / 68px) */
+      .railgrid-tiles-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .railgrid-tile-card {
+        min-height: 82px;
+        transition: transform 0.14s ease, box-shadow 0.14s ease !important;
+      }
+      .railgrid-tile-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08) !important;
+      }
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="railgrid"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="railgrid"].expanded #miniSidebar {
+          width: 268px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="railgrid"]:not(.collapsed) #content,
+        html[data-sidebar-style="railgrid"].expanded #content {
+          margin-left: 268px !important;
+          width: calc(100% - 268px) !important;
+        }
+        html[data-sidebar-style="railgrid"].collapsed #miniSidebar {
+          width: 68px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="railgrid"].collapsed #content {
+          margin-left: 68px !important;
+          width: calc(100% - 68px) !important;
+        }
+        html[data-sidebar-style="railgrid"].collapsed .railgrid-tiles-grid {
+          grid-template-columns: 1fr !important;
+          gap: 6px !important;
+        }
+        html[data-sidebar-style="railgrid"].collapsed .railgrid-tile-card {
+          min-height: 46px !important;
+          padding: 4px !important;
+        }
+        html[data-sidebar-style="railgrid"].collapsed .railgrid-tile-title,
+        html[data-sidebar-style="railgrid"].collapsed .railgrid-tile-count,
+        html[data-sidebar-style="railgrid"].collapsed .railgrid-footer-time {
+          display: none !important;
+        }
+      }
+
+      /* 14. KLASÖR AĞACI (TREE) MENÜ (Tree: 268px / 62px) */
+      .tree-branch-children {
+        margin-left: 14px;
+        padding-left: 10px;
+        border-left: 1.5px dashed #cbd5e1;
+      }
+      .tree-node-link {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #1e293b;
+        text-decoration: none;
+        transition: background-color 0.12s ease, color 0.12s ease;
+      }
+      .tree-node-link:hover {
+        background-color: #f1f5f9;
+        color: #0284c7;
+      }
+      .tree-node-link.active {
+        background-color: #e0f2fe;
+        color: #0369a1;
+        font-weight: 700;
+      }
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="tree"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="tree"].expanded #miniSidebar {
+          width: 268px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="tree"]:not(.collapsed) #content,
+        html[data-sidebar-style="tree"].expanded #content {
+          margin-left: 268px !important;
+          width: calc(100% - 268px) !important;
+        }
+        html[data-sidebar-style="tree"].collapsed #miniSidebar {
+          width: 62px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="tree"].collapsed #content {
+          margin-left: 62px !important;
+          width: calc(100% - 62px) !important;
+        }
+        html[data-sidebar-style="tree"].collapsed .tree-toolbar,
+        html[data-sidebar-style="tree"].collapsed .tree-branch-children,
+        html[data-sidebar-style="tree"].collapsed .tree-node-title,
+        html[data-sidebar-style="tree"].collapsed .tree-plus-box {
+          display: none !important;
+        }
+      }
+
+      /* 15. ARAMA ODAKLI AKILLI MENÜ (Command: 285px / 64px) */
+      @media (min-width: 1200px) {
+        html[data-sidebar-style="command"]:not(.collapsed) #miniSidebar,
+        html[data-sidebar-style="command"].expanded #miniSidebar {
+          width: 285px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="command"]:not(.collapsed) #content,
+        html[data-sidebar-style="command"].expanded #content {
+          margin-left: 285px !important;
+          width: calc(100% - 285px) !important;
+        }
+        html[data-sidebar-style="command"].collapsed #miniSidebar {
+          width: 64px !important;
+          transform: translateX(0) !important;
+        }
+        html[data-sidebar-style="command"].collapsed #content {
+          margin-left: 64px !important;
+          width: calc(100% - 64px) !important;
+        }
+        html[data-sidebar-style="command"].collapsed .sidebar-command-search-wrap {
+          display: none !important;
+        }
       }
 
       /* 5. DUAL MODU: Çift Kademeli İkon Şeridi + Yan Panel */

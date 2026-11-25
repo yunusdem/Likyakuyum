@@ -3,7 +3,7 @@ import { Routes, Route, Outlet, Navigate, useLocation } from "react-router-dom";
 import Header from "layouts/header/Header";
 import Sidebar from "layouts/Sidebar";
 import TopNavbarMenu from "./layouts/TopNavbarMenu";
-import useSidebarStyle from "./hooks/useSidebarStyle";
+import useSidebarStyle, { isHeaderNavStyle } from "./hooks/useSidebarStyle";
 import HomePage from "./pages/HomePage";
 import ModulePage from "./pages/ModulePage";
 import UserDefinitionsPage from "./pages/settings/UserDefinitionsPage";
@@ -264,7 +264,7 @@ const DashboardLayout: React.FC = () => {
 
   // Mobilde sayfa ilk açıldığında veya üst menü stilinde sidebar kapalı başlasın
   useEffect(() => {
-    const isHeaderStyle = sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer";
+    const isHeaderStyle = isHeaderNavStyle(sidebarStyle);
     if (isHeaderStyle || window.innerWidth < 1200) {
       handleCollapsed("collapsed");
     }
@@ -273,19 +273,19 @@ const DashboardLayout: React.FC = () => {
   // Route değiştiğinde çekmeceyi ve mobilde sidebarı otomatik kapat
   useEffect(() => {
     setDrawerOpen(false);
-    if (window.innerWidth < 1200 || sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer") {
+    if (window.innerWidth < 1200 || isHeaderNavStyle(sidebarStyle)) {
       handleCollapsed("collapsed");
     }
   }, [location.pathname, sidebarStyle]);
 
   // Ekran boyutu değiştiğinde (sayfa büyütüldüğünde):
   // 1) Sayfayı büyütünce (<1200px'den >=1200px'e geçince) mobilde açılmış sidebar masaüstünde ASLA otomatik açılmayacak
-  // 2) Üst menü (topbar / megamenu) seçili ise masaüstünde sidebar kesinlikle kapalı kalacak
+  // 2) Üst menü (topbar / megamenu / ribbon / dock) seçili ise masaüstünde sidebar kesinlikle kapalı kalacak
   useEffect(() => {
     let lastWidth = window.innerWidth;
     const handleWindowResize = () => {
       const currentWidth = window.innerWidth;
-      const isHeaderStyle = sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer";
+      const isHeaderStyle = isHeaderNavStyle(sidebarStyle);
 
       if (lastWidth < 1200 && currentWidth >= 1200) {
         handleCollapsed("collapsed");
@@ -340,14 +340,14 @@ const DashboardLayout: React.FC = () => {
 
       {/* 3. Main Content Area */}
       <div id="content" className="position-relative min-vh-100 d-flex flex-column">
-        {/* Style 4 & Style 6: Masaüstünde (>= 1200px) Header Üstünde Yatay Menü / Mega Menü Çubuğu (Mobilde Header toggle ile Sidebar açılır) */}
-        {(sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer") && (
+        {/* Üst Menü Modları (topbar, megamenu, ribbon, dock): Masaüstünde (>= 1200px) Header Üstünde Yatay Menü Çubuğu */}
+        {isHeaderNavStyle(sidebarStyle) && (
           <div className="d-none d-xl-block">
             <TopNavbarMenu />
           </div>
         )}
 
-        <Header isHeaderNav={sidebarStyle === "topbar" || sidebarStyle === "megamenu" || sidebarStyle === "drawer"} />
+        <Header isHeaderNav={isHeaderNavStyle(sidebarStyle)} />
         <main className="flex-grow-1 custom-container pt-1 pb-3" data-sayfa-icerik="true">
           <LisansUyariBandi />
           <ModulKorumasi />

@@ -50,6 +50,9 @@ import {
   IconCoins,
   IconShieldCheck,
   IconNfc,
+  IconSearch,
+  IconArrowLeft,
+  IconLayoutGrid,
 } from "@tabler/icons-react";
 import useMenu from "hooks/useMenu";
 import { useAuth } from "../context/AuthContext";
@@ -301,6 +304,9 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
   const flyoutTimerRef = useRef<any>(null);
   const [activeDualIndex, setActiveDualIndex] = useState<number>(0);
+  const [railGridActiveIndex, setRailGridActiveIndex] = useState<number | null>(null);
+  const [commandSearch, setCommandSearch] = useState<string>("");
+  const [treeOpenKeys, setTreeOpenKeys] = useState<number[]>([0, 1]);
 
   const clearFlyoutTimer = () => {
     if (flyoutTimerRef.current) {
@@ -772,10 +778,420 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
   return (
     <div
       id={containerId}
-      className={`d-flex flex-column h-100 ${sidebarStyle === "dual" ? "sidebar-dual-mode" : ""}`}
+      className={`d-flex flex-column h-100 ${sidebarStyle === "dual" ? "sidebar-dual-mode" : ""} ${
+        sidebarStyle === "railgrid" ? "sidebar-railgrid-mode" : ""
+      } ${sidebarStyle === "command" ? "sidebar-command-mode" : ""} ${
+        sidebarStyle === "tree" ? "sidebar-tree-mode" : ""
+      }`}
     >
-      {/* ─── DUAL MODU: Çift Kademeli İkon Şeridi + Yan Panel (Style 5) ─── */}
-      {sidebarStyle === "dual" ? (
+      {/* ─── 14. TREE MODU: Çoklu Açılabilir Klasör Ağacı Menüsü ─── */}
+      {sidebarStyle === "tree" ? (
+        <div className="d-flex flex-column h-100 w-100 overflow-hidden">
+          <div className="brand-logo d-flex align-items-center justify-content-between justify-content-xl-center px-3 flex-shrink-0">
+            <Link
+              to="/dashboard"
+              onClick={() => {
+                if (window.innerWidth < 1200) handleCollapsed("collapsed");
+                else if (collapsed === "collapsed") handleCollapsed("expanded");
+              }}
+              className="d-flex align-items-center text-decoration-none py-1 overflow-hidden"
+              style={{ minWidth: 0, cursor: "pointer" }}
+              title="Ana Sayfa"
+            >
+              <img
+                src="/images/logo/logo.svg"
+                alt="Likya Kuyum Logo"
+                className="site-logo-img flex-shrink-0 me-2"
+                style={{ width: "34px", height: "34px", objectFit: "contain" }}
+              />
+              <span className="fw-bold site-logo-text text-nowrap" style={{ fontSize: "1.18rem" }}>
+                <span className="brand-text-likya">{getAppBrand(user).prefix}</span>{" "}
+                <span className="brand-text-kuyum">{getAppBrand(user).suffix}</span>
+              </span>
+            </Link>
+            <button
+              type="button"
+              className="btn btn-ghost p-1 d-flex d-xl-none align-items-center justify-content-center rounded-circle text-white"
+              onClick={() => handleCollapsed("collapsed")}
+              title="Menüyü Kapat"
+            >
+              <IconX size={22} />
+            </button>
+          </div>
+
+          <AlanDegistirDugmesi />
+
+          {/* Üst Ağaç Kontrol Çubuğu: Hepsini Aç / Hepsini Kapat */}
+          <div className="tree-toolbar d-flex align-items-center justify-content-between px-2.5 py-1.5 border-bottom bg-light flex-shrink-0">
+            <span className="text-muted fw-bold text-uppercase" style={{ fontSize: "0.66rem", letterSpacing: "0.5px" }}>
+              Klasör Ağacı
+            </span>
+            <div className="d-flex align-items-center gap-1">
+              <button
+                type="button"
+                className="btn btn-white border py-0 px-1.5 fw-semibold text-primary"
+                style={{ fontSize: "0.68rem" }}
+                onClick={() =>
+                  setTreeOpenKeys(
+                    gorunenMenu.map((m, i) => (!m.grouptitle && m.children?.length ? i : -1)).filter((i) => i >= 0)
+                  )
+                }
+              >
+                Hepsini Aç
+              </button>
+              <button
+                type="button"
+                className="btn btn-white border py-0 px-1.5 fw-semibold text-secondary"
+                style={{ fontSize: "0.68rem" }}
+                onClick={() => setTreeOpenKeys([])}
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+
+          {/* Çoklu Açılabilir Ağaç Listesi */}
+          <div className="flex-grow-1 overflow-y-auto px-2 py-2" style={{ minHeight: 0 }}>
+            <div className="d-flex flex-column gap-1">
+              {gorunenMenu.map((m, idx) => {
+                if (m.grouptitle) return null;
+                const theme = getThemeForMenu(m, idx);
+                const hasKids = Boolean(m.children && m.children.length > 0);
+                const isOpen = treeOpenKeys.includes(idx);
+                const toggleBranch = () => {
+                  if (collapsed === "collapsed") handleCollapsed("expanded");
+                  if (!hasKids && m.link) {
+                    navigateWithDashboardHop(m.link);
+                    if (window.innerWidth < 1200) handleCollapsed("collapsed");
+                    return;
+                  }
+                  setTreeOpenKeys((prev) =>
+                    prev.includes(idx) ? prev.filter((k) => k !== idx) : [...prev, idx]
+                  );
+                };
+                return (
+                  <div key={idx}>
+                    <button
+                      type="button"
+                      onClick={toggleBranch}
+                      title={m.title}
+                      className="btn w-100 d-flex align-items-center gap-1.5 px-1.5 py-1 rounded-2 text-start border-0"
+                      style={{
+                        backgroundColor: isOpen ? "#f8fafc" : "transparent",
+                      }}
+                    >
+                      {hasKids ? (
+                        <span
+                          className="tree-plus-box d-inline-flex align-items-center justify-content-center rounded-1 border fw-bold flex-shrink-0"
+                          style={{
+                            width: "16px",
+                            height: "16px",
+                            fontSize: "11px",
+                            lineHeight: 1,
+                            backgroundColor: isOpen ? theme.color : "#ffffff",
+                            color: isOpen ? "#ffffff" : "#475569",
+                            borderColor: isOpen ? theme.color : "#cbd5e1",
+                          }}
+                        >
+                          {isOpen ? "−" : "+"}
+                        </span>
+                      ) : (
+                        <span className="tree-plus-box" style={{ width: "16px", flexShrink: 0 }} />
+                      )}
+                      <span
+                        className="d-inline-flex align-items-center justify-content-center rounded-1 flex-shrink-0"
+                        style={{ width: "22px", height: "22px", backgroundColor: theme.bg, color: theme.color }}
+                      >
+                        {m.icon}
+                      </span>
+                      <span className="tree-node-title fw-bold text-dark text-truncate" style={{ fontSize: "0.8rem" }}>
+                        {m.title}
+                      </span>
+                    </button>
+
+                    {hasKids && isOpen && (
+                      <div className="tree-branch-children d-flex flex-column gap-0.5 mt-0.5 mb-1">
+                        {m.children?.map((child, cIdx) => {
+                          const cTitle = child.title || child.name || "";
+                          if (child.children && child.children.length > 0) {
+                            return (
+                              <div key={cIdx} className="my-0.5">
+                                <div
+                                  className="fw-bold text-uppercase text-muted px-1.5 py-0.5"
+                                  style={{ fontSize: "0.66rem", letterSpacing: "0.4px" }}
+                                >
+                                  {cTitle}
+                                </div>
+                                <div className="tree-branch-children d-flex flex-column gap-0.5">
+                                  {child.children.map((sub, sIdx) => {
+                                    const sTitle = sub.title || sub.name || "";
+                                    const to = sub.link?.startsWith("/") ? sub.link : `/${sub.link}`;
+                                    const active = isRouteMatch(to, currentPath);
+                                    return (
+                                      <Link
+                                        key={sIdx}
+                                        to={to}
+                                        onClick={(e) => handleLinkClick(e, to)}
+                                        className={`tree-node-link ${active ? "active" : ""}`}
+                                      >
+                                        {getSubmenuIcon(sTitle)}
+                                        <span className="text-truncate">{sTitle}</span>
+                                      </Link>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          }
+                          const to = child.link?.startsWith("/") ? child.link : `/${child.link}`;
+                          const active = isRouteMatch(to, currentPath);
+                          return (
+                            <Link
+                              key={cIdx}
+                              to={to}
+                              onClick={(e) => handleLinkClick(e, to)}
+                              className={`tree-node-link ${active ? "active" : ""}`}
+                            >
+                              {getSubmenuIcon(cTitle)}
+                              <span className="text-truncate">{cTitle}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-2 border-top bg-light d-flex align-items-center justify-content-between gap-1 flex-shrink-0">
+            <span className="small text-muted font-monospace tree-node-title">{currentTime}</span>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="btn btn-outline-danger btn-sm p-1 rounded-2"
+              title="Çıkış"
+            >
+              <IconLogin2 size={15} />
+            </button>
+          </div>
+        </div>
+      ) : sidebarStyle === "railgrid" ? (
+        <div className="d-flex flex-column h-100 w-100 overflow-hidden">
+          <div className="brand-logo d-flex align-items-center justify-content-between justify-content-xl-center px-3 flex-shrink-0">
+            <Link
+              to="/dashboard"
+              onClick={() => {
+                setRailGridActiveIndex(null);
+                if (window.innerWidth < 1200) handleCollapsed("collapsed");
+                else if (collapsed === "collapsed") handleCollapsed("expanded");
+              }}
+              className="d-flex align-items-center text-decoration-none py-1 overflow-hidden"
+              style={{ minWidth: 0, cursor: "pointer" }}
+              title="Ana Sayfa"
+            >
+              <img
+                src="/images/logo/logo.svg"
+                alt="Likya Kuyum Logo"
+                className="site-logo-img flex-shrink-0 me-2"
+                style={{ width: "36px", height: "36px", objectFit: "contain" }}
+              />
+              <span className="fw-bold site-logo-text text-nowrap" style={{ fontSize: "1.2rem" }}>
+                <span className="brand-text-likya">{getAppBrand(user).prefix}</span>{" "}
+                <span className="brand-text-kuyum">{getAppBrand(user).suffix}</span>
+              </span>
+            </Link>
+            <button
+              type="button"
+              className="btn btn-ghost p-1 d-flex d-xl-none align-items-center justify-content-center rounded-circle text-white"
+              onClick={() => handleCollapsed("collapsed")}
+              title="Menüyü Kapat"
+            >
+              <IconX size={22} />
+            </button>
+          </div>
+
+          <AlanDegistirDugmesi />
+
+          <div className="flex-grow-1 overflow-y-auto p-2" style={{ minHeight: 0 }}>
+            {railGridActiveIndex !== null && gorunenMenu[railGridActiveIndex] ? (
+              (() => {
+                const activeMod = gorunenMenu[railGridActiveIndex];
+                const activeTheme = getThemeForMenu(activeMod, railGridActiveIndex);
+                return (
+                  <div className="d-flex flex-column gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setRailGridActiveIndex(null)}
+                      className="btn btn-light border btn-sm d-flex align-items-center gap-1.5 fw-semibold text-dark py-1.5 px-2 rounded-3 mb-1 railgrid-back-btn"
+                      style={{ fontSize: "0.78rem" }}
+                    >
+                      <IconArrowLeft size={15} />
+                      <span>Tüm Modüller</span>
+                    </button>
+
+                    <div
+                      className="d-flex align-items-center gap-2 p-2 rounded-3 mb-1"
+                      style={{
+                        backgroundColor: activeTheme.bg,
+                        border: `1px solid ${activeTheme.borderColor || "#e2e8f0"}`,
+                      }}
+                    >
+                      <span
+                        className="d-inline-flex align-items-center justify-content-center rounded-2"
+                        style={{ width: "30px", height: "30px", backgroundColor: activeTheme.color, color: "#fff" }}
+                      >
+                        {activeMod.icon}
+                      </span>
+                      <span className="fw-bold text-dark text-truncate" style={{ fontSize: "0.86rem" }}>
+                        {activeMod.title}
+                      </span>
+                    </div>
+
+                    {activeMod.children?.map((child, cIdx) => {
+                      const cTitle = child.title || child.name || "";
+                      if (child.children && child.children.length > 0) {
+                        return (
+                          <div key={cIdx} className="mt-1">
+                            <div
+                              className="text-uppercase fw-bold text-muted px-2 py-1"
+                              style={{ fontSize: "0.68rem", letterSpacing: "0.5px" }}
+                            >
+                              {cTitle}
+                            </div>
+                            <div className="d-flex flex-column gap-1">
+                              {child.children.map((sub, sIdx) => {
+                                const sTitle = sub.title || sub.name || "";
+                                const to = sub.link?.startsWith("/") ? sub.link : `/${sub.link}`;
+                                const active = isRouteMatch(to, currentPath);
+                                return (
+                                  <Link
+                                    key={sIdx}
+                                    to={to}
+                                    onClick={(e) => handleLinkClick(e, to)}
+                                    className={`d-flex align-items-center gap-2 px-2.5 py-1.5 rounded-2 text-decoration-none ${
+                                      active ? "bg-primary text-white fw-bold shadow-xs" : "text-dark bg-white border"
+                                    }`}
+                                    style={{ fontSize: "0.8rem" }}
+                                  >
+                                    {getSubmenuIcon(sTitle)}
+                                    <span className="text-truncate">{sTitle}</span>
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      }
+                      const to = child.link?.startsWith("/") ? child.link : `/${child.link}`;
+                      const active = isRouteMatch(to, currentPath);
+                      return (
+                        <Link
+                          key={cIdx}
+                          to={to}
+                          onClick={(e) => handleLinkClick(e, to)}
+                          className={`d-flex align-items-center gap-2 px-2.5 py-1.5 rounded-2 text-decoration-none ${
+                            active ? "bg-primary text-white fw-bold shadow-xs" : "text-dark bg-white border"
+                          }`}
+                          style={{ fontSize: "0.8rem" }}
+                        >
+                          {getSubmenuIcon(cTitle)}
+                          <span className="text-truncate">{cTitle}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="railgrid-tiles-grid">
+                {gorunenMenu.map((m, idx) => {
+                  if (m.grouptitle) return null;
+                  const theme = getThemeForMenu(m, idx);
+                  const count = (m.children || []).reduce(
+                    (acc, c) => acc + (c.children?.length ? c.children.length : 1),
+                    0
+                  );
+                  const isModActive =
+                    (m.link && isRouteMatch(m.link, currentPath)) ||
+                    m.children?.some(
+                      (c) =>
+                        (c.link && isRouteMatch(c.link, currentPath)) ||
+                        c.children?.some((c2) => isRouteMatch(c2.link, currentPath))
+                    );
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        if (collapsed === "collapsed") handleCollapsed("expanded");
+                        if (m.children && m.children.length > 0) {
+                          setRailGridActiveIndex(idx);
+                        } else if (m.link) {
+                          navigateWithDashboardHop(m.link);
+                          if (window.innerWidth < 1200) handleCollapsed("collapsed");
+                        }
+                      }}
+                      title={m.title}
+                      className={`railgrid-tile-card btn p-2 d-flex flex-column align-items-center justify-content-center text-center rounded-3 position-relative ${
+                        isModActive ? "active" : ""
+                      }`}
+                      style={{
+                        backgroundColor: isModActive ? theme.bg : "#ffffff",
+                        border: isModActive ? `2px solid ${theme.color}` : "1px solid #e2e8f0",
+                      }}
+                    >
+                      {count > 0 && (
+                        <span
+                          className="railgrid-tile-count position-absolute top-0 end-0 m-1 badge rounded-pill"
+                          style={{
+                            fontSize: "0.62rem",
+                            backgroundColor: theme.bg,
+                            color: theme.color,
+                            border: `1px solid ${theme.borderColor || "transparent"}`,
+                          }}
+                        >
+                          {count}
+                        </span>
+                      )}
+                      <span
+                        className="d-inline-flex align-items-center justify-content-center rounded-3 mb-1.5"
+                        style={{
+                          width: "38px",
+                          height: "38px",
+                          backgroundColor: isModActive ? theme.color : theme.bg,
+                          color: isModActive ? "#ffffff" : theme.color,
+                        }}
+                      >
+                        {m.icon}
+                      </span>
+                      <span
+                        className="railgrid-tile-title fw-bold text-dark lh-sm"
+                        style={{ fontSize: "0.74rem", wordBreak: "break-word" }}
+                      >
+                        {m.title}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="p-2 border-top bg-light d-flex align-items-center justify-content-between gap-1 flex-shrink-0">
+            <span className="small text-muted font-monospace railgrid-footer-time">{currentTime}</span>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="btn btn-outline-danger btn-sm p-1 rounded-2"
+              title="Çıkış"
+            >
+              <IconLogin2 size={15} />
+            </button>
+          </div>
+        </div>
+      ) : sidebarStyle === "dual" ? (
         <div className="d-flex flex-column h-100 w-100 overflow-hidden">
           {/* En Üstte Yeşil Brand Logo Başlığı (Likya ERP) */}
           <div className="brand-logo d-flex align-items-center justify-content-between justify-content-xl-center px-3 flex-shrink-0">
@@ -1052,8 +1468,131 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
       {/* Alan Değiştir: menünün en üstü (yalnız yetkili ve birden çok alanı olan kullanıcıda çizilir) */}
       <AlanDegistirDugmesi />
 
+      {/* 15. COMMAND MODU: Üstte Sabit Hızlı Arama Kutusu */}
+      {sidebarStyle === "command" && (
+        <div className="sidebar-command-search-wrap px-2.5 pt-2 pb-1.5 border-bottom flex-shrink-0">
+          <div className="position-relative d-flex align-items-center">
+            <IconSearch
+              size={15}
+              className="position-absolute text-muted"
+              style={{ left: "10px", pointerEvents: "none" }}
+            />
+            <input
+              type="text"
+              value={commandSearch}
+              onChange={(e) => setCommandSearch(e.target.value)}
+              placeholder="Menüde hızlı ara..."
+              className="form-control form-control-sm ps-4 pe-4 rounded-3 bg-light border"
+              style={{ fontSize: "0.8rem", height: "32px" }}
+            />
+            {commandSearch && (
+              <button
+                type="button"
+                onClick={() => setCommandSearch("")}
+                className="btn btn-link p-0 position-absolute text-muted d-flex align-items-center"
+                style={{ right: "8px" }}
+                title="Temizle"
+              >
+                <IconX size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 2. Scrollable Navigation Menu */}
       <div className="sidebar-menu-wrapper">
+        {sidebarStyle === "command" && commandSearch.trim().length > 0 ? (
+          <div className="p-2 d-flex flex-column gap-1">
+            {(() => {
+              const q = commandSearch.trim().toLocaleLowerCase("tr-TR");
+              const results: { title: string; parent: string; link: string; color: string }[] = [];
+              gorunenMenu.forEach((m, idx) => {
+                if (m.grouptitle) return;
+                const t = getThemeForMenu(m, idx);
+                if (m.link && (!m.children || m.children.length === 0)) {
+                  if ((m.title || "").toLocaleLowerCase("tr-TR").includes(q)) {
+                    results.push({ title: m.title, parent: "Ana Menü", link: m.link, color: t.color });
+                  }
+                }
+                m.children?.forEach((c) => {
+                  const cTitle = c.title || c.name || "";
+                  if (c.children && c.children.length > 0) {
+                    c.children.forEach((s) => {
+                      const sTitle = s.title || s.name || "";
+                      if (
+                        s.link &&
+                        (sTitle.toLocaleLowerCase("tr-TR").includes(q) ||
+                          cTitle.toLocaleLowerCase("tr-TR").includes(q) ||
+                          (m.title || "").toLocaleLowerCase("tr-TR").includes(q))
+                      ) {
+                        results.push({
+                          title: sTitle,
+                          parent: `${m.title} › ${cTitle}`,
+                          link: s.link,
+                          color: t.color,
+                        });
+                      }
+                    });
+                  } else if (
+                    c.link &&
+                    (cTitle.toLocaleLowerCase("tr-TR").includes(q) ||
+                      (m.title || "").toLocaleLowerCase("tr-TR").includes(q))
+                  ) {
+                    results.push({ title: cTitle, parent: m.title, link: c.link, color: t.color });
+                  }
+                });
+              });
+
+              if (results.length === 0) {
+                return (
+                  <div className="text-center text-muted py-4 small">
+                    &ldquo;{commandSearch}&rdquo; ile eşleşen ekran bulunamadı.
+                  </div>
+                );
+              }
+
+              return results.map((item, rIdx) => {
+                const to = item.link.startsWith("/") ? item.link : `/${item.link}`;
+                const active = isRouteMatch(to, currentPath);
+                return (
+                  <Link
+                    key={rIdx}
+                    to={to}
+                    onClick={(e) => {
+                      setCommandSearch("");
+                      handleLinkClick(e, to);
+                    }}
+                    className={`d-flex flex-column px-2.5 py-2 rounded-3 text-decoration-none border ${
+                      active ? "bg-primary text-white border-primary shadow-xs" : "bg-white text-dark"
+                    }`}
+                  >
+                    <div className="d-flex align-items-center gap-2">
+                      <span
+                        style={{
+                          width: "7px",
+                          height: "7px",
+                          borderRadius: "50%",
+                          backgroundColor: active ? "#ffffff" : item.color,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span className="fw-semibold text-truncate" style={{ fontSize: "0.82rem" }}>
+                        {item.title}
+                      </span>
+                    </div>
+                    <span
+                      className={`text-truncate ps-3 ${active ? "text-white-50" : "text-muted"}`}
+                      style={{ fontSize: "0.69rem" }}
+                    >
+                      {item.parent}
+                    </span>
+                  </Link>
+                );
+              });
+            })()}
+          </div>
+        ) : (
         <Accordion
           activeKey={activeMenuKey}
           onSelect={(k: any) => {
@@ -1394,6 +1933,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           })}
           <div style={{ height: "48px", flexShrink: 0 }} aria-hidden="true" />
         </Accordion>
+        )}
       </div>
 
       {/* 3. Bottom User Profile Bar (Full Sidebar Width, Centered & Aesthetic) */}
