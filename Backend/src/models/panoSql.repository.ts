@@ -48,6 +48,39 @@ export interface TodvzPanoEntity {
   HTML_DOSYA_ADI: string | null;
   KOD_ALANI_GENISLIGI: number | null;
   KUR_ALANI_GENISLIGI: number | null;
+  /** 1 = efektif alış/satış (varsayılan, eski programdaki gibi), 0 = döviz alış/satış. Eski şemada kolon yok → efektif. */
+  EFEKTIF_KUR?: boolean | number | null;
+}
+
+/** Kur Tablosu satırındaki dört fiyat; pano için hangisinin verileceğini panoKurSec seçer */
+export interface PanoKurHam {
+  dovizAlis: unknown;
+  dovizSatis: unknown;
+  efektifAlis: unknown;
+  efektifSatis: unknown;
+}
+
+const doluFiyat = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n !== 0 ? n : null;
+};
+
+const hamFiyat = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Panoya verilecek alış/satış: işaretli (efektifKur) ise efektif, değilse döviz kolonu. Seçilen kolon boş ya da 0 ise
+ * öbürü kullanılır (pano boş kalmasın); ikisi de 0 ise 0 döner (eski davranış). Alış ve satış ayrı ayrı seçilir.
+ */
+export function panoKurSec(efektifKur: boolean, k: PanoKurHam): { alis: number | null; satis: number | null } {
+  const sec = (once: unknown, sonra: unknown) => doluFiyat(once) ?? doluFiyat(sonra) ?? hamFiyat(once) ?? hamFiyat(sonra);
+  return efektifKur
+    ? { alis: sec(k.efektifAlis, k.dovizAlis), satis: sec(k.efektifSatis, k.dovizSatis) }
+    : { alis: sec(k.dovizAlis, k.efektifAlis), satis: sec(k.dovizSatis, k.efektifSatis) };
 }
 
 export interface TodvzPanoSatiriEntity {
@@ -90,6 +123,8 @@ export interface PanoModel {
   htmlDosyaAdi: string;
   kodAlaniGenisligi: number;
   kurAlaniGenisligi: number;
+  /** true = panoya efektif alış/satış verilir (varsayılan), false = döviz alış/satış */
+  efektifKur: boolean;
   satirlar: PanoSatiriModel[];
 }
 
@@ -110,6 +145,8 @@ export interface SavePanoDto {
   htmlDosyaAdi?: string;
   kodAlaniGenisligi?: number;
   kurAlaniGenisligi?: number;
+  /** Gönderilmezse kayıttaki değer korunur (yeni panoda varsayılan efektif) */
+  efektifKur?: boolean;
   satirlar?: {
     paraId: number;
     gorunecekAd?: string;
@@ -145,7 +182,8 @@ export class PanoSqlRepository {
           [BOSLUK_SAYISI] INT NULL DEFAULT 0,
           [HTML_DOSYA_ADI] VARCHAR(250) NULL DEFAULT 'Pano_Dikey.html',
           [KOD_ALANI_GENISLIGI] INT NULL DEFAULT 60,
-          [KUR_ALANI_GENISLIGI] INT NULL DEFAULT 40
+          [KUR_ALANI_GENISLIGI] INT NULL DEFAULT 40,
+          [EFEKTIF_KUR] BIT NOT NULL CONSTRAINT [DF_TODVZ_PANO_EFEKTIF_KUR] DEFAULT 1
         );
       END
       ELSE
@@ -180,6 +218,9 @@ export class PanoSqlRepository {
           ALTER TABLE [dbo].[TODVZ_PANO] ADD [KOD_ALANI_GENISLIGI] INT NULL DEFAULT 60;
         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[TODVZ_PANO]') AND name = 'KUR_ALANI_GENISLIGI')
           ALTER TABLE [dbo].[TODVZ_PANO] ADD [KUR_ALANI_GENISLIGI] INT NULL DEFAULT 40;
+        -- Panoya efektif mi döviz mi verilecek; mevcut panolar efektif (1) ile dolar (eski program panoda efektif gösterirdi)
+        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[TODVZ_PANO]') AND name = 'EFEKTIF_KUR')
+          ALTER TABLE [dbo].[TODVZ_PANO] ADD [EFEKTIF_KUR] BIT NOT NULL CONSTRAINT [DF_TODVZ_PANO_EFEKTIF_KUR] DEFAULT 1;
       END
 
       -- 2. Ensure TODVZ_PANO_SATIRI table and columns exist
@@ -441,6 +482,7 @@ export class PanoSqlRepository {
       htmlDosyaAdi: r.HTML_DOSYA_ADI || "Pano_Dikey.html",
       kodAlaniGenisligi: r.KOD_ALANI_GENISLIGI ?? 60,
       kurAlaniGenisligi: r.KUR_ALANI_GENISLIGI ?? 40,
+      efektifKur: r.EFEKTIF_KUR === undefined || r.EFEKTIF_KUR === null ? true : Boolean(r.EFEKTIF_KUR),
       satirlar,
     };
   }
@@ -520,6 +562,20 @@ export class PanoSqlRepository {
 
     if (!savedPanoId) {
       throw ApiError.internal("Pano tanımı kaydedildi fakat PANO_ID alınamadı.");
+    }
+
+    // Efektif / döviz seçimi yordamın dışında yazılır (yordam imzası değişmez). Kolon yoksa (eski şema, ALTER yetkisi yok)
+    // yazılmaz ve pano efektif sayılır. Dinamik SQL: kolonu olmayan tabloda derleme hatası olmasın.
+    if (dto.efektifKur !== undefined && dto.efektifKur !== null) {
+      await pool
+        .request()
+        .input("panoId", sql.Int, savedPanoId)
+        .input("efektif", sql.Bit, dto.efektifKur ? 1 : 0)
+        .query(`
+          IF COL_LENGTH('dbo.TODVZ_PANO', 'EFEKTIF_KUR') IS NOT NULL
+            EXEC sp_executesql N'UPDATE [dbo].[TODVZ_PANO] SET [EFEKTIF_KUR] = @e WHERE [PANO_ID] = @p',
+              N'@e BIT, @p INT', @e = @efektif, @p = @panoId;
+        `);
     }
 
     // Process lines in TODVZ_PANO_SATIRI
@@ -645,15 +701,20 @@ export class PanoSqlRepository {
     const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
 
     // Fetch current live rates from latest TODVZ_KUR_TABLOSU (TUR = 0 preferred Gişe Kuru, fallback latest)
+    // Dört kolon da okunur; pano tanımındaki "Efektif kur" işaretine göre panoKurSec seçer (eski program: efektif).
     const ratesRes = await pool.query<{
       PARA_ID: number;
-      ALIS: number | null;
-      SATIS: number | null;
+      DOVIZ_ALIS: number | null;
+      DOVIZ_SATIS: number | null;
+      EFEKTIF_ALIS: number | null;
+      EFEKTIF_SATIS: number | null;
     }>(`
-      SELECT 
+      SELECT
         K.[PARA_ID],
-        ISNULL(NULLIF(K.[DOVIZ_ALIS], 0), K.[EFEKTIF_ALIS]) AS [ALIS],
-        ISNULL(NULLIF(K.[DOVIZ_SATIS], 0), K.[EFEKTIF_SATIS]) AS [SATIS]
+        K.[DOVIZ_ALIS],
+        K.[DOVIZ_SATIS],
+        K.[EFEKTIF_ALIS],
+        K.[EFEKTIF_SATIS]
       FROM [dbo].[TODVZ_KUR_TABLOSU] KT
       INNER JOIN [dbo].[TODVZ_KUR] K ON KT.[KUR_TABLOSU_ID] = K.[KUR_TABLOSU_ID]
       WHERE KT.[KUR_TABLOSU_ID] = (
@@ -668,10 +729,15 @@ export class PanoSqlRepository {
 
     const ratesMap = new Map<number, { alis: number | null; satis: number | null }>();
     for (const r of ratesRes.recordset) {
-      ratesMap.set(r.PARA_ID, {
-        alis: r.ALIS,
-        satis: r.SATIS,
-      });
+      ratesMap.set(
+        r.PARA_ID,
+        panoKurSec(pano.efektifKur !== false, {
+          dovizAlis: r.DOVIZ_ALIS,
+          dovizSatis: r.DOVIZ_SATIS,
+          efektifAlis: r.EFEKTIF_ALIS,
+          efektifSatis: r.EFEKTIF_SATIS,
+        })
+      );
     }
 
     // Filter out TL / TRY from satirlar and assign live rates

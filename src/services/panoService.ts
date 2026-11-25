@@ -29,6 +29,8 @@ export interface PanoModel {
   htmlDosyaAdi: string;
   kodAlaniGenisligi: number;
   kurAlaniGenisligi: number;
+  /** true (varsayılan) = panoya efektif alış/satış, false = döviz alış/satış */
+  efektifKur?: boolean;
   satirlar: PanoSatiriModel[];
 }
 
@@ -49,6 +51,7 @@ export interface SavePanoPayload {
   htmlDosyaAdi?: string;
   kodAlaniGenisligi?: number;
   kurAlaniGenisligi?: number;
+  efektifKur?: boolean;
   satirlar?: {
     paraId: number;
     gorunecekAd?: string;

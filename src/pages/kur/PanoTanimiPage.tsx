@@ -127,6 +127,7 @@ export const PanoTanimiPage: React.FC = () => {
     htmlDosyaAdi: DEFAULT_PANO_TEMPLATE_ID,
     kodAlaniGenisligi: 60,
     kurAlaniGenisligi: 40,
+    efektifKur: true,
     satirlar: [],
   });
 
@@ -218,6 +219,7 @@ export const PanoTanimiPage: React.FC = () => {
           htmlDosyaAdi: DEFAULT_PANO_TEMPLATE_ID,
           kodAlaniGenisligi: 60,
           kurAlaniGenisligi: 40,
+          efektifKur: true,
           satirlar: initialLines,
         };
 
@@ -303,6 +305,7 @@ export const PanoTanimiPage: React.FC = () => {
               htmlDosyaAdi: merged.htmlDosyaAdi,
               kodAlaniGenisligi: Number(merged.kodAlaniGenisligi) || 60,
               kurAlaniGenisligi: Number(merged.kurAlaniGenisligi) || 40,
+              efektifKur: merged.efektifKur !== false,
               satirlar: (merged.satirlar || []).map((s, idx) => ({
                 paraId: s.paraId,
                 gorunecekAd: s.gorunecekAd,
@@ -365,6 +368,7 @@ export const PanoTanimiPage: React.FC = () => {
       htmlDosyaAdi: DEFAULT_PANO_TEMPLATE_ID,
       kodAlaniGenisligi: 60,
       kurAlaniGenisligi: 40,
+      efektifKur: true,
       satirlar: [],
     });
   };
@@ -407,6 +411,7 @@ export const PanoTanimiPage: React.FC = () => {
         htmlDosyaAdi: useHtmlFile ? (form.htmlDosyaAdi || "Pano_Dikey.html") : "",
         kodAlaniGenisligi: Number(form.kodAlaniGenisligi) || 60,
         kurAlaniGenisligi: Number(form.kurAlaniGenisligi) || 40,
+        efektifKur: form.efektifKur !== false,
         satirlar: sanitizedRows,
       };
 
@@ -766,6 +771,28 @@ export const PanoTanimiPage: React.FC = () => {
                     />
                     <InputGroup.Text className="bg-light fw-medium">Saniye</InputGroup.Text>
                   </InputGroup>
+                </Col>
+              </Row>
+
+              {/* Panoya verilecek kur: işaretli = efektif (varsayılan, eski program gibi), işaretsiz = döviz */}
+              <Row className="g-2 align-items-center">
+                <Col xs={12} sm={4}>
+                  <Form.Label htmlFor="pano-efektif-kur" className="fw-semibold small mb-0">Kur türü</Form.Label>
+                </Col>
+                <Col xs={12} sm={8}>
+                  <Form.Check
+                    type="checkbox"
+                    id="pano-efektif-kur"
+                    className="small mb-0"
+                    checked={form.efektifKur !== false}
+                    onChange={(e) => setForm({ ...form, efektifKur: e.target.checked })}
+                    label={
+                      <span>
+                        <span className="fw-semibold">Efektif alış / satış</span>
+                        <span className="text-muted"> — işaretsizse döviz alış / satış</span>
+                      </span>
+                    }
+                  />
                 </Col>
               </Row>
 
