@@ -3,6 +3,7 @@ import { ApiError } from "../../../utils/ApiError.js";
 import { RAPOR_UST_SINIR } from "../raporTanim.js";
 import { FIS_USD_KOLON_SQL, adetOzeti, usdKuruCozucu, aralikOzeti, filtreler, idFiltre, ozetEk, sinirla } from "../raporOrtak.js";
 import { BOLUM_ADI, fisKaynagi } from "../fisKaynak.js";
+import { SATIR_SERI } from "../kaynak.js";
 const YAS_ARALIKLARI = [[0, 17, "0 – 17"], [18, 25, "18 – 25"], [26, 35, "26 – 35"], [36, 50, "36 – 50"], [51, 65, "51 – 65"], [66, 200, "66 ve üzeri"]];
 /** İşlem tarihindeki yaş (doğum günü henüz gelmediyse bir eksik) ve yaş aralığı. Saf fonksiyon. */
 export function yasAraligi(dogum, islem) {
@@ -76,10 +77,13 @@ async function masakSatirlari(pool, p, ek = () => "", secenek = {}) {
     const f = filtreler(req, p, { vezne: "V" }) + ek(req);
     // Şüpheli işlem bildirim formu (eski VODVZR_FIS_MASAK_SUPELI_ISLEMLER.BILDIRIM_FORMU_VAR; yalnız döviz fişi); tablo bu veritabanında yoksa 0
     const var_ = (await pool.request().query(`SELECT CASE WHEN OBJECT_ID('dbo.TODVZ_MASAK_ISLEM_BILDIRIMI','U') IS NULL THEN 0 ELSE 1 END bildirim, CASE WHEN OBJECT_ID('dbo.TODVZ_ULKE','U') IS NULL THEN 0 ELSE 1 END ulke,
-    CASE WHEN COL_LENGTH('dbo.TODVZ_ISTATISTIK','ACIKLAMA') IS NULL THEN 0 ELSE 1 END istatistik`)).recordset[0] || {};
+    CASE WHEN COL_LENGTH('dbo.TODVZ_ISTATISTIK','ACIKLAMA') IS NULL THEN 0 ELSE 1 END istatistik,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_FIS_SATIRI','SERI_NO') IS NULL THEN 0 ELSE 1 END satirSeri`)).recordset[0] || {};
+    // Seri no: döviz fişi satırının kendi serisi (e-Döviz döneminde her satır ayrı belge — eski raporlar satır serisini basar; denetim 24.11.2026), yoksa fişinki
+    const seriSql = SATIR_SERI({ satirSeri: !!var_.satirSeri });
     const bildirimSql = var_.bildirim ? "CASE WHEN F.BOLUM=1 AND EXISTS (SELECT 1 FROM dbo.TODVZ_MASAK_ISLEM_BILDIRIMI B WHERE B.FIS_ID=F.FIS_ID) THEN 1 ELSE 0 END" : "0";
     const res = await req.query(`
-    SELECT F.FIS_ID fisId, F.BOLUM bolum, S.SATIR_NO satirNo, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CONVERT(varchar(10), F.TARIH, 120) gun, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, RTRIM(ISNULL(F.SERI_NO,'')) seriNo,
+    SELECT F.FIS_ID fisId, F.BOLUM bolum, S.SATIR_NO satirNo, F.TARIH zaman, ISNULL(F.ZAMAN,F.TARIH) saatZaman, CONVERT(varchar(10), F.TARIH, 120) gun, RTRIM(ISNULL(F.BELGE_NO,'')) belgeNo, ${seriSql} seriNo,
       RTRIM(ISNULL(F.UNVAN,'')) unvan, COALESCE(NULLIF(RTRIM(F.VERGI_KIMLIK_NO),''), NULLIF(RTRIM(F.PASAPORT_NO),''), '') kimlikNo, RTRIM(ISNULL(F.VERGI_KIMLIK_NO,'')) vergiKimlikNo, F.TIP tipKod,
       ISNULL(F.TOPLAM_TUTAR,0) fisTutar, ISNULL(S.TUTAR,0) tutar, ISNULL(S.MIKTAR,0) miktar, ISNULL(S.KUR,0) kur, RTRIM(ISNULL(P.KOD,'')) paraKod, ${FIS_USD_KOLON_SQL},
       RTRIM(ISNULL(F.PASAPORT_NO,'')) pasaportNo, RTRIM(ISNULL(F.BABA_ADI,'')) babaAdi, RTRIM(ISNULL(F.ANNE_ADI,'')) anneAdi, RTRIM(ISNULL(F.KIMLIK_SERI_NO,'')) kimlikSeriNo,

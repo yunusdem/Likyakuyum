@@ -570,9 +570,12 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   const { showSuccess, showError, showWarning, showInfo } = useToast();
   const isDuzeltmeMode = Boolean(isDuzeltme || location.pathname.includes("duzeltme"));
 
-  // Sayfa açıldığında veya yenilendiğinde yerel PrinterAgent'ın güncel olduğunu doğrula
+  // Sayfa açıldığında yerel PrinterAgent güncelleme kontrolünü arka plana ertele (açılış gecikmesi yaratmasın)
   useEffect(() => {
-    checkAndAutoUpdatePrinterAgent(true).catch(() => {});
+    const timer = setTimeout(() => {
+      checkAndAutoUpdatePrinterAgent(false).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Active Loaded Invoice State
@@ -602,24 +605,24 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
     return () => clearInterval(timer);
   }, [isDuzeltmeMode]);
 
-  const [vezneler, setVezneler] = useState<VezneItem[]>([]);
+  const [vezneler, setVezneler] = useState<VezneItem[]>(() => FastLookupCache.getSync<VezneItem[]>("vezneler") || []);
   const [selectedVezne, setSelectedVezne] = useState<VezneItem | null>(null);
-  const [posCihazlari, setPosCihazlari] = useState<PosCihaziItem[]>([]);
+  const [posCihazlari, setPosCihazlari] = useState<PosCihaziItem[]>(() => FastLookupCache.getSync<PosCihaziItem[]>("poslar") || []);
   const [showPosModal, setShowPosModal] = useState<boolean>(false);
   const [pendingPosRowId, setPendingPosRowId] = useState<string | null>(null);
   const [posSearchTerm, setPosSearchTerm] = useState<string>("");
 
-  const [bankaHesaplari, setBankaHesaplari] = useState<BankaHesapItem[]>([]);
+  const [bankaHesaplari, setBankaHesaplari] = useState<BankaHesapItem[]>(() => FastLookupCache.getSync<BankaHesapItem[]>("bankalar") || []);
   const [showBankaModal, setShowBankaModal] = useState<boolean>(false);
   const [pendingBankaRowId, setPendingBankaRowId] = useState<string | null>(null);
   const [bankaSearchTerm, setBankaSearchTerm] = useState<string>("");
 
-  const [printers, setPrinters] = useState<YaziciItem[]>([]);
+  const [printers, setPrinters] = useState<YaziciItem[]>(() => FastLookupCache.getSync<YaziciItem[]>("yazicilar") || []);
   const [companyDefinitions, setCompanyDefinitions] = useState<any>(() => CompanyService.cachedDefinitions);
   const companyDefinitionsRef = useRef(companyDefinitions);
   companyDefinitionsRef.current = companyDefinitions;
   const [paraList, setParaList] = useState<ParaItem[]>(() => FastLookupCache.getSync<ParaItem[]>("paralar") || []);
-  const [ayarList, setAyarList] = useState<AyarItem[]>([]);
+  const [ayarList, setAyarList] = useState<AyarItem[]>(() => FastLookupCache.getSync<AyarItem[]>("ayarlar") || []);
 
   const isCokluSatirIzinli = useMemo(() => {
     return (
@@ -751,23 +754,21 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
   }, [faturaTipi, user?.appearance?.buyHeaderTextColor, user?.appearance?.sellHeaderTextColor]);
 
   useEffect(() => {
-    const cachedParalar = FastLookupCache.getSync<ParaItem[]>("paralar");
-    if (cachedParalar && cachedParalar.length > 0) setParaList(cachedParalar);
     FastLookupCache.get("paralar", () => apiClient.get<ParaItem[]>("/para").then((r) => r.data || []))
       .then((p) => {
         if (p && p.length > 0) setParaList(p);
       })
       .catch(() => { });
 
-    PrinterService.getYazicilar().then(setPrinters).catch(() => { });
-    AyarService.getAyarlar(false).then(setAyarList).catch(() => { });
+    FastLookupCache.get("yazicilar", () => PrinterService.getYazicilar()).then(setPrinters).catch(() => { });
+    FastLookupCache.get("ayarlar", () => AyarService.getAyarlar(false)).then(setAyarList).catch(() => { });
     CompanyService.getDefinitions(true).then((defs) => {
       companyDefinitionsRef.current = defs;
       setCompanyDefinitions(defs);
     }).catch(() => { });
-    StatisticService.getStatistics().then(setStatisticList).catch(() => { });
-    PosCihaziService.getPosCihazlari().then(setPosCihazlari).catch(() => { });
-    BankaService.getBankalar().then(setBankaHesaplari).catch(() => { });
+    FastLookupCache.get("statistics", () => StatisticService.getStatistics()).then(setStatisticList).catch(() => { });
+    FastLookupCache.get("poslar", () => PosCihaziService.getPosCihazlari()).then(setPosCihazlari).catch(() => { });
+    FastLookupCache.get("bankalar", () => BankaService.getBankalar()).then(setBankaHesaplari).catch(() => { });
   }, []);
 
   // Sekmeler arası veya pencere odağında güncel firma limit tanımlarını otomatik tazele
@@ -5200,6 +5201,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       navigate(location.pathname, { replace: true });
     }
     void handleReset();
+    showInfo("Form temizlendi.");
   };
 
   const handleReset = async () => {
@@ -7601,10 +7603,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
                 backgroundColor: activeFisThemeBg,
                 color: activeFisThemeText,
                 fontWeight: 800,
-                fontSize: "13.5px",
+                fontSize: "14px",
                 letterSpacing: "3px",
-                minWidth: "220px",
-                padding: "4px 30px",
+                minWidth: "320px",
+                padding: "4px 48px",
                 borderRadius: "6px",
                 height: "30px",
                 display: "inline-flex",
@@ -9891,6 +9893,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       {/* ─── MODALS ───────────────────────────────────────────────────── */}
 
       {/* İskonto Seçim Modalı (LookupModal) */}
+      {showIskontoModal && (
       <LookupModal<IskontoItem>
         show={showIskontoModal}
         selectOnDoubleClick={true}
@@ -9919,8 +9922,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           setIskontoSearchTerm("");
         }}
       />
+      )}
 
       {/* Barkodlu Altın / Özel Ürün Seçim Modalı (LookupModal) */}
+      {showProductLookup && (
       <LookupModal
         show={showProductLookup}
         selectOnDoubleClick={true}
@@ -9979,8 +9984,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           handleSelectFromProductLookup(item);
         }}
       />
+      )}
 
       {/* Ödeme / Para ve İskonto Seçim Modalı */}
+      {showOdemeUrunModal && (
       <LookupModal
         show={showOdemeUrunModal}
         selectOnDoubleClick={true}
@@ -10031,8 +10038,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           setOdemeSearchTerm("");
         }}
       />
+      )}
 
       {/* Vezne Seçim Modalı (LookupModal) */}
+      {showVezneModal && (
       <LookupModal
         show={showVezneModal}
         onHide={() => setShowVezneModal(false)}
@@ -10050,8 +10059,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           setShowVezneModal(false);
         }}
       />
+      )}
 
       {/* POS Cihazı Seçim Modalı */}
+      {showPosModal && (
       <LookupModal<PosCihaziItem>
         show={showPosModal}
         onHide={() => {
@@ -10100,8 +10111,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           setPendingPosRowId(null);
         }}
       />
+      )}
 
       {/* İskonto Seçim Modalı (Hesap) */}
+      {showBankaModal && (
       <LookupModal<any>
         show={showBankaModal}
         onHide={() => {
@@ -10142,6 +10155,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           setPendingBankaRowId(null);
         }}
       />
+      )}
 
       {/* Müşteri / Cari Seçim Modalı (MusteriSecimModal) */}
       {showMusteriModal && (
@@ -10209,6 +10223,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       )}
 
       {/* MASAK Sorgulama Sonuç Modalı */}
+      {masakModalOpen && (
       <MasakSonucModal
         show={masakModalOpen}
         onHide={() => setMasakModalOpen(false)}
@@ -10217,8 +10232,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         matches={masakResult.matches}
         searched={masakResult.searched}
       />
+      )}
 
       {/* MASAK Limit Uyarı & Onay Modalı */}
+      {showMasakLimitWarningModal && (
       <Modal
         show={showMasakLimitWarningModal}
         onHide={() => setShowMasakLimitWarningModal(false)}
@@ -10271,8 +10288,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* MASAK Yasal Sınırı Kayıt Onay Modalı */}
+      {showMasakConfirmModal && (
       <Modal
         show={showMasakConfirmModal}
         onHide={() => setShowMasakConfirmModal(false)}
@@ -10316,8 +10335,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* Müşteri & MASAK Detay Bilgileri Modalı */}
+      {showMusteriDetayModal && (
       <Modal
         show={showMusteriDetayModal}
         onHide={() => setShowMusteriDetayModal(false)}
@@ -10516,6 +10537,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </div>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* Ayar Seçim Modalı (AyarSecimModal) */}
       {showAyarModal && (
@@ -10573,6 +10595,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       )}
 
       {/* Geçmiş Faturalar Arama ve İptal Modalı */}
+      {showHistoryModal && (
       <Modal
         show={showHistoryModal}
         onHide={() => setShowHistoryModal(false)}
@@ -10747,6 +10770,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* Yeni Ürün / Para Tanımı Modalı */}
       {showNewProductModal && (
@@ -10866,6 +10890,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
       )}
 
       {/* Ödeme / Tahsilat Farkı Onay Modalı */}
+      {showOdemeFarkConfirmModal.show && (
       <Modal
         show={showOdemeFarkConfirmModal.show}
         onHide={() => setShowOdemeFarkConfirmModal({ show: false, andPrint: false, rawDiffTL: 0 })}
@@ -10912,8 +10937,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* İstatistik Kodu Seçim Modalı */}
+      {showIstatistikModal && (
       <IstatistikSecimModal
         show={showIstatistikModal}
         onClose={() => setShowIstatistikModal(false)}
@@ -10928,7 +10955,9 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           setShowIstatistikModal(false);
         }}
       />
+      )}
       {/* Shift+F5) Banka TL Hesabı Modalı */}
+      {showBankaTlHesabiModal && (
       <BankaTlHesabiModal
         show={showBankaTlHesabiModal}
         onClose={() => setShowBankaTlHesabiModal(false)}
@@ -10954,8 +10983,10 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
         initialBankaAciklama={bankaAciklama}
         onApply={handleApplyBankaTlHesabi}
       />
+      )}
 
       {/* Silme Onay Modalı */}
+      {showDeleteModal && (
       <Modal show={showDeleteModal} onHide={() => { setShowDeleteModal(false); setDeleteTarget(null); }} centered size="sm">
         <Modal.Header closeButton className="py-2.5 bg-light">
           <Modal.Title className="fs-6 fw-bold text-danger d-flex align-items-center gap-2">
@@ -10978,6 +11009,7 @@ export const PerakendeFisiPage: React.FC<PerakendeFisiPageProps> = ({ isDuzeltme
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       <SayfaCikisUyarisiModal
         acik={cikisUyarisi.acik}

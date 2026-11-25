@@ -33,7 +33,8 @@ export function acikBolumler(moduller, d) {
 const F_KOLONLARI = `FIS_ID, BOLUM, VEZNE_ID, TIP, TARIH, ZAMAN, SERI_NO, BELGE_NO, ISTATISTIK_ID, CARI_KART_ID, UNVAN, KISILIK_TIPI, UYRUK_ID, ULKE_ID, VERGI_DAIRESI_ID,
     VERGI_KIMLIK_NO, BABA_ADI, ADRES, PASAPORT_NO, TOPLAM_TUTAR, ODEME_TUTARI, EKLEYEN_ID, EKLEME_ZAMANI, GISE_USD_KURU, IPTAL, IPTAL_TARIHI, DOGUM_TARIHI, DOGUM_YERI,
     KIMLIK_SERI_NO, ANNE_ADI, MASAK_LISTESINDE_VAR, MESLEK_ID, SUPHELI_ISLEMLER_YETKILI_ID, BELGE_TURU, TELEFON_NO`;
-const S_KOLONLARI = `FIS_ID, BOLUM, SATIR_NO, PARA_ID, MIKTAR, KUR, GISE_KURU, TUTAR, KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, ISCILIK, KDV_ORANI, KDV, KMV_ORANI, KMV`;
+/** SERI_NO: döviz fişi satırının kendi seri numarası (e-Döviz döneminde her satır ayrı belge; eski MASAK / vergi raporları satır serisini basar — denetim 24.11.2026); öteki fişlerde NULL */
+const S_KOLONLARI = `FIS_ID, BOLUM, SATIR_NO, PARA_ID, MIKTAR, KUR, GISE_KURU, TUTAR, KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, ISCILIK, KDV_ORANI, KDV, KMV_ORANI, KMV, SERI_NO`;
 /**
  * Birleşik fiş kaynağı. `yalniz`: yalnız bu bölümler (lisansla kesişimi alınır) — döviz fişine özgü raporlar için [1].
  * Tek bölüm Döviz ise türetilmiş tablo TODVZ_FIS'in kendisidir (tüm kolonlar, aynı sorgu planı).
@@ -58,6 +59,7 @@ export async function fisKaynagi(pool, p, secenek) {
     CASE WHEN COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI','ISCILIK_TUTARI') IS NULL THEN 0 ELSE 1 END iscilikTutari,
     CASE WHEN COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI','URUN_TIPI') IS NULL THEN 0 ELSE 1 END satirUrunTipi,
     CASE WHEN COL_LENGTH('dbo.TODVZ_PARA','URUN_TIPI') IS NULL THEN 0 ELSE 1 END paraUrunTipi,
+    CASE WHEN COL_LENGTH('dbo.TODVZ_FIS_SATIRI','SERI_NO') IS NULL THEN 0 ELSE 1 END satirSeri,
     ${TL_PARA_SQL} tlId, (SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE RTRIM(UPPER(KOD))='HAS' ORDER BY PARA_ID) hasId`)).recordset[0] || {};
     const tlId = Number(k.tlId) || 1, hasId = Number(k.hasId) || tlId;
     const fParcalar = [], sParcalar = [];
@@ -68,7 +70,7 @@ export async function fisKaynagi(pool, p, secenek) {
       F0.BELGE_TURU, F0.TELEFON_NO
       FROM dbo.TODVZ_FIS F0`);
         sParcalar.push(`SELECT S0.FIS_ID, CAST(1 AS int), S0.SATIR_NO, S0.PARA_ID, S0.MIKTAR, S0.KUR, S0.GISE_KURU, S0.TUTAR, S0.KOMISYON_ORANI, S0.KOMISYON, S0.BMV_ORANI, S0.BMV, S0.ISCILIK,
-      S0.KDV_ORANI, S0.KDV, S0.KMV_ORANI, S0.KMV FROM dbo.TODVZ_FIS_SATIRI S0`);
+      S0.KDV_ORANI, S0.KDV, S0.KMV_ORANI, S0.KMV, ${k.satirSeri ? "CAST(RTRIM(S0.SERI_NO) AS varchar(50))" : "CAST(NULL AS varchar(50))"} FROM dbo.TODVZ_FIS_SATIRI S0`);
     }
     if (bolumler.has(2)) {
         const kayma = FIS_ID_KAYMASI[2];
@@ -90,7 +92,7 @@ export async function fisKaynagi(pool, p, secenek) {
       ${sarrafAdetliKurSql("ISNULL(SS.KUR,0)", SARRAF_ADET, "SS.TUTAR", urunTipi)}, CAST(0 AS float), ISNULL(SS.TUTAR,0), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float),
       CASE ${k.iscilikTutari ? "WHEN ISNULL(SS.ISCILIK_TUTARI,0)>0 THEN SS.ISCILIK_TUTARI " : ""}WHEN ISNULL(SS.ISCILIK_HAS_GRAM,0)>0 THEN SS.ISCILIK_HAS_GRAM*${hasKuru}
            WHEN ISNULL(SS.ISCILIK_MIKTARI,0)>0 THEN SS.ISCILIK_MIKTARI ELSE 0 END,
-      CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float)
+      CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(NULL AS varchar(50))
       FROM dbo.TODVZ_SARRAF_FISI_SATIRI SS JOIN dbo.TODVZ_SARRAF_FISI SF ON SF.SARRAF_FISI_ID=SS.SARRAF_FISI_ID LEFT JOIN dbo.TODVZ_PARA PX ON PX.PARA_ID=SS.URUN_ID
       WHERE SS.URUN_ID IS NOT NULL`);
     }
@@ -120,7 +122,7 @@ export async function fisKaynagi(pool, p, secenek) {
       CASE WHEN ${ticari}=1 OR ${stokKart} THEN ISNULL(FS.TUTAR,0) WHEN ${barkodlu} THEN ISNULL(NULLIF(FS.HAS_GRAM,0), ISNULL(FS.MIKTAR,0))
            WHEN ${stokParaHam} IS NULL THEN ISNULL(FS.TUTAR,0)*${kur} ELSE ISNULL(${stokMiktar},0) END,
       ISNULL(FS.BIRIM_FIYAT,0)*${kur}, CAST(0 AS float), ISNULL(FS.TUTAR,0)*${kur}, CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float), CAST(0 AS float),
-      ISNULL(FS.KDV_ORANI,0), ISNULL(FS.KDV_TUTARI,0)*${kur}, CAST(0 AS float), CAST(0 AS float)
+      ISNULL(FS.KDV_ORANI,0), ISNULL(FS.KDV_TUTARI,0)*${kur}, CAST(0 AS float), CAST(0 AS float), CAST(NULL AS varchar(50))
       FROM dbo.TODVZ_FATURA_SATIRI FS JOIN dbo.TODVZ_FATURA FA ON FA.FATURA_ID=FS.FATURA_ID ${PERAKENDE_SATIR_PARASI("FS")}
       WHERE ${kosul}`);
     }
@@ -128,7 +130,7 @@ export async function fisKaynagi(pool, p, secenek) {
         F: `(SELECT * FROM (\n${fParcalar.join("\n      UNION ALL\n")}\n) FX (${F_KOLONLARI})) F`,
         // Kur = satırın birim TL değeri: sarraf / perakende / ticari satırında tutar ÷ miktar (fişteki kur alanı has gramı ya da birim fiyatıdır, miktarla tutmaz)
         S: `(SELECT FIS_ID, BOLUM, SATIR_NO, PARA_ID, MIKTAR, CASE WHEN BOLUM>1 AND ISNULL(MIKTAR,0)<>0 THEN TUTAR/MIKTAR ELSE KUR END KUR, GISE_KURU, TUTAR,
-      KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, ISCILIK, KDV_ORANI, KDV, KMV_ORANI, KMV FROM (\n${sParcalar.join("\n      UNION ALL\n")}\n) SX2 (${S_KOLONLARI})) S`,
+      KOMISYON_ORANI, KOMISYON, BMV_ORANI, BMV, ISCILIK, KDV_ORANI, KDV, KMV_ORANI, KMV, SERI_NO FROM (\n${sParcalar.join("\n      UNION ALL\n")}\n) SX2 (${S_KOLONLARI})) S`,
         bolumler, d, bolumAd,
     };
 }

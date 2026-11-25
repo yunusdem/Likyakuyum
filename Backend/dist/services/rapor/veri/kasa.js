@@ -1,7 +1,7 @@
 import sql from "mssql";
 import { ApiError } from "../../../utils/ApiError.js";
 import { TL_PARA_SQL, adetOzeti, aralikOzeti, ek, ekOnay, filtreler, idFiltre, kurCoz, ozetEk, sinirla, tarihTr } from "../raporOrtak.js";
-import { FIS_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, vezneHareketleriSql } from "../kaynak.js";
+import { FIS_KAYDI, VEZNE_HAREKET_KOLONLARI, belgeTablolari, kmvKuraDahilSql, vezneHareketleriSql } from "../kaynak.js";
 import { paraBasliklariEkle, paraGrubunaGoreSirala, paraGrupBilgisi } from "../paraGrup.js";
 /** Kasadan geçen nakit satırları: meblağ kendi parasında; KDV > 0 ise ayrı TL satırı (eski VODVZR_KASA_HAREKET_LISTESI gibi, TL hareketinde de ayrı). Saf fonksiyon. */
 export function kasaNakitSatirlari(h, tl) {
@@ -223,17 +223,21 @@ export const KASA_SORGULARI = {
                     satirlarHam.push({ ...n, sira: 9, siraNo: n.kdvSatiri ? tl.siraNo : Number(r.siraNo) });
         }
         if (!p.hesapIdler?.length) {
-            // 2) Döviz fişleri: dövizde fiş tipine göre miktar; TL'de satış / alış tutarı + komisyon, BSMV, KMV (gün × fiş tipi toplu)
+            // 2) Döviz fişleri: dövizde fiş tipine göre miktar; TL'de satış / alış tutarı + komisyon, BSMV, KMV (gün × fiş tipi toplu).
+            // KMV kura dahil fişte (kmvKuraDahilSql: KMV_UYGULAMA_SEKLI = 1, eski şemada KMV_KURA_DAHIL = 1) satır tutarı KMV'yi zaten içerir → ayrı K.M.V. satırına yalnız kurdan hariç KMV girer
+            // (denetim 24.11.2026: DEMİRTAŞ'ta tüm fişler kura dahil, eski SODVZCR_KASA_DEFTERI'nde KMV satırı yok; TL kapanış KMV kadar fazlaydı).
             {
                 const req = istek();
                 const f = filtreler(req, p, { vezne: "V" });
+                const kuraDahil = await kmvKuraDahilSql(pool);
                 const res = await req.query(`
           SELECT CAST(F.TARIH AS date) gun, F.TIP tip, S.PARA_ID paraId, RTRIM(P.KOD) paraKod, ISNULL(P.SIRA_NO,99) siraNo, SUM(S.MIKTAR) miktar,
             MIN(RTRIM(ISNULL(F.SERI_NO,''))) ilkSeri, MAX(RTRIM(ISNULL(F.SERI_NO,''))) sonSeri, CASE WHEN CAST(F.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
           FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID JOIN dbo.TODVZ_PARA P ON P.PARA_ID=S.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
           WHERE ISNULL(F.IPTAL,0)=0 AND S.BANKA_HESABI_ID IS NULL AND CAST(F.TARIH AS date)<=@bit ${f}
           GROUP BY CAST(F.TARIH AS date), F.TIP, S.PARA_ID, P.KOD, P.SIRA_NO;
-          SELECT CAST(F.TARIH AS date) gun, F.TIP tip, SUM(S.TUTAR) tutar, SUM(S.KOMISYON) komisyon, SUM(S.BMV) bmv, SUM(S.KMV) kmv,
+          SELECT CAST(F.TARIH AS date) gun, F.TIP tip, SUM(S.TUTAR) tutar, SUM(S.KOMISYON) komisyon, SUM(S.BMV) bmv,
+            SUM(CASE WHEN ${kuraDahil}=1 THEN 0 ELSE S.KMV END) kmv,
             MIN(RTRIM(ISNULL(F.SERI_NO,''))) ilkSeri, MAX(RTRIM(ISNULL(F.SERI_NO,''))) sonSeri, CASE WHEN CAST(F.TARIH AS date)<@bas THEN 1 ELSE 0 END onceki
           FROM dbo.TODVZ_FIS F JOIN dbo.TODVZ_FIS_SATIRI S ON S.FIS_ID=F.FIS_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
           WHERE ISNULL(F.IPTAL,0)=0 AND F.BANKA_HESABI_ID IS NULL AND CAST(F.TARIH AS date)<=@bit ${f}

@@ -1092,3 +1092,20 @@ table.table-hover,
     --bs-table-accent-bg: #eff6ff !important;
   }
 }
+
+// Vezne fiş sayfaları (Sarraf, Perakende, Döviz) tablo içi input ve select alanları:
+// Üst sayfa başlığı (ERPToolbar) ile aynı font ailesi ve belirgin kalınlık
+.sarraf-fisi-page,
+.perakende-fisi-page,
+.doviz-fisi-page {
+  table tbody input,
+  table tbody select {
+    font-family: var(--bs-font-sans-serif, 'Public Sans', sans-serif) !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.2px;
+
+    &:not(.text-danger):not(.text-muted):not(.text-primary):not(.text-success) {
+      color: #0f172a;
+    }
+  }
+}

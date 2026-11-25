@@ -420,9 +420,12 @@ export const DovizFisiPage: React.FC = () => {
   const queryId = searchParams.get("id") || searchParams.get("fisId");
   const isDuzeltmeMode = location.pathname.includes("duzeltme");
 
-  // Sayfa açıldığında veya yenilendiğinde yerel PrinterAgent'ın güncel olduğunu doğrula
+  // Sayfa açıldığında yerel PrinterAgent güncelleme kontrolünü arka plana ertele (açılış gecikmesi yaratmasın)
   useEffect(() => {
-    checkAndAutoUpdatePrinterAgent(true).catch(() => {});
+    const timer = setTimeout(() => {
+      checkAndAutoUpdatePrinterAgent(false).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Notification state
@@ -432,15 +435,15 @@ export const DovizFisiPage: React.FC = () => {
   } | null>(null);
   const [isRecordLockedByUser, setIsRecordLockedByUser] = useState<boolean>(false);
 
-  // Lookups
-  const [cariList, setCariList] = useState<CariKartItem[]>([]);
-  const [vezneList, setVezneList] = useState<VezneItem[]>([]);
-  const [paraList, setParaList] = useState<ParaItem[]>([]);
-  const [statisticList, setStatisticList] = useState<StatisticItem[]>([]);
+  // Lookups (FastLookupCache senkron ön-dolum ile 0ms ilk render)
+  const [cariList, setCariList] = useState<CariKartItem[]>(() => FastLookupCache.getSync<CariKartItem[]>("cariKartlar") || []);
+  const [vezneList, setVezneList] = useState<VezneItem[]>(() => FastLookupCache.getSync<VezneItem[]>("vezneler") || []);
+  const [paraList, setParaList] = useState<ParaItem[]>(() => FastLookupCache.getSync<ParaItem[]>("paralar") || []);
+  const [statisticList, setStatisticList] = useState<StatisticItem[]>(() => FastLookupCache.getSync<StatisticItem[]>("statistics") || []);
   const [selectedStatistic, setSelectedStatistic] = useState<StatisticItem | IstatistikSecimItem | null>(null);
   const [istatistikFisDizaynTipi, setIstatistikFisDizaynTipi] = useState<number | null>(null);
   const [kurSatirlar, setKurSatirlar] = useState<KurRowItem[]>([]);
-  const [isLoadingLookups, setIsLoadingLookups] = useState<boolean>(true);
+  const [isLoadingLookups, setIsLoadingLookups] = useState<boolean>(() => !(FastLookupCache.getSync<ParaItem[]>("paralar")?.length));
 
   // ─── Grid Kolon Görünürlük ────────────────────────────────────────────────
   // Kullanıcı bazında localStorage'a kaydedilir
@@ -484,7 +487,7 @@ export const DovizFisiPage: React.FC = () => {
   const [printSnapshot, setPrintSnapshot] = useState<any>(null);
   const [isPendingDirectPrint, setIsPendingDirectPrint] = useState<boolean>(false);
   const [companyDefinitions, setCompanyDefinitions] = useState<TodvzTanimDto | null>(() => CompanyService.cachedDefinitions);
-  const [printers, setPrinters] = useState<YaziciItem[]>([]);
+  const [printers, setPrinters] = useState<YaziciItem[]>(() => FastLookupCache.getSync<YaziciItem[]>("yazicilar") || []);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   // Çift kayıt engeli (F1 / F10 / Kaydet art arda): ref anında kilitler, state düğmeyi pasif gösterir (ortak alan denetimi 19.11.2026, #35)
   const kayitKilidiRef = useRef<boolean>(false);
@@ -492,7 +495,7 @@ export const DovizFisiPage: React.FC = () => {
   const [pendingCopies, setPendingCopies] = useState<number>(1);
 
   useEffect(() => {
-    PrinterService.getYazicilar().then(setPrinters).catch(() => { });
+    FastLookupCache.get("yazicilar", () => PrinterService.getYazicilar()).then(setPrinters).catch(() => { });
   }, []);
 
   // Kuruş ve ondalık basamak sayıları (Firma Tanımlarından alınır, TL kuruşu her zaman en az 2 basamak)
@@ -870,6 +873,50 @@ export const DovizFisiPage: React.FC = () => {
   const [lines, setLines] = useState<GridLineItem[]>([createEmptyRow(1)]);
   const [activeRowIndex, setActiveRowIndex] = useState<number>(0);
   const [invalidRowIds, setInvalidRowIds] = useState<Record<string, boolean>>({});
+
+  // Tablo grid'inde pasif / veri girilemeyen ve içinde veri bulunmayan kolonları otomatik gizle
+  const activeGridCols = useMemo<Record<keyof typeof defaultColVisibility, boolean>>(() => {
+    const hasActiveAdet = lines.some(
+      (r) => isDovizOrZiynetItem(r.paraKodu, r.paraAdi, r.urunTipi) && userDovizZiynetGirisSekli === 0
+    );
+    const hasActiveMiktar = lines.some(
+      (r) => !isDovizOrZiynetItem(r.paraKodu, r.paraAdi, r.urunTipi) || userDovizZiynetGirisSekli === 1
+    );
+    const hasKomisyonOrani = Boolean(kYetki.komisyonAlma) || lines.some((r) => parseDecimal(r.komisyonOrani) > 0);
+    const hasKomisyon = Boolean(kYetki.komisyonAlma) || lines.some((r) => parseDecimal(r.komisyon) > 0);
+    const hasBmvOrani = lines.some((r) => parseDecimal(r.bmvOrani) > 0);
+    const hasBmv = lines.some((r) => parseDecimal(r.bmv) > 0);
+    const hasKmvOrani = lines.some((r) => parseDecimal(r.kmvOrani) > 0);
+    const hasKmv = lines.some((r) => parseDecimal(r.kmv) > 0);
+
+    return {
+      ad: true,
+      adet: hasActiveAdet,
+      miktar: hasActiveMiktar,
+      kur: true,
+      komisyonOrani: hasKomisyonOrani,
+      komisyon: hasKomisyon,
+      bmvOrani: hasBmvOrani,
+      bmv: hasBmv,
+      kmvOrani: hasKmvOrani,
+      kmv: hasKmv,
+      tutar: true,
+    };
+  }, [lines, userDovizZiynetGirisSekli, kYetki.komisyonAlma]);
+
+  const effectiveColVisibility = useMemo<Record<keyof typeof defaultColVisibility, boolean>>(() => ({
+    ad: colVisibility.ad && activeGridCols.ad,
+    adet: colVisibility.adet && activeGridCols.adet,
+    miktar: colVisibility.miktar && activeGridCols.miktar,
+    kur: colVisibility.kur && activeGridCols.kur,
+    komisyonOrani: colVisibility.komisyonOrani && activeGridCols.komisyonOrani,
+    komisyon: colVisibility.komisyon && activeGridCols.komisyon,
+    bmvOrani: colVisibility.bmvOrani && activeGridCols.bmvOrani,
+    bmv: colVisibility.bmv && activeGridCols.bmv,
+    kmvOrani: colVisibility.kmvOrani && activeGridCols.kmvOrani,
+    kmv: colVisibility.kmv && activeGridCols.kmv,
+    tutar: colVisibility.tutar && activeGridCols.tutar,
+  }), [colVisibility, activeGridCols]);
 
   const hasSayfaVerisi = useMemo(() => {
     if (fisId !== null && fisId > 0) return true;
@@ -1285,10 +1332,24 @@ export const DovizFisiPage: React.FC = () => {
 
   // Load Lookups (Instant Load with FastLookupCache)
   const loadLookupsAndList = useCallback(async () => {
-    setIsLoadingLookups(true);
+    const needFisListNow = isDuzeltmeMode || Boolean(queryId);
+    if (!paraList.length) setIsLoadingLookups(true);
     try {
-      const fisListPromise = DovizFisService.getFisList({ limit: 500 })
-        .catch(() => [] as DovizFisListItem[]);
+      const fisListPromise = needFisListNow
+        ? DovizFisService.getFisList({ limit: 500 }).catch(() => [] as DovizFisListItem[])
+        : Promise.resolve([] as DovizFisListItem[]);
+
+      const kayitsizPromise = needFisListNow
+        ? DovizFisService.getKayitsizMusteriler().catch(() => [] as KayitsizMusteriItem[])
+        : Promise.resolve([] as KayitsizMusteriItem[]);
+
+      if (!needFisListNow) {
+        DovizFisService.getKayitsizMusteriler()
+          .then((bgKayitsiz) => {
+            if (bgKayitsiz && bgKayitsiz.length > 0) setKayitsizMusteriList(bgKayitsiz);
+          })
+          .catch(() => {});
+      }
 
       const [cariler, vezneler, paralar, kurTabloRes, gunlukKurTabloRes, istatistikler, fisler, cariLk, compDef, kayitsizlar] = await Promise.all([
         CariService.getCariKartlar().catch(() => [] as CariKartItem[]),
@@ -1300,7 +1361,7 @@ export const DovizFisiPage: React.FC = () => {
         fisListPromise,
         CariService.getLookups().catch(() => null),
         CompanyService.getDefinitions(true).catch(() => null),
-        DovizFisService.getKayitsizMusteriler().catch(() => [] as KayitsizMusteriItem[]),
+        kayitsizPromise,
       ]);
 
       if (kayitsizlar && kayitsizlar.length > 0) {
@@ -1376,7 +1437,13 @@ export const DovizFisiPage: React.FC = () => {
         DovizFisService.getFisList({ limit: 100 })
           .then((bgFisler) => {
             if (bgFisler && bgFisler.length > 0) {
-              setSavedFisList(bgFisler);
+              const allowedBg = bgFisler.filter((f: any) => {
+                if (!hasOnlyOwn) return true;
+                const kId = Number(f.kullaniciId || f.ekleyenId || 0);
+                const vId = Number(f.vezneId || 0);
+                return kId === curUserId || (curVezneId > 0 && vId === curVezneId);
+              });
+              setSavedFisList(allowedBg);
             }
           })
           .catch(() => {});
@@ -3014,14 +3081,18 @@ export const DovizFisiPage: React.FC = () => {
     const isGayriResmi = (istatistikFisDizaynTipi === 1) || (activeStat && Number(activeStat.fisDizaynTipi) === 1);
 
     const selectedCustomerName = (result.unvan || "").trim();
+    const selectedCustomerVkn = (result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || "").trim();
+    const hasValidName = Boolean(selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN"));
+    const cleanSelectedVkn = selectedCustomerVkn.replace(/\D/g, "");
+    const hasValidVkn = cleanSelectedVkn.length >= 10;
     // "MASAK uyarısı versin" işaretsizse müşteri seçilirken otomatik sorgu / uyarı açılmaz; kayıttaki kontrol sürer
-    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && !isGayriResmi && selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
-      handleSearchMasak(selectedCustomerName, result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || undefined);
+    if ((isMasakKontroluVar || hasValidVkn) && kYetkiRef.current.masakUyarisi && !isGayriResmi && (hasValidName || hasValidVkn)) {
+      handleSearchMasak(hasValidName ? selectedCustomerName : "", selectedCustomerVkn || undefined);
     } else {
       setMasakResult({ matches: [], searched: false });
     }
 
-    if (isMasakLimitExceeded) {
+    if (isMasakLimitExceeded || (!isGayriResmi && hasValidVkn)) {
       setShowMasakCustomerWarningModal(true);
     }
   };
@@ -3634,12 +3705,28 @@ export const DovizFisiPage: React.FC = () => {
 
     const fallback = {
       isExceeded: false,
-      type: null as null | "altin" | "doviz" | "tl",
+      type: null as null | "altin" | "doviz" | "tl" | "kimlik",
       limitLabel: `TL: ${tlLimit.toLocaleString("tr-TR")} ₺ | Döviz: ${dovizLimit.toLocaleString("tr-TR")} ${limitParaKodu} | Altın: ${altinLimit.toLocaleString("tr-TR")} ${altinParaKodu}`,
       limitTitle: "MASAK Yasal Bildirim Sınırı Uyarısı",
     };
 
+    const cleanVkn = (vergiKimlikNo || "").replace(/\D/g, "");
+    const hasTcVkn = cleanVkn.length >= 10;
+    const activeStatForMasak = (istatistikKodu || "").trim()
+      ? (selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === (istatistikKodu || "").trim())))
+      : null;
+    const rawDizaynForMasak = activeStatForMasak?.fisDizaynTipi ?? (activeStatForMasak as any)?.FIS_DIZAYN_TIPI ?? (activeStatForMasak as any)?.fis_dizayn_tipi ?? istatistikFisDizaynTipi;
+    const isGayriResmiFis = rawDizaynForMasak !== undefined && rawDizaynForMasak !== null && String(rawDizaynForMasak).trim() !== "" && Number(rawDizaynForMasak) === 1;
+
     if (!isMasakKontroluVar) {
+      if (hasTcVkn && !isGayriResmiFis) {
+        return {
+          isExceeded: true,
+          type: "kimlik" as const,
+          limitLabel: "TC / VKN Beyanı (Tutar Bağımsız MASAK Sınırı)",
+          limitTitle: "MASAK Kimlik / VKN Bildirim Sınırı Uyarısı",
+        };
+      }
       return fallback;
     }
 
@@ -3733,6 +3820,16 @@ export const DovizFisiPage: React.FC = () => {
       }
     }
 
+    // 3) TC / VKN girilmişse tutara bakmaksızın MASAK sınırı devreye girer
+    if (hasTcVkn) {
+      return {
+        isExceeded: true,
+        type: "kimlik" as const,
+        limitLabel: "TC / VKN Beyanı (Tutar Bağımsız MASAK Sınırı)",
+        limitTitle: "MASAK Kimlik / VKN Bildirim Sınırı Uyarısı",
+      };
+    }
+
     return fallback;
   }, [
     isMasakKontroluVar,
@@ -3745,6 +3842,12 @@ export const DovizFisiPage: React.FC = () => {
     kurTuru,
     companyDefinitions,
     getMerkezUsdKuru,
+    vergiKimlikNo,
+    istatistikKodu,
+    istatistikId,
+    selectedStatistic,
+    statisticList,
+    istatistikFisDizaynTipi,
   ]);
 
   const isMasakLimitExceeded = masakStatus.isExceeded;
@@ -3752,7 +3855,27 @@ export const DovizFisiPage: React.FC = () => {
   const masakLimitTitle = masakStatus.limitTitle;
 
   // MASAK Malvarlığı Dondurulanlar Bloke Durumu
-  const isMasakBlocked = Boolean(isMasakKontroluVar && masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
+  const isMasakBlocked = Boolean((isMasakKontroluVar || isMasakLimitExceeded) && masakResult.searched && masakResult.matches && masakResult.matches.length > 0);
+
+  // VKN / TCKN elle girildiğinde (10-11 hane) otomatik MASAK yaptırım / dondurulanlar sorgusu
+  const lastAutoMasakVknRef = useRef<string>("");
+  useEffect(() => {
+    const cleanVkn = (vergiKimlikNo || "").replace(/\D/g, "");
+    const hasTc = cleanVkn.length >= 10;
+    if (!hasTc) {
+      if (!cleanVkn) {
+        lastAutoMasakVknRef.current = "";
+        setMasakResult({ matches: [], searched: false });
+      }
+      return;
+    }
+    if (lastAutoMasakVknRef.current === cleanVkn) return;
+    const timer = setTimeout(() => {
+      lastAutoMasakVknRef.current = cleanVkn;
+      void handleSearchMasak(unvan, cleanVkn);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [vergiKimlikNo]);
 
   // MASAK Listelerinden İsim veya TC/VKN ile Sorgulama
   const handleSearchMasak = async (explicitName?: string, explicitId?: string) => {
@@ -4125,12 +4248,12 @@ export const DovizFisiPage: React.FC = () => {
     const isMiktarActive = !isPZ || userDovizZiynetGirisSekli === 1;
 
     const visibleCols: GridColumnKey[] = ["kod"];
-    if (isAdetActive && colVisibility.adet) visibleCols.push("adet");
-    if (isMiktarActive && colVisibility.miktar) visibleCols.push("miktar");
-    if (!isRowTL && kurAcik && colVisibility.kur) visibleCols.push("kur");
-    if (colVisibility.komisyonOrani) visibleCols.push("komisyonOrani");
-    if (colVisibility.komisyon) visibleCols.push("komisyon");
-    if (colVisibility.tutar && kurAcik) visibleCols.push("tutar");
+    if (isAdetActive && effectiveColVisibility.adet) visibleCols.push("adet");
+    if (isMiktarActive && effectiveColVisibility.miktar) visibleCols.push("miktar");
+    if (!isRowTL && kurAcik && effectiveColVisibility.kur) visibleCols.push("kur");
+    if (effectiveColVisibility.komisyonOrani) visibleCols.push("komisyonOrani");
+    if (effectiveColVisibility.komisyon) visibleCols.push("komisyon");
+    if (effectiveColVisibility.tutar && kurAcik) visibleCols.push("tutar");
 
     const currentVisIdx = visibleCols.indexOf(field);
     const isLastVisibleCol = currentVisIdx === visibleCols.length - 1;
@@ -4520,6 +4643,7 @@ export const DovizFisiPage: React.FC = () => {
     resetForm();
     setArbitrajActiveInfo(null);
     applyDefaultIstatistik(tip, statisticList, companyDefinitions, user);
+    setNotification({ type: "info", message: "Form temizlendi." });
     focusTipSelect();
   };
 
@@ -4723,37 +4847,7 @@ export const DovizFisiPage: React.FC = () => {
     if (isMasakLimitExceeded) {
       const isAnon = isAnonymousCustomerName(unvan);
 
-      const missingFields: string[] = [];
-      if (isAnon) missingFields.push("İsim / Ünvan");
-      if (!vergiKimlikNo || !vergiKimlikNo.trim()) missingFields.push("T.C. Kimlik / VKN");
-      if (!detayAdres || !detayAdres.trim()) missingFields.push("Müşteri Adresi");
-      if (!detayHukukiYapi && !detayHukukiYapiId) missingFields.push("Hukuki Yapı");
-      if (!detayCinsiyet || !detayCinsiyet.trim()) missingFields.push("Cinsiyet");
-      if (!detayMeslek && !detayMeslekId && !detayMeslekUnvani.trim()) missingFields.push("Meslek / Meslek Ünvanı");
-
-      const compDef = companyDefinitionsRef.current || companyDefinitions || CompanyService.cachedDefinitions;
-      const isYasaklama = Boolean(compDef?.VERGI_SINIRI_ASILINCA_YASAKLA);
-
-      if (isYasaklama) {
-        if (missingFields.length > 0) {
-          setMasakMissingFields(missingFields);
-          setShowMasakMissingModal(true);
-          return;
-        }
-      } else {
-        // Vergi sınırı tanımlarında değer yok ise (veya döviz büfesi tanımı):
-        // Limit aşımında uyarı verilir ve eksik kimlik bilgileri varsa girilmesi istenir. Fiş girişi yasaklanmaz ve kaydedilebilir.
-        if (missingFields.length > 0 && !forceMasakApprove) {
-          setMasakMissingFields(missingFields);
-          setIsPendingDirectPrint(andDirectPrint);
-          setPendingPrinter(targetPrinter || null);
-          setPendingCopies(targetCopies || 1);
-          setShowMasakConfirmModal(true);
-          return;
-        }
-      }
-
-      // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır (Önceden sorgulanmışsa yeniden bekletmeden devam eder)
+      // 1) Önce MASAK yaptırım / malvarlığı dondurulanlar sorgusunu çalıştır (eksik alan olsa dahi yasaklı kişi anında engellenir)
       try {
         const cleanName = isAnon ? "" : unvan.trim();
         const cleanId = (vergiKimlikNo || "").trim();
@@ -4791,6 +4885,36 @@ export const DovizFisiPage: React.FC = () => {
         }
       } catch (err) {
         console.error("Auto MASAK check error:", err);
+      }
+
+      const missingFields: string[] = [];
+      if (isAnon) missingFields.push("İsim / Ünvan");
+      if (!vergiKimlikNo || !vergiKimlikNo.trim()) missingFields.push("T.C. Kimlik / VKN");
+      if (!detayAdres || !detayAdres.trim()) missingFields.push("Müşteri Adresi");
+      if (!detayHukukiYapi && !detayHukukiYapiId) missingFields.push("Hukuki Yapı");
+      if (!detayCinsiyet || !detayCinsiyet.trim()) missingFields.push("Cinsiyet");
+      if (!detayMeslek && !detayMeslekId && !detayMeslekUnvani.trim()) missingFields.push("Meslek / Meslek Ünvanı");
+
+      const compDef = companyDefinitionsRef.current || companyDefinitions || CompanyService.cachedDefinitions;
+      const isYasaklama = Boolean(compDef?.VERGI_SINIRI_ASILINCA_YASAKLA);
+
+      if (isYasaklama) {
+        if (missingFields.length > 0) {
+          setMasakMissingFields(missingFields);
+          setShowMasakMissingModal(true);
+          return;
+        }
+      } else {
+        // Vergi sınırı tanımlarında değer yok ise (veya döviz büfesi tanımı):
+        // Limit aşımında uyarı verilir ve eksik kimlik bilgileri varsa girilmesi istenir. Fiş girişi yasaklanmaz ve kaydedilebilir.
+        if (missingFields.length > 0 && !forceMasakApprove) {
+          setMasakMissingFields(missingFields);
+          setIsPendingDirectPrint(andDirectPrint);
+          setPendingPrinter(targetPrinter || null);
+          setPendingCopies(targetCopies || 1);
+          setShowMasakConfirmModal(true);
+          return;
+        }
       }
 
       // Kullanıcıdan MASAK limit onayı al
@@ -6336,6 +6460,34 @@ export const DovizFisiPage: React.FC = () => {
     gelisNedeni,
   ]);
 
+  const handleOpenTeklifTaniModal = useCallback((): boolean => {
+    const hasValidLine = lines.some((l: any) => {
+      const hasKod = (l.paraKodu || l.kod) && String(l.paraKodu || l.kod).trim() !== "";
+      const m = parseDecimal(l.miktar);
+      const t = parseDecimal(l.tutar);
+      const a = parseDecimal(l.adet);
+      return hasKod && (m > 0 || t > 0 || a > 0);
+    });
+    const trimmedUnvan = (unvan || "").trim();
+    const hasCustomerData =
+      Boolean(cariKartId) ||
+      (trimmedUnvan !== "" && trimmedUnvan.toUpperCase() !== DEFAULT_CUSTOMER_NAME.toUpperCase()) ||
+      Boolean((vergiKimlikNo || "").trim()) ||
+      Boolean((detayPasaportNo || "").trim()) ||
+      Boolean((detayTelefon || "").trim()) ||
+      Boolean((detayAdres || "").trim());
+
+    if (!fisId && !hasValidLine && !hasCustomerData) {
+      setNotification({
+        type: "warning",
+        message: "Fişte herhangi bir veri bulunmamaktadır. Boş fiş için Müşteri Tanı Formu açılamaz!",
+      });
+      return false;
+    }
+    setShowTeklifTaniModal(true);
+    return true;
+  }, [lines, unvan, cariKartId, vergiKimlikNo, detayPasaportNo, detayTelefon, detayAdres, fisId]);
+
   // Arbitraj Modalı içinden F9 ile çağrılan önizleme ve yazdırma modalı
   const handleOpenArbitrajPrintModal = useCallback(
     (result: ArbitrajApplyResult) => {
@@ -6536,7 +6688,7 @@ export const DovizFisiPage: React.FC = () => {
           e.preventDefault();
           e.stopPropagation();
           closeAllModals();
-          setShowTeklifTaniModal(true);
+          handleOpenTeklifTaniModal();
           return;
         }
         if (!isEscape) return;
@@ -6708,7 +6860,7 @@ export const DovizFisiPage: React.FC = () => {
         e.stopPropagation();
         closeAllModals();
         if (e.shiftKey) {
-          setShowTeklifTaniModal(true);
+          handleOpenTeklifTaniModal();
         } else {
           handleTriggerF10();
         }
@@ -6719,6 +6871,7 @@ export const DovizFisiPage: React.FC = () => {
   }, [
     handleToolbarSave,
     handleOpenPrintPreview,
+    handleOpenTeklifTaniModal,
     handleToolbarDelete,
     handleTriggerF10,
     isDuzeltmeMode,
@@ -7020,6 +7173,91 @@ export const DovizFisiPage: React.FC = () => {
     { header: "Vezne Adı", render: (v) => v.ad },
   ];
 
+  // Üst başlık input/select alanlarında sağ/sol/yukarı/aşağı yön okları ile gezinme
+  const handleHeaderArrowKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    const target = e.target as HTMLElement | null;
+    if (!target || !["INPUT", "SELECT"].includes(target.tagName)) return;
+
+    // Text input'ta sağ/sol ok: imleç metin ortasındaysa normal imleç hareketi çalışsın; uçtaysa veya tümü seçiliyse komşu alana geçsin
+    if (target.tagName === "INPUT" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      const inp = target as HTMLInputElement;
+      if (inp.type === "text") {
+        const len = inp.value.length;
+        const start = inp.selectionStart ?? 0;
+        const end = inp.selectionEnd ?? 0;
+        const allSelected = len > 0 && start === 0 && end === len;
+        if (!allSelected) {
+          if (e.key === "ArrowLeft" && start > 0) return;
+          if (e.key === "ArrowRight" && end < len) return;
+        }
+      }
+    }
+
+    const container = e.currentTarget;
+    const fields = Array.from(
+      container.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+        'input:not([disabled]):not([type="hidden"]), select:not([disabled])'
+      )
+    ).filter((el) => el.offsetParent !== null);
+
+    if (fields.length === 0) return;
+    const curRect = target.getBoundingClientRect();
+    const curCx = curRect.left + curRect.width / 2;
+    const curCy = curRect.top + curRect.height / 2;
+
+    let best: HTMLInputElement | HTMLSelectElement | null = null;
+    let bestScore = Infinity;
+
+    for (const el of fields) {
+      if (el === target) continue;
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dx = cx - curCx;
+      const dy = cy - curCy;
+
+      if (e.key === "ArrowRight") {
+        if (dx <= 10 || Math.abs(dy) > 22) continue;
+        const score = dx + Math.abs(dy) * 4;
+        if (score < bestScore) { bestScore = score; best = el; }
+      } else if (e.key === "ArrowLeft") {
+        if (dx >= -10 || Math.abs(dy) > 22) continue;
+        const score = -dx + Math.abs(dy) * 4;
+        if (score < bestScore) { bestScore = score; best = el; }
+      } else if (e.key === "ArrowDown") {
+        if (dy <= 10) continue;
+        const score = dy * 2 + Math.abs(dx) * 3;
+        if (score < bestScore) { bestScore = score; best = el; }
+      } else if (e.key === "ArrowUp") {
+        if (dy >= -10) continue;
+        const score = -dy * 2 + Math.abs(dx) * 3;
+        if (score < bestScore) { bestScore = score; best = el; }
+      }
+    }
+
+    // Aynı satırda sağ/sol komşu bulunamazsa DOM sırasına göre sonraki/önceki alana geç
+    if (!best && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+      const idx = fields.indexOf(target as HTMLInputElement | HTMLSelectElement);
+      if (e.key === "ArrowRight" && idx >= 0 && idx < fields.length - 1) best = fields[idx + 1];
+      if (e.key === "ArrowLeft" && idx > 0) best = fields[idx - 1];
+    }
+
+    if (best) {
+      e.preventDefault();
+      e.stopPropagation();
+      best.focus();
+      if (best.tagName === "INPUT" && (best as HTMLInputElement).type === "text") {
+        (best as HTMLInputElement).select();
+      }
+    } else if (e.key === "ArrowDown") {
+      // En alt başlık satırından aşağı ok ile tablo ilk satırına geç
+      e.preventDefault();
+      e.stopPropagation();
+      focusCell(0, "kod", "select");
+    }
+  }, [focusCell]);
+
   // e-Banka mutabakatından "Fiş kes" ile gelindiyse cari / tarih / yön dolu açılır
   // Döviz hesabından gelen parada ilk satır o dövizle dolu gelir; tip değişikliği işlendikten sonra (güncel kurla) uygulanır
   const ebDovizSatiriRef = useRef<() => void>(() => { });
@@ -7039,7 +7277,7 @@ export const DovizFisiPage: React.FC = () => {
 
   return (
     <div
-      className="w-100 pb-3"
+      className="doviz-fisi-page w-100 pb-3"
       style={{
         backgroundColor: isMasakBlocked ? "#fff5f5" : "#f8fafc",
         minHeight: "100vh",
@@ -7086,10 +7324,10 @@ export const DovizFisiPage: React.FC = () => {
                 backgroundColor: activeFisThemeBg,
                 color: activeFisThemeText,
                 fontWeight: 800,
-                fontSize: "13.5px",
+                fontSize: "14px",
                 letterSpacing: "3px",
-                minWidth: "220px",
-                padding: "4px 30px",
+                minWidth: "320px",
+                padding: "4px 48px",
                 borderRadius: "6px",
                 height: "30px",
                 display: "inline-flex",
@@ -7123,18 +7361,6 @@ export const DovizFisiPage: React.FC = () => {
               <strong className="text-dark" style={{ fontSize: "11.5px" }}>{vezneKod || "01"}</strong>
               {vezneAd && <span className="text-muted ms-1" style={{ fontSize: "11px" }}>({vezneAd})</span>}
             </div>
-
-            {/* Vezne Transfer Kayıt Butonu */}
-            <Button
-              size="sm"
-              variant="outline-primary"
-              className="px-2 py-0 d-inline-flex align-items-center gap-1 fw-bold shadow-2xs ms-1"
-              style={{ fontSize: "11px", height: "26px", backgroundColor: "#f0f9ff" }}
-              onClick={() => setShowVezneTransferModal(true)}
-              title="G- Vezne Transferi Kayıt Aç"
-            >
-              <IconArrowsLeftRight size={13} className="text-primary" /> Vezne Transfer Kayıt
-            </Button>
           </div>
         }
         onPrint={handleOpenPrintPreview}
@@ -7228,7 +7454,7 @@ export const DovizFisiPage: React.FC = () => {
         <Card.Body className="p-0 fis-theme-card-body" data-fis-theme="active">
           {/* En Üstteki 3 Alan */}
           <div className="py-1.5 px-2 fis-theme-panel" data-fis-theme="active" style={{ backgroundColor: activeFisThemeBg }}>
-            <Row className="g-2">
+            <Row className="g-2" onKeyDown={handleHeaderArrowKeyDown}>
               {/* Sol Sütun: Tarih, Saat, Geliş Nedeni / Satış Dayanağı, Kur Türü */}
               <Col xs={12} md={4}>
                 <div
@@ -7763,8 +7989,49 @@ export const DovizFisiPage: React.FC = () => {
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              istatistikRef.current?.focus();
-                              istatistikRef.current?.select();
+                              const val = vergiKimlikNo.trim();
+                              const prevVal = (lastFocusedVknRef.current || "").trim();
+                              if (!val || val === prevVal) {
+                                istatistikRef.current?.focus();
+                                istatistikRef.current?.select();
+                                return;
+                              }
+                              const { cariler, kayitsizlar, totalCount } = findMatchingCustomers("vkn", val);
+                              if (totalCount === 1) {
+                                if (cariler.length === 1) {
+                                  const single = cariler[0];
+                                  handleSelectCustomer({
+                                    type: "registered",
+                                    id: single.id,
+                                    kod: single.kod,
+                                    unvan: single.ad || (single as any).unvan || "",
+                                    vergiKimlikNo: single.vergiKimlikNo || "",
+                                    adres: single.adres || "",
+                                    telefon: single.telefon || "",
+                                    raw: single,
+                                  });
+                                } else if (kayitsizlar.length === 1) {
+                                  const singleK = kayitsizlar[0];
+                                  handleSelectCustomer({
+                                    type: "unregistered",
+                                    id: null,
+                                    kod: "",
+                                    unvan: singleK.ad || singleK.unvan || "",
+                                    vergiKimlikNo: singleK.vergiKimlikNo || "",
+                                    adres: singleK.adres || "",
+                                    telefon: singleK.telefon || "",
+                                    raw: singleK,
+                                  });
+                                }
+                                lastFocusedVknRef.current = val;
+                                istatistikRef.current?.focus();
+                                istatistikRef.current?.select();
+                                return;
+                              }
+                              lastModalCallerRef.current = "vkn";
+                              setCariSearchTerm(val);
+                              setCariSearchField("vkn");
+                              setShowCariModal(true);
                             }
                           }}
                           className="font-monospace px-2.5 py-1"
@@ -8055,7 +8322,7 @@ export const DovizFisiPage: React.FC = () => {
                   { key: "kmvOrani", label: "KMV %" },
                   { key: "kmv", label: "KMV" },
                   { key: "tutar", label: "Tutar" },
-                ] as { key: keyof typeof defaultColVisibility; label: string }[]).map(({ key, label }) => (
+                ] as { key: keyof typeof defaultColVisibility; label: string }[]).filter(({ key }) => activeGridCols[key]).map(({ key, label }) => (
                   <Dropdown.Item
                     key={key}
                     as="button"
@@ -8089,8 +8356,8 @@ export const DovizFisiPage: React.FC = () => {
               }
             }}
             style={{
-              minHeight: "75px",
-              maxHeight: "220px",
+              minHeight: "110px",
+              maxHeight: "255px",
               overflowY: "auto",
               borderColor: "#cbd5e1",
             }}
@@ -8100,21 +8367,21 @@ export const DovizFisiPage: React.FC = () => {
                 <tr style={{ height: "30px", borderBottom: "1px solid #94a3b8", fontSize: "12.5px" }}>
                   <th style={{ width: "45px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>#</th>
                   <th style={{ width: "100px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Kod</th>
-                  {colVisibility.ad && <th style={{ width: "170px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Ad</th>}
-                  {colVisibility.adet && <th style={{ width: "95px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Adet</th>}
-                  {colVisibility.miktar && <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Miktar</th>}
-                  {colVisibility.kur && (
+                  {effectiveColVisibility.ad && <th style={{ width: "170px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Ad</th>}
+                  {effectiveColVisibility.adet && <th style={{ width: "95px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Adet</th>}
+                  {effectiveColVisibility.miktar && <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Miktar</th>}
+                  {effectiveColVisibility.kur && (
                     <th style={{ width: "120px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>
                       {tip === 1 ? "Satış kuru" : "Alış kuru"}
                     </th>
                   )}
-                  {colVisibility.komisyonOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                  {colVisibility.komisyon && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Komisyon</th>}
-                  {colVisibility.bmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                  {colVisibility.bmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>BMV</th>}
-                  {colVisibility.kmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
-                  {colVisibility.kmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>KMV</th>}
-                  {colVisibility.tutar && <th style={{ width: "110px", textAlign: "center" }}>Tutar</th>}
+                  {effectiveColVisibility.komisyonOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
+                  {effectiveColVisibility.komisyon && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>Komisyon</th>}
+                  {effectiveColVisibility.bmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
+                  {effectiveColVisibility.bmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>BMV</th>}
+                  {effectiveColVisibility.kmvOrani && <th style={{ width: "55px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>%</th>}
+                  {effectiveColVisibility.kmv && <th style={{ width: "90px", textAlign: "center", borderRight: "1px solid #cbd5e1" }}>KMV</th>}
+                  {effectiveColVisibility.tutar && <th style={{ width: "110px", textAlign: "center" }}>Tutar</th>}
                 </tr>
               </thead>
               <tbody>
@@ -8228,14 +8495,14 @@ export const DovizFisiPage: React.FC = () => {
                       </td>
 
                       {/* Ad */}
-                      {colVisibility.ad && (
+                      {effectiveColVisibility.ad && (
                         <td className="p-0 px-2 text-dark small" style={{ borderRight: "1px solid #e2e8f0" }}>
                           {row.paraAdi || "-"}
                         </td>
                       )}
 
                       {/* Adet */}
-                      {colVisibility.adet && (
+                      {effectiveColVisibility.adet && (
                         <td
                           className="p-0"
                           style={{
@@ -8300,7 +8567,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* Miktar */}
-                      {colVisibility.miktar && (
+                      {effectiveColVisibility.miktar && (
                       <td
                         className="p-0"
                         style={{
@@ -8365,7 +8632,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* Kur */}
-                      {colVisibility.kur && (
+                      {effectiveColVisibility.kur && (
                       <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                         <input
                           id={`grid-input-${idx}-kur`}
@@ -8441,7 +8708,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* % (Komisyon %) */}
-                      {colVisibility.komisyonOrani && (
+                      {effectiveColVisibility.komisyonOrani && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-komisyonOrani`}
@@ -8464,7 +8731,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* Komisyon */}
-                      {colVisibility.komisyon && (
+                      {effectiveColVisibility.komisyon && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-komisyon`}
@@ -8487,7 +8754,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* % (BMV %) - Read-Only (Müdahale edilemez) */}
-                      {colVisibility.bmvOrani && (
+                      {effectiveColVisibility.bmvOrani && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-bmvOrani`}
@@ -8503,7 +8770,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* BMV - Read-Only (Müdahale edilemez) */}
-                      {colVisibility.bmv && (
+                      {effectiveColVisibility.bmv && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-bmv`}
@@ -8521,7 +8788,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* % (KMV %) - Read-Only (Müdahale edilemez, doğrudan istatistikten gelir) */}
-                      {colVisibility.kmvOrani && (
+                      {effectiveColVisibility.kmvOrani && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-kmvOrani`}
@@ -8537,7 +8804,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* KMV - Read-Only (Müdahale edilemez, doğrudan istatistikten gelir) */}
-                      {colVisibility.kmv && (
+                      {effectiveColVisibility.kmv && (
                         <td className="p-0" style={{ borderRight: "1px solid #e2e8f0" }}>
                           <input
                             id={`grid-input-${idx}-kmv`}
@@ -8555,7 +8822,7 @@ export const DovizFisiPage: React.FC = () => {
                       )}
 
                       {/* Tutar */}
-                      {colVisibility.tutar && (
+                      {effectiveColVisibility.tutar && (
                         <td className="p-0">
                           <input
                             id={`grid-input-${idx}-tutar`}
@@ -8665,9 +8932,6 @@ export const DovizFisiPage: React.FC = () => {
                 <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => { fetchVezneBalances(vezneId); setShowVezneBakiyeModal(true); }}>
                   F5) Vezne
                 </Button>
-                <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold d-inline-flex align-items-center gap-1" style={{ fontSize: "11.5px" }} onClick={() => setShowVezneTransferModal(true)} title="G- Vezne Transferi Kayıt">
-                  <IconArrowsLeftRight size={14} className="text-primary" /> Vezne Transfer Kayıt
-                </Button>
                 <Button size="sm" variant="light" className="px-2 py-0.5 border text-dark fw-bold" style={{ fontSize: "11.5px" }} onClick={() => setShowBankaTlHesabiModal(true)} title="Banka TL Hesabı (Shift+F5)">
                   Shift+F5) Banka TL Hesabı
                 </Button>
@@ -8698,7 +8962,7 @@ export const DovizFisiPage: React.FC = () => {
                   variant="info"
                   className="px-2.5 py-0.5 border text-white fw-bold shadow-xs d-inline-flex align-items-center gap-1"
                   style={{ fontSize: "11.5px", backgroundColor: "#0284c7", borderColor: "#0369a1" }}
-                  onClick={() => setShowTeklifTaniModal(true)}
+                  onClick={handleOpenTeklifTaniModal}
                   title="Gerçek Kişiler İçin Müşteri Tanı Formu ve Döviz Fişi (A4 - Shift+F10)"
                 >
                   <IconFileText size={14} /> Shift+F10) Müşteri Tanı Formu
@@ -8721,7 +8985,7 @@ export const DovizFisiPage: React.FC = () => {
                     title={`MASAK Bildirim Sınırı Aşıldı: ${masakLimitLabel}`}
                   >
                     <IconAlertTriangle size={14} className="text-danger" />
-                    <span>MASAK Sınırı Aşıldı ({masakStatus.type === "altin" ? "Altın" : masakStatus.type === "doviz" ? "Döviz" : "TL"})</span>
+                    <span>MASAK Sınırı ({masakStatus.type === "altin" ? "Altın" : masakStatus.type === "doviz" ? "Döviz" : masakStatus.type === "kimlik" ? "TC/VKN" : "TL"})</span>
                   </span>
                 )}
               </div>
@@ -8761,6 +9025,7 @@ export const DovizFisiPage: React.FC = () => {
 
 
       {/* DETAY MODAL (F8) matching Screenshot 3 */}
+      {showDetayModal && (
       <Modal
         show={showDetayModal}
         onHide={() => setShowDetayModal(false)}
@@ -9544,8 +9809,9 @@ export const DovizFisiPage: React.FC = () => {
               className="d-flex align-items-center gap-1 fw-bold shadow-xs"
               style={{ backgroundColor: "#0284c7", borderColor: "#0369a1" }}
               onClick={() => {
-                setShowDetayModal(false);
-                setShowTeklifTaniModal(true);
+                if (handleOpenTeklifTaniModal()) {
+                  setShowDetayModal(false);
+                }
               }}
               title="Gerçek Kişiler İçin Müşteri Tanı Formu (A4 - Shift+F10)"
             >
@@ -9562,8 +9828,10 @@ export const DovizFisiPage: React.FC = () => {
           </div>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* Dürbün / Search Modal */}
+      {showSearchModal && (
       <FisDurbunModal<DovizFisListItem>
         show={showSearchModal}
         onHide={() => setShowSearchModal(false)}
@@ -9587,8 +9855,10 @@ export const DovizFisiPage: React.FC = () => {
           loadFisById(item.fisId);
         }}
       />
+      )}
 
       {/* Cari / Müşteri Seçim Modalı (Kayıtlı Cariler & Kayıtsız Müşteriler) */}
+      {showCariModal && (
       <MusteriSecimModal
         show={showCariModal}
         onClose={() => {
@@ -9617,18 +9887,36 @@ export const DovizFisiPage: React.FC = () => {
         cariler={cariList}
         kayitsizMusteriler={kayitsizMusteriList}
         onSelectCustomer={(res) => {
+          const caller = lastModalCallerRef.current;
           lastModalCallerRef.current = null;
           handleSelectCustomer(res);
           setShowCariModal(false);
           setCariSearchTerm("");
           setCariSearchField("all");
+          setTimeout(() => {
+            if (caller === "vkn") {
+              istatistikRef.current?.focus();
+              istatistikRef.current?.select();
+            } else if (caller === "cariKod") {
+              unvanRef.current?.focus();
+              unvanRef.current?.select();
+            } else if (caller === "unvan") {
+              vknRef.current?.focus();
+              vknRef.current?.select();
+            } else {
+              istatistikRef.current?.focus();
+              istatistikRef.current?.select();
+            }
+          }, 60);
         }}
         currentUnvan={unvan}
         initialSearchTerm={cariSearchTerm}
         initialSearchField={cariSearchField}
       />
+      )}
 
       {/* Para / Currency Lookup Modal */}
+      {showParaModal && (
       <LookupModal<ParaItem>
         show={showParaModal}
         selectOnDoubleClick={true}
@@ -9691,8 +9979,10 @@ export const DovizFisiPage: React.FC = () => {
           setParaSearchTerm("");
         }}
       />
+      )}
 
       {/* Vezne Lookup Modal */}
+      {showVezneModal && (
       <LookupModal<VezneItem>
         show={showVezneModal}
         onHide={() => setShowVezneModal(false)}
@@ -9714,8 +10004,10 @@ export const DovizFisiPage: React.FC = () => {
           setShowVezneModal(false);
         }}
       />
+      )}
 
       {/* Detay Generic SearchLookupModal for All Binoculars */}
+      {activeLookupType !== null && (
       <LookupModal<any>
         show={activeLookupType !== null}
         onHide={() => setActiveLookupType(null)}
@@ -9964,8 +10256,10 @@ export const DovizFisiPage: React.FC = () => {
           setActiveLookupType(null);
         }}
       />
+      )}
 
       {/* F7) Arbitraj Modalı */}
+      {showArbitrajModal && (
       <ArbitrajModal
         show={showArbitrajModal}
         onClose={() => setShowArbitrajModal(false)}
@@ -10029,8 +10323,10 @@ export const DovizFisiPage: React.FC = () => {
         onApplyToFis={handleApplyArbitrajToDovizFis}
         onOpenPrintModal={handleOpenArbitrajPrintModal}
       />
+      )}
 
       {/* Gümrük Beyanname Modal */}
+      {showGumrukModal && (
       <Modal
         show={showGumrukModal}
         onHide={() => setShowGumrukModal(false)}
@@ -10157,8 +10453,10 @@ export const DovizFisiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* 80mm Termal e-Döviz Fişi Yazdırma Modalı */}
+      {showPrintModal && (
       <DovizFisiPrintModal
         show={showPrintModal}
         autoPrint={isPendingDirectPrint}
@@ -10218,8 +10516,10 @@ export const DovizFisiPage: React.FC = () => {
         kurKurusSayisi={kurKurusSayisi}
         tlKurusSayisi={tlKurusSayisi}
       />
+      )}
 
       {/* A4 Teklif & Müşteri Tanı Formu Modalı (Kayıt etmeden çıkartır) */}
+      {showTeklifTaniModal && (
       <DovizTeklifTaniModal
         show={showTeklifTaniModal}
         onHide={() => setShowTeklifTaniModal(false)}
@@ -10294,8 +10594,10 @@ export const DovizFisiPage: React.FC = () => {
         }
         ettn={lines?.[0]?.ettn || (lines?.[0] as any)?.guid || ""}
       />
+      )}
 
       {/* F3) İstatistik Kodu Seçim Modalı */}
+      {showIstatistikModal && (
       <IstatistikSecimModal
         show={showIstatistikModal}
         onClose={() => {
@@ -10322,8 +10624,10 @@ export const DovizFisiPage: React.FC = () => {
         currentKod={istatistikKodu}
         initialSearchTerm={istatistikSearchTerm}
       />
+      )}
 
       {/* F4) Kur Listesi (Gişe Kurları) Modalı */}
+      {showKurListesiModal && (
       <KurListesiModal
         show={showKurListesiModal}
         onClose={() => setShowKurListesiModal(false)}
@@ -10333,8 +10637,10 @@ export const DovizFisiPage: React.FC = () => {
         tip={tip}
         kurTuru={kurTuru}
       />
+      )}
 
       {/* F5) Vezne Bakiye Modalı */}
+      {showVezneBakiyeModal && (
       <VezneBakiyeModal
         show={showVezneBakiyeModal}
         onClose={() => setShowVezneBakiyeModal(false)}
@@ -10343,6 +10649,7 @@ export const DovizFisiPage: React.FC = () => {
         bakiyeler={vezneBakiyeler}
         tlKurusSayisi={tlKurusSayisi}
       />
+      )}
 
       {/* G- Vezne Transferi Kayıt Modalı */}
       {showVezneTransferModal && (
@@ -10382,6 +10689,7 @@ export const DovizFisiPage: React.FC = () => {
       )}
 
       {/* Shift+F5) Banka TL Hesabı Modalı */}
+      {showBankaTlHesabiModal && (
       <BankaTlHesabiModal
         show={showBankaTlHesabiModal}
         onClose={() => setShowBankaTlHesabiModal(false)}
@@ -10399,8 +10707,10 @@ export const DovizFisiPage: React.FC = () => {
         // örnek (DEFAULT_BANKALAR) kimlikleri gerçek kart değil, verilmez (ortak alan denetimi 19.11.2026, #14)
         cariBankalar={lookupData.bankaList === DEFAULT_BANKALAR ? [] : lookupData.bankaList}
       />
+      )}
 
       {/* F6) TL Hesabı Modalı */}
+      {showTlHesabiModal && (
       <TlHesabiModal
         show={showTlHesabiModal}
         onClose={() => setShowTlHesabiModal(false)}
@@ -10423,8 +10733,10 @@ export const DovizFisiPage: React.FC = () => {
             : lines[activeRowIndex]?.kur
         }
       />
+      )}
 
       {/* F9) Para Sayma (Banknot Say) Modalı */}
+      {paraUstuPrompt !== null && (
       <ParaUstuModal
         show={paraUstuPrompt !== null}
         onClose={() => {
@@ -10443,8 +10755,10 @@ export const DovizFisiPage: React.FC = () => {
           r?.({ alinanPara: ap, paraUstu: pu });
         }}
       />
+      )}
 
       {/* Kur Sapma Onay Popup Modalı */}
+      {kurSapmaPopup !== null && (
       <Modal
         show={kurSapmaPopup !== null}
         onHide={() => {
@@ -10497,6 +10811,8 @@ export const DovizFisiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
+      {showParaSaymaModal && (
       <ParaSaymaModal
         show={showParaSaymaModal}
         onClose={() => setShowParaSaymaModal(false)}
@@ -10506,8 +10822,10 @@ export const DovizFisiPage: React.FC = () => {
         tlKurusSayisi={tlKurusSayisi}
         dovizKurusSayisi={dovizKurusSayisi}
       />
+      )}
 
       {/* MASAK Sorgulama Sonuç Modalı */}
+      {masakModalOpen && (
       <MasakSonucModal
         show={masakModalOpen}
         onHide={() => setMasakModalOpen(false)}
@@ -10517,8 +10835,10 @@ export const DovizFisiPage: React.FC = () => {
         searched={masakResult.searched}
         onOpenMasakManagement={() => setMasakManagementOpen(true)}
       />
+      )}
 
       {/* 1) Kişi Seçildiğinde MASAK Sınırı Uyarısı Modalı (Sayfa Ortasında) */}
+      {showMasakCustomerWarningModal && (
       <Modal show={showMasakCustomerWarningModal} onHide={() => setShowMasakCustomerWarningModal(false)} centered>
         <Modal.Header closeButton className="py-2 bg-warning-subtle text-warning-emphasis">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
@@ -10553,8 +10873,10 @@ export const DovizFisiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* 2a) Kaydederken Zorunlu MASAK Bilgileri Eksik Modalı (Sayfa Ortasında) */}
+      {showMasakMissingModal && (
       <Modal show={showMasakMissingModal} onHide={() => setShowMasakMissingModal(false)} centered>
         <Modal.Header closeButton className="py-2 bg-danger-subtle text-danger">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
@@ -10594,9 +10916,11 @@ export const DovizFisiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* 2b) Kaydederken MASAK Sınırı Onay Modalı (Sayfa Ortasında: Yine de Kaydedeyim mi / Vazgeç) */}
       {/* Pencere kapanınca "doğrudan yazdır" bayrağı sıfırlanır: açık kalırsa sonraki F9 önizlemesi kendiliğinden yazdırıyordu (ortak alan denetimi 20.11.2026) */}
+      {showMasakConfirmModal && (
       <Modal show={showMasakConfirmModal} onHide={() => { setShowMasakConfirmModal(false); setIsPendingDirectPrint(false); }} centered>
         <Modal.Header closeButton className="py-2 bg-warning-subtle text-warning-emphasis">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
@@ -10647,8 +10971,10 @@ export const DovizFisiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* Silme Onay Modalı */}
+      {showDeleteConfirmModal && (
       <Modal show={showDeleteConfirmModal} onHide={() => setShowDeleteConfirmModal(false)} centered size="sm">
         <Modal.Header closeButton className="py-2.5 bg-light">
           <Modal.Title className="fs-6 fw-bold text-danger d-flex align-items-center gap-2">
@@ -10671,12 +10997,15 @@ export const DovizFisiPage: React.FC = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* MASAK Resmi Listeleri Yönetme / Güncelleme Modalı */}
+      {masakManagementOpen && (
       <MasakModal
         show={masakManagementOpen}
         onHide={() => setMasakManagementOpen(false)}
       />
+      )}
       <SayfaCikisUyarisiModal
         acik={cikisUyarisi.acik}
         vazgec={cikisUyarisi.vazgec}

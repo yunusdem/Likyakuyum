@@ -1082,9 +1082,12 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const kurAcik = kurDegistirilebilir(kYetki);
   const milyemAcik = milyemDegistirilebilir(kYetki);
 
-  // Sayfa açıldığında veya yenilendiğinde yerel PrinterAgent'ın güncel olduğunu doğrula
+  // Sayfa açıldığında yerel PrinterAgent güncelleme kontrolünü arka plana ertele (açılış gecikmesi yaratmasın)
   useEffect(() => {
-    checkAndAutoUpdatePrinterAgent(true).catch(() => { });
+    const timer = setTimeout(() => {
+      checkAndAutoUpdatePrinterAgent(false).catch(() => { });
+    }, 2000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Sayfa açıldığında ve pencere odaklandığında kullanıcı yetkilerini (milyem/kur yetkisi vb.) sunucudan tazele
@@ -1121,21 +1124,45 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     }, 3500);
   }, []);
 
-  // Lookups
-  const [vezneList, setVezneList] = useState<VezneItem[]>([]);
-  const [urunList, setUrunList] = useState<UrunItem[]>([]);
+  // Lookups (FastLookupCache senkron ön-dolum ile 0ms ilk render ve çift render önleme)
+  const [vezneList, setVezneList] = useState<VezneItem[]>(() => FastLookupCache.getSync<VezneItem[]>("vezneler") || []);
+  const [urunList, setUrunList] = useState<UrunItem[]>(() => FastLookupCache.getSync<UrunItem[]>("urunler") || []);
   const [bakiyeler, setBakiyeler] = useState<VezneBakiyeItem[]>([]);
   const [fisList, setFisList] = useState<SarrafFisListItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
-  const [cariList, setCariList] = useState<CariKartItem[]>([]);
+  const [cariList, setCariList] = useState<CariKartItem[]>(() => FastLookupCache.getSync<CariKartItem[]>("cariKartlar") || []);
   const [kayitsizMusteriList, setKayitsizMusteriList] = useState<KayitsizMusteriItem[]>([]);
   const [showCariModal, setShowCariModal] = useState<boolean>(false);
-  const [kurSatirlar, setKurSatirlar] = useState<KurRowItem[]>([]);
+  const [kurSatirlar, setKurSatirlar] = useState<KurRowItem[]>(() => {
+    const cachedKur0 = FastLookupCache.getSync<any>("kurTablo_0");
+    const cachedKur1 = FastLookupCache.getSync<any>("kurTablo_1");
+    if (!cachedKur0?.satirlar && !cachedKur1?.satirlar) return [];
+    const mergedKurMap = new Map<string, KurRowItem>();
+    (cachedKur1?.satirlar || []).forEach((k: KurRowItem) => {
+      const key = k.kod ? k.kod.toUpperCase().trim() : (k.paraId ? `ID_${k.paraId}` : (k.ad ? k.ad.toUpperCase().trim() : ""));
+      if (key) mergedKurMap.set(key, k);
+    });
+    (cachedKur0?.satirlar || []).forEach((k: KurRowItem) => {
+      const key = k.kod ? k.kod.toUpperCase().trim() : (k.paraId ? `ID_${k.paraId}` : (k.ad ? k.ad.toUpperCase().trim() : ""));
+      if (key) {
+        const existing = mergedKurMap.get(key);
+        mergedKurMap.set(key, {
+          ...existing,
+          ...k,
+          efektifAlis: (k.efektifAlis !== null && k.efektifAlis !== undefined && Number(k.efektifAlis) > 0) ? k.efektifAlis : (existing?.efektifAlis ?? null),
+          efektifSatis: (k.efektifSatis !== null && k.efektifSatis !== undefined && Number(k.efektifSatis) > 0) ? k.efektifSatis : (existing?.efektifSatis ?? null),
+          dovizAlis: (k.dovizAlis !== null && k.dovizAlis !== undefined && Number(k.dovizAlis) > 0) ? k.dovizAlis : (existing?.dovizAlis ?? null),
+          dovizSatis: (k.dovizSatis !== null && k.dovizSatis !== undefined && Number(k.dovizSatis) > 0) ? k.dovizSatis : (existing?.dovizSatis ?? null),
+        });
+      }
+    });
+    return Array.from(mergedKurMap.values());
+  });
   const [paraList, setParaList] = useState<ParaItem[]>(() => FastLookupCache.getSync<ParaItem[]>("paralar") || []);
-  const [numeratorList, setNumeratorList] = useState<NumeratorItem[]>([]);
-  const [bankaList, setBankaList] = useState<BankaHesapItem[]>([]);
-  const [posList, setPosList] = useState<PosCihaziItem[]>([]);
-  const [iskontoList, setIskontoList] = useState<IskontoItem[]>([]);
+  const [numeratorList, setNumeratorList] = useState<NumeratorItem[]>(() => FastLookupCache.getSync<NumeratorItem[]>("numerators") || []);
+  const [bankaList, setBankaList] = useState<BankaHesapItem[]>(() => FastLookupCache.getSync<BankaHesapItem[]>("bankalar") || []);
+  const [posList, setPosList] = useState<PosCihaziItem[]>(() => FastLookupCache.getSync<PosCihaziItem[]>("poslar") || []);
+  const [iskontoList, setIskontoList] = useState<IskontoItem[]>(() => FastLookupCache.getSync<IskontoItem[]>("iskontolar") || []);
   const [showOdemeCariModal, setShowOdemeCariModal] = useState<boolean>(false);
   const [showOdemeParaIskontoModal, setShowOdemeParaIskontoModal] = useState<boolean>(false);
   const [showNewIskontoModal, setShowNewIskontoModal] = useState<boolean>(false);
@@ -1144,57 +1171,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const [odemeLookupSearchTerm, setOdemeLookupSearchTerm] = useState<string>("");
   const [targetOdemeRowIdForLookup, setTargetOdemeRowIdForLookup] = useState<string | null>(null);
 
-  // Synchronous cache pre-fill from FastLookupCache for 0ms instant initial rendering
+  // Arka planda güncel para ve iskonto listelerini yenile
   useEffect(() => {
-    const cachedVezneler = FastLookupCache.getSync<VezneItem[]>("vezneler");
-    if (cachedVezneler && cachedVezneler.length > 0 && !vezneList.length) setVezneList(cachedVezneler);
-
-    const cachedUrunler = FastLookupCache.getSync<UrunItem[]>("urunler");
-    if (cachedUrunler && cachedUrunler.length > 0 && !urunList.length) setUrunList(cachedUrunler);
-
-    const cachedCariler = FastLookupCache.getSync<CariKartItem[]>("cariKartlar");
-    if (cachedCariler && cachedCariler.length > 0 && !cariList.length) setCariList(cachedCariler);
-
-    const cachedNumerators = FastLookupCache.getSync<NumeratorItem[]>("numerators");
-    if (cachedNumerators && cachedNumerators.length > 0 && !numeratorList.length) setNumeratorList(cachedNumerators);
-
-    const cachedBankalar = FastLookupCache.getSync<BankaHesapItem[]>("bankalar");
-    if (cachedBankalar && cachedBankalar.length > 0 && !bankaList.length) setBankaList(cachedBankalar);
-
-    const cachedPoslar = FastLookupCache.getSync<PosCihaziItem[]>("poslar");
-    if (cachedPoslar && cachedPoslar.length > 0 && !posList.length) setPosList(cachedPoslar);
-
-    const cachedIskontolar = FastLookupCache.getSync<IskontoItem[]>("iskontolar");
-    if (cachedIskontolar && cachedIskontolar.length > 0 && !iskontoList.length) setIskontoList(cachedIskontolar);
-
-    const cachedKur0 = FastLookupCache.getSync<any>("kurTablo_0");
-    const cachedKur1 = FastLookupCache.getSync<any>("kurTablo_1");
-    if (cachedKur0?.satirlar || cachedKur1?.satirlar) {
-      const mergedKurMap = new Map<string, KurRowItem>();
-      (cachedKur1?.satirlar || []).forEach((k: KurRowItem) => {
-        const key = k.kod ? k.kod.toUpperCase().trim() : (k.paraId ? `ID_${k.paraId}` : (k.ad ? k.ad.toUpperCase().trim() : ""));
-        if (key) mergedKurMap.set(key, k);
-      });
-      (cachedKur0?.satirlar || []).forEach((k: KurRowItem) => {
-        const key = k.kod ? k.kod.toUpperCase().trim() : (k.paraId ? `ID_${k.paraId}` : (k.ad ? k.ad.toUpperCase().trim() : ""));
-        if (key) {
-          const existing = mergedKurMap.get(key);
-          mergedKurMap.set(key, {
-            ...existing,
-            ...k,
-            efektifAlis: (k.efektifAlis !== null && k.efektifAlis !== undefined && Number(k.efektifAlis) > 0) ? k.efektifAlis : (existing?.efektifAlis ?? null),
-            efektifSatis: (k.efektifSatis !== null && k.efektifSatis !== undefined && Number(k.efektifSatis) > 0) ? k.efektifSatis : (existing?.efektifSatis ?? null),
-            dovizAlis: (k.dovizAlis !== null && k.dovizAlis !== undefined && Number(k.dovizAlis) > 0) ? k.dovizAlis : (existing?.dovizAlis ?? null),
-            dovizSatis: (k.dovizSatis !== null && k.dovizSatis !== undefined && Number(k.dovizSatis) > 0) ? k.dovizSatis : (existing?.dovizSatis ?? null),
-          });
-        }
-      });
-      setKurSatirlar(Array.from(mergedKurMap.values()));
-    }
-
-    const cachedParalar = FastLookupCache.getSync<ParaItem[]>("paralar");
-    if (cachedParalar && cachedParalar.length > 0) setParaList(cachedParalar);
-
     FastLookupCache.get("paralar", () => apiClient.get<ParaItem[]>("/para").then((r) => r.data || []))
       .then((p) => {
         if (p && p.length > 0) setParaList(p);
@@ -1929,7 +1907,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     );
   }, [companyDefinitions]);
 
-  const [printers, setPrinters] = useState<YaziciItem[]>([]);
+  const [printers, setPrinters] = useState<YaziciItem[]>(() => FastLookupCache.getSync<YaziciItem[]>("yazicilar") || []);
   const [istatistikId, setIstatistikId] = useState<number | null>(null);
   const [istatistikKodu, setIstatistikKodu] = useState<string>("");
 
@@ -1993,7 +1971,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   const prevTipRef = useRef<number>(tip);
 
   useEffect(() => {
-    PrinterService.getYazicilar().then(setPrinters).catch(() => { });
+    FastLookupCache.get("yazicilar", () => PrinterService.getYazicilar()).then(setPrinters).catch(() => { });
   }, []);
 
   // MASAK Sorgulama ve Limit Takip Durumu
@@ -2061,12 +2039,27 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
 
     const fallback = {
       isExceeded: false,
-      type: null as null | "altin" | "doviz" | "tl",
+      type: null as null | "altin" | "doviz" | "tl" | "kimlik",
       limitLabel: `TL: ${tlLimit.toLocaleString("tr-TR")} ₺ | Döviz: ${dovizLimit.toLocaleString("tr-TR")} ${limitParaKodu} | Altın: ${altinLimit.toLocaleString("tr-TR")} ${altinParaKodu}`,
       limitTitle: "MASAK Yasal Bildirim Sınırı Uyarısı",
     };
 
+    const cleanVkn = (detayVergiKimlikNo || "").replace(/\D/g, "");
+    const hasTcVkn = cleanVkn.length >= 10;
+    const rawDizaynForMasak = activeStat?.fisDizaynTipi ?? (activeStat as any)?.FIS_DIZAYN_TIPI ?? (activeStat as any)?.fis_dizayn_tipi ?? istatistikFisDizaynTipi;
+    const isGayriResmiFis = rawDizaynForMasak !== undefined && rawDizaynForMasak !== null && String(rawDizaynForMasak).trim() !== "" && Number(rawDizaynForMasak) === 1;
+    const kimlikExceededResult = (hasTcVkn && !isGayriResmiFis)
+      ? {
+          isExceeded: true,
+          type: "kimlik" as const,
+          limitLabel: "TC / VKN Beyanı (Tutar Bağımsız MASAK Sınırı)",
+          limitTitle: "MASAK Kimlik / VKN Bildirim Sınırı Uyarısı",
+        }
+      : null;
+
     if (!isMasakKontroluVar) {
+      const hasAnyRow = lines.some((l) => (l.urunId > 0 || (l.urunKodu && l.urunKodu.trim() !== "")) && (parseDecimal(l.miktar) > 0 || parseDecimal(l.adet) > 0 || parseDecimal(l.tutar) > 0));
+      if (kimlikExceededResult && hasAnyRow) return kimlikExceededResult;
       return fallback;
     }
 
@@ -2285,6 +2278,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       };
     }
 
+    // 4) TC / VKN girilmişse tutara bakmaksızın MASAK sınırı devreye girer
+    if (kimlikExceededResult) {
+      return kimlikExceededResult;
+    }
+
     return fallback;
   }, [
     isMasakKontroluVar,
@@ -2302,6 +2300,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     tip,
     totalTutar,
     paraList,
+    detayVergiKimlikNo,
   ]);
 
   const isMasakLimitExceeded = masakStatus.isExceeded;
@@ -2508,6 +2507,26 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       setIsSearchingMasak(false);
     }
   };
+
+  // T.C. Kimlik / VKN elle girildiğinde (10-11 hane) otomatik MASAK yaptırım / dondurulanlar sorgusu
+  const lastAutoMasakVknRef = useRef<string>("");
+  useEffect(() => {
+    const cleanVkn = (detayVergiKimlikNo || "").replace(/\D/g, "");
+    const hasTc = cleanVkn.length >= 10;
+    if (!hasTc) {
+      if (!cleanVkn) {
+        lastAutoMasakVknRef.current = "";
+        setMasakResult({ matches: [], searched: false });
+      }
+      return;
+    }
+    if (lastAutoMasakVknRef.current === cleanVkn) return;
+    const timer = setTimeout(() => {
+      lastAutoMasakVknRef.current = cleanVkn;
+      void handleSearchMasak(unvan || detayUnvan, cleanVkn);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [detayVergiKimlikNo]);
 
 
 
@@ -2947,10 +2966,11 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       navigate(location.pathname, { replace: true });
     }
     resetForm();
+    showNotif("info", "Form temizlendi.");
     setTimeout(() => {
       islemRef.current?.focus();
     }, 150);
-  }, [location.search, location.pathname, navigate, resetForm]);
+  }, [location.search, location.pathname, navigate, resetForm, showNotif]);
 
   // Load lookups & user's default vezne & load initial record on first load (Instant Load with FastLookupCache)
   const loadLookupsAndData = useCallback(async () => {
@@ -3496,19 +3516,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         normUnvan === "ISIM BEYAN EDILMEMISTIR" ||
         normUnvan.includes("BEYAN");
 
-      const missingFields: string[] = [];
-      if (isAnon) missingFields.push("İsim / Ünvan");
-      if (!detayVergiKimlikNo || !detayVergiKimlikNo.trim()) missingFields.push("T.C. Kimlik / VKN");
-      if (!detayAdres || !detayAdres.trim()) missingFields.push("Müşteri Adresi");
-      if (detayKisilikTipi === undefined || detayKisilikTipi === null) missingFields.push("Hukuki Yapı / Kişilik Tipi");
-
-      if (missingFields.length > 0) {
-        setMasakMissingFields(missingFields);
-        setShowMasakMissingModal(true);
-        return;
-      }
-
-      // Sınır aşıldığında MASAK sorgulamasını otomatik çalıştır (Önceden sorgulanmışsa yeniden bekletmeden devam eder)
+      // 1) Önce MASAK yaptırım / malvarlığı dondurulanlar sorgusunu çalıştır
       try {
         const cleanName = isAnon ? "" : (unvan || detayUnvan || "").trim();
         const cleanId = (detayVergiKimlikNo || "").trim();
@@ -3540,6 +3548,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }
       } catch (err) {
         console.error("Auto MASAK check error:", err);
+      }
+
+      const missingFields: string[] = [];
+      if (isAnon) missingFields.push("İsim / Ünvan");
+      if (!detayVergiKimlikNo || !detayVergiKimlikNo.trim()) missingFields.push("T.C. Kimlik / VKN");
+      if (!detayAdres || !detayAdres.trim()) missingFields.push("Müşteri Adresi");
+      if (detayKisilikTipi === undefined || detayKisilikTipi === null) missingFields.push("Hukuki Yapı / Kişilik Tipi");
+
+      if (missingFields.length > 0) {
+        setMasakMissingFields(missingFields);
+        setShowMasakMissingModal(true);
+        return;
       }
     }
 
@@ -3940,7 +3960,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     detayBabaAdi, detayAnneAdi, detayAdres, detayEposta, detayTelefonNo, detayDogumTarihi,
     detayDogumYeri, detayKimlikSeriNo, detayPasaportNo, detayKimlikBelgeTuru,
     detayKimlikGecerlilikTarihi, detayVekilAdi, detayVekilKimlikNo,
-    cariKartId, lines, odemeRows, totalTutar, farkHas, user?.id, bakiyeler, fisList, resetForm, isDuzeltmeMode, loadFisById]);
+    cariKartId, lines, odemeRows, totalTutar, farkHas, user?.id, bakiyeler, fisList, resetForm, isDuzeltmeMode, loadFisById,
+    isMasakLimitExceeded, isMasakKontroluVar, masakResult]);
 
   // Çift kayıt engeli: F1 / F10 / Kaydet art arda basılınca ikinci çağrı, ilki (POS tahsilatı ve yazdırma dahil) bitene kadar
   // yok sayılır; kilit her durumda finally'de bırakılır (PerakendeFisiPage isSubmittingRef gibi; ortak alan denetimi 19.11.2026, #35)
@@ -4379,29 +4400,29 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     const isGayriResmi = (istatistikFisDizaynTipi === 1) || (activeStat && Number(activeStat.fisDizaynTipi) === 1);
 
     const selectedCustomerName = (result.unvan || "").trim();
+    const selectedCustomerVkn = (result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || "").trim();
+    const hasValidName = Boolean(selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN"));
+    const cleanSelectedVkn = selectedCustomerVkn.replace(/\D/g, "");
+    const hasValidVkn = cleanSelectedVkn.length >= 10;
     // "MASAK uyarısı versin" işaretsizse müşteri seçilirken otomatik sorgu / uyarı açılmaz; kayıttaki kontrol sürer
-    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && !isGayriResmi && selectedCustomerName && !selectedCustomerName.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
-      handleSearchMasak(selectedCustomerName, result.vergiKimlikNo || (raw && raw.vergiKimlikNo) || undefined);
+    if ((isMasakKontroluVar || hasValidVkn) && kYetkiRef.current.masakUyarisi && !isGayriResmi && (hasValidName || hasValidVkn)) {
+      handleSearchMasak(hasValidName ? selectedCustomerName : "", selectedCustomerVkn || undefined);
     } else {
       setMasakResult({ matches: [], searched: false });
     }
-
-    if (isMasakLimitExceeded) {
-      setShowMasakCustomerWarningModal(true);
-    }
-  }, [isMasakKontroluVar, handleSearchMasak, isMasakLimitExceeded, tip, statisticList, selectedStatistic, istatistikFisDizaynTipi, istatistikId, istatistikKodu]);
+  }, [isMasakKontroluVar, handleSearchMasak, tip, statisticList, selectedStatistic, istatistikFisDizaynTipi, istatistikId, istatistikKodu]);
 
   // GİB'den ad gelince müşteri seçilmiş gibi otomatik MASAK kontrolü (handleSelectCustomer ile aynı koşullar)
   gibSonrasiRef.current = (ad: string, no: string) => {
     const activeStat = selectedStatistic || statisticList.find((s) => (istatistikId && s.id === istatistikId) || (s.kod && s.kod === istatistikKodu));
     const isGayriResmi = (istatistikFisDizaynTipi === 1) || (activeStat && Number(activeStat.fisDizaynTipi) === 1);
-    if (isMasakKontroluVar && kYetkiRef.current.masakUyarisi && !isGayriResmi && ad && !ad.toLocaleUpperCase("tr-TR").includes("BEYAN")) {
-      handleSearchMasak(ad, no);
+    const cleanNo = (no || "").replace(/\D/g, "");
+    const hasValidNo = cleanNo.length >= 10;
+    const hasValidAd = Boolean(ad && !ad.toLocaleUpperCase("tr-TR").includes("BEYAN"));
+    if ((isMasakKontroluVar || hasValidNo) && kYetkiRef.current.masakUyarisi && !isGayriResmi && (hasValidAd || hasValidNo)) {
+      handleSearchMasak(hasValidAd ? ad : "", no);
     } else {
       setMasakResult({ matches: [], searched: false });
-    }
-    if (isMasakLimitExceeded) {
-      setShowMasakCustomerWarningModal(true);
     }
   };
 
@@ -8901,10 +8922,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 backgroundColor: activeFisThemeBg,
                 color: activeFisThemeText,
                 fontWeight: 800,
-                fontSize: "13.5px",
+                fontSize: "14px",
                 letterSpacing: "3px",
-                minWidth: "220px",
-                padding: "4px 30px",
+                minWidth: "320px",
+                padding: "4px 48px",
                 borderRadius: "6px",
                 height: "30px",
                 display: "inline-flex",
@@ -11628,7 +11649,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                     title={`MASAK Bildirim Sınırı Aşıldı: ${masakLimitLabel}`}
                   >
                     <IconAlertTriangle size={14} className="text-danger" />
-                    <span>MASAK Sınırı Aşıldı ({masakStatus.type === "altin" ? "Altın" : masakStatus.type === "doviz" ? "Döviz" : "TL"})</span>
+                    <span>MASAK Sınırı ({masakStatus.type === "altin" ? "Altın" : masakStatus.type === "doviz" ? "Döviz" : masakStatus.type === "kimlik" ? "TC/VKN" : "TL"})</span>
                   </span>
                 )}
               </div>
@@ -11657,6 +11678,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       {/* ─── MODALS ───────────────────────────────────────────────────────────── */}
 
       {/* Cari / Müşteri Seçim Modalı (Kayıtlı Cariler & Kayıtsız Müşteriler) */}
+      {showCariModal && (
       <MusteriSecimModal
         show={showCariModal}
         initialSearchTerm={cariSearchTerm}
@@ -11770,8 +11792,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }}
         currentUnvan={unvan}
       />
+      )}
 
       {/* Fiş Ara Modalı (Dürbün / Fiş Listesi) */}
+      {showFisModal && (
       <FisDurbunModal<SarrafFisListItem>
         show={showFisModal}
         onHide={() => setShowFisModal(false)}
@@ -11794,8 +11818,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           loadFisById(item.sarrafFisiId);
         }}
       />
+      )}
 
       {/* Vezne Seç Modalı */}
+      {showVezneModal && (
       <LookupModal<VezneItem>
         show={showVezneModal}
         onHide={() => setShowVezneModal(false)}
@@ -11815,8 +11841,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setBakiyeler(bak);
         }}
       />
+      )}
 
       {/* Ürün Seç Modalı */}
+      {showUrunModal && (
       <LookupModal<UrunItem>
         show={showUrunModal}
         selectOnDoubleClick={true}
@@ -11903,6 +11931,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setActiveOdemeRowIdForUrun(null);
         }}
       />
+      )}
 
       {/* Yeni Ürün / Para Tanımı Modalı */}
       {showNewProductModal && (
@@ -11954,6 +11983,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       )}
 
       {/* Ödeme Tablosu: Cari Seçim Modalı */}
+      {showOdemeCariModal && (
       <LookupModal<CariKartItem>
         show={showOdemeCariModal}
         searchByCodeOnly={true}
@@ -11987,8 +12017,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setShowOdemeCariModal(false);
         }}
       />
+      )}
 
       {/* Ödeme Tablosu: Para / İskonto / Döviz Seçim Modalı */}
+      {showOdemeParaIskontoModal && (
       <LookupModal<any>
         show={showOdemeParaIskontoModal}
         selectOnDoubleClick={true}
@@ -12052,6 +12084,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setShowOdemeParaIskontoModal(false);
         }}
       />
+      )}
 
       {/* Yeni İskonto Tanımı Modalı */}
       {showNewIskontoModal && (
@@ -12094,6 +12127,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       )}
 
       {/* Ödeme Tablosu: Cari Para (Para / Döviz) Seçim Modalı */}
+      {showOdemeParaModal && (
       <LookupModal<UrunItem>
         show={showOdemeParaModal}
         selectOnDoubleClick={true}
@@ -12125,8 +12159,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setShowOdemeParaModal(false);
         }}
       />
+      )}
 
       {/* Ödeme Tablosu: Banka / İskonto / Hesap Seçim Modalı */}
+      {showOdemeHesapModal && (
       <LookupModal<any>
         show={showOdemeHesapModal}
         selectedId={(() => {
@@ -12178,8 +12214,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setOdemeLookupSearchTerm("");
         }}
       />
+      )}
 
       {/* Ödeme Tablosu: POS Seçim Modalı */}
+      {showOdemePosModal && (
       <LookupModal<PosCihaziItem>
         show={showOdemePosModal}
         searchByCodeOnly={true}
@@ -12221,6 +12259,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           setOdemeLookupSearchTerm("");
         }}
       />
+      )}
 
       {/* Yeni Cari Kart Tanımı Modalı */}
       {showNewCariModal && (
@@ -12360,6 +12399,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       )}
 
       {/* 1) Kişi Seçildiğinde MASAK Sınırı Uyarısı Modalı (Sayfa Ortasında) */}
+      {showMasakCustomerWarningModal && (
       <Modal show={showMasakCustomerWarningModal} onHide={() => setShowMasakCustomerWarningModal(false)} centered>
         <Modal.Header closeButton className="py-2 bg-warning-subtle text-warning-emphasis">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
@@ -12394,8 +12434,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* 2) Kaydederken Zorunlu MASAK Bilgileri Eksik Modalı (Sayfa Ortasında) */}
+      {showMasakMissingModal && (
       <Modal show={showMasakMissingModal} onHide={() => setShowMasakMissingModal(false)} centered>
         <Modal.Header closeButton className="py-2 bg-danger-subtle text-danger">
           <Modal.Title className="h6 mb-0 d-flex align-items-center gap-2">
@@ -12435,8 +12477,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* Silme Onay Modalı */}
+      {showDeleteConfirm && (
       <Modal show={showDeleteConfirm} onHide={() => setShowDeleteConfirm(false)} centered size="sm">
         <Modal.Header closeButton className="py-2.5 bg-light">
           <Modal.Title className="fs-6 fw-bold text-danger d-flex align-items-center gap-2">
@@ -12455,8 +12499,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           <Button size="sm" variant="danger" onClick={handleDelete}>Evet, Sil</Button>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* ─── F8 Detay Modalı: Label solda, Input sağda, Enter/Yön Tuşları ile Geçiş ─ */}
+      {showDetayModal && (
       <Modal show={showDetayModal} onHide={() => setShowDetayModal(false)} centered size="lg">
         <Modal.Header closeButton className="py-2">
           <Modal.Title className="h6 mb-0 d-flex align-items-center">
@@ -12728,8 +12774,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </div>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* MASAK Sorgulama Sonuç Modalı */}
+      {masakModalOpen && (
       <MasakSonucModal
         show={masakModalOpen}
         onHide={() => setMasakModalOpen(false)}
@@ -12739,14 +12787,18 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         searched={masakResult.searched}
         onOpenMasakManagement={() => setMasakManagementOpen(true)}
       />
+      )}
 
       {/* MASAK Resmi Listeleri Yönetme / Güncelleme Modalı */}
+      {masakManagementOpen && (
       <MasakModal
         show={masakManagementOpen}
         onHide={() => setMasakManagementOpen(false)}
       />
+      )}
 
       {/* F3) İstatistik Kodu Seçim Modalı */}
+      {showIstatistikModal && (
       <IstatistikSecimModal
         show={showIstatistikModal}
         initialSearchTerm={istatistikSearchTerm}
@@ -12768,8 +12820,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         }}
         currentKod={istatistikKodu}
       />
+      )}
 
       {/* 80mm POS & A4 Sarraf Fişi Yazdırma Modalı */}
+      {showPrintModal && (
       <SarrafFisiPrintModal
         show={showPrintModal}
         autoPrint={isPendingDirectPrint}
@@ -12804,8 +12858,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         odenenTutar={printSnapshot?.odenenTutar ?? totalOdemeTutar}
         kalanTutar={printSnapshot?.kalanTutar ?? farkTL}
       />
+      )}
 
       {/* A4 Teklif & Müşteri Tanı Formu Modalı (Kayıt etmeden çıkartır) */}
+      {showTeklifTaniModal && (
       <DovizTeklifTaniModal
         pageType="sarraf"
         show={showTeklifTaniModal}
@@ -12862,8 +12918,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         vezneAd={vezneList.find((v) => v.id === vezneId)?.ad || ""}
         companyDefinitions={companyDefinitions}
       />
+      )}
 
       {/* Ürün ve Ödeme Tablosu Fark Onay Modalı */}
+      {showFarkConfirmModal.show && (
       <Modal
         show={showFarkConfirmModal.show}
         onHide={() => setShowFarkConfirmModal({ show: false, andPrint: false })}
@@ -12934,8 +12992,10 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </div>
         </Modal.Footer>
       </Modal>
+      )}
 
       {/* Kalan Fark İçin İskonto Seçim Modalı */}
+      {showFarkIskontoSecimModal.show && (
       <Modal
         show={showFarkIskontoSecimModal.show}
         onHide={() => setShowFarkIskontoSecimModal({ show: false, andPrint: false })}
@@ -13115,6 +13175,8 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
           </div>
         </Modal.Footer>
       </Modal>
+      )}
+      {showBankaTlHesabiModal && (
       <BankaTlHesabiModal
         show={showBankaTlHesabiModal}
         onClose={() => setShowBankaTlHesabiModal(false)}
@@ -13137,6 +13199,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
         initialBankaAciklama={bankaAciklama}
         onApply={handleApplyBankaTlHesabi}
       />
+      )}
       <SayfaCikisUyarisiModal
         acik={cikisUyarisi.acik}
         vazgec={cikisUyarisi.vazgec}

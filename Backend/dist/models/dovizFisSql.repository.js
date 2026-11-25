@@ -636,6 +636,44 @@ export class DovizFisSqlRepository {
                   END;
                 END;
 
+                -- Otomatik üretilen seri no TODVZ_FIS içinde zaten varsa çakışmayan sıradaki numaraya ilerle
+                DECLARE @SP_SERI_RETRY INT = 0;
+                WHILE @SP_SERI_RETRY < 200 AND @SERI_NO IS NOT NULL AND EXISTS(SELECT 1 FROM TODVZ_FIS WHERE SERI_NO = @SERI_NO)
+                BEGIN
+                  SET @SP_SERI_RETRY = @SP_SERI_RETRY + 1;
+                  DECLARE @SP_PREV_SERI VARCHAR(20) = @SERI_NO;
+                  IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+                  BEGIN
+                    SET @SERI_NO = NULL;
+                    BEGIN TRY
+                      EXEC @DONUS_KODU = SODVZ_NUMERATOR_URET @NUMERATOR_TURU, @SERI_NO OUTPUT, @NUM_YAZICI_ID_SERI, @SAYFA_SAYISI, @ONEK OUTPUT, @ONUNE_SIFIR_KOY OUTPUT;
+                    END TRY
+                    BEGIN CATCH
+                    END CATCH;
+                  END;
+                  IF @SERI_NO IS NULL OR LEN(LTRIM(RTRIM(@SERI_NO))) = 0 OR @SERI_NO = @SP_PREV_SERI
+                  BEGIN
+                    DECLARE @SP_INC_DIGITS VARCHAR(30) = '';
+                    DECLARE @SP_INC_PREFIX VARCHAR(30) = '';
+                    DECLARE @SP_INC_I INT = 1;
+                    WHILE @SP_INC_I <= LEN(RTRIM(@SP_PREV_SERI))
+                    BEGIN
+                      DECLARE @SP_INC_CH CHAR(1) = SUBSTRING(RTRIM(@SP_PREV_SERI), @SP_INC_I, 1);
+                      IF @SP_INC_CH LIKE '[0-9]'
+                        SET @SP_INC_DIGITS = @SP_INC_DIGITS + @SP_INC_CH;
+                      ELSE IF LEN(@SP_INC_DIGITS) = 0
+                        SET @SP_INC_PREFIX = @SP_INC_PREFIX + @SP_INC_CH;
+                      SET @SP_INC_I = @SP_INC_I + 1;
+                    END;
+                    DECLARE @SP_INC_DLEN INT = CASE WHEN LEN(@SP_INC_DIGITS) > 0 THEN LEN(@SP_INC_DIGITS) ELSE 6 END;
+                    DECLARE @SP_INC_NUM BIGINT = ISNULL(TRY_CAST(@SP_INC_DIGITS AS BIGINT), 0) + 1;
+                    DECLARE @SP_INC_STR VARCHAR(30) = CAST(@SP_INC_NUM AS VARCHAR(30));
+                    IF LEN(@SP_INC_STR) < @SP_INC_DLEN
+                      SET @SP_INC_STR = REPLICATE('0', @SP_INC_DLEN - LEN(@SP_INC_STR)) + @SP_INC_STR;
+                    SET @SERI_NO = LEFT(ISNULL(@SP_INC_PREFIX, '') + @SP_INC_STR, 20);
+                  END;
+                END;
+
                 IF @SERI_NO IS NOT NULL
                 BEGIN
                   SET @SATIR_NO = 0;
@@ -1872,6 +1910,48 @@ export class DovizFisSqlRepository {
               SET @P_SERI_NO = @FALLBACK_ONEK + '000000001';
             END;
           END;
+
+          -- Otomatik üretilen Seri No TODVZ_FIS içinde zaten kayıtlıysa (numaratör geri kalmışsa) çakışmayan ilk numaraya ilerle
+          DECLARE @AUTO_SERI_RETRY INT = 0;
+          WHILE @AUTO_SERI_RETRY < 200 AND @P_SERI_NO IS NOT NULL AND EXISTS (SELECT 1 FROM TODVZ_FIS WHERE SERI_NO = @P_SERI_NO)
+          BEGIN
+            SET @AUTO_SERI_RETRY = @AUTO_SERI_RETRY + 1;
+            DECLARE @PREV_AUTO_SERI VARCHAR(20) = @P_SERI_NO;
+            DECLARE @NEXT_GEN_SERI VARCHAR(20) = NULL;
+            IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+            BEGIN
+              BEGIN TRY
+                EXEC @GEN_RET = SODVZ_NUMERATOR_URET @CALC_NUM_TUR, @NEXT_GEN_SERI OUTPUT, @CALC_YAZICI_ID, @ROW_COUNT, @GEN_ONEK OUTPUT, @GEN_SIFIR OUTPUT;
+              END TRY
+              BEGIN CATCH
+              END CATCH;
+            END;
+            IF @NEXT_GEN_SERI IS NOT NULL AND LEN(LTRIM(RTRIM(@NEXT_GEN_SERI))) > 0 AND LTRIM(RTRIM(@NEXT_GEN_SERI)) <> @PREV_AUTO_SERI
+            BEGIN
+              SET @P_SERI_NO = LTRIM(RTRIM(@NEXT_GEN_SERI));
+            END
+            ELSE
+            BEGIN
+              DECLARE @RS_DIGITS VARCHAR(30) = '';
+              DECLARE @RS_PREFIX VARCHAR(30) = '';
+              DECLARE @RS_I INT = 1;
+              WHILE @RS_I <= LEN(RTRIM(@PREV_AUTO_SERI))
+              BEGIN
+                DECLARE @RS_CH CHAR(1) = SUBSTRING(RTRIM(@PREV_AUTO_SERI), @RS_I, 1);
+                IF @RS_CH LIKE '[0-9]'
+                  SET @RS_DIGITS = @RS_DIGITS + @RS_CH;
+                ELSE IF LEN(@RS_DIGITS) = 0
+                  SET @RS_PREFIX = @RS_PREFIX + @RS_CH;
+                SET @RS_I = @RS_I + 1;
+              END;
+              DECLARE @RS_DLEN INT = CASE WHEN LEN(@RS_DIGITS) > 0 THEN LEN(@RS_DIGITS) ELSE 6 END;
+              DECLARE @RS_NUM BIGINT = ISNULL(TRY_CAST(@RS_DIGITS AS BIGINT), 0) + 1;
+              DECLARE @RS_STR VARCHAR(30) = CAST(@RS_NUM AS VARCHAR(30));
+              IF LEN(@RS_STR) < @RS_DLEN
+                SET @RS_STR = REPLICATE('0', @RS_DLEN - LEN(@RS_STR)) + @RS_STR;
+              SET @P_SERI_NO = LEFT(ISNULL(@RS_PREFIX, '') + @RS_STR, 20);
+            END;
+          END;
         END;
 
         -- Geçici tablodaki satırların SERI_NO alanını ardışık olarak dağıt
@@ -2063,6 +2143,48 @@ export class DovizFisSqlRepository {
             ELSE
             BEGIN
               SET @P_BELGE_NO = @FALLBACK_B_ONEK + '0000000000001';
+            END;
+          END;
+
+          -- Otomatik üretilen Belge No TODVZ_FIS içinde zaten kayıtlıysa çakışmayan ilk numaraya ilerle
+          DECLARE @AUTO_BELGE_RETRY INT = 0;
+          WHILE @AUTO_BELGE_RETRY < 200 AND @P_BELGE_NO IS NOT NULL AND EXISTS (SELECT 1 FROM TODVZ_FIS WHERE BELGE_NO = @P_BELGE_NO)
+          BEGIN
+            SET @AUTO_BELGE_RETRY = @AUTO_BELGE_RETRY + 1;
+            DECLARE @PREV_AUTO_BELGE VARCHAR(50) = @P_BELGE_NO;
+            DECLARE @NEXT_GEN_BELGE VARCHAR(50) = NULL;
+            IF OBJECT_ID('SODVZ_NUMERATOR_URET') IS NOT NULL
+            BEGIN
+              BEGIN TRY
+                EXEC @GEN_B_RET = SODVZ_NUMERATOR_URET @TARGET_BELGE_TUR, @NEXT_GEN_BELGE OUTPUT, @CALC_YAZICI_ID, @ROW_COUNT, @GEN_B_ONEK OUTPUT, @GEN_B_SIFIR OUTPUT;
+              END TRY
+              BEGIN CATCH
+              END CATCH;
+            END;
+            IF @NEXT_GEN_BELGE IS NOT NULL AND LEN(LTRIM(RTRIM(@NEXT_GEN_BELGE))) > 0 AND LTRIM(RTRIM(@NEXT_GEN_BELGE)) <> @PREV_AUTO_BELGE
+            BEGIN
+              SET @P_BELGE_NO = LTRIM(RTRIM(@NEXT_GEN_BELGE));
+            END
+            ELSE
+            BEGIN
+              DECLARE @RB_DIGITS VARCHAR(30) = '';
+              DECLARE @RB_PREFIX VARCHAR(30) = '';
+              DECLARE @RB_I INT = 1;
+              WHILE @RB_I <= LEN(RTRIM(@PREV_AUTO_BELGE))
+              BEGIN
+                DECLARE @RB_CH CHAR(1) = SUBSTRING(RTRIM(@PREV_AUTO_BELGE), @RB_I, 1);
+                IF @RB_CH LIKE '[0-9]'
+                  SET @RB_DIGITS = @RB_DIGITS + @RB_CH;
+                ELSE IF LEN(@RB_DIGITS) = 0
+                  SET @RB_PREFIX = @RB_PREFIX + @RB_CH;
+                SET @RB_I = @RB_I + 1;
+              END;
+              DECLARE @RB_DLEN INT = CASE WHEN LEN(@RB_DIGITS) > 0 THEN LEN(@RB_DIGITS) ELSE 9 END;
+              DECLARE @RB_NUM BIGINT = ISNULL(TRY_CAST(@RB_DIGITS AS BIGINT), 0) + 1;
+              DECLARE @RB_STR VARCHAR(30) = CAST(@RB_NUM AS VARCHAR(30));
+              IF LEN(@RB_STR) < @RB_DLEN
+                SET @RB_STR = REPLICATE('0', @RB_DLEN - LEN(@RB_STR)) + @RB_STR;
+              SET @P_BELGE_NO = LEFT(ISNULL(@RB_PREFIX, '') + @RB_STR, 50);
             END;
           END;
         END;

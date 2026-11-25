@@ -2,6 +2,8 @@ import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { logger } from "../utils/logger.js";
 import { ApiError } from "../utils/ApiError.js";
+import { POS_HAREKET_KOLONLARI, belgeTablolari, posHareketleriSql } from "../services/rapor/kaynak.js";
+import { TL_PARA_SQL } from "../services/rapor/raporOrtak.js";
 export class PosCihaziSqlRepository {
     static async ensureTables(pool) {
         try {
@@ -76,37 +78,14 @@ export class PosCihaziSqlRepository {
         try {
             const pool = await getDbPool(dbContext?.dbServer, dbContext?.dbName);
             await this.ensureTables(pool);
+            // Bakiye kaynağı POS Ekstresi raporuyla (POSEKS1) aynıdır — services/rapor/kaynak.ts posHareketleriSql (eski VODVZR_POS_EKSTRESI kapsamı): cihaz devri,
+            // POS'lu cari hareketler (tahsilat borç, bankaya aktarım alacak), sarraf fişinin kartlı tahsilatı, perakende fişinin kartlı tahsilatı / iadesi.
+            // Önceden ekran POS'lu cari hareketleri hiç almıyordu ve sarrafta başka kolona bakıyordu; ekran rapordan farklı bakiye gösteriyordu (denetim 24.11.2026).
+            // Ekran TL bakiyesidir (POS tahsilatı TL'dir; rapor para bazında ayırır).
             const query = `
-        DECLARE @devir FLOAT = 0;
-        SELECT @devir = ISNULL(DEVIR, 0) FROM dbo.TODVZ_POS_CIHAZI WHERE POS_CIHAZI_ID = @POS_CIHAZI_ID;
-
-        DECLARE @giris FLOAT = 0;
-        SELECT @giris = ISNULL((
-          SELECT SUM(os.TUTAR)
-          FROM dbo.TODVZ_ODEME_SATIRI os
-          JOIN dbo.TODVZ_SARRAF_FISI sf ON os.SARRAF_FISI_ID = sf.SARRAF_FISI_ID
-          WHERE os.POS_CIHAZI_ID = @POS_CIHAZI_ID AND os.ODEME_ARACI_TURU = 2 AND sf.TIP = 1
-        ), 0) + ISNULL((
-          SELECT SUM(fo.TUTAR)
-          FROM dbo.TODVZ_FATURA_ODEME fo
-          JOIN dbo.TODVZ_FATURA fat ON fo.FATURA_ID = fat.FATURA_ID
-          WHERE fo.POS_CIHAZI_ID = @POS_CIHAZI_ID AND fo.ODEME_ARACI_TURU = 2 AND fat.FATURA_TIPI = 1
-        ), 0);
-
-        DECLARE @cikis FLOAT = 0;
-        SELECT @cikis = ISNULL((
-          SELECT SUM(os.TUTAR)
-          FROM dbo.TODVZ_ODEME_SATIRI os
-          JOIN dbo.TODVZ_SARRAF_FISI sf ON os.SARRAF_FISI_ID = sf.SARRAF_FISI_ID
-          WHERE os.POS_CIHAZI_ID = @POS_CIHAZI_ID AND os.ODEME_ARACI_TURU = 2 AND sf.TIP = 0
-        ), 0) + ISNULL((
-          SELECT SUM(fo.TUTAR)
-          FROM dbo.TODVZ_FATURA_ODEME fo
-          JOIN dbo.TODVZ_FATURA fat ON fo.FATURA_ID = fat.FATURA_ID
-          WHERE fo.POS_CIHAZI_ID = @POS_CIHAZI_ID AND fo.ODEME_ARACI_TURU = 2 AND fat.FATURA_TIPI = 2
-        ), 0);
-
-        SELECT (@devir + @giris - @cikis) AS BAKIYE;
+        ;WITH X (${POS_HAREKET_KOLONLARI}) AS (${posHareketleriSql(await belgeTablolari(pool))})
+        SELECT ISNULL(SUM(ISNULL(X.borc, 0) - ISNULL(X.alacak, 0)), 0) AS BAKIYE
+        FROM X WHERE X.posCihaziId = @POS_CIHAZI_ID AND X.paraId = ${TL_PARA_SQL};
       `;
             const req = pool.request();
             req.input("POS_CIHAZI_ID", sql.Int, posCihaziId);
