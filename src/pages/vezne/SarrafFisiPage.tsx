@@ -1312,10 +1312,17 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     } catch { }
     return defaultColVisibility;
   });
+  const [manualColOverrides, setManualColOverrides] = useState<Partial<Record<keyof typeof defaultColVisibility, boolean>>>({});
 
   const toggleCol = (col: keyof typeof defaultColVisibility) => {
+    const currentlyVisible =
+      manualColOverrides[col] !== undefined
+        ? Boolean(manualColOverrides[col])
+        : Boolean(colVisibility[col] && activeGridCols[col]);
+    const nextVal = !currentlyVisible;
+    setManualColOverrides((prev) => ({ ...prev, [col]: nextVal }));
     setColVisibility((prev) => {
-      const next = { ...prev, [col]: !prev[col] };
+      const next = { ...prev, [col]: nextVal };
       try { localStorage.setItem(GRID_COL_STORAGE_KEY, JSON.stringify(next)); } catch { }
       return next;
     });
@@ -1955,6 +1962,101 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
   }, [istatistikFisDizaynTipi, activeStat, ebankaFisi, ebBagli]);
   const isKdvDisabledRef = useRef<boolean>(isKdvDisabled);
   isKdvDisabledRef.current = isKdvDisabled;
+
+  // Kalemler tablosunda pasif / veri girilemeyen ve içinde veri bulunmayan kolonları otomatik gizle
+  const activeGridCols = useMemo<Record<keyof typeof defaultColVisibility, boolean>>(() => {
+    const rowHasProduct = (r: GridRow) =>
+      Boolean((r.urunKodu && r.urunKodu.trim() !== "") || (r.urunAdi && r.urunAdi.trim() !== "") || r.urunId > 0 || (r.kur && Number(r.kur) > 0));
+    const filledRows = lines.filter(rowHasProduct);
+    const targetRows = filledRows.length > 0 ? filledRows : lines;
+
+    const getFlags = (r: GridRow) => {
+      const effTipi = resolveEffectiveUrunTipi({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
+      const isPara = effTipi === 0 && Boolean(r.urunKodu && r.urunKodu.trim());
+      const isZiynet = effTipi === 3 || isZiynetProduct({ urunTipi: r.urunTipi, kod: r.urunKodu, ad: r.urunAdi });
+      const isParaOrZiynet = isPara || isZiynet;
+      return { isPara, isZiynet, isParaOrZiynet };
+    };
+
+    const hasActiveAdet = targetRows.some((r) => {
+      const { isParaOrZiynet } = getFlags(r);
+      const isPassive = isParaOrZiynet && userDovizZiynetGirisSekli === 1;
+      return !isPassive || parseDecimal(r.adet) > 0;
+    });
+    const hasActiveMiktar = targetRows.some((r) => {
+      const { isParaOrZiynet } = getFlags(r);
+      const isPassive = isParaOrZiynet && userDovizZiynetGirisSekli === 0;
+      return !isPassive || parseDecimal(r.miktar) > 0;
+    });
+    const hasActiveMilyem = targetRows.some((r) => {
+      const { isPara, isZiynet } = getFlags(r);
+      const isDisabled = isPara || (isZiynet && userAltinHesaplamaSekli === 1);
+      if (isDisabled) return false;
+      return Boolean(milyemAcik) || parseDecimal(r.milyem) > 0;
+    });
+    const hasHasGramData = targetRows.some((r) => {
+      const { isPara, isZiynet } = getFlags(r);
+      const isDisabled = isPara || (isZiynet && userAltinHesaplamaSekli === 1);
+      return !isDisabled && parseDecimal(r.hasGram) > 0;
+    });
+    const hasTlTutarData = lines.some((r) => parseDecimal(r.tlTutar) > 0);
+    const hasIscilikActive = targetRows.some((r) => !getFlags(r).isParaOrZiynet);
+    const hasIscilikHasGramData = targetRows.some((r) => !getFlags(r).isParaOrZiynet && parseDecimal(r.iscilikHasGram) > 0);
+    const hasIscilikKdvOrani = targetRows.some(
+      (r) => !getFlags(r).isParaOrZiynet && (!isKdvDisabled || parseDecimal(r.iscilikKdvOrani) > 0)
+    );
+    const hasIscilikKdvTutari = targetRows.some(
+      (r) => !getFlags(r).isParaOrZiynet && (!isKdvDisabled || parseDecimal(r.iscilikKdvTutari) > 0)
+    );
+    const hasHasKuruData =
+      filledRows.some((r) => !getFlags(r).isPara) &&
+      (parseDecimal(altinHasKuru) > 0 || parseDecimal(gumusHasKuru) > 0);
+    const hasUrunKuruData = filledRows.length > 0;
+
+    return {
+      urunAdi: true,
+      adet: hasActiveAdet,
+      miktar: hasActiveMiktar,
+      milyem: hasActiveMilyem,
+      hasGram: hasHasGramData,
+      tlTutar: hasTlTutarData,
+      iscilikHesaplamaSekli: hasIscilikActive,
+      iscilikiMiktari: hasIscilikActive,
+      iscilikHasGram: hasIscilikHasGramData,
+      iscilikTutari: hasIscilikActive,
+      iscilikKdvOrani: hasIscilikKdvOrani,
+      iscilikKdvTutari: hasIscilikKdvTutari,
+      iscilikToplam: hasIscilikActive,
+      hasKuru: hasHasKuruData,
+      urunKuru: hasUrunKuruData,
+      kur: true,
+      tutar: true,
+    };
+  }, [lines, userDovizZiynetGirisSekli, userAltinHesaplamaSekli, milyemAcik, isKdvDisabled, altinHasKuru, gumusHasKuru]);
+
+  const effectiveColVisibility = useMemo<Record<keyof typeof defaultColVisibility, boolean>>(() => {
+    const resolve = (k: keyof typeof defaultColVisibility) =>
+      manualColOverrides[k] !== undefined ? Boolean(manualColOverrides[k]) : Boolean(colVisibility[k] && activeGridCols[k]);
+    return {
+      urunAdi: resolve("urunAdi"),
+      adet: resolve("adet"),
+      miktar: resolve("miktar"),
+      milyem: resolve("milyem"),
+      hasGram: resolve("hasGram"),
+      tlTutar: resolve("tlTutar"),
+      iscilikHesaplamaSekli: resolve("iscilikHesaplamaSekli"),
+      iscilikiMiktari: resolve("iscilikiMiktari"),
+      iscilikHasGram: resolve("iscilikHasGram"),
+      iscilikTutari: resolve("iscilikTutari"),
+      iscilikKdvOrani: resolve("iscilikKdvOrani"),
+      iscilikKdvTutari: resolve("iscilikKdvTutari"),
+      iscilikToplam: resolve("iscilikToplam"),
+      hasKuru: resolve("hasKuru"),
+      urunKuru: resolve("urunKuru"),
+      kur: resolve("kur"),
+      tutar: resolve("tutar"),
+    };
+  }, [colVisibility, activeGridCols, manualColOverrides]);
 
   const prevIsKdvDisabledRef = useRef(isKdvDisabled);
   useEffect(() => {
@@ -7256,7 +7358,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
     }
 
     const isColPassive = (col: GridColKey, rIdx: number = rowIndex) => {
-      if (col !== "urunKodu" && col in colVisibility && !colVisibility[col as keyof typeof colVisibility]) return true;
+      if (col !== "urunKodu" && col in effectiveColVisibility && !effectiveColVisibility[col as keyof typeof effectiveColVisibility]) return true;
       if (col === "urunAdi" || col === "hasGram" || col === "tlTutar" || col === "iscilikHasGram" || col === "hasKuru" || col === "urunKuru") return true;
       const isKurAllowed = kurDegistirilebilir(kYetkiRef.current);
       if (col === "kur" && !isKurAllowed) return true;
@@ -7385,7 +7487,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
       if (colKey === "adet" || (colKey === "miktar" && isParaOrZiynet && userDovizZiynetGirisSekli === 1)) {
         if (isParaOrZiynet) {
           const kurYetkisiVar = kurDegistirilebilir(kYetkiRef.current);
-          if (kurYetkisiVar && colVisibility.kur !== false) {
+          if (kurYetkisiVar && effectiveColVisibility.kur !== false) {
             focusGridCell(rowId, "kur", "select");
             return;
           } else {
@@ -9878,14 +9980,14 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                           width: "14px", height: "14px", border: "1.5px solid #6c757d",
                           borderRadius: "3px", display: "inline-flex", alignItems: "center",
                           justifyContent: "center", flexShrink: 0,
-                          backgroundColor: colVisibility[key] ? "#0d6efd" : "transparent",
+                          backgroundColor: effectiveColVisibility[key] ? "#0d6efd" : "transparent",
                         }}
                       >
-                        {colVisibility[key] && (
+                        {effectiveColVisibility[key] && (
                           <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2.5"><polyline points="1,6 4,9 11,2" /></svg>
                         )}
                       </span>
-                      <span style={{ color: colVisibility[key] ? "#212529" : "#adb5bd" }}>{label}</span>
+                      <span style={{ color: effectiveColVisibility[key] ? "#212529" : "#adb5bd" }}>{label}</span>
                     </Dropdown.Item>
                   ))}
                 </Dropdown.Menu>
@@ -9897,23 +9999,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                   <tr className="text-center align-middle">
                     <th style={{ width: 25 }} className="text-center">#</th>
                     <th style={{ width: 110 }} className="text-center">Ürün kodu</th>
-                    {colVisibility.urunAdi && <th style={{ width: 140 }} className="text-center">Ürün adı</th>}
-                    {colVisibility.adet && <th style={{ width: 55 }} className="text-center">Adet</th>}
-                    {colVisibility.miktar && <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth }} className="text-center">Miktar</th>}
-                    {colVisibility.milyem && <th style={{ width: 70 }} className="text-center">Milyem</th>}
-                    {colVisibility.hasGram && <th style={{ width: 85 }} className="text-center">Has</th>}
-                    {colVisibility.tlTutar && <th style={{ width: 95 }} className="text-center">TL Tutar</th>}
-                    {colVisibility.iscilikHesaplamaSekli && <th style={{ width: 85 }} className="text-center">İşçilik şekli</th>}
-                    {colVisibility.iscilikiMiktari && <th style={{ width: 85 }} className="text-center">{userIscilikGirisSekli === 0 ? "İşçilik/T" : "İşçilik/M"}</th>}
-                    {colVisibility.iscilikHasGram && <th style={{ width: 85 }} className="text-center">İşçilik (Has)</th>}
-                    {colVisibility.iscilikTutari && <th style={{ width: 90 }} className="text-center">İşçilik (TL)</th>}
-                    {colVisibility.iscilikKdvOrani && <th style={{ width: 80 }} className="text-center">İşçilik KDV (%)</th>}
-                    {colVisibility.iscilikKdvTutari && <th style={{ width: 95 }} className="text-center">İşçilik KDV Tutar</th>}
-                    {colVisibility.iscilikToplam && <th style={{ width: 95 }} className="text-center">İşçilik Toplam</th>}
-                    {colVisibility.hasKuru && <th style={{ width: 95 }} className="text-center">Has Kuru</th>}
-                    {colVisibility.urunKuru && <th style={{ width: 95 }} className="text-center">Ürün Kuru</th>}
-                    {colVisibility.kur && <th style={{ width: 105 }} className="text-center">Kur</th>}
-                    {colVisibility.tutar && <th style={{ width: 110 }} className="text-center">Toplam Tutar</th>}
+                    {effectiveColVisibility.urunAdi && <th style={{ width: 140 }} className="text-center">Ürün adı</th>}
+                    {effectiveColVisibility.adet && <th style={{ width: 55 }} className="text-center">Adet</th>}
+                    {effectiveColVisibility.miktar && <th style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth }} className="text-center">Miktar</th>}
+                    {effectiveColVisibility.milyem && <th style={{ width: 70 }} className="text-center">Milyem</th>}
+                    {effectiveColVisibility.hasGram && <th style={{ width: 85 }} className="text-center">Has</th>}
+                    {effectiveColVisibility.tlTutar && <th style={{ width: 95 }} className="text-center">TL Tutar</th>}
+                    {effectiveColVisibility.iscilikHesaplamaSekli && <th style={{ width: 85 }} className="text-center">İşçilik şekli</th>}
+                    {effectiveColVisibility.iscilikiMiktari && <th style={{ width: 85 }} className="text-center">{userIscilikGirisSekli === 0 ? "İşçilik/T" : "İşçilik/M"}</th>}
+                    {effectiveColVisibility.iscilikHasGram && <th style={{ width: 85 }} className="text-center">İşçilik (Has)</th>}
+                    {effectiveColVisibility.iscilikTutari && <th style={{ width: 90 }} className="text-center">İşçilik (TL)</th>}
+                    {effectiveColVisibility.iscilikKdvOrani && <th style={{ width: 80 }} className="text-center">İşçilik KDV (%)</th>}
+                    {effectiveColVisibility.iscilikKdvTutari && <th style={{ width: 95 }} className="text-center">İşçilik KDV Tutar</th>}
+                    {effectiveColVisibility.iscilikToplam && <th style={{ width: 95 }} className="text-center">İşçilik Toplam</th>}
+                    {effectiveColVisibility.hasKuru && <th style={{ width: 95 }} className="text-center">Has Kuru</th>}
+                    {effectiveColVisibility.urunKuru && <th style={{ width: 95 }} className="text-center">Ürün Kuru</th>}
+                    {effectiveColVisibility.kur && <th style={{ width: 105 }} className="text-center">Kur</th>}
+                    {effectiveColVisibility.tutar && <th style={{ width: 110 }} className="text-center">Toplam Tutar</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -10067,7 +10169,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         </td>
 
                         {/* Ürün adı - read only */}
-                        {colVisibility.urunAdi && (
+                        {effectiveColVisibility.urunAdi && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_urunAdi`] = el; }}
@@ -10082,7 +10184,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* Adet */}
-                        {colVisibility.adet && (
+                        {effectiveColVisibility.adet && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_adet`] = el; }}
@@ -10131,7 +10233,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* Miktar */}
-                        {colVisibility.miktar && (
+                        {effectiveColVisibility.miktar && (
                           <td style={{ width: linesMiktarColWidth, minWidth: linesMiktarColWidth, backgroundColor: isMiktarMissing ? "#fee2e2" : (isKalemMiktarPassive ? "#e9ecef" : undefined) }}>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_miktar`] = el; }}
@@ -10172,7 +10274,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* Milyem */}
-                        {colVisibility.milyem && (() => {
+                        {effectiveColVisibility.milyem && (() => {
                           const isMilyemDisabled = isPara || (isZiynet && userAltinHesaplamaSekli === 1);
                           return (
                             <td
@@ -10220,7 +10322,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         })()}
 
                         {/* Has (Gr) - Pasif / Otomatik Hesaplanır */}
-                        {colVisibility.hasGram && (() => {
+                        {effectiveColVisibility.hasGram && (() => {
                           const isHasGramDisabled = isPara || (isZiynet && userAltinHesaplamaSekli === 1);
                           return (
                             <td>
@@ -10241,7 +10343,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         })()}
 
                         {/* TL Tutar (Has'tan sonra) */}
-                        {colVisibility.tlTutar && (
+                        {effectiveColVisibility.tlTutar && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_tlTutar`] = el; }}
@@ -10259,7 +10361,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* İşçilik şekli */}
-                        {colVisibility.iscilikHesaplamaSekli && (
+                        {effectiveColVisibility.iscilikHesaplamaSekli && (
                           <td>
                             <Form.Select
                               size="sm"
@@ -10296,7 +10398,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* İşçilik miktarı */}
-                        {colVisibility.iscilikiMiktari && (
+                        {effectiveColVisibility.iscilikiMiktari && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_iscilikiMiktari`] = el; }}
@@ -10329,7 +10431,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* İşçilik Has Gram - Pasif / Otomatik Hesaplanır */}
-                        {colVisibility.iscilikHasGram && (
+                        {effectiveColVisibility.iscilikHasGram && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_iscilikHasGram`] = el; }}
@@ -10347,7 +10449,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* İşçilik (TL) - Girilebilir & Otomatik Hesaplanır */}
-                        {colVisibility.iscilikTutari && (
+                        {effectiveColVisibility.iscilikTutari && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_iscilikTutari`] = el; }}
@@ -10374,7 +10476,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* İşçilik KDV Oranı (%) */}
-                        {colVisibility.iscilikKdvOrani && (
+                        {effectiveColVisibility.iscilikKdvOrani && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_iscilikKdvOrani`] = el; }}
@@ -10408,7 +10510,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* İşçilik KDV Tutar */}
-                        {colVisibility.iscilikKdvTutari && (
+                        {effectiveColVisibility.iscilikKdvTutari && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_iscilikKdvTutari`] = el; }}
@@ -10441,7 +10543,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* İşçilik Toplam (İşçilik KDV Tutar'dan sonra) */}
-                        {colVisibility.iscilikToplam && (
+                        {effectiveColVisibility.iscilikToplam && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_iscilikToplam`] = el; }}
@@ -10468,7 +10570,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* Has Kuru */}
-                        {colVisibility.hasKuru && (
+                        {effectiveColVisibility.hasKuru && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_hasKuru`] = el; }}
@@ -10486,7 +10588,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* Ürün Kuru */}
-                        {colVisibility.urunKuru && (
+                        {effectiveColVisibility.urunKuru && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_urunKuru`] = el; }}
@@ -10504,7 +10606,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* Kur */}
-                        {colVisibility.kur && (
+                        {effectiveColVisibility.kur && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_kur`] = el; }}
@@ -10532,7 +10634,7 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                         )}
 
                         {/* Toplam Tutar - Girilebilir & Otomatik Kur Günceller */}
-                        {colVisibility.tutar && (
+                        {effectiveColVisibility.tutar && (
                           <td>
                             <Form.Control
                               ref={(el) => { rowInputRefs.current[`${row.id}_tutar`] = el; }}
@@ -10584,23 +10686,23 @@ export const SarrafFisiPage: React.FC<SarrafFisiPageProps> = ({
                 </tbody>
                 <tfoot style={{ background: "#f2f4f7", fontWeight: 600, fontSize: "11px" }}>
                   <tr>
-                    <td colSpan={colVisibility.urunAdi ? 3 : 2} className="text-end small">Toplam</td>
-                    {colVisibility.adet && <td style={{ textAlign: "right" }}>{totalAdet ? totalAdet.toLocaleString("tr-TR") : ""}</td>}
-                    {colVisibility.miktar && <td style={{ textAlign: "right" }}>{totalMiktar ? totalMiktar.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>}
-                    {colVisibility.milyem && <td></td>}
-                    {colVisibility.hasGram && <td style={{ textAlign: "right" }}>{totalHasGram ? totalHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>}
-                    {colVisibility.tlTutar && <td style={{ textAlign: "right" }}>{totalTLTutar ? totalTLTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
-                    {colVisibility.iscilikHesaplamaSekli && <td></td>}
-                    {colVisibility.iscilikiMiktari && <td></td>}
-                    {colVisibility.iscilikHasGram && <td style={{ textAlign: "right" }}>{totalIscilikHasGram ? totalIscilikHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>}
-                    {colVisibility.iscilikTutari && <td style={{ textAlign: "right" }}>{totalIscilikTutari ? totalIscilikTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
-                    {colVisibility.iscilikKdvOrani && <td></td>}
-                    {colVisibility.iscilikKdvTutari && <td style={{ textAlign: "right" }}>{totalIscilikKdvTutari ? totalIscilikKdvTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
-                    {colVisibility.iscilikToplam && <td style={{ textAlign: "right" }}>{totalIscilikToplam ? totalIscilikToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
-                    {colVisibility.hasKuru && <td></td>}
-                    {colVisibility.urunKuru && <td></td>}
-                    {colVisibility.kur && <td></td>}
-                    {colVisibility.tutar && (
+                    <td colSpan={effectiveColVisibility.urunAdi ? 3 : 2} className="text-end small">Toplam</td>
+                    {effectiveColVisibility.adet && <td style={{ textAlign: "right" }}>{totalAdet ? totalAdet.toLocaleString("tr-TR") : ""}</td>}
+                    {effectiveColVisibility.miktar && <td style={{ textAlign: "right" }}>{totalMiktar ? totalMiktar.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : ""}</td>}
+                    {effectiveColVisibility.milyem && <td></td>}
+                    {effectiveColVisibility.hasGram && <td style={{ textAlign: "right" }}>{totalHasGram ? totalHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>}
+                    {effectiveColVisibility.tlTutar && <td style={{ textAlign: "right" }}>{totalTLTutar ? totalTLTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                    {effectiveColVisibility.iscilikHesaplamaSekli && <td></td>}
+                    {effectiveColVisibility.iscilikiMiktari && <td></td>}
+                    {effectiveColVisibility.iscilikHasGram && <td style={{ textAlign: "right" }}>{totalIscilikHasGram ? totalIscilikHasGram.toLocaleString("tr-TR", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : ""}</td>}
+                    {effectiveColVisibility.iscilikTutari && <td style={{ textAlign: "right" }}>{totalIscilikTutari ? totalIscilikTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                    {effectiveColVisibility.iscilikKdvOrani && <td></td>}
+                    {effectiveColVisibility.iscilikKdvTutari && <td style={{ textAlign: "right" }}>{totalIscilikKdvTutari ? totalIscilikKdvTutari.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                    {effectiveColVisibility.iscilikToplam && <td style={{ textAlign: "right" }}>{totalIscilikToplam ? totalIscilikToplam.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>}
+                    {effectiveColVisibility.hasKuru && <td></td>}
+                    {effectiveColVisibility.urunKuru && <td></td>}
+                    {effectiveColVisibility.kur && <td></td>}
+                    {effectiveColVisibility.tutar && (
                       <td style={{ textAlign: "right" }}>
                         {totalTutar ? totalTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL" : ""}
                       </td>

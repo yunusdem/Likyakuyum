@@ -470,10 +470,17 @@ export const DovizFisiPage: React.FC = () => {
     } catch { }
     return defaultColVisibility;
   });
+  const [manualColOverrides, setManualColOverrides] = useState<Partial<Record<keyof typeof defaultColVisibility, boolean>>>({});
 
   const toggleCol = (col: keyof typeof defaultColVisibility) => {
+    const currentlyVisible =
+      manualColOverrides[col] !== undefined
+        ? Boolean(manualColOverrides[col])
+        : Boolean(colVisibility[col] && activeGridCols[col]);
+    const nextVal = !currentlyVisible;
+    setManualColOverrides((prev) => ({ ...prev, [col]: nextVal }));
     setColVisibility((prev) => {
-      const next = { ...prev, [col]: !prev[col] };
+      const next = { ...prev, [col]: nextVal };
       try { localStorage.setItem(GRID_COL_STORAGE_KEY, JSON.stringify(next)); } catch { }
       return next;
     });
@@ -904,19 +911,23 @@ export const DovizFisiPage: React.FC = () => {
     };
   }, [lines, userDovizZiynetGirisSekli, kYetki.komisyonAlma]);
 
-  const effectiveColVisibility = useMemo<Record<keyof typeof defaultColVisibility, boolean>>(() => ({
-    ad: colVisibility.ad && activeGridCols.ad,
-    adet: colVisibility.adet && activeGridCols.adet,
-    miktar: colVisibility.miktar && activeGridCols.miktar,
-    kur: colVisibility.kur && activeGridCols.kur,
-    komisyonOrani: colVisibility.komisyonOrani && activeGridCols.komisyonOrani,
-    komisyon: colVisibility.komisyon && activeGridCols.komisyon,
-    bmvOrani: colVisibility.bmvOrani && activeGridCols.bmvOrani,
-    bmv: colVisibility.bmv && activeGridCols.bmv,
-    kmvOrani: colVisibility.kmvOrani && activeGridCols.kmvOrani,
-    kmv: colVisibility.kmv && activeGridCols.kmv,
-    tutar: colVisibility.tutar && activeGridCols.tutar,
-  }), [colVisibility, activeGridCols]);
+  const effectiveColVisibility = useMemo<Record<keyof typeof defaultColVisibility, boolean>>(() => {
+    const resolve = (k: keyof typeof defaultColVisibility) =>
+      manualColOverrides[k] !== undefined ? Boolean(manualColOverrides[k]) : Boolean(colVisibility[k] && activeGridCols[k]);
+    return {
+      ad: resolve("ad"),
+      adet: resolve("adet"),
+      miktar: resolve("miktar"),
+      kur: resolve("kur"),
+      komisyonOrani: resolve("komisyonOrani"),
+      komisyon: resolve("komisyon"),
+      bmvOrani: resolve("bmvOrani"),
+      bmv: resolve("bmv"),
+      kmvOrani: resolve("kmvOrani"),
+      kmv: resolve("kmv"),
+      tutar: resolve("tutar"),
+    };
+  }, [colVisibility, activeGridCols, manualColOverrides]);
 
   const hasSayfaVerisi = useMemo(() => {
     if (fisId !== null && fisId > 0) return true;
@@ -8322,7 +8333,7 @@ export const DovizFisiPage: React.FC = () => {
                   { key: "kmvOrani", label: "KMV %" },
                   { key: "kmv", label: "KMV" },
                   { key: "tutar", label: "Tutar" },
-                ] as { key: keyof typeof defaultColVisibility; label: string }[]).filter(({ key }) => activeGridCols[key]).map(({ key, label }) => (
+                ] as { key: keyof typeof defaultColVisibility; label: string }[]).map(({ key, label }) => (
                   <Dropdown.Item
                     key={key}
                     as="button"
@@ -8334,14 +8345,14 @@ export const DovizFisiPage: React.FC = () => {
                         width: "14px", height: "14px", border: "1.5px solid #6c757d",
                         borderRadius: "3px", display: "inline-flex", alignItems: "center",
                         justifyContent: "center", flexShrink: 0,
-                        backgroundColor: colVisibility[key] ? "#0d6efd" : "transparent",
+                        backgroundColor: effectiveColVisibility[key] ? "#0d6efd" : "transparent",
                       }}
                     >
-                      {colVisibility[key] && (
+                      {effectiveColVisibility[key] && (
                         <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2.5"><polyline points="1,6 4,9 11,2" /></svg>
                       )}
                     </span>
-                    <span style={{ color: colVisibility[key] ? "#212529" : "#adb5bd" }}>{label}</span>
+                    <span style={{ color: effectiveColVisibility[key] ? "#212529" : "#adb5bd" }}>{label}</span>
                   </Dropdown.Item>
                 ))}
               </Dropdown.Menu>
