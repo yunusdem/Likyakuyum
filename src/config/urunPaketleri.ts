@@ -10,10 +10,22 @@ const SANAL_KODLARI = new Set(SANAL_SAYFALAR.map((s) => s.kod));
  * hiç doldurulmamışsa panel bu listeyi bir kez gönderir (§4 tablosu). Sonradan buradaki değişiklik mevcut paketlere yansımaz.
  */
 
-export type PaketKodu = "cekirdek" | "doviz" | "gumus" | "kuyum" | "ticari" | "connector" | "erp";
+/**
+ * Restorant (26.11.2026, kararlar R1–R4): paket kodu "adisyon" kalıcıdır (lisanslar ve modül kodları ona bağlı), adı Likya.Restorant.
+ * "ticari_restorant" üçüncü, ayrı bir pakettir (Likya.Ticari + Restorant): ilk içeriği Ticari ile Restorant'ın birleşimidir, sonradan
+ * Paket Tanımları'nda kendi başına düzenlenir.
+ */
+export type PaketKodu = "cekirdek" | "doviz" | "gumus" | "kuyum" | "ticari" | "adisyon" | "ticari_restorant" | "connector" | "erp";
 
 /** Lisans penceresinde seçilebilen ürünler (çekirdek seçilmez, her pakette vardır) */
-export const URUN_KODLARI: Exclude<PaketKodu, "cekirdek">[] = ["kuyum", "doviz", "gumus", "ticari", "connector", "erp"];
+export const URUN_KODLARI: Exclude<PaketKodu, "cekirdek">[] = ["kuyum", "doviz", "gumus", "ticari", "adisyon", "ticari_restorant", "connector", "erp"];
+
+/** Paket kodunun içerdiği ürünler: "ticari_restorant" hem Ticari hem Restorant sayılır (ürün kontrolleri için) */
+export const urunleriAc = (urunler: readonly string[] | null | undefined): string[] => {
+  const l = [...(urunler || [])];
+  if (l.includes("ticari_restorant")) { if (!l.includes("ticari")) l.push("ticari"); if (!l.includes("adisyon")) l.push("adisyon"); }
+  return l;
+};
 
 export const URUN_ADLARI: Record<PaketKodu, string> = {
   cekirdek: "Çekirdek",
@@ -21,6 +33,8 @@ export const URUN_ADLARI: Record<PaketKodu, string> = {
   doviz: "Likya.Döviz",
   gumus: "Likya.Gümüş",
   ticari: "Likya.Ticari",
+  adisyon: "Likya.Restorant",
+  ticari_restorant: "Likya.Ticari + Restorant",
   connector: "Likya.Connector",
   erp: "Likya.ERP",
 };
@@ -32,6 +46,8 @@ export const URUN_KISA: Record<PaketKodu, string> = {
   doviz: "D",
   gumus: "G",
   ticari: "T",
+  adisyon: "R",
+  ticari_restorant: "T+R",
   connector: "C",
   erp: "ERP",
 };
@@ -43,12 +59,13 @@ export const paketAdiYaz = (urunler: string[]): string =>
     .join(" + ");
 
 type Secici = string;
-type IlkPaket = Exclude<PaketKodu, "erp">;
+type IlkPaket = Exclude<PaketKodu, "erp" | "ticari_restorant">;
 
 const D: IlkPaket = "doviz";
 const G: IlkPaket = "gumus";
 const K: IlkPaket = "kuyum";
 const T: IlkPaket = "ticari";
+const A: IlkPaket = "adisyon";
 const C: IlkPaket = "connector";
 
 /**
@@ -100,7 +117,7 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
   [["ust:hizli-satis", "ayarlar:ayarlar/hizli-satis-duzeni"], [D, G, K, T]],
 
   // B- Kasa
-  [["kasa"], [D, G, K, T]],
+  [["kasa"], [D, G, K, T, A]],
 
   // C- Kur
   [["kur:kur/anlik-fiyat-listesi", "kur:kur/saklanan-fiyat-listesi", "kur:kur/merkez-bankasi-kurlari", "kur:kur/merkez-bankasi-saklananlar"], [D, G, K]],
@@ -122,7 +139,7 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
       "cari:raporlar/cari-bakiye",
       "cari:raporlar/vadeli-islem-listesi",
     ],
-    [D, G, K, T],
+    [D, G, K, T, A],
   ],
   [["cari:cari/emanet-dekont", "cari:cari/emanet-duzeltme"], [K]],
 
@@ -133,14 +150,14 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
   // F- Banka / POS
   [
     ["banka:banka/hesap-kartlari", "banka:banka/hareketler", "banka:banka/pos-tanimlari", "banka:banka/pos-cihazlari", "banka:banka/pos-islemleri"],
-    [D, G, K, T, C],
+    [D, G, K, T, A, C],
   ],
   [["banka:#*e-banka"], [C]],
 
   // G- Raporlar
   [
     ["raporlar:raporlar/fis-listeleme", "raporlar:raporlar/gunluk-fis-detay", "raporlar:raporlar/vergi-numarasi-raporu", "raporlar:raporlar/xml-dosya"],
-    [D, G, K, T],
+    [D, G, K, T, A],
   ],
   // Vergiler ve Komisyon döviz fişine özgüdür (komisyon / BSMV / KMV yalnız döviz fişinde): Ticari paketinde yok (docs/SEKTORLU_RAPORLAR_YOL_HARITASI.md B23)
   [["raporlar:raporlar/vergiler-komisyon"], [D, G, K]],
@@ -152,7 +169,7 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
   [["raporlar:#*masak"], [D, G, K]],
 
   // H- e-Belge
-  [["ebelge"], [D, G, K, T, C]],
+  [["ebelge"], [D, G, K, T, A, C]],
   // e-Gider Pusulası (docs/E_GIDER_YOL_HARITASI.md K15, K18): ayrı seçenek; şimdilik Kuyum (ERP hepsini alır)
   [["ebelge:e-belge/gider"], [K]],
 
@@ -161,7 +178,13 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
 
   // Ticari İşlemler (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T2): Kuyum ve Ticari'de açık; satış fişi vezne ve iskonto tanımlarını kullanır
   [["ticari", "ust:ticari", "ust:ticari-fiyat"], [K, T]],
-  [["ayarlar:ayarlar/vezne-tanimlari", "ayarlar:ayarlar/iskonto-tanimlari"], [T]],
+  [["ayarlar:ayarlar/vezne-tanimlari", "ayarlar:ayarlar/iskonto-tanimlari"], [T, A]],
+
+  // Restorant (docs/TICARI_ADISYON_YOL_HARITASI.md, TA19–TA20; R1): kendi menüsü (masalar … + stok / kasa ekranları "adisyon:ticari/…"
+  // kodlarıyla) + kısayolu. Ticari'nin kendi kodları (ticari:…) artık bu pakette değil: yalnız Restorant lisansında Ticari başlığı görünmez.
+  // (eski not) tek başına satılan kafede ürün / grup / fiyat
+  // listesi tanımı Ticari'nin ekranlarıyla (ortak ürün listesi). Ticari de açıksa Ticari'nin bütün ekranları zaten gelir.
+  [["adisyon", "ust:adisyon"], [A]],
 
   // K- Ayarlar
   [["ayarlar:ayarlar/urun-tanimlari"], [D, G, K, T]],
@@ -175,14 +198,14 @@ const KURALLAR: [Secici[], IlkPaket[]][] = [
     ],
     [D, G, K],
   ],
-  [["ayarlar:ayarlar/gib-sorgu"], [D, G, K, T, C]],
+  [["ayarlar:ayarlar/gib-sorgu"], [D, G, K, T, A, C]],
 
   // Üst kısayol çubuğu
   // V. Transfer kısayolu (93dabe14c) Vezne Transferi sayfasının paketlerinde; kuralı yoktu (ortak alan denetimi 19.11.2026, #46)
   [["ust:kur", "ust:vezne-izleme", "ust:vezne-transfer"], [D, G, K]],
   [["ust:doviz"], [D, G]],
   [["ust:fiyat", "ust:sarraf", "ust:perakende"], [K]],
-  [["ust:banka", "ust:e-belge"], [D, G, K, T, C]],
+  [["ust:banka", "ust:e-belge"], [D, G, K, T, A, C]],
   [["ust:c-hareket"], [D, G, K, T]],
   [["ust:masak"], [D, G, K]],
   [["ust:piyasa"], [D, G, K, T, C]],
@@ -214,7 +237,7 @@ const kodAdresleri = (): Map<string, string> => {
  * Paketlerin ilk içeriği (çekirdek dahil, ERP hariç — ERP "hepsi"dir). Her listede seçilen düğümlerin altları ve
  * üstleri de bulunur; yönetici kısayolları, aynı adresi açan asıl sayfa hangi paketteyse o pakete girer.
  */
-export const ilkPaketIcerigi = (katalog: ModulKaydi[]): Record<IlkPaket, string[]> => {
+export const ilkPaketIcerigi = (katalog: ModulKaydi[]): Record<IlkPaket | "ticari_restorant", string[]> => {
   const cocuklar = new Map<string | null, string[]>();
   const ust = new Map<string, string | null>();
   for (const m of katalog) {
@@ -231,6 +254,7 @@ export const ilkPaketIcerigi = (katalog: ModulKaydi[]): Record<IlkPaket, string[
     gumus: new Set(),
     kuyum: new Set(),
     ticari: new Set(),
+    adisyon: new Set(),
     connector: new Set(),
   };
   const ekle = (paket: IlkPaket, kod: string) => {
@@ -259,5 +283,7 @@ export const ilkPaketIcerigi = (katalog: ModulKaydi[]): Record<IlkPaket, string[
     }
   }
 
-  return Object.fromEntries(Object.entries(sonuc).map(([p, s]) => [p, [...s]])) as Record<IlkPaket, string[]>;
+  // Ticari + Restorant (R3): ilk içerik iki paketin birleşimi (sonradan Paket Tanımları'nda ayrı düzenlenir)
+  const birlesik = new Set<string>([...sonuc.ticari, ...sonuc.adisyon]);
+  return { ...Object.fromEntries(Object.entries(sonuc).map(([p, s]) => [p, [...s]])), ticari_restorant: [...birlesik] } as Record<IlkPaket | "ticari_restorant", string[]>;
 };

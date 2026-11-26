@@ -19,7 +19,8 @@ export function getAppBrand(user?: UserProfileDto | null): BrandInfo {
   //    ERP → "ERP"; Connector yalnız tek başınaysa yazılır; birden fazla ürün "KUYUM + DÖVİZ" gibi birleşir.
   const urunler = user?.merkez?.urunler || [];
   if (urunler.length) {
-    const URUN_SONEKI: Record<string, string> = { kuyum: "KUYUM", doviz: "DÖVİZ", gumus: "GÜMÜŞ", ticari: "TİCARİ" };
+    // Restorant (26.11.2026): "adisyon" paketi RESTORANT, "ticari_restorant" TİCARİ + RESTORANT (eskiden yazılmıyor, CONNECTOR görünüyordu)
+    const URUN_SONEKI: Record<string, string> = { kuyum: "KUYUM", doviz: "DÖVİZ", gumus: "GÜMÜŞ", ticari: "TİCARİ", adisyon: "RESTORANT", ticari_restorant: "TİCARİ + RESTORANT" };
     const ana = urunler.map((u) => URUN_SONEKI[u]).filter(Boolean);
     const suffix = urunler.includes("erp") ? "ERP" : ana.length ? ana.join(" + ") : "CONNECTOR";
     return { prefix: "LİKYA", suffix, fullTitle: `LİKYA ${suffix}` };

@@ -19,6 +19,7 @@ import {
   IconChartCandle,
   IconShoppingBag,
   IconBolt,
+  IconToolsKitchen2,
   IconDeviceTv,
   IconCash,
   IconUser,
@@ -100,6 +101,12 @@ const quickActions = [
     title: "Hızlı Satış",
     to: "/hizli-satis",
     icon: <IconBolt size={16} strokeWidth={2.4} style={{ color: "#15803d" }} />,
+  },
+  {
+    // Adisyon masaları (docs/TICARI_ADISYON_YOL_HARITASI.md, D3); yalnız Adisyon lisanslı firmada
+    title: "Masalar",
+    to: "/adisyon/masalar",
+    icon: <IconToolsKitchen2 size={16} strokeWidth={2.4} style={{ color: "#be123c" }} />,
   },
   {
     title: "Banka",

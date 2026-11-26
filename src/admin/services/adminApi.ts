@@ -37,6 +37,10 @@ export interface LisansDto {
   paketAdi: string | null;
   notlar: string | null;
   aktif: boolean;
+  /** Adisyon garson sınırı (docs/TICARI_ADISYON_YOL_HARITASI.md, TA24); null = sınırsız */
+  garsonLimiti?: number | null;
+  /** Restorant başlık adı (R4); null = "Restorant" */
+  restoranAdi?: string | null;
   olusturmaTarihi: string;
   /** Kurulum (exe): imzalı lisans kodu ve bağlı olduğu makine */
   lisansKodu: string | null;
@@ -193,6 +197,10 @@ export interface LisansGirdi {
   notlar: string;
   /** Gönderilirse lisansın ürünleri bu olur (paket tabloları kurulu değilse gönderilmez) */
   urunler?: string[];
+  /** Adisyon garson sınırı (TA24): "" = sınırsız */
+  garsonLimiti?: number | "" | null;
+  /** Restorant başlık adı (R4): boş = "Restorant" */
+  restoranAdi?: string | null;
 }
 
 export interface KullaniciDto {
@@ -796,6 +804,9 @@ export const adminApi = {
   ayarKaydet: (veri: Partial<Record<AyarAnahtari, string>>) => istek<AyarlarDto>("PUT", "/ayarlar", veri),
   lisansEkle: (firmaId: number, veri: LisansGirdi) =>
     istek<{ firma: FirmaDto; lisanslar: LisansDto[] }>("POST", `/firmalar/${firmaId}/lisanslar`, veri),
+  /** Etkin lisansın Restorant başlık adı (R4) */
+  restoranAdi: (firmaId: number, restoranAdi: string | null) =>
+    istek<{ firma: FirmaDto; lisanslar: LisansDto[] }>("PUT", `/firmalar/${firmaId}/restoran-adi`, { restoranAdi }),
 
   modulKatalogEsitle: (moduller: ModulKaydi[]) => istek<ModulKaydi[]>("PUT", "/moduller/katalog", { moduller, derleme: PANEL_DERLEME }),
   firmaModulleri: (firmaId: number) => istek<FirmaModulAyari>("GET", `/firmalar/${firmaId}/moduller`),

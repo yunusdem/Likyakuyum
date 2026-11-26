@@ -1116,6 +1116,12 @@ app.get(["/health", "/status", "/api/version", "/version"], (_req, res) => {
   });
 });
 
+// Kasaya bağlı terazi: seri porttan ham yanıt (docs/TICARI_ADISYON_YOL_HARITASI.md, TA4; kod terazi.js'te)
+app.get(["/api/terazi", "/terazi"], async (req, res) => {
+  const r = await require("./terazi").teraziOku(runPowerShell, req.query);
+  res.status(r.success ? 200 : 400).json(r);
+});
+
 // Güvenli kapatma endpoint'i (Sistem tepsisi çıkış menüsü için)
 app.all(["/api/exit", "/exit"], (_req, res) => {
   res.json({ success: true, message: "Likya ERP Yazıcı Servisi kapatılıyor..." });

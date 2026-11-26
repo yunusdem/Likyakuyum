@@ -1,6 +1,8 @@
+import { restoranAdi } from "../config/restoranBasligi";
 import React from "react";
 import { v4 as uuid } from "uuid";
 import {
+  IconToolsKitchen2,
   IconCoins,
   IconBuildingBank,
   IconChartLine,
@@ -267,6 +269,47 @@ export const DashboardMenu: MenuItemType[] = [
       { id: uuid(), name: "N- Fiyat Listeleri", link: "ticari/fiyat-listeleri" },
       { id: uuid(), name: "O- Fiyat İşlemleri", link: "ticari/fiyat-islemleri" },
       { id: uuid(), name: "P- Kampanyalar", link: "ticari/kampanyalar" },
+      // Satış iadesi (docs/TICARI_ADISYON_YOL_HARITASI.md, TA6)
+      { id: uuid(), name: "Q- Satış İadesi", link: "ticari/iade-fisi" },
+      { id: uuid(), name: "R- Vardiya (Kasa Açılış / Kapanış)", link: "ticari/vardiya" },
+      { id: uuid(), name: "S- Gün Sonu Raporu", link: "ticari/gun-sonu" },
+      { id: uuid(), name: "T- Sayım Fişi", link: "ticari/sayim-fisi" },
+      { id: uuid(), name: "U- Fire / Zayi Fişi", link: "ticari/fire-fisi" },
+      { id: uuid(), name: "V- Tedarikçiye İade", link: "ticari/tedarikci-iade" },
+      { id: uuid(), name: "W- e-Faturadan Stok Girişi", link: "ticari/efatura-giris" },
+      { id: uuid(), name: "X- Kâr Raporu", link: "ticari/kar-raporu" },
+      { id: uuid(), name: "Y- SKT Yaklaşanlar", link: "ticari/skt-yaklasan" },
+      { id: uuid(), name: "Z- Parçalama Fişi", link: "ticari/parcalama" },
+    ],
+  },
+
+  // Restorant (docs/TICARI_ADISYON_YOL_HARITASI.md, TA19; 26.11.2026 kararları R1–R4): masa / garson / mutfak + restoranın stok ve kasa
+  // ekranları. Ayrı ürün (Likya.Restorant, paket kodu "adisyon"). Başlık adı firmaya göre değişir (lisanstaki "Restorant başlık adı":
+  // Kafe, Lokanta …; Sidebar). F–P maddeleri Ticari ekranlarını açar: yalnız Restorant lisanslı firmada Ticari başlığı hiç görünmez,
+  // ikisi de açıksa ortak ekranlar iki başlıkta da bulunur (R2). Modül kodları "adisyon:<yol>" — Ticari'nin kodlarından ayrıdır.
+  {
+    id: uuid(),
+    key: "adisyon", // kalıcı modül kodu — değiştirmeyin (src/config/modulKatalogu.ts)
+    // Firmaya özel ad (R4): her okunuşta güncel ad (sol / üst menü, kullanıcı yetki ekranları); harfi birleşik menü yeniden dizer
+    get title() { return `L- ${restoranAdi()}`; },
+    icon: <IconToolsKitchen2 size={18} />,
+    children: [
+      { id: uuid(), name: "A- Masalar", link: "adisyon/masalar" },
+      { id: uuid(), name: "B- Tanımlar", link: "adisyon/tanimlar" },
+      { id: uuid(), name: "C- Ayarlar", link: "adisyon/ayarlar" },
+      { id: uuid(), name: "D- Mutfak Ekranı", link: "adisyon/mutfak" },
+      { id: uuid(), name: "E- Raporlar", link: "adisyon/raporlar" },
+      { id: uuid(), name: "F- Stok Kartları", link: "ticari/stok-kartlari" },
+      { id: uuid(), name: "G- Ürün Grupları", link: "ticari/urun-gruplari" },
+      { id: uuid(), name: "H- Fiyat Listeleri", link: "ticari/fiyat-listeleri" },
+      { id: uuid(), name: "I- Stok Giriş Fişi", link: "ticari/stok-giris-fisi" },
+      { id: uuid(), name: "J- Stok Giriş Listesi", link: "ticari/stok-giris-listesi" },
+      { id: uuid(), name: "K- Sayım Fişi", link: "ticari/sayim-fisi" },
+      { id: uuid(), name: "L- Fire / Zayi Fişi", link: "ticari/fire-fisi" },
+      { id: uuid(), name: "M- Satış İadesi", link: "ticari/iade-fisi" },
+      { id: uuid(), name: "N- Vardiya (Kasa Açılış / Kapanış)", link: "ticari/vardiya" },
+      { id: uuid(), name: "O- Gün Sonu Raporu", link: "ticari/gun-sonu" },
+      { id: uuid(), name: "P- Kâr Raporu", link: "ticari/kar-raporu" },
     ],
   },
 

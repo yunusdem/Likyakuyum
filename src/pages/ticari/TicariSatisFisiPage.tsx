@@ -24,7 +24,7 @@ import { triggerSilentPrint } from "../../services/silentPrintService";
 import { ticariFisHtml } from "../../utils/belgeSablon/fisCikti";
 import { AktifKampanya, FiyatListesi, StokKart, TicariOdeme, TicariSatisFisi, TicariSatisListeSatiri, TicariService, eksiStokUyarisiMi, kartSatisFiyati, miktarYaz, para } from "../../services/ticariService";
 import { kampanyaSec } from "../../../Backend/src/services/ticari/ticariHesap";
-import { ticariFisHesapla, kartDahilFiyat, yuvarla2 } from "../../../Backend/src/services/ticari/ticariHesap";
+import { ticariFisHesapla, kartDahilFiyat, yuvarla2, tartiBirimi, tartiMetniCoz, teraziMiktari, ekBirimSatirFiyati, ekBirimYaz } from "../../../Backend/src/services/ticari/ticariHesap";
 import { MusteriSecimModal, SelectedCustomerResult, CustomerSearchField } from "../vezne/MusteriSecimModal";
 import { DEFAULT_CUSTOMER_NAME, detectScenario, isAnonymousCustomerName } from "../vezne/PerakendeFisiPage";
 import { StokKartSecici } from "./StokKartSecici";
@@ -55,6 +55,8 @@ interface Satir {
   serbest?: boolean;
   /** Satıra uygulanan kampanya (İş 11, G12): satır iskontosu kampanyanındır */
   kampanya?: { kampanyaId: number; ad: string } | null;
+  /** Koli / ek birim barkoduyla eklendi (TA5): miktar ana birimde, ekranda "1 Koli (12 Adet)" */
+  koli?: { ad: string; carpan: number } | null;
 }
 
 interface Odeme {
@@ -80,6 +82,13 @@ const sayi = (v: string | number | null | undefined): number => {
 };
 const metin = (n: number | null | undefined, hane = 2) => (n === null || n === undefined || Number.isNaN(n) ? "" : String(Math.round(n * 10 ** hane) / 10 ** hane).replace(".", ","));
 const sadeceSayi = (v: string) => v.replace(/[^0-9.,]/g, "");
+/** Tartılı (Kg / Gr) satırda miktar hücresine "347gr" / "1,25kg" yazılabilir (docs/TICARI_ADISYON_YOL_HARITASI.md, TA2) */
+const tartiMetni = (v: string) => v.replace(/[^0-9.,a-zA-Z ]/g, "");
+/** Satırın sayısal miktarı (kartın biriminde): tartılı satırda gram/kilo sonekli yazım çözülür */
+const satirMiktari = (s: { birim: string; miktar: string }): number => {
+  const b = tartiBirimi(s.birim);
+  return b ? tartiMetniCoz(s.miktar, b) ?? 0 : sayi(s.miktar);
+};
 const iki = (n: number) => String(n).padStart(2, "0");
 const yerelTarih = (d = new Date()) => `${d.getFullYear()}-${iki(d.getMonth() + 1)}-${iki(d.getDate())}`;
 const yerelSaat = (d = new Date()) => `${iki(d.getHours())}:${iki(d.getMinutes())}`;
@@ -228,7 +237,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
   const dolu = useMemo(() => satirlar.filter(doluMu), [satirlar]);
   const hesap = useMemo(() => {
     try {
-      return { sonuc: ticariFisHesapla(dolu.map((s) => ({ miktar: sayi(s.miktar) || 0, kdvDahilFiyat: sayi(s.fiyat), kdvOrani: s.kdvOrani, iskontoTuru: s.iskTur, iskontoDegeri: sayi(s.iskDeger) })).map((g) => ({ ...g, miktar: g.miktar > 0 ? g.miktar : 0.0000001 })),
+      return { sonuc: ticariFisHesapla(dolu.map((s) => ({ miktar: satirMiktari(s) || 0, kdvDahilFiyat: sayi(s.fiyat), kdvOrani: s.kdvOrani, iskontoTuru: s.iskTur, iskontoDegeri: sayi(s.iskDeger) })).map((g) => ({ ...g, miktar: g.miktar > 0 ? g.miktar : 0.0000001 })),
         { turu: fisIskTur, deger: sayi(fisIskDeger) }), hata: null as string | null };
     } catch (e: any) {
       return { sonuc: null, hata: e?.message || "Hesap yapılamadı." };
@@ -266,7 +275,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       setSatirlar([...f.satirlar.map((s) => ({
         anahtar: anahtar(), stokKartId: s.stokKartId, serbest: !s.stokKartId, kod: s.kod, barkod: s.barkod, ad: s.urunAdi, birim: s.birim, kdvOrani: s.kdvOrani,
         kampanya: s.kampanyaId ? { kampanyaId: s.kampanyaId, ad: "Kampanya" } : null,
-        miktar: metin(s.miktar, 4), fiyat: metin(s.kdvDahilFiyat, 4), iskTur: (s.iskontoTuru || 0) as 0 | 1 | 2, iskDeger: s.iskontoTuru ? metin(s.iskontoDegeri, 2) : "", stok: null,
+        miktar: metin(s.miktar, 4), fiyat: metin(s.kdvDahilFiyat, 6), iskTur: (s.iskontoTuru || 0) as 0 | 1 | 2, iskDeger: s.iskontoTuru ? metin(s.iskontoDegeri, 2) : "", stok: null,
       })), bosSatir()]);
       setFisIskTur((f.iskontoTuru || 0) as 0 | 1 | 2); setFisIskDeger(f.iskontoTuru ? metin(f.iskontoDegeri) : ""); setIskontoId(f.iskontoId ?? null);
       setOdemeler(f.odemeler.length ? f.odemeler.map((o) => ({
@@ -303,22 +312,36 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     return Math.round(dahil * kur * 100) / 100;
   };
 
-  const kartiSatiraKoy = (k: StokKart, satirAnahtari: string | null, adet = 1) => {
+  /**
+   * adetYazildi: "3*barkod" ile miktar verildi. Tartılı (Kg / Gr) kartta miktar verilmediyse hücre boş bırakılır ve
+   * miktar hücresine odaklanılır (kasiyer "347gr" ya da kilo yazar); tartılı satır birleşmez, her tartım ayrı satır (TA2).
+   */
+  const kartiSatiraKoy = (k: StokKart, satirAnahtari: string | null, adet = 1, adetYazildi = false, fiyatOzel?: number) => {
     if (!k.aktif) { showError(`"${k.ad}" kartı pasif; satılamaz.`); return; }
+    const tarti = !!tartiBirimi(k.birim);
+    const tartiSor = tarti && !adetYazildi;
     setSatirlar((p) => {
-      // Aynı ürün tekrar okutulursa miktarı artar
-      const var_ = p.find((s) => s.stokKartId === k.stokKartId && s.anahtar !== satirAnahtari);
+      // Aynı ürün tekrar okutulursa miktarı artar (tartılı ürün ve koli fiyatlı satır hariç; koli aynı fiyatlı koli satırına eklenir)
+      const var_ = tarti ? undefined : p.find((s) => s.stokKartId === k.stokKartId && s.anahtar !== satirAnahtari
+        && (fiyatOzel === undefined ? !s.koli : sayi(s.fiyat) === Math.round(fiyatOzel * 1000000) / 1000000));
       let yeni: Satir[];
       if (var_ && (!satirAnahtari || !((x?: Satir) => !!x && doluMu(x))(p.find((s) => s.anahtar === satirAnahtari)))) {
         yeni = p.map((s) => (s === var_ ? { ...s, miktar: metin(sayi(s.miktar) + adet, 4) } : s.anahtar === satirAnahtari ? { ...s, barkod: "", ad: "" } : s));
       } else {
         // Kampanya (İş 11, G12): kapsayan kampanya varsa satır iskontosu kendiliğinden
-        const fiyat = kartFiyati(k);
+        const fiyat = fiyatOzel ?? kartFiyati(k);
         const kmp = kampanyaSec(kampanyalarRef.current, { stokKartId: k.stokKartId, stokGrupId: k.stokGrupId }, fiyat);
-        const dolum: Partial<Satir> = { stokKartId: k.stokKartId, kod: k.kod, barkod: k.barkodlar[0] || "", ad: k.ad, birim: k.birim, kdvOrani: k.kdvOrani, miktar: metin(adet, 4), fiyat: metin(fiyat, 4),
-          iskTur: kmp ? kmp.kampanya.tur : 0, iskDeger: kmp ? metin(kmp.kampanya.deger, 4) : "", stok: k.bakiye, kampanya: kmp ? { kampanyaId: kmp.kampanya.kampanyaId, ad: kmp.kampanya.ad } : null };
+        const dolum: Partial<Satir> = { stokKartId: k.stokKartId, kod: k.kod, barkod: k.barkodlar[0] || "", ad: k.ad, birim: k.birim, kdvOrani: k.kdvOrani, miktar: tartiSor ? "" : metin(adet, 4), fiyat: metin(fiyat, 6),
+          iskTur: kmp ? kmp.kampanya.tur : 0, iskDeger: kmp ? metin(kmp.kampanya.deger, 4) : "", stok: k.bakiye, kampanya: kmp ? { kampanyaId: kmp.kampanya.kampanyaId, ad: kmp.kampanya.ad } : null,
+          koli: k.okunanBirim ? { ad: k.okunanBirim.birim, carpan: k.okunanBirim.carpan } : null };
         const hedef = satirAnahtari ? p.find((s) => s.anahtar === satirAnahtari) : p.find((s) => !doluMu(s));
-        yeni = hedef ? p.map((s) => (s === hedef ? { ...s, ...dolum } : s)) : [...p, { ...bosSatir(), ...dolum }];
+        const yeniSatir = { ...bosSatir(), ...dolum };
+        yeni = hedef ? p.map((s) => (s === hedef ? { ...s, ...dolum } : s)) : [...p, yeniSatir];
+        if (tartiSor) {
+          if (!yeni.some((s) => !doluMu(s))) yeni = [...yeni, bosSatir()];
+          odak(`${hedef ? hedef.anahtar : yeniSatir.anahtar}_miktar`);
+          return yeni;
+        }
       }
       if (!yeni.some((s) => !doluMu(s))) yeni = [...yeni, bosSatir()];
       const sonBos = yeni.filter((s) => !doluMu(s)).pop();
@@ -334,8 +357,33 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     const m = d.match(/^(\d+(?:[.,]\d+)?)\s*\*\s*(.+)$/);
     const adet = m ? sayi(m[1]) || 1 : 1;
     const aranan = m ? m[2].trim() : d;
-    const k = await TicariService.kartBul(aranan, fiyatListesiRef.current).catch(() => null);
-    if (k) { kartiSatiraKoy(k, s.anahtar, adet); return; }
+    let k: StokKart | null = null;
+    try {
+      k = await TicariService.kartBul(aranan, fiyatListesiRef.current);
+    } catch (e: any) {
+      // Terazi etiketinin kodu karta bağlı değil (TA3)
+      if (e?.kod === "TERAZI_KARTSIZ") { showError(e.message); return; }
+    }
+    if (k?.okunanBirim) {
+      // Koli / ek birim barkodu (TA5): satır ana birimde (adet × çarpan), fiyat koli fiyatından
+      const u = k.okunanBirim;
+      const koliTL = u.satisFiyati === null ? null : (() => {
+        const d = kartDahilFiyat(u.satisFiyati, k.kdvOrani, k.fiyatKdvDahil);
+        if (!k.paraId || TL(k.paraKodu || "")) return d;
+        const kur = dovizKuru(k.paraId);
+        return kur ? Math.round(d * kur * 100) / 100 : null;
+      })();
+      kartiSatiraKoy(k, s.anahtar, Math.round(adet * u.carpan * 10000) / 10000, true, ekBirimSatirFiyati(kartFiyati(k), u.carpan, koliTL));
+      return;
+    }
+    if (k?.terazi) {
+      // Terazi etiketi (TA3): kilo ya da tutar barkoddan
+      const tm = teraziMiktari(k.terazi, k.birim, kartFiyati(k));
+      if (typeof tm === "string") { showError(`"${k.ad}": ${tm}`); return; }
+      kartiSatiraKoy(k, s.anahtar, tm, true);
+      return;
+    }
+    if (k) { kartiSatiraKoy(k, s.anahtar, adet, !!m); return; }
     if (yetki.yonetebilir && window.confirm(`"${aranan}" barkodlu ya da kodlu ürün bulunamadı. Yeni stok kartı açılsın mı?`)) {
       setYeniKart({ acik: true, barkod: /^\S+$/.test(aranan) ? aranan : undefined, ad: /\s/.test(aranan) ? aranan : undefined, satir: s.anahtar });
     } else setSecici({ acik: true, satir: s.anahtar, arama: aranan });
@@ -445,7 +493,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
       cariKartId, aliciVknTckn: temizVkn, aliciUnvan: isAnonymousCustomerName(unvan) ? "NİHAİ TÜKETİCİ" : unvan.trim(),
       adres, ilce, il, vergiDairesi, eposta, telefon,
       iskontoId, iskontoKodu: iskontolar.find((i) => i.iskontoId === iskontoId)?.kod || null, iskontoTuru: fisIskTur, iskontoDegeri: sayi(fisIskDeger),
-      satirlar: dolu.map((s) => ({ stokKartId: s.stokKartId, ...(s.serbest ? { urunAdi: s.ad, birim: s.birim, kdvOrani: s.kdvOrani } : {}), miktar: sayi(s.miktar), kdvDahilFiyat: sayi(s.fiyat), iskontoTuru: s.iskTur, iskontoDegeri: s.iskTur ? sayi(s.iskDeger) : null })),
+      satirlar: dolu.map((s) => ({ stokKartId: s.stokKartId, ...(s.serbest ? { urunAdi: s.ad, birim: s.birim, kdvOrani: s.kdvOrani } : {}), miktar: satirMiktari(s), kdvDahilFiyat: sayi(s.fiyat), iskontoTuru: s.iskTur, iskontoDegeri: s.iskTur ? sayi(s.iskDeger) : null })),
       odemeler: odemeYuku, eksiStokOnay: onay,
     };
   };
@@ -454,7 +502,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     if (kayitKilidi.current) return;
     if (kilitli) { showError("Bu fiş e-Belge olarak iletildi; düzeltilemez."); return; }
     if (!dolu.length) { showWarning("Fişe en az bir ürün ekleyin."); odak(`${satirlar[0]?.anahtar}_barkod`); return; }
-    const bozuk = dolu.find((s) => !(sayi(s.miktar) > 0));
+    const bozuk = dolu.find((s) => !(satirMiktari(s) > 0));
     if (bozuk) { showWarning(`${bozuk.ad}: miktar sıfırdan büyük olmalı.`); return; }
     if (hesap.hata) { showError(hesap.hata); return; }
     const t = vkn.replace(/\D/g, "");
@@ -521,7 +569,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
     const g = girdi(false);
     setOnizleme({
       ...g, faturaNo: faturaNo || "(kayıtta verilecek)", vezneKod: vezne?.kod,
-      satirlar: dolu.map((s, i) => ({ satirNo: i + 1, kod: s.kod, barkod: s.barkod, urunAdi: s.ad, birim: s.birim, miktar: sayi(s.miktar), kdvDahilFiyat: sayi(s.fiyat), kdvOrani: s.kdvOrani, iskontoTuru: s.iskTur, iskontoDegeri: sayi(s.iskDeger), kampanyaId: s.kampanya?.kampanyaId ?? null })),
+      satirlar: dolu.map((s, i) => ({ satirNo: i + 1, kod: s.kod, barkod: s.barkod, urunAdi: s.ad, birim: s.birim, miktar: satirMiktari(s), kdvDahilFiyat: sayi(s.fiyat), kdvOrani: s.kdvOrani, iskontoTuru: s.iskTur, iskontoDegeri: sayi(s.iskDeger), kampanyaId: s.kampanya?.kampanyaId ?? null })),
       fiyatListesiId,
       odemeler: g.odemeler,
     });
@@ -735,17 +783,24 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
                         )}
                       </td>
                       <td style={{ padding: "2px 4px" }}>
-                        {doluMu(s) ? <span className="fw-semibold">{s.ad} <span className="text-muted small font-monospace">{s.kod}</span>{s.kampanya && <Badge bg="danger" className="ms-1" title={`Kampanya: ${s.kampanya.ad} — satır iskontosu kampanyadan`}>Kampanya</Badge>}</span> : (
+                        {doluMu(s) ? <span className="fw-semibold">{s.ad} <span className="text-muted small font-monospace">{s.kod}</span>{s.kampanya && <Badge bg="danger" className="ms-1" title={`Kampanya: ${s.kampanya.ad} — satır iskontosu kampanyadan`}>Kampanya</Badge>}{s.koli && <Badge bg="secondary" className="ms-1 fw-normal">{ekBirimYaz(satirMiktari(s), s.birim, { birim: s.koli.ad, carpan: s.koli.carpan })}</Badge>}</span> : (
                           <Form.Control size="sm" value={s.ad} placeholder="Ürün adı yazıp Enter" disabled={kilitli} style={{ fontSize: 11.5 }}
                             onChange={(e) => satirDegis(s.anahtar, "ad", e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === "F4") { e.preventDefault(); setSecici({ acik: true, satir: s.anahtar, arama: s.ad }); } }} />
                         )}
                       </td>
-                      <td className={`text-end ${s.stok !== null && s.stok - sayi(s.miktar) < 0 ? "text-danger fw-bold" : "text-muted"}`}>{s.stokKartId && s.stok !== null ? miktarYaz(s.stok) : ""}</td>
+                      <td className={`text-end ${s.stok !== null && s.stok - satirMiktari(s) < 0 ? "text-danger fw-bold" : "text-muted"}`}>{s.stokKartId && s.stok !== null ? miktarYaz(s.stok) : ""}</td>
                       <td style={{ padding: "2px 4px" }}>
-                        {doluMu(s) && <Form.Control size="sm" className="text-end fw-semibold" inputMode="decimal" value={s.miktar} disabled={kilitli} ref={(el) => { hucre.current[`${s.anahtar}_miktar`] = el; }}
-                          style={{ fontSize: 11.5, background: !(sayi(s.miktar) > 0) ? "#fee2e2" : undefined }} onChange={(e) => satirDegis(s.anahtar, "miktar", sadeceSayi(e.target.value))}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const b = satirlar.find((x) => !doluMu(x)); if (b) odak(`${b.anahtar}_barkod`); } }} />}
+                        {doluMu(s) && (() => {
+                          const tb = tartiBirimi(s.birim);
+                          // Tartılı satır: "347gr" / "1,25kg" yazımı çıkışta kartın birimine çevrilir (TA2)
+                          const tartiDuzelt = () => { if (!tb) return; const m = tartiMetniCoz(s.miktar, tb); if (m !== null) satirDegis(s.anahtar, "miktar", metin(m, 4)); };
+                          return <Form.Control size="sm" className="text-end fw-semibold" inputMode={tb ? "text" : "decimal"} value={s.miktar} disabled={kilitli} ref={(el) => { hucre.current[`${s.anahtar}_miktar`] = el; }}
+                            placeholder={tb ? (tb === "Kg" ? "kg ya da 347gr" : "gr ya da 1,2kg") : undefined} title={tb ? `Miktar ${tb === "Kg" ? "kilo" : "gram"} olarak; "347gr" ya da "1,25kg" da yazılabilir` : undefined}
+                            style={{ fontSize: 11.5, background: !(satirMiktari(s) > 0) ? "#fee2e2" : undefined }} onChange={(e) => satirDegis(s.anahtar, "miktar", tb ? tartiMetni(e.target.value) : sadeceSayi(e.target.value))}
+                            onBlur={tartiDuzelt}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); tartiDuzelt(); const b = satirlar.find((x) => !doluMu(x)); if (b) odak(`${b.anahtar}_barkod`); } }} />;
+                        })()}
                       </td>
                       <td className="text-center small">{s.birim}</td>
                       <td style={{ padding: "2px 4px" }}>
@@ -884,7 +939,7 @@ export const TicariSatisFisiPage: React.FC<TicariSatisFisiPageProps> = ({ isDuze
                 <div className={`d-flex justify-content-between fw-bold ${kalan < -0.05 ? "text-danger" : kalan > 0.004 ? "text-warning" : "text-success"}`}>
                   <span>{kalan < -0.004 ? "Fazla ödeme" : "Kalan"}</span><span>{para(Math.abs(kalan))}</span>
                 </div>
-                <div className="small text-muted">{dolu.length} kalem · {miktarYaz(dolu.reduce((a, s) => a + sayi(s.miktar), 0))} birim</div>
+                <div className="small text-muted">{dolu.length} kalem · {miktarYaz(dolu.reduce((a, s) => a + satirMiktari(s), 0))} birim</div>
                 <div className="d-grid gap-1 mt-2">
                   <Button variant="primary" disabled={kaydediliyor || kilitli} onClick={() => void kaydet(false)}>{kaydediliyor ? <Spinner size="sm" className="me-1" /> : null}Kaydet (F1)</Button>
                   <Button variant="outline-primary" size="sm" disabled={kaydediliyor || kilitli} onClick={() => void kaydet(true)}>Kaydet ve Yazdır (F10)</Button>

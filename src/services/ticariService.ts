@@ -41,6 +41,21 @@ export interface StokKart {
   listeFiyati?: number | null;
   /** Kart ayrıntısında tanımlı listelerdeki fiyatlar */
   listeFiyatlari?: { fiyatListesiId: number; ad: string; fiyat: number | null }[];
+  /** Terazi PLU kodu (docs/TICARI_ADISYON_YOL_HARITASI.md, TA3); null = teraziye bağlı değil */
+  teraziKodu?: number | null;
+  /** SKT takibi (TA16): stok giriş fişinde son kullanma tarihi zorunlu */
+  sktTakibi?: boolean;
+  /** Reçeteli ürün (TA18): stok tutmaz, satılınca reçetedeki malzemeler düşer */
+  receteli?: boolean;
+  recete?: { malzemeKartId: number; kod: string; ad: string; birim: string; miktar: number }[];
+  /** Adisyon (masa) KDV oranı (TA32); null = Adisyon ayarı */
+  adisyonKdvOrani?: number | null;
+  /** kartBul terazi etiketli barkodla bulduysa barkoddaki ağırlık (kg) ya da tutar (TL) */
+  terazi?: { barkod: string; plu: number; agirlikKg: number | null; fiyat: number | null };
+  /** Kart ayrıntısında ek birimler (Koli = 12 Adet; TA5) */
+  birimler?: EkBirim[];
+  /** kartBul ek birim (koli) barkoduyla bulduysa o birim */
+  okunanBirim?: EkBirim;
 }
 
 export interface FiyatIslemiGirdi {
@@ -65,8 +80,8 @@ export interface KampanyaGirdi {
   kampanyaId?: number | null; ad: string; baslangic: string; bitis: string; tur: 1 | 2; deger: number | string; hedefTuru: 1 | 2 | 3;
   grupIdler?: number[]; kartIdler?: number[]; aktif?: boolean; aciklama?: string | null;
 }
-import type { AktifKampanya } from "../../Backend/src/services/ticari/ticariHesap";
-export type { AktifKampanya };
+import type { AktifKampanya, EkBirim, TeraziDuzeni } from "../../Backend/src/services/ticari/ticariHesap";
+export type { AktifKampanya, EkBirim, TeraziDuzeni };
 
 export interface FiyatListesi {
   fiyatListesiId: number;
@@ -103,6 +118,17 @@ export interface StokKartGirdi {
   stokKontrol?: string | null;
   tedarikciCariId?: number | null;
   listeFiyatlari?: { fiyatListesiId: number; fiyat: number | string | null }[];
+  /** Terazi PLU kodu (TA3); null / "": kaldır */
+  teraziKodu?: number | string | null;
+  /** SKT takibi (TA16) */
+  sktTakibi?: boolean;
+  /** Reçeteli ürün + reçete (TA18); verilmezse dokunulmaz */
+  receteli?: boolean;
+  /** Adisyon KDV oranı (TA32); "" = varsayılan */
+  adisyonKdvOrani?: number | string | null;
+  recete?: { malzemeKartId: number; miktar: number | string }[];
+  /** Ek birimler (TA5); verilirse hepsi yeniden yazılır */
+  birimler?: { birim: string; carpan: number | string; satisFiyati?: number | string | null; barkodlar?: string[] }[];
 }
 
 export const ETIKET_ALANLARI: { kod: EtiketAlani; ad: string }[] = [
@@ -118,7 +144,142 @@ export interface EtiketDuzeni {
 
 export interface StokAyarlari {
   eksiStok: "UYAR" | "ENGELLE" | "SESSIZ";
+  /** Terazi etiketli barkod düzenleri (TA3) */
+  teraziDuzenleri: TeraziDuzeni[];
+  /** Kasiyer vardiyası (TA8): satış / iade için veznede açık vardiya şartı */
+  vardiyaZorunlu: boolean;
+  /** SKT yaklaşanlar uyarı eşiği (gün, TA16) */
+  sktUyariGun: number;
   kullanicilar: { kullaniciId: number; ad: string; yonetici: boolean; yetkili: boolean }[];
+}
+
+/** Kasiyer vardiyası raporu (docs/TICARI_ADISYON_YOL_HARITASI.md, TA8); zamanlar Türkiye saati "YYYY-AA-GG SS:DD" */
+export interface VardiyaOzeti {
+  vardiyaId: number | null;
+  vezne: { vezneId: number; kod: string; ad: string };
+  acilis: { zaman: string; kullanici: string; not: string | null };
+  kapanis: { zaman: string; kullanici: string; not: string | null } | null;
+  nakit: {
+    devir: number; nakitSatis: number; nakitIade: number; digerGiris: number; digerCikis: number; beklenen: number;
+    sayilan: number | null; fark: number | null; durum: "TAMAM" | "FAZLA" | "EKSIK" | null;
+  };
+  kupur: Record<string, number> | null;
+  fisler: { satisAdet: number; satisToplam: number; iadeAdet: number; iadeToplam: number };
+  odemeler: { tur: string; paraKodu: string; satis: number; iade: number; net: number }[];
+  digerHareketler: { zaman: string; tur: string; belgeNo: string; aciklama: string; giris: number; cikis: number }[];
+  digerParalar: { paraKodu: string; giris: number; cikis: number }[];
+}
+
+/** Gün sonu satış raporu (TA7); tutarlar KDV dahil */
+/** Ortalama maliyet + kâr raporu (docs/TICARI_ADISYON_YOL_HARITASI.md, TA15) */
+export interface KarRaporuUrun {
+  stokKartId: number; kod: string; ad: string; birim: string; grup: string;
+  satisMiktar: number; iadeMiktar: number; netMiktar: number; gelir: number; maliyet: number; kar: number; karYuzde: number | null;
+  fireMiktar: number; fireMaliyet: number; sayimFarkMaliyet: number; ortMaliyet: number; sonAlis: number | null; maliyetsizMiktar: number; donemSonuMiktar: number;
+}
+export interface KarRaporu {
+  suzgec: { baslangic: string; bitis: string };
+  toplam: { gelir: number; maliyet: number; brutKar: number; fireMaliyet: number; sayimFarkMaliyet: number; parcalamaFarki?: number; netKar: number; karYuzde: number | null; maliyetsizKalem: number };
+  urunler: KarRaporuUrun[];
+  gruplar: { grup: string; gelir: number; maliyet: number; kar: number; fireMaliyet: number }[];
+  gunler: { gun: string; gelir: number; maliyet: number; kar: number }[];
+}
+export interface GunSonuTutar { adet: number; brut: number; iskonto: number; fisIskontosu: number; net: number; matrah: number; kdv: number }
+export interface GunSonuRaporu {
+  suzgec: { baslangic: string; bitis: string; kasiyer: string | null; vezne: string | null };
+  satis: GunSonuTutar;
+  iade: GunSonuTutar;
+  net: { net: number; matrah: number; kdv: number };
+  odemeler: { tur: string; paraKodu: string; satis: number; iade: number; net: number; dovizMiktar: number | null }[];
+  odemesiz: number;
+  kdvOranlari: { oran: number; matrah: number; kdv: number; toplam: number }[];
+  urunler: { stokKartId: number | null; kod: string; ad: string; birim: string; grup: string; satisMiktar: number; iadeMiktar: number; netMiktar: number; satis: number; iade: number; net: number }[];
+  gruplar: { grup: string; kalem: number; satis: number; iade: number; net: number }[];
+  kasiyerler: { kullaniciId: number | null; ad: string; satisAdet: number; iadeAdet: number; net: number }[];
+  saatler: { saat: number; adet: number; net: number }[];
+  kasiyerSecenekleri: { kullaniciId: number; ad: string }[];
+}
+
+/** Sayım fişi (TA11) */
+export interface SayimKarti { stokKartId: number; kod: string; ad: string; birim: string; grup: string; sistem: number }
+export interface SayimSatiri { stokKartId: number; satirNo: number; kod: string; ad: string; grup: string; birim: string; sayilan: number; sistem: number | null; fark: number | null }
+export interface SayimFisi {
+  sayimId: number; sayimNo: string; tarih: string; stokGrupId: number | null; grup: string; aciklama: string | null; durum: 0 | 1;
+  ekleyen: string; onaylayan: string; onayZamani: string | null; satirlar: SayimSatiri[]; ozet: { kalem: number; fazlaKalem: number; eksikKalem: number };
+}
+export interface SayimListeSatiri { sayimId: number; sayimNo: string; tarih: string; durum: number; aciklama: string | null; grup: string; kalem: number; farkliKalem: number }
+/** Fire / zayi fişi (TA12) */
+export interface FireSatiri { satirNo: number; stokKartId: number; kod: string; ad: string; birim: string; miktar: number; neden: string; birimMaliyet: number; maliyet: number }
+export interface FireFisi { fireId: number; fireNo: string; tarih: string; aciklama: string | null; ekleyen: string; satirlar: FireSatiri[]; toplamMaliyet: number }
+export interface FireListesi {
+  satirlar: { fireId: number; fireNo: string; tarih: string; satirNo: number; stokKartId: number; kod: string; ad: string; birim: string; miktar: number; neden: string; maliyet: number }[];
+  toplamMaliyet: number; nedenler: { neden: string; maliyet: number }[];
+}
+
+/** Parçalama fişi + şablon (TA17) */
+export interface ParcalamaOzeti { girdiMaliyet: number; ciktiMaliyet: number; fark: number; fireOnerisi: number | null; verimYuzde: number | null; uyarilar: string[] }
+export interface ParcalamaFisi {
+  parcalamaId: number; parcalamaNo: string; tarih: string; aciklama: string | null; ekleyen: string; sablonId: number | null; sablonAd: string | null; fireMiktar: number | null;
+  girdi: { stokKartId: number; kod: string; ad: string; birim: string; miktar: number; birimMaliyet: number };
+  satirlar: { satirNo: number; stokKartId: number; kod: string; ad: string; birim: string; miktar: number; birimMaliyet: number; maliyet: number }[];
+  ozet: ParcalamaOzeti;
+}
+export interface ParcalamaListeSatiri { parcalamaId: number; parcalamaNo: string; tarih: string; girdiAd: string; girdiBirim: string; girdiMiktar: number; girdiMaliyet: number; ciktiMaliyet: number; fireMiktar: number | null; parcaSayisi: number }
+export interface ParcalamaSablonu {
+  sablonId: number; ad: string; girdiKartId: number; girdiKod: string; girdiAd: string; girdiBirim: string; aciklama: string | null;
+  satirlar: { stokKartId: number; kod: string; ad: string; birim: string; verimYuzde: number | null; maliyetPayi: number | null }[];
+}
+
+/** Tedarikçiye iade (TA13) */
+export interface TedarikciIadeKaynagi {
+  fis: { stokGirisId: number; fisNo: string; tarih: string; belgeNo: string | null; cariKartId: number | null; cariKod: string; cariAd: string };
+  satirlar: { satirNo: number; stokKartId: number; kod: string; ad: string; birim: string; alinan: number; iadeEdilen: number; kalan: number; birimFiyat: number; kdvOrani: number }[];
+}
+export interface TedarikciIadesi {
+  iadeId: number; iadeNo: string; tarih: string; cariKartId: number; cariKod: string; cariAd: string; stokGirisId: number | null; girisNo: string | null;
+  girisBelgeNo: string | null; girisTarihi: string | null; belgeNo: string | null; aciklama: string | null; araToplam: number; toplamKdv: number; genelToplam: number;
+  cariHareketId: number | null; ebelgeTaslakId: number | null;
+  satirlar: { satirNo: number; stokKartId: number; kod: string; ad: string; girisSatirNo: number | null; birim: string; miktar: number; birimFiyat: number; kdvOrani: number; tutar: number; kdvTutari: number; toplamTutar: number }[];
+}
+export interface TedarikciIadeListeSatiri { iadeId: number; iadeNo: string; tarih: string; genelToplam: number; belgeNo: string | null; cariAd: string; girisNo: string | null }
+
+/** Gelen e-Faturadan stok girişi (TA14) */
+export interface EfaturaOnizleme {
+  fatura: { ettn: string; faturaNo: string; tarih: string; faturaTipi: string; paraBirimi: string; saticiVkn: string; saticiUnvan: string; matrah: number; odenecek: number };
+  cari: { cariKartId: number; kod: string; ad: string } | null;
+  cariBirdenFazla: boolean;
+  alindi: { stokGirisId: number; fisNo: string } | null;
+  engel: string | null;
+  satirlar: {
+    sira: number; ad: string; saticiKodu: string | null; aliciKodu: string | null; barkod: string | null; miktar: number; birimKodu: string; birimFiyat: number; iskonto: number;
+    netTutar: number; kdvOrani: number; kdvTutari: number; yeniKartBirimi: string;
+    /** Faturadaki son kullanma tarihi / parti (TA16) */
+    skt: string | null; partiNo: string | null;
+    oneri: { stokKartId: number | null; kaynak: "hatirlanan" | "barkod" | "kod" | "ad" | null; carpan: number | null; kart: { kod: string; ad: string; birim: string; sktTakibi?: boolean } | null };
+  }[];
+}
+export interface EfaturaGelenSatiri { uuid: string; belgeNo: string; saticiVkn: string; saticiUnvan: string; tarih: string | null; tutar: number | null; paraBirimi: string; faturaTipi: string; alindi: { stokGirisId: number; fisNo: string } | null }
+export type EfaturaAlimSecimi = { sira: number; atla?: boolean; stokKartId?: number | null; yeniKart?: { ad?: string; birim?: string; kdvOrani?: number } | null; carpan?: number | null; hatirla?: boolean; skt?: string | null; partiNo?: string | null };
+
+export interface VardiyaDurumu {
+  vezne: { vezneId: number; kod: string; ad: string };
+  zorunlu: boolean;
+  acik: VardiyaOzeti | null;
+  oneriDevir: number;
+}
+
+export interface VardiyaListeSatiri {
+  vardiyaId: number;
+  vezneId: number;
+  vezne: string;
+  acan: string;
+  acilis: string;
+  kapatan: string;
+  kapanis: string | null;
+  devir: number;
+  beklenen: number | null;
+  sayilan: number | null;
+  fark: number | null;
 }
 
 export interface StokGirisSatiri {
@@ -133,6 +294,21 @@ export interface StokGirisSatiri {
   tutar?: number;
   kdvTutari?: number;
   toplamTutar?: number;
+  /** Son kullanma tarihi YYYY-AA-GG ve parti no (TA16) */
+  skt?: string | null;
+  partiNo?: string | null;
+  sktTakibi?: boolean;
+}
+
+/** SKT yaklaşanlar (TA16): eldeki stok en yeni girişlere dağıtılarak partilerde kalan tahmini */
+export interface SktSatiri {
+  stokKartId: number; kod: string; ad: string; birim: string; grup: string;
+  stokGirisId: number; fisNo: string; girisGunu: string; partiNo: string | null; skt: string; kalanGun: number; durum: "gecti" | "bugun" | "yaklasiyor" | "uzak";
+  partiMiktar: number; kalan: number; birimFiyat: number; deger: number; kartBakiye: number;
+}
+export interface SktRaporu {
+  esikGun: number; bugun: string; satirlar: SktSatiri[];
+  ozet: Record<"gecti" | "bugun" | "yaklasiyor" | "uzak", { parti: number; kart: number; deger: number }>;
 }
 
 export interface StokGiris {
@@ -259,10 +435,28 @@ export interface TicariSatisGirdi {
   fiyatListesiId?: number | null;
 }
 
+/** Satış iadesi (docs/TICARI_ADISYON_YOL_HARITASI.md, TA6): iade penceresi kaynağı */
+export interface TicariIadeKaynakSatiri {
+  satirNo: number; stokKartId: number | null; kod: string | null; ad: string; birim: string; kdvOrani: number;
+  satilan: number; iadeEdilen: number; kalan: number; netBirimFiyat: number;
+  asil: { miktar: number; matrah: number; kdv: number; birimFiyat: number; kdvOrani: number };
+  onceki: { miktar: number; matrah: number; kdv: number };
+}
+export interface TicariIadeKaynagi {
+  fis: { faturaId: number; faturaNo: string; tarih: string; aliciVknTckn: string; aliciUnvan: string; cariKartId: number | null; cariKod: string | null; cariAd: string | null; genelToplam: number; eBelgeDurumu: number; ettn: string };
+  satirlar: TicariIadeKaynakSatiri[];
+  oncekiIadeler: { faturaId: number; faturaNo: string; tarih: string; tutar: number }[];
+  /** Asıl fişin ödemeleri (F11) ve karta en çok iade edilebilecek tutar (T9) */
+  asilOdemeler?: { odemeAraciTuru: number; posCihaziId: number | null; tutar: number }[];
+  kartaIadeSiniri?: number;
+}
+
 export interface TicariSatisListeSatiri {
   faturaId: number;
   faturaNo: string;
   tarih: string;
+  /** 1 satış, 2 iade (TA6) */
+  faturaTipi?: number;
   senaryo: string;
   aliciVknTckn: string;
   aliciUnvan: string;
@@ -307,8 +501,11 @@ export interface StokHareketSatiri {
   ad: string;
   birim: string;
   tarih: string;
+  /** 1 giriş, 2 satış / satış iadesi, 3 sayım, 4 fire, 5 tedarikçiye iade */
   belgeTuru: number;
   belgeTuruAdi: string;
+  /** Satış iadesi fişi (belgeTuru 2) */
+  iade?: boolean;
   belgeId: number;
   belgeNo: string;
   karsiTaraf: string;
@@ -341,7 +538,7 @@ export const TicariService = {
   async ayarlar(): Promise<StokAyarlari> {
     return (await apiClient.get("/ticari/ayarlar")).data;
   },
-  async ayarKaydet(g: { eksiStok?: string; yetkiliKullanicilar?: number[] }): Promise<StokAyarlari> {
+  async ayarKaydet(g: { eksiStok?: string; yetkiliKullanicilar?: number[]; teraziDuzenleri?: TeraziDuzeni[]; vardiyaZorunlu?: boolean; sktUyariGun?: number | string | null }): Promise<StokAyarlari> {
     return (await apiClient.put("/ticari/ayarlar", g)).data;
   },
 
@@ -439,6 +636,8 @@ export const TicariService = {
     try {
       return (await apiClient.get(`/ticari/kart-bul/${encodeURIComponent(deger.trim())}`, temizle({ liste: liste || undefined }), { silent: true } as any)).data;
     } catch (e: any) {
+      // Terazi etiketi okundu ama koda bağlı kart yok (TA3): çağıran mesajı gösterir, "yeni kart aç" akışına düşmez
+      if (e?.status === 404 && e?.kod === "TERAZI_KARTSIZ") throw e;
       if (e?.status === 404) return null;
       throw e;
     }
@@ -482,7 +681,7 @@ export const TicariService = {
     return (await apiClient.get("/ticari/satis/sira-no", { senaryo })).data?.faturaNo || "";
   },
   /** Dürbün gelişmiş filtresi drb önekli alanlarla gider (utils/fisDurbunFiltre.ts) */
-  async satisListe(f: { baslangic?: string; bitis?: string; arama?: string; eBelgeDurumu?: number | null; stokKartId?: number | null; limit?: number; [durbun: string]: string | number | null | undefined } = {}): Promise<TicariSatisListeSatiri[]> {
+  async satisListe(f: { baslangic?: string; bitis?: string; arama?: string; eBelgeDurumu?: number | null; stokKartId?: number | null; limit?: number; tip?: number | null; [durbun: string]: string | number | null | undefined } = {}): Promise<TicariSatisListeSatiri[]> {
     return (await apiClient.get("/ticari/satis", temizle(f as any))).data || [];
   },
   async satisKimlikler(): Promise<{ faturaId: number; faturaNo: string }[]> {
@@ -496,6 +695,148 @@ export const TicariService = {
   },
   async satisSil(id: number): Promise<void> {
     await apiClient.delete(`/ticari/satis/${id}`);
+  },
+  // ── Satış iadesi (TA6) ──
+  async iadeKaynak(asilFaturaId: number): Promise<TicariIadeKaynagi> {
+    return (await apiClient.get(`/ticari/iade/kaynak/${asilFaturaId}`)).data;
+  },
+  async iadeKaydet(g: { asilFaturaId: number; tarih?: string | null; neden?: string | null; satirlar: { asilSatirNo: number; miktar: number }[]; odemeler?: TicariOdeme[] }): Promise<TicariSatisFisi & { asil: { faturaId: number; faturaNo: string; tarih: string; eBelgeDurumu: number; ettn: string } | null; neden: string | null }> {
+    return (await apiClient.post("/ticari/iade", g)).data;
+  },
+  async iadeGetir(id: number): Promise<TicariSatisFisi & { asil: { faturaId: number; faturaNo: string; tarih: string; eBelgeDurumu: number; ettn: string } | null; neden: string | null }> {
+    return (await apiClient.get(`/ticari/iade/${id}`)).data;
+  },
+  async iadeSil(id: number): Promise<void> {
+    await apiClient.delete(`/ticari/iade/${id}`);
+  },
+  async iadeGiderTaslagi(id: number): Promise<any> {
+    return (await apiClient.get(`/ticari/iade/${id}/gider-taslagi`)).data;
+  },
+
+  // Kasiyer vardiyası (TA8). vezneId yalnız sistem yöneticisi için dikkate alınır; öteki kullanıcıda kendi veznesi
+  async vardiyaDurum(vezneId?: number | null): Promise<VardiyaDurumu> {
+    return (await apiClient.get("/ticari/vardiya/durum", vezneId ? { vezneId } : {})).data;
+  },
+  async vardiyaAc(g: { devir: number | string; not?: string | null; vezneId?: number | null }): Promise<VardiyaDurumu & { vardiyaId: number }> {
+    return (await apiClient.post("/ticari/vardiya/ac", g)).data;
+  },
+  async vardiyaKapat(g: { sayilan?: number | string | null; kupur?: Record<string, number> | null; not?: string | null; vezneId?: number | null }): Promise<VardiyaOzeti> {
+    return (await apiClient.post("/ticari/vardiya/kapat", g)).data;
+  },
+  async vardiyaListe(f: { vezneId?: number | null; baslangic?: string; bitis?: string; limit?: number } = {}): Promise<VardiyaListeSatiri[]> {
+    return (await apiClient.get("/ticari/vardiya", temizle(f as any))).data || [];
+  },
+  async vardiyaRapor(id: number): Promise<VardiyaOzeti> {
+    return (await apiClient.get(`/ticari/vardiya/${id}`)).data;
+  },
+  // Sayım fişi (TA11)
+  async sayimKartlari(f: { grupId?: number | null; tarih?: string | null; sayimId?: number | null }): Promise<SayimKarti[]> {
+    return (await apiClient.get("/ticari/sayim/kartlar", temizle(f as any))).data || [];
+  },
+  async sayimListe(f: { baslangic?: string; bitis?: string; durum?: number | null } = {}): Promise<SayimListeSatiri[]> {
+    return (await apiClient.get("/ticari/sayim", temizle(f as any))).data || [];
+  },
+  async sayim(id: number): Promise<SayimFisi> {
+    return (await apiClient.get(`/ticari/sayim/${id}`)).data;
+  },
+  async sayimKaydet(g: { sayimId?: number | null; tarih: string; stokGrupId?: number | null; aciklama?: string | null; satirlar: { stokKartId: number; sayilan: number }[] }): Promise<SayimFisi> {
+    return g.sayimId ? (await apiClient.put(`/ticari/sayim/${g.sayimId}`, g)).data : (await apiClient.post("/ticari/sayim", g)).data;
+  },
+  async sayimOnayla(id: number, sayilmayanSifir: boolean): Promise<SayimFisi> {
+    return (await apiClient.post(`/ticari/sayim/${id}/onay`, { sayilmayanSifir })).data;
+  },
+  async sayimGeriAl(id: number, onay = false): Promise<SayimFisi> {
+    return (await apiClient.post(`/ticari/sayim/${id}/geri-al${onay ? "?onay=1" : ""}`, {})).data;
+  },
+  async sayimSil(id: number): Promise<void> {
+    await apiClient.delete(`/ticari/sayim/${id}`);
+  },
+  // Gelen e-Faturadan stok girişi (TA14)
+  async efGelenListe(f: { baslangic?: string; bitis?: string; arama?: string } = {}): Promise<EfaturaGelenSatiri[]> {
+    return (await apiClient.get("/ticari/efatura-giris/gelen", temizle(f as any))).data || [];
+  },
+  async efGelenOnizle(uuid: string): Promise<EfaturaOnizleme> {
+    return (await apiClient.get(`/ticari/efatura-giris/gelen/${encodeURIComponent(uuid)}/onizle`)).data;
+  },
+  async efXmlOnizle(xml: string): Promise<EfaturaOnizleme> {
+    return (await apiClient.post("/ticari/efatura-giris/xml/onizle", { xml })).data;
+  },
+  async efAl(kaynak: { uuid?: string; xml?: string }, g: { cariKartId?: number | null; tarih?: string | null; satirlar: EfaturaAlimSecimi[] }): Promise<{ fis: StokGiris; uyari: string | null; girisToplam: number; fark: number; yeniKartSayisi: number }> {
+    return kaynak.uuid ? (await apiClient.post(`/ticari/efatura-giris/gelen/${encodeURIComponent(kaynak.uuid)}`, g)).data : (await apiClient.post("/ticari/efatura-giris/xml", { ...g, xml: kaynak.xml })).data;
+  },
+  // Tedarikçiye iade (TA13)
+  async tedIadeKaynak(girisId: number): Promise<TedarikciIadeKaynagi> {
+    return (await apiClient.get(`/ticari/tedarikci-iade/kaynak/${girisId}`)).data;
+  },
+  async tedIadeListe(f: { baslangic?: string; bitis?: string; cariKartId?: number | null } = {}): Promise<TedarikciIadeListeSatiri[]> {
+    return (await apiClient.get("/ticari/tedarikci-iade", temizle(f as any))).data || [];
+  },
+  async tedIade(id: number): Promise<TedarikciIadesi> {
+    return (await apiClient.get(`/ticari/tedarikci-iade/${id}`)).data;
+  },
+  async tedIadeKaydet(g: { stokGirisId?: number | null; cariKartId?: number | null; tarih: string; belgeNo?: string | null; aciklama?: string | null;
+    satirlar: { girisSatirNo?: number | null; stokKartId?: number | null; miktar: number; birimFiyat?: number | null; kdvOrani?: number | null }[]; eksiStokOnay?: boolean }): Promise<{ fis: TedarikciIadesi; uyari: string | null }> {
+    return (await apiClient.post("/ticari/tedarikci-iade", g)).data;
+  },
+  async tedIadeSil(id: number): Promise<void> {
+    await apiClient.delete(`/ticari/tedarikci-iade/${id}`);
+  },
+  async tedIadeEbelgeTaslagi(id: number): Promise<{ iadeNo: string; genelToplam: number; icerik: Record<string, any>; eksik: string[] }> {
+    return (await apiClient.get(`/ticari/tedarikci-iade/${id}/ebelge-taslagi`)).data;
+  },
+  async tedIadeTaslakBagla(id: number, taslakId: number): Promise<void> {
+    await apiClient.post(`/ticari/tedarikci-iade/${id}/ebelge-taslagi`, { taslakId });
+  },
+  // Fire / zayi fişi (TA12)
+  async fireNedenleri(): Promise<string[]> {
+    return (await apiClient.get("/ticari/fire/nedenler")).data || [];
+  },
+  async fireListe(f: { baslangic?: string; bitis?: string; neden?: string; stokKartId?: number | null } = {}): Promise<FireListesi> {
+    return (await apiClient.get("/ticari/fire", temizle(f as any))).data;
+  },
+  async fire(id: number): Promise<FireFisi> {
+    return (await apiClient.get(`/ticari/fire/${id}`)).data;
+  },
+  // Parçalama (TA17)
+  async parcalamaListe(f: { baslangic?: string; bitis?: string; stokKartId?: number | null } = {}): Promise<ParcalamaListeSatiri[]> {
+    return (await apiClient.get("/ticari/parcalama", temizle(f as any))).data || [];
+  },
+  async parcalama(id: number): Promise<ParcalamaFisi> {
+    return (await apiClient.get(`/ticari/parcalama/${id}`)).data;
+  },
+  async parcalamaKaydet(g: { parcalamaId?: number | null; tarih: string; girdiKartId: number; girdiMiktar: number; fireMiktar?: number | null; sablonId?: number | null; aciklama?: string | null;
+    satirlar: { stokKartId: number; miktar: number; birimMaliyet: number }[]; eksiStokOnay?: boolean }): Promise<{ fis: ParcalamaFisi; uyari: string | null }> {
+    return g.parcalamaId ? (await apiClient.put(`/ticari/parcalama/${g.parcalamaId}`, g)).data : (await apiClient.post("/ticari/parcalama", g)).data;
+  },
+  async parcalamaSil(id: number, onay = false): Promise<void> {
+    await apiClient.delete(`/ticari/parcalama/${id}${onay ? "?onay=1" : ""}`);
+  },
+  async parcalamaGirdiMaliyeti(stokKartId: number, tarih: string): Promise<{ stokKartId: number; birim: string; birimMaliyet: number; bakiye: number }> {
+    return (await apiClient.get("/ticari/parcalama/girdi-maliyeti", { stokKartId, tarih } as any)).data;
+  },
+  async parcalamaSablonlar(): Promise<ParcalamaSablonu[]> {
+    return (await apiClient.get("/ticari/parcalama/sablon")).data || [];
+  },
+  async parcalamaSablonKaydet(g: { sablonId?: number | null; ad: string; girdiKartId: number; aciklama?: string | null; satirlar: { stokKartId: number; verimYuzde?: number | null; maliyetPayi?: number | null }[] }): Promise<ParcalamaSablonu> {
+    return g.sablonId ? (await apiClient.put(`/ticari/parcalama/sablon/${g.sablonId}`, g)).data : (await apiClient.post("/ticari/parcalama/sablon", g)).data;
+  },
+  async parcalamaSablonSil(id: number): Promise<void> {
+    await apiClient.delete(`/ticari/parcalama/sablon/${id}`);
+  },
+  async fireKaydet(g: { fireId?: number | null; tarih: string; aciklama?: string | null; satirlar: { stokKartId: number; miktar: number; neden: string }[]; eksiStokOnay?: boolean }): Promise<{ fis: FireFisi; uyari: string | null }> {
+    return g.fireId ? (await apiClient.put(`/ticari/fire/${g.fireId}`, g)).data : (await apiClient.post("/ticari/fire", g)).data;
+  },
+  async fireSil(id: number): Promise<void> {
+    await apiClient.delete(`/ticari/fire/${id}`);
+  },
+  async gunSonu(f: { baslangic: string; bitis: string; kasiyerId?: number | null; vezneId?: number | null }): Promise<GunSonuRaporu> {
+    return (await apiClient.get("/ticari/gun-sonu", temizle(f as any))).data;
+  },
+  async sktYaklasan(f: { gun?: number | null; grupId?: number | null; arama?: string; tumu?: boolean } = {}): Promise<SktRaporu> {
+    return (await apiClient.get("/ticari/skt-yaklasan", temizle({ ...f, tumu: f.tumu ? "1" : undefined } as any), { timeoutMs: 90000 } as any)).data;
+  },
+  async karRaporu(f: { baslangic: string; bitis: string; grupId?: number | null; stokKartId?: number | null }): Promise<KarRaporu> {
+    return (await apiClient.get("/ticari/kar-raporu", temizle(f as any), { timeoutMs: 90000 } as any)).data;
   },
 
   async stokDurum(f: { tarih?: string; grupId?: number | null; arama?: string; yalnizEksik?: boolean; pasifler?: boolean } = {}) {

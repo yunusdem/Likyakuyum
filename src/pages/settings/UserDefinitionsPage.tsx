@@ -666,6 +666,9 @@ const UserDefinitionsPage: React.FC = () => {
     SistemService.bilgi().then((b) => setKurulum(!!b.kurulum)).catch(() => undefined);
   }, []);
   const kullaniciLimiti = kurulum ? merkez?.kullaniciLimiti ?? null : null;
+  // Yönetim paneli açıkken yeni kullanıcıyı yalnız firmanın tek yetkilisi (merkezde Firma Yöneticisi) açar; kartta Sistem
+  // Yöneticisi olan diğerleri kartları düzenler ama kullanıcı açamaz (sunucu da reddeder). Kurulumda / merkez kapalıyken kart yöneticisi.
+  const kullaniciAcabilir = kurulum || !merkez ? kartYoneticisi : !!merkez.firmaYoneticisi;
   const kayitliKullanici = users.filter((u) => Number(u.id) > 0).length;
   const limitDolu = kullaniciLimiti !== null && kayitliKullanici >= kullaniciLimiti;
   const limitAsildi = kullaniciLimiti !== null && kayitliKullanici > kullaniciLimiti;
@@ -1286,7 +1289,7 @@ const UserDefinitionsPage: React.FC = () => {
   return (
     <div className="w-100 pb-3" style={{ overflowX: "hidden" }}>
       <ERPToolbar
-        onNew={kartYoneticisi && !limitDolu ? handleNewUser : undefined}
+        onNew={kullaniciAcabilir && !limitDolu ? handleNewUser : undefined}
         onSave={handleSave}
         onPrint={handlePrint}
         onRefresh={handleRefresh}
@@ -1300,7 +1303,7 @@ const UserDefinitionsPage: React.FC = () => {
         onConsolidatedDB={() => setShowConsolidatedModal(true)}
         hideSearch={false}
         hideDelete={!kartYoneticisi}
-        hideNew={!kartYoneticisi}
+        hideNew={!kullaniciAcabilir}
         hideNavigation={false}
       />
 
@@ -2135,14 +2138,22 @@ const UserDefinitionsPage: React.FC = () => {
                         <span>Menü yetkileri</span>
                       </h6>
 
+                      {/* Sistem yöneticisinde menü / görünüm yetkilerine bakılmaz (menuyuKullaniciyaSuz, gorunumYoneticisiMi):
+                          kutular işaretlenebilir görünüp etkisiz kalıyordu; işaret kaldırılınca açılır, kayıtlı değerler korunur */}
+                      {currentUser.isSysAdmin && (
+                        <Alert variant="info" className="py-2 px-3 small mb-2">
+                          Bu kullanıcı <strong>sistem yöneticisi</strong>: menü yetkileri uygulanmaz, tüm menüleri görür.
+                          Kısıtlamak için soldaki <strong>Sistem yöneticisi</strong> işaretini kaldırın.
+                        </Alert>
+                      )}
                       {/* Eski programla aynı biçim: her menü için madde harfleri (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4.1) */}
                       <MenuYetkileriAlani
                         deger={currentUser.menuPerms as any}
                         degistir={(alan, yeni) => updateMenuPerm(alan as keyof UserProfile["menuPerms"], yeni)}
-                        kilitli={!kartYoneticisi}
+                        kilitli={!kartYoneticisi || !!currentUser.isSysAdmin}
                       />
                       {/* Hızlı menü (üst kısayol çubuğu) ve üst çubuk düğmeleri: aynı mantık, kullanıcı görünümü tablosunda */}
-                      {kartYoneticisi && <KisayolYetkileriAlani kapali={kisayolKapali} degistir={setKisayolKapali} kilitli={!kartYoneticisi} />}
+                      {kartYoneticisi && <KisayolYetkileriAlani kapali={kisayolKapali} degistir={setKisayolKapali} kilitli={!kartYoneticisi || !!currentUser.isSysAdmin} />}
                     </div>
                   </Col>
 

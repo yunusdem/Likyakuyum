@@ -2,8 +2,8 @@ import { KendiKayit, kendiKayitKosulu } from "../utils/kendiKayit.js";
 import sql from "mssql";
 import { ApiError } from "../utils/ApiError.js";
 import { HttpStatus } from "../constants/httpStatusCodes.js";
-import { GECERLI_KDV_ORANLARI, girisSatirHesapla, yuvarla2 } from "../services/ticari/ticariHesap.js";
-import { DbBaglam, STOK_BELGE, TicariStokSqlRepository, stokKontrolOku } from "./ticariStokSql.repository.js";
+import { GECERLI_KDV_ORANLARI, girisSatirHesapla, sktDenetle, yuvarla2 } from "../services/ticari/ticariHesap.js";
+import { DbBaglam, STOK_BELGE, TicariStokSqlRepository, receteliReddet, stokKontrolOku, stokIslemKilidi } from "./ticariStokSql.repository.js";
 import { FisDurbunFiltre, FisDurbunKolonlari, durbunFiltresiVar, durbunLimiti, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
 
 /** Stok giriş fişi dürbünü: TARIH UTC tutulur (gün +3 saatle), ürün = stok kartı metni, cari = tedarikçi, tip yok */
@@ -31,6 +31,10 @@ export interface StokGirisSatirGirdi {
   /** KDV hariç alış fiyatı */
   birimFiyat?: number | string | null;
   kdvOrani?: number | string | null;
+  /** Son kullanma tarihi YYYY-AA-GG (TA16); kartta SKT takibi varsa Stok Giriş Fişi'nde zorunlu */
+  skt?: string | null;
+  /** İsteğe bağlı parti / lot numarası */
+  partiNo?: string | null;
 }
 
 export interface StokGirisGirdi {
@@ -120,6 +124,14 @@ export async function sonAlisGuncelle(tx: sql.Transaction, kartIdler: number[]):
     WHERE K.STOK_KART_ID IN (${idler.map(Number).join(",")})`);
 }
 
+/** Tedarikçiye iadesi olan giriş fişi düzeltilmez / silinmez (TA13): iadenin satır bağı ve tedarikçi borcu bozulmasın */
+async function iadeliGirisiReddet(tx: sql.Transaction, id: number, fisNo: string, eylem: string): Promise<void> {
+  const r = await new sql.Request(tx).input("ID", sql.Int, id).query(`IF OBJECT_ID('dbo.TODVZ_STOK_TEDARIKCI_IADE','U') IS NOT NULL
+    SELECT TOP 1 RTRIM(IADE_NO) AS NO FROM dbo.TODVZ_STOK_TEDARIKCI_IADE WHERE STOK_GIRIS_ID = @ID`);
+  const no = r.recordset?.[0]?.NO;
+  if (no) throw ApiError.badRequest(`${fisNo} giriş fişinin tedarikçiye iadesi var (${temiz(no)}); fiş ${eylem}. Önce iadeyi silin.`);
+}
+
 export class TicariGirisSqlRepository {
   /** SG + yıl + 6 hane (SG2026000001) */
   static async yeniFisNo(tx: sql.Transaction | sql.ConnectionPool, tarih: Date): Promise<string> {
@@ -155,12 +167,13 @@ export class TicariGirisSqlRepository {
   }
 
   /** Girdiyi denetler; kartları okur. Hata metni kullanıcıya gösterilir. */
-  private static async satirlariHazirla(tx: sql.Transaction, girdi: StokGirisGirdi) {
+  private static async satirlariHazirla(tx: sql.Transaction, girdi: StokGirisGirdi, girisGunu: string, sktZorunlu: boolean) {
     const satirlar = (girdi.satirlar || []).filter((s) => s && Number(s.stokKartId) > 0);
     if (!satirlar.length) throw ApiError.badRequest("Fişte en az bir ürün satırı olmalı.");
     const idler = [...new Set(satirlar.map((s) => Number(s.stokKartId)))];
-    const r = await new sql.Request(tx).query(`SELECT STOK_KART_ID, RTRIM(KOD) AS KOD, AD, BIRIM, KDV_ORANI, AKTIF FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${idler.join(",")})`);
+    const r = await new sql.Request(tx).query(`SELECT STOK_KART_ID, RTRIM(KOD) AS KOD, AD, BIRIM, KDV_ORANI, AKTIF, ISNULL(SKT_TAKIBI, 0) AS SKT_TAKIBI FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${idler.join(",")})`);
     const kartlar = new Map<number, any>(r.recordset.map((x: any) => [x.STOK_KART_ID, x]));
+    await receteliReddet(tx, idler, "stok girişi");
     return satirlar.map((s, i) => {
       const k = kartlar.get(Number(s.stokKartId));
       if (!k) throw ApiError.badRequest(`${i + 1}. satırdaki stok kartı bulunamadı.`);
@@ -170,7 +183,12 @@ export class TicariGirisSqlRepository {
       if (!Number.isFinite(birimFiyat) || birimFiyat < 0) throw ApiError.badRequest(`${i + 1}. satırda (${temiz(k.AD)}) alış fiyatı geçersiz.`);
       const kdvOrani = s.kdvOrani === null || s.kdvOrani === undefined || temiz(s.kdvOrani) === "" ? Number(k.KDV_ORANI) || 0 : sayi(s.kdvOrani);
       if (!GECERLI_KDV_ORANLARI.includes(kdvOrani)) throw ApiError.badRequest(`${i + 1}. satırda KDV oranı ${kdvOrani} olamaz.`);
-      return { satirNo: i + 1, stokKartId: Number(k.STOK_KART_ID), birim: temiz(k.BIRIM), miktar: y4(miktar), birimFiyat: y4(birimFiyat), kdvOrani, ...girisSatirHesapla(miktar, birimFiyat, kdvOrani) };
+      const skt = temiz(s.skt).slice(0, 10) || null;
+      const sktHata = sktDenetle(skt, girisGunu, sktZorunlu && !!k.SKT_TAKIBI);
+      // "Son kullanma …" → "son kullanma …"; kısaltmayla başlıyorsa ("SKT takibi …") olduğu gibi
+      if (sktHata) throw ApiError.badRequest(`${i + 1}. satırda (${temiz(k.AD)}) ${/^\p{Lu}\p{Ll}/u.test(sktHata) ? sktHata.charAt(0).toLocaleLowerCase("tr-TR") + sktHata.slice(1) : sktHata}`);
+      const partiNo = temiz(s.partiNo).slice(0, 40) || null;
+      return { satirNo: i + 1, stokKartId: Number(k.STOK_KART_ID), birim: temiz(k.BIRIM), miktar: y4(miktar), birimFiyat: y4(birimFiyat), kdvOrani, skt, partiNo, ...girisSatirHesapla(miktar, birimFiyat, kdvOrani) };
     });
   }
 
@@ -178,9 +196,10 @@ export class TicariGirisSqlRepository {
     const pool = await TicariStokSqlRepository.havuz(ctx);
     const tx = new sql.Transaction(pool);
     await tx.begin();
+    await stokIslemKilidi(tx);
     let sonuc: { id: number; uyari: string | null };
     try {
-      sonuc = await this.yaz(tx, girdi, kullaniciId);
+      sonuc = await this.yaz(tx, girdi, kullaniciId, { sktZorunlu: true });
       await tx.commit();
     } catch (e) {
       await tx.rollback().catch(() => undefined);
@@ -189,10 +208,14 @@ export class TicariGirisSqlRepository {
     return { fis: await this.getir(sonuc.id, ctx), uyari: sonuc.uyari };
   }
 
-  /** Fişi açık işlemin içinde yazar (Excel açılış girişi de kullanır) */
-  static async yaz(tx: sql.Transaction, girdi: StokGirisGirdi, kullaniciId: number | undefined): Promise<{ id: number; uyari: string | null }> {
+  /**
+   * Fişi açık işlemin içinde yazar (Excel açılış girişi de kullanır). sktZorunlu: SKT takipli kartta SKT istenir (Stok Giriş Fişi,
+   * e-Faturadan giriş); Excel açılışında kartlar yeni açıldığı için istenmez.
+   */
+  static async yaz(tx: sql.Transaction, girdi: StokGirisGirdi, kullaniciId: number | undefined, o: { sktZorunlu?: boolean } = {}): Promise<{ id: number; uyari: string | null }> {
     const tarih = girdi.tarih ? new Date(girdi.tarih) : new Date();
     if (Number.isNaN(tarih.getTime())) throw ApiError.badRequest("Fiş tarihi okunamadı.");
+    const girisGunu = new Date(tarih.getTime() + 3 * 3600_000).toISOString().slice(0, 10);
     const id0 = Number(girdi.stokGirisId) || 0;
     let id = id0;
     let uyari: string | null = null;
@@ -203,8 +226,9 @@ export class TicariGirisSqlRepository {
         const e = await new sql.Request(tx).input("ID", sql.Int, id0).query(`SELECT FIS_NO FROM dbo.TODVZ_STOK_GIRIS WITH (UPDLOCK) WHERE STOK_GIRIS_ID = @ID`);
         if (!e.recordset.length) throw ApiError.notFound("Stok giriş fişi bulunamadı.");
         fisNo = temiz(e.recordset[0].FIS_NO);
+        await iadeliGirisiReddet(tx, id0, fisNo, "düzeltilemez");
       }
-      const satirlar = await this.satirlariHazirla(tx, girdi);
+      const satirlar = await this.satirlariHazirla(tx, girdi, girisGunu, !!o.sktZorunlu);
       const tumKartlar = [...new Set([...satirlar.map((s) => s.stokKartId)])];
       if (id0) eskiKartlar = (await new sql.Request(tx).input("ID", sql.Int, id0).query(`SELECT DISTINCT STOK_KART_ID FROM dbo.TODVZ_STOK_GIRIS_SATIRI WHERE STOK_GIRIS_ID = @ID`)).recordset.map((x: any) => Number(x.STOK_KART_ID));
       const onceki = await bakiyeler(tx, [...tumKartlar, ...eskiKartlar]);
@@ -243,16 +267,19 @@ export class TicariGirisSqlRepository {
         id = r.recordset[0].STOK_GIRIS_ID;
       }
 
-      // Satırlar 10 parametre / satır → 200 satır / paket (Excel açılışında binlerce satır olabilir); hareketler satırlardan tek sorguyla
-      for (let i = 0; i < satirlar.length; i += 200) {
-        const paket = satirlar.slice(i, i + 200);
+      // Satırlar 11 parametre / satır → 150 satır / paket (SQL Server 2100 parametre sınırı; Excel açılışında binlerce satır olabilir); hareketler satırlardan tek sorguyla
+      // SKT / parti yalnız dolu satırlarda parametre olur (çoğu satırda boş)
+      for (let i = 0; i < satirlar.length; i += 150) {
+        const paket = satirlar.slice(i, i + 150);
         const req = new sql.Request(tx).input("ID", sql.Int, id);
         const degerler = paket.map((s, j) => {
           req.input(`N${j}`, sql.Int, s.satirNo).input(`K${j}`, sql.Int, s.stokKartId).input(`M${j}`, sql.Float, s.miktar).input(`B${j}`, sql.VarChar(20), s.birim)
             .input(`F${j}`, sql.Float, s.birimFiyat).input(`V${j}`, sql.Float, s.kdvOrani).input(`T${j}`, sql.Float, s.tutar).input(`KT${j}`, sql.Float, s.kdvTutari).input(`TT${j}`, sql.Float, s.toplamTutar);
-          return `(@ID, @N${j}, @K${j}, @M${j}, @B${j}, @F${j}, @V${j}, @T${j}, @KT${j}, @TT${j})`;
+          const skt = s.skt ? (req.input(`S${j}`, sql.VarChar(10), s.skt), `CONVERT(date, @S${j}, 23)`) : "NULL";
+          const parti = s.partiNo ? (req.input(`P${j}`, sql.NVarChar(40), s.partiNo), `@P${j}`) : "NULL";
+          return `(@ID, @N${j}, @K${j}, @M${j}, @B${j}, @F${j}, @V${j}, @T${j}, @KT${j}, @TT${j}, ${skt}, ${parti})`;
         });
-        await req.query(`INSERT INTO dbo.TODVZ_STOK_GIRIS_SATIRI (STOK_GIRIS_ID, SATIR_NO, STOK_KART_ID, MIKTAR, BIRIM, BIRIM_FIYAT, KDV_ORANI, TUTAR, KDV_TUTARI, TOPLAM_TUTAR) VALUES ${degerler.join(",")}`);
+        await req.query(`INSERT INTO dbo.TODVZ_STOK_GIRIS_SATIRI (STOK_GIRIS_ID, SATIR_NO, STOK_KART_ID, MIKTAR, BIRIM, BIRIM_FIYAT, KDV_ORANI, TUTAR, KDV_TUTARI, TOPLAM_TUTAR, SKT, PARTI_NO) VALUES ${degerler.join(",")}`);
       }
       await new sql.Request(tx).input("ID", sql.Int, id).input("TARIH", sql.DateTime, tarih).input("TUR", sql.TinyInt, STOK_BELGE.GIRIS).input("KUL", sql.Int, kullaniciId || null).query(`
         INSERT INTO dbo.TODVZ_STOK_HAREKET (STOK_KART_ID, TARIH, BELGE_TURU, BELGE_ID, SATIR_NO, GIRIS, CIKIS, BIRIM_FIYAT, EKLEYEN_ID)
@@ -288,13 +315,17 @@ export class TicariGirisSqlRepository {
     const pool = await TicariStokSqlRepository.havuz(ctx);
     const tx = new sql.Transaction(pool);
     await tx.begin();
+    await stokIslemKilidi(tx);
     try {
-      const e = await new sql.Request(tx).input("ID", sql.Int, id).query(`SELECT 1 AS V FROM dbo.TODVZ_STOK_GIRIS WITH (UPDLOCK) WHERE STOK_GIRIS_ID = @ID`);
+      const e = await new sql.Request(tx).input("ID", sql.Int, id).query(`SELECT FIS_NO FROM dbo.TODVZ_STOK_GIRIS WITH (UPDLOCK) WHERE STOK_GIRIS_ID = @ID`);
       if (!e.recordset.length) throw ApiError.notFound("Stok giriş fişi bulunamadı.");
+      await iadeliGirisiReddet(tx, id, temiz(e.recordset[0].FIS_NO), "silinemez");
       const kartlar = (await new sql.Request(tx).input("ID", sql.Int, id).query(`SELECT DISTINCT STOK_KART_ID FROM dbo.TODVZ_STOK_GIRIS_SATIRI WHERE STOK_GIRIS_ID = @ID`)).recordset.map((x: any) => Number(x.STOK_KART_ID));
       const onceki = await bakiyeler(tx, kartlar);
       await this.etkiyiKaldir(tx, id);
-      await new sql.Request(tx).input("ID", sql.Int, id).query(`DELETE FROM dbo.TODVZ_STOK_GIRIS WHERE STOK_GIRIS_ID = @ID`);
+      // e-Faturadan alınmış girişse alım kaydı da silinir: fatura yeniden alınabilir (TA14)
+      await new sql.Request(tx).input("ID", sql.Int, id).query(`IF OBJECT_ID('dbo.TODVZ_STOK_EFATURA_ALIM','U') IS NOT NULL DELETE FROM dbo.TODVZ_STOK_EFATURA_ALIM WHERE STOK_GIRIS_ID = @ID;
+        DELETE FROM dbo.TODVZ_STOK_GIRIS WHERE STOK_GIRIS_ID = @ID`);
       await sonAlisGuncelle(tx, kartlar);
       await eksiStokDenetle(tx, onceki, onay);
       await tx.commit();
@@ -308,7 +339,7 @@ export class TicariGirisSqlRepository {
     const pool = await TicariStokSqlRepository.havuz(ctx);
     const r = await pool.request().input("ID", sql.Int, id).query(`
       SELECT G.*, RTRIM(C.KOD) AS CARI_KOD, C.AD AS CARI_AD FROM dbo.TODVZ_STOK_GIRIS G LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID = G.CARI_KART_ID WHERE G.STOK_GIRIS_ID = @ID;
-      SELECT S.*, RTRIM(K.KOD) AS KOD, K.AD FROM dbo.TODVZ_STOK_GIRIS_SATIRI S JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = S.STOK_KART_ID
+      SELECT S.*, CONVERT(char(10), S.SKT, 23) AS SKT_GUN, RTRIM(K.KOD) AS KOD, K.AD, ISNULL(K.SKT_TAKIBI, 0) AS SKT_TAKIBI FROM dbo.TODVZ_STOK_GIRIS_SATIRI S JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = S.STOK_KART_ID
       WHERE S.STOK_GIRIS_ID = @ID ORDER BY S.SATIR_NO;`);
     const rs = r.recordsets as any[];
     const b = rs[0]?.[0];
@@ -339,6 +370,9 @@ export class TicariGirisSqlRepository {
         tutar: Number(s.TUTAR),
         kdvTutari: Number(s.KDV_TUTARI),
         toplamTutar: Number(s.TOPLAM_TUTAR),
+        skt: s.SKT_GUN ? temiz(s.SKT_GUN) : null,
+        partiNo: s.PARTI_NO ? temiz(s.PARTI_NO) : null,
+        sktTakibi: !!s.SKT_TAKIBI,
       })),
     };
   }

@@ -1,3 +1,4 @@
+import { restoranAdiAyarla } from "./restoranBasligi";
 import { UserProfileDto } from "../services/userService";
 import { ModulKaydi, modulKatalogu } from "./modulKatalogu";
 
@@ -24,12 +25,12 @@ export const KONTROL_DUGMELERI: { key: string; baslik: string; etiketGerekli?: b
 ];
 
 /**
- * Görünümden muaf / görünümü yöneten kullanıcı: Firma Yöneticisi ya da Sistem Yöneticisi (G5, yetki kuralıyla aynı:
- * docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y3)
+ * Görünümden muaf / görünümü yöneten kullanıcı: kartta Sistem Yöneticisi (yetki kuralıyla aynı, kullaniciYetkiKural.ts).
+ * Merkezdeki Firma Yöneticisi işareti muafiyet vermez (26.11.2026).
  */
 export const gorunumYoneticisiMi = (user: UserProfileDto | null | undefined): boolean => {
   if (!user) return false;
-  return !!user.merkez?.firmaYoneticisi || !!user.isSysAdmin || user.role === "admin";
+  return !!user.isSysAdmin || user.role === "admin";
 };
 
 /**
@@ -99,6 +100,8 @@ export const kuyumSuzgeci = <T extends UserProfileDto | null>(u: T): T => {
  * `gorunumKapali`'da kalır (kontrol düğmeleri oradan okunur). Yöneticide dokunulmaz.
  */
 export const profiliGorunumeGoreHazirla = <T extends UserProfileDto | null>(ham: T): T => {
+  // Restorant başlığının firmaya özel adı (R4): menü tanımı buradan okur
+  restoranAdiAyarla((ham as any)?.merkez?.restoranAdi);
   const u = kuyumSuzgeci(ham);
   if (!u || gorunumYoneticisiMi(u)) return u;
   const kapali = u.gorunumKapali;

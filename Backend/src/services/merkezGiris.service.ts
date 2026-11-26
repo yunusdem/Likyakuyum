@@ -1,3 +1,4 @@
+import { LisansSqlRepository } from "../models/admin/lisansSql.repository.js";
 import sql from "mssql";
 import { PaketSqlRepository } from "../models/admin/paketSql.repository.js";
 import { env } from "../config/env.config.js";
@@ -338,7 +339,9 @@ export class MerkezGirisService {
             adSoyad: kullaniciAdi.trim(),
             sifreHash: yeniHash,
             sifreDegismeli: false,
-            firmaYoneticisi: true,
+            // Otomatik açılan hesap yetkili olmaz: herkes tam yetkili sayılıyor, kart yetkileri hiç işlemiyordu.
+            // Firmanın tek yetkilisi panelden seçilir; kullanıcının yöneticiliği kartındaki Sistem Yöneticisi işaretidir.
+            firmaYoneticisi: false,
             firmaDbKullaniciId: null,
             olusturan: "OTOMATIK_GIRIS",
           },
@@ -401,6 +404,8 @@ export class MerkezGirisService {
       // Ürün tabloları kurulu değilse ya da okunamazsa giriş bozulmasın: boş (ürünsüz) sayılır
       urunler: await PaketSqlRepository.firmaUrunleri(b.firma.firmaId).catch(() => []),
       moduller: await ModulSqlRepository.firmaAcikModulleri(b.firma.firmaId),
+      // Restorant başlığının firmaya özel adı (R4); okunamazsa giriş bozulmasın
+      restoranAdi: await LisansSqlRepository.aktifRestoranAdi(b.firma.firmaId).catch(() => null),
       iletisim: await AyarSqlRepository.tumu().then((a) => ({
         telefon: a.LISANS_ILETISIM_TELEFON,
         eposta: a.LISANS_ILETISIM_EPOSTA,

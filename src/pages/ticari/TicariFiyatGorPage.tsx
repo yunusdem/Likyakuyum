@@ -5,7 +5,7 @@ import { IconBarcode, IconPhoto, IconPrinter, IconSearch, IconTag, IconX } from 
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { KurService } from "../../services/kurService";
 import { AktifKampanya, StokKart, TicariService, miktarYaz, para } from "../../services/ticariService";
-import { kampanyaSec, kartDahilFiyat } from "../../../Backend/src/services/ticari/ticariHesap";
+import { ekBirimSatirFiyati, kampanyaSec, kartDahilFiyat, teraziMiktari } from "../../../Backend/src/services/ticari/ticariHesap";
 import { StokKartSecici } from "./StokKartSecici";
 
 /**
@@ -18,6 +18,10 @@ export const TicariFiyatGorPage: React.FC = () => {
   const navigate = useNavigate();
   const [barkod, setBarkod] = useState("");
   const [kart, setKart] = useState<StokKart | null>(null);
+  /** Terazi etiketi okutulduysa barkoddaki kilo / tutar (TA3) */
+  const [terazi, setTerazi] = useState<StokKart["terazi"] | null>(null);
+  /** Koli / ek birim barkodu okutulduysa o birim (TA5) */
+  const [okunanBirim, setOkunanBirim] = useState<StokKart["okunanBirim"] | null>(null);
   const [hata, setHata] = useState<string | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);
   const [secici, setSecici] = useState<{ acik: boolean; arama: string }>({ acik: false, arama: "" });
@@ -54,6 +58,8 @@ export const TicariFiyatGorPage: React.FC = () => {
     setHata(null);
     try {
       const k = await TicariService.kartBul(d);
+      setTerazi(k?.terazi ?? null);
+      setOkunanBirim(k?.okunanBirim ?? null);
       if (k) { setBarkod(""); await goster(k); }
       else { setKart(null); setHata(`"${d}" barkodlu ya da kodlu ürün bulunamadı.`); setSecici({ acik: true, arama: d }); }
     } catch (e: any) {
@@ -63,7 +69,7 @@ export const TicariFiyatGorPage: React.FC = () => {
     }
   };
 
-  const temizle = () => { setKart(null); setHata(null); setBarkod(""); odak(); };
+  const temizle = () => { setKart(null); setTerazi(null); setOkunanBirim(null); setHata(null); setBarkod(""); odak(); };
 
   // Fiyat: KDV dahil TL; döviz fiyatlı kartta güncel satış kuruyla
   const dahil = kart ? kartDahilFiyat(kart.satisFiyati, kart.kdvOrani, kart.fiyatKdvDahil) : 0;
@@ -72,6 +78,7 @@ export const TicariFiyatGorPage: React.FC = () => {
   const fiyatTL = dovizli ? Math.round(dahil * kur * 100) / 100 : dahil;
   // Kampanya (İş 11, G12): kapsayan kampanya varsa kampanyalı fiyat da gösterilir
   const kmp = kart && kart.satisFiyati !== null ? kampanyaSec(kampanyalar, { stokKartId: kart.stokKartId, stokGrupId: kart.stokGrupId }, fiyatTL) : null;
+  const teraziM = kart && terazi ? teraziMiktari(terazi, kart.birim, fiyatTL) : null;
 
   return (
     <div className="container-fluid p-2">
@@ -125,6 +132,25 @@ export const TicariFiyatGorPage: React.FC = () => {
                     {dovizli && kart.satisFiyati !== null && (
                       <div className="small text-muted mt-1">{para(dahil)} {kart.paraKodu} × kur {kur > 0 ? para(kur) : "yok"}</div>
                     )}
+                    {okunanBirim && (() => {
+                      const koliTL = okunanBirim.satisFiyati === null ? null : (() => { const d = kartDahilFiyat(okunanBirim.satisFiyati, kart.kdvOrani, kart.fiyatKdvDahil); return dovizli ? Math.round(d * kur * 100) / 100 : d; })();
+                      const birimF = ekBirimSatirFiyati(fiyatTL, okunanBirim.carpan, koliTL);
+                      return (
+                        <div className="mt-1">
+                          <Badge bg="secondary" className="me-1">{okunanBirim.birim} ({miktarYaz(okunanBirim.carpan)} {kart.birim})</Badge>
+                          <span className="fw-bold" style={{ fontSize: 22 }}>{para(Math.round(birimF * okunanBirim.carpan * 100) / 100)} TL</span>
+                          <div className="small text-muted">{kart.birim} başına {para(birimF)} TL</div>
+                        </div>
+                      );
+                    })()}
+                    {terazi && teraziM !== null && (
+                      <div className="mt-1">
+                        <Badge bg="info" className="me-1">Terazi etiketi</Badge>
+                        {typeof teraziM === "string" ? <span className="small text-danger">{teraziM}</span> : (
+                          <span className="fw-bold" style={{ fontSize: 22 }}>{miktarYaz(teraziM)} {kart.birim} = {para(Math.round(teraziM * fiyatTL * 100) / 100)} TL</span>
+                        )}
+                      </div>
+                    )}
                     {kmp && (
                       <div className="mt-1">
                         <Badge bg="danger" className="me-1">Kampanya</Badge>
@@ -152,7 +178,7 @@ export const TicariFiyatGorPage: React.FC = () => {
       )}
 
       <StokKartSecici show={secici.acik} aramaMetni={secici.arama} onHide={() => { setSecici({ acik: false, arama: "" }); odak(); }}
-        onSelect={(k) => { setSecici({ acik: false, arama: "" }); setBarkod(""); void goster(k); }} />
+        onSelect={(k) => { setSecici({ acik: false, arama: "" }); setBarkod(""); setTerazi(null); setOkunanBirim(null); void goster(k); }} />
     </div>
   );
 };

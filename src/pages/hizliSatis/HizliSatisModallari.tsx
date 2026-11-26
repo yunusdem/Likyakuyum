@@ -181,7 +181,7 @@ export const SatirDuzenleModal: React.FC<SatirDuzenleProps> = ({ satir, kurlu, f
           <Form.Group className="flex-grow-1">
             <Form.Label className="small mb-0">Miktar ({satir.birim})</Form.Label>
             <Form.Control inputMode="decimal" autoFocus={!miktarKapali} disabled={miktarKapali} className={`text-end fw-bold ${alan === "miktar" ? "border-primary" : ""}`} style={{ fontSize: 22 }}
-              value={miktar} onFocus={() => setAlan("miktar")} onChange={(e) => setMiktar(e.target.value.replace(/[^\d,]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") tamam(); }} aria-label="Miktar" />
+              value={miktar} onFocus={() => setAlan("miktar")} onChange={(e) => setMiktar(e.target.value.replace(/\./g, ",").replace(/[^\d,]/g, "").replace(/(,.*),/g, "$1"))} onKeyDown={(e) => { if (e.key === "Enter") tamam(); }} aria-label="Miktar" />
             {miktarKapali && <div className="small text-muted">Barkodlu ürün tek parçadır.</div>}
           </Form.Group>
           <Form.Group className="flex-grow-1">

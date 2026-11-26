@@ -3,7 +3,6 @@ import sql from "mssql";
 import { getDbPool } from "../../config/mssql.config.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { KullaniciYetkisi, yetkiSatirdan } from "./kullaniciYetkiKural.js";
-import { FirmaKullaniciMerkezService } from "../firmaKullaniciMerkez.service.js";
 
 /**
  * Oturumdaki kullanıcının kart yetkileri (docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4). Jeton yalnız kimliği taşır; yetkiler
@@ -104,11 +103,8 @@ export async function kullaniciYetkisi(req: Request): Promise<KullaniciYetkisi> 
       satir.atananCariIdler = [];
     }
   }
-  // Merkezde Firma Yöneticisi olan da yöneticidir (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y3); kartta zaten yöneticiyse sorulmaz
-  const firmaYoneticisi = String(satir.SISTEM_YONETICISI ?? "") === "1" || satir.SISTEM_YONETICISI === true
-    ? false
-    : await FirmaKullaniciMerkezService.baglam(req.user).then((b) => !!b?.kullanici?.firmaYoneticisi).catch(() => false);
-  const y = yetkiSatirdan(satir, firmaYoneticisi);
+  // Yöneticilik yalnız karttaki Sistem Yöneticisi işaretidir; merkezdeki Firma Yöneticisi tam yetki vermez (26.11.2026)
+  const y = yetkiSatirdan(satir);
   r[ONBELLEK] = y;
   return y;
 }

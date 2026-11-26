@@ -419,9 +419,8 @@ export class AuthService {
     return { ...UserSqlRepository.toDto(user), ...(merkez && { merkez }), gorunumKapali } as any;
   }
 
-  /** Görünümden muaf / görünümü yöneten kullanıcı: Firma Yöneticisi ya da Sistem Yöneticisi (G5, Y3) */
-  private static gorunumYoneticisi(user: UserModel, merkez?: MerkezOturumBilgisi): boolean {
-    if (merkez && !env.KURULUM_MODU && merkez.firmaYoneticisi) return true;
+  /** Görünümden muaf / görünümü yöneten kullanıcı: kartta Sistem Yöneticisi (yetki kuralıyla aynı; Firma Yöneticisi muaf değil, 26.11.2026) */
+  private static gorunumYoneticisi(user: UserModel, _merkez?: MerkezOturumBilgisi): boolean {
     return !!user.isSysAdmin || user.role === "admin";
   }
 

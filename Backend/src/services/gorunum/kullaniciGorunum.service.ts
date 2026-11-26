@@ -17,7 +17,7 @@ export const gecerliKodMu = (kod: unknown): kod is string =>
 /** Görünüm ayarını yöneten / görünümden muaf kullanıcı mı (G5) */
 export const gorunumYoneticisiMi = async (req: Request): Promise<boolean> => {
   try {
-    // Firma Yöneticisi ya da Sistem Yöneticisi (Y3); kullaniciYetkisi ikisine de bakar
+    // Kartta Sistem Yöneticisi (kullaniciYetkisi; merkezdeki Firma Yöneticisi muaf değil, 26.11.2026)
     return (await kullaniciYetkisi(req)).yonetici;
   } catch {
     return req.user?.role === "admin";

@@ -1,0 +1,27 @@
+{
+  "id": "/garson",
+  "name": "Likya Garson",
+  "short_name": "Garson",
+  "description": "Likya Adisyon garson ekranı",
+  "lang": "tr",
+  "start_url": "/garson",
+  "scope": "/garson",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/images/uygulama/ikon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/uygulama/ikon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

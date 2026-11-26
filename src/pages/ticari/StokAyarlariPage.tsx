@@ -3,8 +3,10 @@ import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from "reac
 import { IconAdjustments, IconDeviceFloppy } from "@tabler/icons-react";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { useToast } from "../../context/ToastContext";
-import { StokAyarlari, TicariService } from "../../services/ticariService";
+import { StokAyarlari, TeraziDuzeni, TicariService } from "../../services/ticariService";
 import { useTicariYetki } from "./useTicariYetki";
+import { TeraziBarkodAyari } from "./TeraziBarkodAyari";
+import { TeraziBaglantiAyari } from "./TeraziBaglantiAyari";
 
 const DAVRANISLAR: { deger: StokAyarlari["eksiStok"]; ad: string; aciklama: string }[] = [
   { deger: "UYAR", ad: "Uyar ama sat", aciklama: "Stok yetmezse kaydetmeden önce uyarı çıkar; onaylanırsa satış yapılır, stok eksiye düşer." },
@@ -12,13 +14,16 @@ const DAVRANISLAR: { deger: StokAyarlari["eksiStok"]; ad: string; aciklama: stri
   { deger: "SESSIZ", ad: "Sessizce sat", aciklama: "Uyarı çıkmaz; stok eksiye düşebilir." },
 ];
 
-/** J- Stok Ayarları (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T8, T21): eksi stok davranışı ve stok yönetim yetkisi */
+/** J- Stok Ayarları (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T8, T21): eksi stok davranışı, stok yönetim yetkisi, terazi barkodu (TA3) */
 export const StokAyarlariPage: React.FC = () => {
   const { showSuccess, showError } = useToast();
   const yetki = useTicariYetki();
   const [ayar, setAyar] = useState<StokAyarlari | null>(null);
   const [eksiStok, setEksiStok] = useState<StokAyarlari["eksiStok"]>("UYAR");
   const [yetkililer, setYetkililer] = useState<number[]>([]);
+  const [teraziDuzenleri, setTeraziDuzenleri] = useState<TeraziDuzeni[]>([]);
+  const [vardiyaZorunlu, setVardiyaZorunlu] = useState(false);
+  const [sktUyariGun, setSktUyariGun] = useState("30");
   const [yukleniyor, setYukleniyor] = useState(true);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
@@ -31,6 +36,9 @@ export const StokAyarlariPage: React.FC = () => {
       setAyar(a);
       setEksiStok(a.eksiStok);
       setYetkililer(a.kullanicilar.filter((k) => k.yetkili).map((k) => k.kullaniciId));
+      setTeraziDuzenleri(a.teraziDuzenleri || []);
+      setVardiyaZorunlu(!!a.vardiyaZorunlu);
+      setSktUyariGun(String(a.sktUyariGun ?? 30));
     } catch (e: any) {
       setHata(e?.message || "Ayarlar alınamadı.");
     } finally {
@@ -42,8 +50,11 @@ export const StokAyarlariPage: React.FC = () => {
   const kaydet = async () => {
     setKaydediliyor(true);
     try {
-      const a = await TicariService.ayarKaydet({ eksiStok, yetkiliKullanicilar: yetkililer });
+      const a = await TicariService.ayarKaydet({ eksiStok, yetkiliKullanicilar: yetkililer, teraziDuzenleri, vardiyaZorunlu, sktUyariGun: sktUyariGun.trim() || null });
       setAyar(a);
+      setTeraziDuzenleri(a.teraziDuzenleri || []);
+      setVardiyaZorunlu(!!a.vardiyaZorunlu);
+      setSktUyariGun(String(a.sktUyariGun ?? 30));
       showSuccess("Stok ayarları kaydedildi.");
     } catch (e: any) {
       showError(e?.message || "Ayarlar kaydedilemedi.");
@@ -72,6 +83,17 @@ export const StokAyarlariPage: React.FC = () => {
                     label={<div><div className="fw-semibold">{d.ad}</div><div className="small text-muted">{d.aciklama}</div></div>} />
                 ))}
                 <div className="small text-muted border-top pt-2">Aynı kural stok giriş fişinin düzeltilmesinde ve silinmesinde de geçerlidir.</div>
+                {/* Kasiyer vardiyası (docs/TICARI_ADISYON_YOL_HARITASI.md, TA8) */}
+                <Form.Check type="switch" id="vardiya-zorunlu" className="mt-3 pt-2 border-top" checked={vardiyaZorunlu} disabled={!yetki.sistemYoneticisi}
+                  onChange={(e) => setVardiyaZorunlu(e.target.checked)}
+                  label={<div><div className="fw-semibold">Satış için vardiya açık olsun</div><div className="small text-muted">Açıksa kasiyer Ticari › Vardiya'dan kasayı (devir nakdiyle) açmadan satış ve iade kaydedemez.</div></div>} />
+                {/* SKT yaklaşanlar eşiği (TA16) */}
+                <div className="mt-3 pt-2 border-top d-flex align-items-center gap-2">
+                  <div className="me-auto"><div className="fw-semibold">SKT uyarı eşiği</div><div className="small text-muted">SKT Yaklaşanlar raporu bu kadar gün içinde dolacak partileri gösterir.</div></div>
+                  <Form.Control size="sm" style={{ width: 80 }} className="text-end" inputMode="numeric" aria-label="SKT uyarı eşiği (gün)" value={sktUyariGun} disabled={!yetki.sistemYoneticisi}
+                    onChange={(e) => setSktUyariGun(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+                  <span className="small text-muted">gün</span>
+                </div>
               </Card.Body>
             </Card>
           </Col>
@@ -104,6 +126,12 @@ export const StokAyarlariPage: React.FC = () => {
                 </div>
               </Card.Body>
             </Card>
+          </Col>
+          <Col xl={7}>
+            <TeraziBarkodAyari duzenler={teraziDuzenleri} setDuzenler={setTeraziDuzenleri} disabled={!yetki.sistemYoneticisi || kaydediliyor} />
+          </Col>
+          <Col xl={5}>
+            <TeraziBaglantiAyari />
           </Col>
           {yetki.sistemYoneticisi && (
             <Col xs={12} className="text-end">

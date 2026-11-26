@@ -58,13 +58,13 @@ export const SonFislerModal: React.FC<{ modul: HizliSatisModul; acik: boolean; k
         <div style={{ maxHeight: 420, overflowY: "auto" }}>
           <Table size="sm" hover className="align-middle mb-0">
             <thead className="table-light sticky-top">
-              <tr className="small text-secondary"><th>Zaman</th><th>Fiş No</th>{alisSatis && <th>Tür</th>}<th>Müşteri</th><th className="text-end">Tutar</th><th>Kasiyer</th></tr>
+              <tr className="small text-secondary"><th>Zaman</th><th>Fiş No</th>{alisSatis && <th>Tür</th>}<th>Müşteri</th><th className="text-end">Tutar</th><th>Kasiyer</th>{modul === "ticari" && <th></th>}</tr>
             </thead>
             <tbody>
               {yukleniyor ? (
-                <tr><td colSpan={6} className="text-center py-4"><Spinner size="sm" className="me-2" />Yükleniyor...</td></tr>
+                <tr><td colSpan={7} className="text-center py-4"><Spinner size="sm" className="me-2" />Yükleniyor...</td></tr>
               ) : !liste.length ? (
-                <tr><td colSpan={6} className="text-center text-muted py-4">Bu dönemde hızlı satış fişi yok.</td></tr>
+                <tr><td colSpan={7} className="text-center text-muted py-4">Bu dönemde hızlı satış fişi yok.</td></tr>
               ) : liste.map((f) => (
                 <tr key={f.fisId} role={duzeltmeAcik ? "button" : undefined} title={duzeltmeAcik ? "Düzeltme ekranında aç" : undefined}
                   onClick={duzeltmeAcik ? () => { kapat(); navigate(`${DUZELTME[modul]}?id=${f.fisId}`); } : undefined}>
@@ -74,6 +74,12 @@ export const SonFislerModal: React.FC<{ modul: HizliSatisModul; acik: boolean; k
                   <td className="text-truncate" style={{ maxWidth: 220 }}>{f.unvan}</td>
                   <td className="text-end fw-semibold">{para(f.tutar)}</td>
                   <td className="small text-muted">{f.kullanici || ""}</td>
+                  {/* Satış iadesi (docs/TICARI_ADISYON_YOL_HARITASI.md TA6) */}
+                  {modul === "ticari" && (
+                    <td className="text-end p-1">
+                      <Button size="sm" variant="outline-danger" className="py-0" onClick={(e) => { e.stopPropagation(); kapat(); navigate(`/ticari/iade-fisi?fis=${f.fisId}`); }}>İade al</Button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

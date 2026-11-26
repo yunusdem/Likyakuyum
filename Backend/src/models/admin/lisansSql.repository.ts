@@ -27,6 +27,8 @@ const satirdan = (r: any): LisansDto => ({
   aktivasyonAnahtari: r.AKTIVASYON_ANAHTARI ?? null,
   aktivasyonTarihi: r.AKTIVASYON_TARIHI ?? null,
   aktivasyonMakine: r.AKTIVASYON_MAKINE ?? null,
+  garsonLimiti: r.GARSON_LIMITI === null || r.GARSON_LIMITI === undefined ? null : Number(r.GARSON_LIMITI),
+  restoranAdi: r.RESTORAN_ADI ? String(r.RESTORAN_ADI).trim() || null : null,
 });
 
 // Aktivasyon anahtarı kolonları (docs/BULUT_VE_EXE_LISANS_YOL_HARITASI.md 16, A7): sunucuda SSMS betiği çalışana kadar yok;
@@ -44,6 +46,45 @@ export const aktivasyonKolonlariVarMi = async (): Promise<boolean> => {
   return aktivasyonVar;
 };
 
+/** Adisyon garson sınırı kolonu (TA24) kurulu mu: kolon yokken eski sürüm sorgusu bozulmasın */
+let garsonVar = false;
+let garsonDenetim = 0;
+export const garsonKolonuVarMi = async (): Promise<boolean> => {
+  if (garsonVar) return true;
+  if (Date.now() - garsonDenetim < 60_000) return false;
+  garsonDenetim = Date.now();
+  const pool = await getAdminPool();
+  garsonVar = !!(await pool.request().query(`SELECT CAST(CASE WHEN COL_LENGTH('dbo.ADM_LISANS', 'GARSON_LIMITI') IS NOT NULL THEN 1 ELSE 0 END AS BIT) AS V`)).recordset[0].V;
+  return garsonVar;
+};
+
+/** Restorant başlık adı kolonu (26.11.2026, R4) kurulu mu: kolon yokken eski sürüm sorgusu bozulmasın */
+let restoranVar = false;
+let restoranDenetim = 0;
+export const restoranKolonuVarMi = async (): Promise<boolean> => {
+  if (restoranVar) return true;
+  if (Date.now() - restoranDenetim < 60_000) return false;
+  restoranDenetim = Date.now();
+  const pool = await getAdminPool();
+  restoranVar = !!(await pool.request().query(`SELECT CAST(CASE WHEN COL_LENGTH('dbo.ADM_LISANS', 'RESTORAN_ADI') IS NOT NULL THEN 1 ELSE 0 END AS BIT) AS V`)).recordset[0].V;
+  return restoranVar;
+};
+
+/**
+ * Restorant başlık adı (R4): boşluklar toplanır, denetim karakterleri ve "L- " harf öneki atılır, en çok 40 karakter; boşsa null
+ * (menüde "Restorant"). Ön yüzdeki restoranAdiTemizle ile aynı kural.
+ */
+export const restoranAdiTemizle = (v: unknown): string | null => {
+  const t = String(v ?? "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/^\s*[A-Za-zÇĞİÖŞÜçğıöşü]\s*[-–—]\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40)
+    .trim();
+  return t || null;
+};
+
 const aktivasyonKolonlari = async () =>
   (await aktivasyonKolonlariVarMi())
     ? "AKTIVASYON_ANAHTARI, AKTIVASYON_TARIHI, AKTIVASYON_MAKINE"
@@ -53,7 +94,9 @@ const aktivasyonKolonlari = async () =>
 const secim = async () => `
   SELECT LISANS_ID, FIRMA_ID, LISANS_ANAHTARI, BASLANGIC, BITIS, KULLANICI_LIMITI, PAKET_ADI, NOTLAR, AKTIF,
          OLUSTURAN_ADMIN_ID, OLUSTURMA_TARIHI, LISANS_KODU, MAKINE_KIMLIGI, SERI_NO, IPTAL, TESLIM, TESLIM_TARIHI,
-         ${await PaketSqlRepository.urunKolonu()}, ${await aktivasyonKolonlari()}
+         ${await PaketSqlRepository.urunKolonu()}, ${await aktivasyonKolonlari()},
+         ${(await garsonKolonuVarMi()) ? "GARSON_LIMITI" : "CAST(NULL AS INT) AS GARSON_LIMITI"},
+         ${(await restoranKolonuVarMi()) ? "RESTORAN_ADI" : "CAST(NULL AS NVARCHAR(40)) AS RESTORAN_ADI"}
   FROM dbo.ADM_LISANS`;
 
 export class LisansSqlRepository {
@@ -172,6 +215,10 @@ export class LisansSqlRepository {
     paketAdi: string | null;
     notlar: string | null;
     adminId: number;
+    /** Adisyon garson sınırı (TA24); null = sınırsız */
+    garsonLimiti?: number | null;
+    /** Restorant başlık adı (R4); null = "Restorant" */
+    restoranAdi?: string | null;
   }): Promise<number> {
     const pool = await getAdminPool();
     const res = await pool
@@ -192,7 +239,48 @@ export class LisansSqlRepository {
         SELECT CAST(SCOPE_IDENTITY() AS INT) AS LISANS_ID;
         COMMIT;
       `);
-    return res.recordset[0].LISANS_ID;
+    const lisansId = res.recordset[0].LISANS_ID;
+    if (veri.garsonLimiti !== undefined && (await garsonKolonuVarMi())) {
+      await pool.request().input("id", sql.Int, lisansId).input("g", sql.Int, veri.garsonLimiti).query(`UPDATE dbo.ADM_LISANS SET GARSON_LIMITI = @g WHERE LISANS_ID = @id`);
+    }
+    if (veri.restoranAdi !== undefined && (await restoranKolonuVarMi())) {
+      await pool.request().input("id", sql.Int, lisansId).input("a", sql.NVarChar(40), restoranAdiTemizle(veri.restoranAdi)).query(`UPDATE dbo.ADM_LISANS SET RESTORAN_ADI = @a WHERE LISANS_ID = @id`);
+    }
+    return lisansId;
+  }
+
+  /** Etkin lisansın Restorant başlık adını değiştirir (yeni lisans yazmadan; R4). Etkin lisans yoksa null döner. */
+  public static async restoranAdiGuncelle(firmaId: number, ad: unknown): Promise<{ lisansId: number; eski: string | null; yeni: string | null } | null> {
+    if (!(await restoranKolonuVarMi())) throw new Error("ADM_LISANS.RESTORAN_ADI kolonu yok (uygulama açılışında kurulur; yönetim veritabanı yetkisini denetleyin).");
+    const pool = await getAdminPool();
+    const yeni = restoranAdiTemizle(ad);
+    const r = await pool.request().input("f", sql.Int, firmaId).input("a", sql.NVarChar(40), yeni).query(`
+      SET XACT_ABORT ON;
+      BEGIN TRAN;
+      DECLARE @id INT, @eski NVARCHAR(40);
+      SELECT TOP 1 @id = LISANS_ID, @eski = RESTORAN_ADI FROM dbo.ADM_LISANS WITH (UPDLOCK, HOLDLOCK) WHERE FIRMA_ID = @f AND AKTIF = 1 ORDER BY LISANS_ID DESC;
+      IF @id IS NOT NULL UPDATE dbo.ADM_LISANS SET RESTORAN_ADI = @a WHERE LISANS_ID = @id;
+      COMMIT;
+      SELECT @id AS ID, @eski AS ESKI;`);
+    const x = r.recordset[0];
+    return x?.ID ? { lisansId: Number(x.ID), eski: x.ESKI ? String(x.ESKI).trim() : null, yeni } : null;
+  }
+
+  /** Etkin lisansın Restorant başlık adı; kolon / lisans yoksa null (menüde "Restorant") */
+  public static async aktifRestoranAdi(firmaId: number): Promise<string | null> {
+    if (!(await restoranKolonuVarMi())) return null;
+    const pool = await getAdminPool();
+    const r = await pool.request().input("f", sql.Int, firmaId).query(`SELECT TOP 1 RESTORAN_ADI AS A FROM dbo.ADM_LISANS WHERE FIRMA_ID = @f AND AKTIF = 1 ORDER BY LISANS_ID DESC`);
+    return r.recordset[0]?.A ? String(r.recordset[0].A).trim() || null : null;
+  }
+
+  /** Firma veritabanından (oturumdaki sunucu + veritabanı) aktif lisansın garson sınırı; firma / kolon yoksa null (sınırsız) */
+  public static async aktifGarsonLimiti(firmaId: number): Promise<number | null> {
+    if (!(await garsonKolonuVarMi())) return null;
+    const pool = await getAdminPool();
+    const r = await pool.request().input("f", sql.Int, firmaId).query(`SELECT TOP 1 GARSON_LIMITI AS L FROM dbo.ADM_LISANS WHERE FIRMA_ID = @f AND AKTIF = 1 ORDER BY LISANS_ID DESC`);
+    const v = r.recordset[0]?.L;
+    return v === null || v === undefined ? null : Number(v);
   }
 
   /** Pano: süresi dolmuş veya `gun` gün içinde dolacak aktif lisanslar (pasif firmalar hariç). */

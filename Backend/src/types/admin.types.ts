@@ -48,6 +48,7 @@ export type AdminIslem =
   | "FIRMA_DOGRULAMA"
   | "FIRMA_DB_SIFRE_DEGISTI"
   | "LISANS_EKLENDI"
+  | "RESTORAN_ADI_GUNCELLENDI"
   | "KULLANICI_ACILDI"
   | "KULLANICI_GUNCELLENDI"
   | "KULLANICI_DURUM"
@@ -59,6 +60,7 @@ export type AdminIslem =
   | "PAKET_DEGISTI"
   | "DAGITIM_BASLATILDI"
   | "DAGITIM_BITTI"
+  | "DAGITIM_KURTARMA"
   | "OTURUM_KAPATILDI"
   | "EPOSTA_DOGRULAMA_GONDERILDI"
   | "EPOSTA_DOGRULANDI"
@@ -130,6 +132,10 @@ export interface LisansDto {
   paketAdi: string | null;
   notlar: string | null;
   aktif: boolean;
+  /** Adisyon garson sınırı (TA24); null = sınırsız */
+  garsonLimiti?: number | null;
+  /** Restorant başlık adı (R4); null = "Restorant" */
+  restoranAdi?: string | null;
   olusturanAdminId: number | null;
   olusturmaTarihi: Date;
   /** Kurulum (exe): imzalı lisans kodu ve bağlı olduğu makine */
@@ -291,6 +297,8 @@ export interface MerkezOturumBilgisi {
   moduller: string[] | null;
   /** Lisans uyarı bandı ve kilit penceresindeki iletişim bilgisi */
   iletisim?: { telefon: string; eposta: string; metin: string };
+  /** Restorant başlığının firmaya özel adı (R4); null = "Restorant" */
+  restoranAdi?: string | null;
 }
 
 /** Giriş reddinde istemciye dönen kod (yanıtta errors.kod). Giriş ekranı pencereyi buna göre açar. */

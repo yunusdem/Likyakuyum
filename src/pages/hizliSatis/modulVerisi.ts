@@ -16,7 +16,7 @@ import {
   kurlariBirlestir,
   urunKuru,
 } from "../../../Backend/src/services/hizliSatis/hizliSatisHesap";
-import { kartDahilFiyat } from "../../../Backend/src/services/ticari/ticariHesap";
+import { ekBirimSatirFiyati, kartDahilFiyat, tartiBirimi, teraziMiktari } from "../../../Backend/src/services/ticari/ticariHesap";
 
 /**
  * Hızlı Satış modül verisi ve satır oluşturma (docs/HIZLI_SATIS_YOL_HARITASI.md, U4–U7). Kur, ürün, istatistik ve vezne
@@ -108,6 +108,10 @@ export interface SatirTaslagi {
   gramGerekli: boolean;
   /** Fiyat/kur bulunamadı: ekran sorar */
   fiyatGerekli: boolean;
+  /** Kg / Gr birimli stok kartı: tartı penceresi açılır (TA2); `N*barkod` ile miktar yazıldıysa false */
+  tartiGerekli?: boolean;
+  /** Miktar terazi etiketinden geldi (TA3): tuş takımındaki sayı uygulanmaz */
+  miktarSabit?: boolean;
 }
 
 export function butondanSatir(b: HizliSatisButon, v: ModulVerisi, tip: 0 | 1, istatistik: StatisticItem | null): SatirTaslagi | string {
@@ -132,6 +136,7 @@ export function butondanSatir(b: HizliSatisButon, v: ModulVerisi, tip: 0 | 1, is
       satir: kampanyaIsle({ anahtar: satirAnahtari(), ad: b.ozelAd || k.ad, kod: k.kod, tur: "stok", urunId: k.stokKartId, miktar: 1, birim: k.birim || "Adet", birimFiyat: fiyat, kdvOrani: Number(k.kdvOrani) || 0, ek: { stokKartId: k.stokKartId } }, v),
       gramGerekli: false,
       fiyatGerekli: !(fiyat > 0),
+      tartiGerekli: !!tartiBirimi(k.birim),
     };
   }
   // Ürün Tanımı / döviz
@@ -177,7 +182,12 @@ export function satiriYenidenFiyatla(s: SepetSatiri, v: ModulVerisi, tip: 0 | 1,
 
 /** Stok kartından satır taslağı (barkod okutma, Ara penceresi, olmayan barkoddan açılan kart); kart yerel listeye de eklenir */
 export function karttanSatir(k: StokKart, v: ModulVerisi, tip: 0 | 1, istatistik: StatisticItem | null): SatirTaslagi | string {
-  if (!v.kartlar.has(k.stokKartId)) v.kartlar.set(k.stokKartId, k);
+  // Yerel listeye o okumaya özel alanlar (koli birimi, terazi etiketi) olmadan yazılır: yoksa kartın normal barkodu
+  // yerelden eşleşince önceki koli / terazi miktarı yeniden uygulanıyordu (ekran denemesinde görüldü)
+  if (!v.kartlar.has(k.stokKartId)) {
+    const { okunanBirim: _b, terazi: _t, ...sade } = k;
+    v.kartlar.set(k.stokKartId, sade);
+  }
   return butondanSatir({ butonId: 0, sira: 0, urunTuru: URUN_TURU.STOK, urunId: k.stokKartId, ad: k.ad, ozelAd: null, urunKodu: k.kod, urunAdi: k.ad, urunTipi: null, birim: k.birim, renk: null, fiyat: null, ozelFiyat: null, kdvOrani: k.kdvOrani, gecersiz: false, resimVar: false }, v, tip, istatistik);
 }
 
@@ -212,11 +222,46 @@ export async function barkoddanSatir(girdi: string, v: ModulVerisi, tip: 0 | 1, 
 
   if (v.modul === "ticari") {
     // Liste seçiliyse yerel kopya kullanılmaz: fiyat o listeden sunucudan alınır
-    const k = (!v.fiyatListesiId ? [...v.kartlar.values()].find((x) => x.aktif && (x.kod.toLocaleUpperCase("tr-TR") === kodBuyuk || x.barkodlar.includes(kod))) : undefined) || (await TicariService.kartBul(kod, v.fiyatListesiId));
+    let k: StokKart | null | undefined;
+    try {
+      k = (!v.fiyatListesiId ? [...v.kartlar.values()].find((x) => x.aktif && (x.kod.toLocaleUpperCase("tr-TR") === kodBuyuk || x.barkodlar.includes(kod))) : undefined) || (await TicariService.kartBul(kod, v.fiyatListesiId));
+    } catch (e: any) {
+      // Terazi etiketinin kodu karta bağlı değil (TA3): "bulunamadı" denmez → yeni kart penceresi açılmaz
+      return e?.message || "Ürün aranamadı.";
+    }
     if (!k) return `"${kod}" barkodlu ya da kodlu stok kartı bulunamadı.`;
     if (!k.aktif) return `"${k.ad}" stok kartı pasif.`;
     const t = karttanSatir(k, v, tip, istatistik);
-    if (typeof t !== "string") t.satir.miktar = adet;
+    if (typeof t !== "string") {
+      t.satir.miktar = adet;
+      // "0,5*barkod": miktar yazılmış, tartı sorulmaz
+      if (girdi.includes("*")) t.tartiGerekli = false;
+      // Koli / ek birim barkodu (TA5): miktar ana birimde (adet × çarpan), fiyat koli fiyatından ana birime
+      if (k.okunanBirim) {
+        const u = k.okunanBirim;
+        let koliTL: number | null = null;
+        if (u.satisFiyati !== null) {
+          koliTL = kartDahilFiyat(u.satisFiyati, k.kdvOrani, k.fiyatKdvDahil);
+          if (k.paraId && !["TL", "TRY"].includes(String(k.paraKodu || "").trim().toUpperCase())) {
+            const kur = urunKuru(v.kurlar, { paraId: k.paraId, kod: k.paraKodu }, 1);
+            koliTL = kur > 0 ? Math.round(koliTL * kur * 100) / 100 : null;
+          }
+        }
+        t.satir.birimFiyat = ekBirimSatirFiyati(t.satir.birimFiyat, u.carpan, koliTL);
+        t.satir.miktar = Math.round(adet * u.carpan * 10000) / 10000;
+        t.satir.ek = { ...t.satir.ek, birim: { ad: u.birim, carpan: u.carpan } };
+        t.tartiGerekli = false;
+        t.fiyatGerekli = !(t.satir.birimFiyat > 0);
+      }
+      // Terazi etiketi (TA3): kilo ya da tutar barkoddan; tutar gömülüyse miktar = tutar ÷ birim fiyat
+      if (k.terazi) {
+        const m = teraziMiktari(k.terazi, k.birim, t.satir.birimFiyat);
+        if (typeof m === "string") return `"${k.ad}": ${m}`;
+        t.satir.miktar = m;
+        t.tartiGerekli = false;
+        t.miktarSabit = true;
+      }
+    }
     return t;
   }
 

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Col, Form, InputGroup, Row, Spinner, Table } from "react-bootstrap";
-import { IconBarcode, IconBinoculars, IconPackageImport, IconTrash, IconUser, IconX } from "@tabler/icons-react";
+import { IconBarcode, IconBinoculars, IconCopyPlus, IconPackageImport, IconTrash, IconUser, IconX } from "@tabler/icons-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { LookupModal } from "../../components/common/LookupModal";
@@ -10,7 +10,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useKullaniciYetkisi } from "../../hooks/useKullaniciYetkisi";
 import { CariKartItem, CariService } from "../../services/cariService";
 import { KDV_SECENEKLERI, StokGiris, StokKart, TicariService, eksiStokUyarisiMi, miktarYaz, para } from "../../services/ticariService";
-import { girisSatirHesapla, yuvarla2 } from "../../../Backend/src/services/ticari/ticariHesap";
+import { girisSatirHesapla, yuvarla2, teraziMiktari } from "../../../Backend/src/services/ticari/ticariHesap";
 import { StokKartSecici } from "./StokKartSecici";
 import { StokKartModal } from "./StokKartModal";
 import { YETKI_YOK_MESAJI, useTicariYetki } from "./useTicariYetki";
@@ -24,6 +24,10 @@ interface Satir {
   miktar: string;
   birimFiyat: string;
   kdvOrani: number;
+  /** Son kullanma tarihi (YYYY-AA-GG) ve parti no (TA16); sktTakibi kartta SKT zorunlu */
+  skt: string;
+  partiNo: string;
+  sktTakibi: boolean;
 }
 
 const sayi = (v: string | number | null | undefined): number => {
@@ -89,7 +93,7 @@ export const StokGirisFisiPage: React.FC = () => {
         setCari(f.cariKartId ? { id: f.cariKartId, kod: f.cariKod || "", ad: f.cariAd || "" } : null);
         setBelgeNo(f.belgeNo || ""); setAciklama(f.aciklama || "");
         setSatirlar((f.satirlar || []).map((s) => ({ anahtar: yeniAnahtar(), stokKartId: s.stokKartId, kod: s.kod || "", ad: s.ad || "", birim: s.birim || "",
-          miktar: metin(s.miktar), birimFiyat: metin(s.birimFiyat), kdvOrani: s.kdvOrani })));
+          miktar: metin(s.miktar), birimFiyat: metin(s.birimFiyat), kdvOrani: s.kdvOrani, skt: s.skt || "", partiNo: s.partiNo || "", sktTakibi: !!s.sktTakibi })));
       })
       .catch((e) => showError(e?.message || "Fiş okunamadı."))
       .finally(() => setYukleniyor(false));
@@ -97,10 +101,13 @@ export const StokGirisFisiPage: React.FC = () => {
 
   const kartEkle = (k: StokKart, miktar = 1) => {
     setSatirlar((p) => {
-      const var_ = p.find((s) => s.stokKartId === k.stokKartId);
-      if (var_) return p.map((s) => (s === var_ ? { ...s, miktar: metin(yuvarla2(sayi(s.miktar) + miktar)) } : s));
+      // Aynı kart yeniden okutulursa o kartın son satırına eklenir (başka partiyse satırdaki "yeni parti" düğmesiyle ayrı satır açılır)
+      const var_ = [...p].reverse().find((s) => s.stokKartId === k.stokKartId);
+      // Birleştirmede 4 hane (kg / koli): önceden 2 haneye yuvarlanıyordu (0,234 + 0,75 → 0,98)
+      if (var_) return p.map((s) => (s === var_ ? { ...s, miktar: metin(Math.round((sayi(s.miktar) + miktar) * 10000) / 10000) } : s));
       const fiyat = k.sonAlisFiyati ?? k.alisFiyati;
-      return [...p, { anahtar: yeniAnahtar(), stokKartId: k.stokKartId, kod: k.kod, ad: k.ad, birim: k.birim, miktar: metin(miktar), birimFiyat: metin(fiyat), kdvOrani: k.kdvOrani }];
+      return [...p, { anahtar: yeniAnahtar(), stokKartId: k.stokKartId, kod: k.kod, ad: k.ad, birim: k.birim, miktar: metin(miktar), birimFiyat: metin(fiyat), kdvOrani: k.kdvOrani,
+        skt: "", partiNo: "", sktTakibi: !!k.sktTakibi }];
     });
   };
 
@@ -111,7 +118,23 @@ export const StokGirisFisiPage: React.FC = () => {
     const m = d.match(/^(\d+(?:[.,]\d+)?)\s*\*\s*(.+)$/);
     const adet = m ? sayi(m[1]) : 1;
     const deger = m ? m[2].trim() : d;
-    const k = await TicariService.kartBul(deger);
+    let k: StokKart | null;
+    try {
+      k = await TicariService.kartBul(deger);
+    } catch (e: any) {
+      showError(e?.message || "Ürün aranamadı.");
+      return;
+    }
+    // Terazi etiketi (TA3): ağırlık gömülüyse miktar etiketten; tutar gömülü etikette miktar elle yazılır
+    if (k?.terazi && k.terazi.agirlikKg !== null && !m) {
+      const tm = teraziMiktari(k.terazi, k.birim, 0);
+      if (typeof tm === "string") { showError(`"${k.ad}": ${tm}`); return; }
+      kartEkle(k, tm);
+      setOkut("");
+      return;
+    }
+    // Koli / ek birim barkodu (TA5): miktar ana birimde
+    if (k?.okunanBirim) { kartEkle(k, Math.round(adet * k.okunanBirim.carpan * 10000) / 10000); setOkut(""); showWarning(`${k.ad}: ${adet} ${k.okunanBirim.birim} = ${miktarYaz(adet * k.okunanBirim.carpan)} ${k.birim}`, 3000); return; }
     if (k) { kartEkle(k, adet); setOkut(""); return; }
     if (yetki.yonetebilir && window.confirm(`"${deger}" barkodlu ya da kodlu ürün yok. Yeni stok kartı açılsın mı?`)) setYeniKart({ acik: true, barkod: deger });
     else setSecici({ acik: true, arama: deger });
@@ -127,13 +150,15 @@ export const StokGirisFisiPage: React.FC = () => {
     if (!satirlar.length) { showWarning("Fişe en az bir ürün ekleyin."); return; }
     const bozuk = satirlar.find((s) => !(sayi(s.miktar) > 0));
     if (bozuk) { showWarning(`${bozuk.ad}: miktar sıfırdan büyük olmalı.`); return; }
+    const sktsiz = satirlar.find((s) => s.sktTakibi && !s.skt);
+    if (sktsiz) { showWarning(`${sktsiz.ad}: SKT takibi yapılan üründe son kullanma tarihi yazılmalı.`); return; }
     setKaydediliyor(true);
     let tekrar = false;
     try {
       const r = await TicariService.girisKaydet({
         stokGirisId: id, tarih: new Date(`${tarih}T${saat || "00:00"}:00`).toISOString(), cariKartId: cari?.id ?? null, belgeNo, aciklama,
         vezneId: (user as any)?.vezneId ?? null,
-        satirlar: satirlar.map((s) => ({ stokKartId: s.stokKartId, miktar: sayi(s.miktar), birimFiyat: sayi(s.birimFiyat), kdvOrani: s.kdvOrani })),
+        satirlar: satirlar.map((s) => ({ stokKartId: s.stokKartId, miktar: sayi(s.miktar), birimFiyat: sayi(s.birimFiyat), kdvOrani: s.kdvOrani, skt: s.skt || null, partiNo: s.partiNo.trim() || null })),
         eksiStokOnay: onay,
       });
       if (r.uyari) showWarning(r.uyari);
@@ -227,12 +252,12 @@ export const StokGirisFisiPage: React.FC = () => {
                   <tr className="small text-secondary">
                     <th style={{ width: 40 }} className="text-center">#</th><th>Kod</th><th>Ürün Adı</th><th>Birim</th>
                     <th style={{ width: 110 }} className="text-end">Miktar</th><th style={{ width: 130 }} className="text-end">Alış Fiyatı (KDV hariç)</th>
-                    <th style={{ width: 90 }} className="text-center">KDV %</th><th className="text-end">Tutar</th><th className="text-end">KDV</th><th className="text-end">Toplam</th><th style={{ width: 44 }}></th>
+                    <th style={{ width: 90 }} className="text-center">KDV %</th><th style={{ width: 250 }}>SKT / Parti</th><th className="text-end">Tutar</th><th className="text-end">KDV</th><th className="text-end">Toplam</th><th style={{ width: 44 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {satirlar.length === 0 ? (
-                    <tr><td colSpan={11} className="text-center py-4 text-muted">Ürün okutun ya da F4 ile listeden seçin.</td></tr>
+                    <tr><td colSpan={12} className="text-center py-4 text-muted">Ürün okutun ya da F4 ile listeden seçin.</td></tr>
                   ) : satirlar.map((s, i) => (
                     <tr key={s.anahtar}>
                       <td className="text-center text-muted small">{i + 1}</td>
@@ -245,6 +270,17 @@ export const StokGirisFisiPage: React.FC = () => {
                         <Form.Select size="sm" value={s.kdvOrani} onChange={(e) => satirDegis(s.anahtar, "kdvOrani", Number(e.target.value))}>
                           {[...new Set([...KDV_SECENEKLERI, s.kdvOrani])].sort((a, b) => a - b).map((k) => <option key={k} value={k}>%{k}</option>)}
                         </Form.Select>
+                      </td>
+                      <td>
+                        <div className="d-flex gap-1 align-items-center">
+                          <Form.Control size="sm" type="date" style={{ width: 128 }} aria-label={`${s.ad} SKT`} value={s.skt} isInvalid={s.sktTakibi && !s.skt}
+                            title={s.sktTakibi ? "SKT takibi yapılan ürün: son kullanma tarihi zorunlu" : "Son kullanma tarihi (isteğe bağlı)"} onChange={(e) => satirDegis(s.anahtar, "skt", e.target.value)} />
+                          <Form.Control size="sm" style={{ width: 80 }} maxLength={40} placeholder="Parti" aria-label={`${s.ad} parti`} value={s.partiNo} onChange={(e) => satirDegis(s.anahtar, "partiNo", e.target.value)} />
+                          <Button size="sm" variant="outline-secondary" className="py-0 px-1" title="Aynı üründen başka parti (ayrı SKT) için yeni satır"
+                            onClick={() => setSatirlar((p) => { const j = p.findIndex((x) => x.anahtar === s.anahtar); const y = { ...s, anahtar: yeniAnahtar(), miktar: "", skt: "", partiNo: "" }; return [...p.slice(0, j + 1), y, ...p.slice(j + 1)]; })}>
+                            <IconCopyPlus size={14} />
+                          </Button>
+                        </div>
                       </td>
                       <td className="text-end">{para(hesap.satirlar[i].tutar)}</td>
                       <td className="text-end text-muted">{para(hesap.satirlar[i].kdvTutari)}</td>

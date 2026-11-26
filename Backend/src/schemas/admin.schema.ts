@@ -289,7 +289,17 @@ export const lisansEkleSchema = z.object({
     paketAdi: secmeli(100),
     notlar: secmeli(1000),
     urunler: urunlerAlani,
+    // Adisyon garson sınırı (TA24): boş = sınırsız
+    garsonLimiti: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.coerce.number().int().min(0, "Garson sınırı 0 ya da daha büyük olmalıdır").max(10000).nullable()).optional(),
+    // Restorant başlık adı (R4): boş = "Restorant"
+    restoranAdi: z.string().max(60, "Restorant başlık adı en çok 40 karakter olmalıdır").nullable().optional(),
   }),
+});
+
+/** Etkin lisansın Restorant başlık adı (R4) */
+export const restoranAdiSchema = z.object({
+  params: idParam,
+  body: z.object({ restoranAdi: z.string().max(60, "Restorant başlık adı en çok 40 karakter olmalıdır").nullable() }),
 });
 
 // Dağıtım (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md): "Test'i Güncelle" / "Canlıya Geçir"

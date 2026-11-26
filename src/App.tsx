@@ -86,6 +86,27 @@ import EBelgeGiderPage from "./pages/ebelge/EBelgeGiderPage";
 import EBelgeKaynakPage from "./pages/ebelge/EBelgeKaynakPage";
 // Ticari İşlemler (docs/TICARI_ISLEMLER_YOL_HARITASI.md)
 import TicariSatisFisiPage from "./pages/ticari/TicariSatisFisiPage";
+import TicariIadeFisiPage from "./pages/ticari/TicariIadeFisiPage";
+import TicariVardiyaPage from "./pages/ticari/TicariVardiyaPage";
+import TicariGunSonuPage from "./pages/ticari/TicariGunSonuPage";
+import TicariKarRaporuPage from "./pages/ticari/TicariKarRaporuPage";
+import TicariSktPage from "./pages/ticari/TicariSktPage";
+import TicariParcalamaPage from "./pages/ticari/TicariParcalamaPage";
+// Adisyon (docs/TICARI_ADISYON_YOL_HARITASI.md)
+import AdisyonAyarlarPage from "./pages/adisyon/AdisyonAyarlarPage";
+import AdisyonTanimlarPage from "./pages/adisyon/AdisyonTanimlarPage";
+import AdisyonMasalarPage from "./pages/adisyon/AdisyonMasalarPage";
+import GarsonPage from "./pages/adisyon/GarsonPage";
+import MisafirPage from "./pages/adisyon/MisafirPage";
+import MutfakPage from "./pages/adisyon/MutfakPage";
+import AdisyonMutfakPage from "./pages/adisyon/AdisyonMutfakPage";
+import AdisyonRaporPage from "./pages/adisyon/AdisyonRaporPage";
+import MutfakYaziciIstasyonu from "./components/adisyon/MutfakYaziciIstasyonu";
+import MusteriEkraniPage from "./pages/musteriEkrani/MusteriEkraniPage";
+import TicariSayimFisiPage from "./pages/ticari/TicariSayimFisiPage";
+import TicariFireFisiPage from "./pages/ticari/TicariFireFisiPage";
+import TicariTedarikciIadePage from "./pages/ticari/TicariTedarikciIadePage";
+import TicariEfaturaGirisPage from "./pages/ticari/TicariEfaturaGirisPage";
 import TicariSatisListesiPage from "./pages/ticari/TicariSatisListesiPage";
 import StokGirisFisiPage from "./pages/ticari/StokGirisFisiPage";
 import StokGirisListesiPage from "./pages/ticari/StokGirisListesiPage";
@@ -405,6 +426,8 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
         <ERPContextMenu />
         <GirisSirasiModal />
         <YerlesimDuzenleyici />
+        {/* Adisyon mutfak yazıcı istasyonu (D5): yalnız "bu bilgisayar basar" işaretli PC'de arka planda çalışır */}
+        <MutfakYaziciIstasyonu />
         <Routes>
 
           {/* Public Routes */}
@@ -439,6 +462,12 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
           )}
 
           <Route path="/login" element={<LoginPage />} />
+          {/* Restorant garson adresi (docs/TICARI_ADISYON_YOL_HARITASI.md, TA23; §11 G1–G4): müşteri no + kullanıcı adı + şifre (garson kartına bağlı kullanıcı) */}
+          <Route path="/garson" element={<GarsonPage />} />
+          {/* Masadaki misafir (§11 M1–M8): QR / masa PIN'iyle menü + sipariş, personel oturumu istemez */}
+          <Route path="/misafir" element={<MisafirPage />} />
+          {/* Adisyon mutfak ekranı bağlantısı (TA30): hazırlık yeri anahtarıyla, personel oturumu istemez */}
+          <Route path="/mutfak" element={<MutfakPage />} />
           <Route path="/sign-in" element={<Navigate to="/login" replace />} />
 
           {/* Protected Standalone Pano & TV Katalog Route - Fullscreen TV & Tablet Mode */}
@@ -451,6 +480,8 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="tv-katalog" element={<TvKatalogPage />} />
               <Route path="katalog-ekrani" element={<TvKatalogPage />} />
             </Route>
+            {/* Müşteri ekranı (TA9): kasa sayfasının yayınını gösterir, ikinci monitörde tam ekran */}
+            <Route path="musteri-ekrani" element={<MusteriEkraniPage />} />
           </Route>
 
           {/* Protected Dashboard Routes - Requires Valid JWT Token */}
@@ -571,6 +602,21 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="ticari/urun-hareket-listesi" element={<UrunHareketListesiPage />} />
               <Route path="ticari/stok-ayarlari" element={<StokAyarlariPage />} />
               <Route path="ticari/fiyat-gor" element={<TicariFiyatGorPage />} />
+              <Route path="ticari/iade-fisi" element={<TicariIadeFisiPage />} />
+              <Route path="ticari/vardiya" element={<TicariVardiyaPage />} />
+              <Route path="ticari/gun-sonu" element={<TicariGunSonuPage />} />
+              <Route path="ticari/kar-raporu" element={<TicariKarRaporuPage />} />
+              <Route path="ticari/skt-yaklasan" element={<TicariSktPage />} />
+              <Route path="ticari/parcalama" element={<TicariParcalamaPage />} />
+              <Route path="adisyon/ayarlar" element={<AdisyonAyarlarPage />} />
+              <Route path="adisyon/tanimlar" element={<AdisyonTanimlarPage />} />
+              <Route path="adisyon/masalar" element={<AdisyonMasalarPage />} />
+              <Route path="adisyon/mutfak" element={<AdisyonMutfakPage />} />
+              <Route path="adisyon/raporlar" element={<AdisyonRaporPage />} />
+              <Route path="ticari/sayim-fisi" element={<TicariSayimFisiPage />} />
+              <Route path="ticari/fire-fisi" element={<TicariFireFisiPage />} />
+              <Route path="ticari/tedarikci-iade" element={<TicariTedarikciIadePage />} />
+              <Route path="ticari/efatura-giris" element={<TicariEfaturaGirisPage />} />
               <Route path="ticari/etiket" element={<TicariEtiketPage />} />
               <Route path="ticari/fiyat-listeleri" element={<FiyatListeleriPage />} />
               <Route path="ticari/fiyat-islemleri" element={<FiyatIslemleriPage />} />

@@ -46,6 +46,8 @@ export const UST_KISAYOLLAR: { key: string; baslik: string; to?: string }[] = [
   { key: "ust:piyasa", baslik: "Piyasa", to: "/piyasa" },
   // Hızlı Satış (docs/HIZLI_SATIS_YOL_HARITASI.md, H2–H3): firmada açık modüllerin hızlı satışına götürür
   { key: "ust:hizli-satis", baslik: "Hızlı Satış", to: "/hizli-satis" },
+  // Adisyon masaları (docs/TICARI_ADISYON_YOL_HARITASI.md, D3)
+  { key: "ust:adisyon", baslik: "Masalar", to: "/adisyon/masalar" },
 ];
 
 export const UST_KISAYOL_GRUBU = "ust";
@@ -354,6 +356,20 @@ const zincirKullaniciyaAcik = (y: KullaniciYetkisi, zincir: string[]): boolean =
 const KISAYOL_SAYFA_KURALLARI: Record<string, (acik: string[] | null | undefined, y: KullaniciYetkisi) => boolean> = {
   piyasa: (_acik, y) => anaMenuAcik(y, "kur"),
   "hizli-satis": (acik, y) => HIZLI_SATIS_MODULLERI.some((m) => sayfaErisimi(acik, y, `/hizli-satis/${m}`)),
+  // Üst çubuktaki Sarraf / Döviz / Fiyat kısayollarının adresi menüde yalnız Yönetici İşlemleri'nde geçiyor; aynı ekranı
+  // Vezne / Etiket menüsündeki eşi de açar (sunucudaki kayıt kapısı da "Vezne A veya Yönetici D" der). Yönetici İşlemleri
+  // kapatılınca Sarraf Fişi Kayıt yetkisi olan kullanıcının kısayolu kayboluyordu (26.11.2026).
+  "vezne/genel-sarraf-fisi": (acik, y) => menuYetkisiyleAcik(y, "vezne/genel-sarraf-fisi") || sayfaErisimi(acik, y, "/vezne/sarraf-fisi-kayit"),
+  "vezne/doviz-fisi": (acik, y) => menuYetkisiyleAcik(y, "vezne/doviz-fisi") || sayfaErisimi(acik, y, "/vezne/doviz-fisi-kayit"),
+  "etiket/barkod-basimi": (acik, y) => menuYetkisiyleAcik(y, "etiket/barkod-basimi") || sayfaErisimi(acik, y, "/etiket/barkod-fiyat"),
+};
+
+/** Adres kullanıcının menü yetkisinde açık mı (lisans ve kısayol kuralı hariç; sayfaErisimi'nin son adımı) */
+const menuYetkisiyleAcik = (y: KullaniciYetkisi, pathname: string): boolean => {
+  const ham = yolAnahtari(pathname);
+  if (!sayfaKutusuAcik(y, ham) || !sayfaKutusuAcik(y, SAYFA_TAKMA_ADLARI[ham] ?? ham)) return false;
+  const menuZincirleri = adresZincirleri(pathname).filter((z) => !z[0].startsWith(`${UST_KISAYOL_GRUBU}:`));
+  return menuZincirleri.length === 0 || menuZincirleri.some((z) => zincirKullaniciyaAcik(y, z));
 };
 
 /**
@@ -367,9 +383,7 @@ export const sayfaErisimi = (acik: string[] | null | undefined, y: KullaniciYetk
   const ham = yolAnahtari(pathname);
   const kisayolKurali = KISAYOL_SAYFA_KURALLARI[ham];
   if (kisayolKurali) return kisayolKurali(acik, y);
-  if (!sayfaKutusuAcik(y, ham) || !sayfaKutusuAcik(y, SAYFA_TAKMA_ADLARI[ham] ?? ham)) return false;
-  const menuZincirleri = adresZincirleri(pathname).filter((z) => !z[0].startsWith(`${UST_KISAYOL_GRUBU}:`));
-  return menuZincirleri.length === 0 || menuZincirleri.some((z) => zincirKullaniciyaAcik(y, z));
+  return menuYetkisiyleAcik(y, pathname);
 };
 
 /**

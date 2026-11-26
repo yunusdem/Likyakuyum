@@ -69,7 +69,8 @@ export class FirmaKullaniciMerkezService {
           adSoyad: yeni.fullName || null,
           sifreHash: await sifreHashle(sifre),
           sifreDegismeli: true,
-          firmaYoneticisi: !!yeni.isSysAdmin,
+          // Kartın Sistem Yöneticisi işareti merkeze yetkili olarak taşınmaz (firmada tek yetkili, panelden seçilir)
+          firmaYoneticisi: false,
           firmaDbKullaniciId: Number(yeni.id) || null,
           olusturan: `FIRMA:${b.kullanici.kullaniciAdi}`,
         },
@@ -88,16 +89,17 @@ export class FirmaKullaniciMerkezService {
   }
 
   /**
-   * Güncellemeden önce: formdan şifre geldiyse bu bir sıfırlamadır (yönetici ister, kurala uymalı).
-   * Başkasının kaydını değiştirmek de yönetici ister.
+   * Güncellemeden önce: formdan şifre geldiyse bu bir sıfırlamadır (firma yetkilisi ister, kurala uymalı).
+   * Başkasının kartını düzenleme yetkisi denetleyicide (kartYoneticisiMi: firma yetkilisi ya da kartta Sistem Yöneticisi);
+   * firmada tek yetkili olduğundan burada yalnız yetkili aranırsa diğer sistem yöneticileri kart düzenleyemiyordu.
    */
   public static guncellemeOnDenetimi(b: MerkezBaglam, mevcutKullaniciAdi: string, girdi: { password?: string }): void {
     const kendisi = mevcutKullaniciAdi === b.kullanici.kullaniciAdi;
-    if (!kendisi) MerkezGirisService.yoneticiOlmali(b);
     if (girdi.password && String(girdi.password).trim() !== "") {
       // Kendi şifresi kart üzerinden değişmez (mevcut şifre sorulmadan değişiyordu); 816e79eb8'de kaldırılan engel geri geldi
       // (ortak alan denetimi 19.11.2026, #20)
       if (kendisi) throw ApiError.badRequest("Kendi şifrenizi 'Şifre Değiştir' ekranından değiştirin.");
+      MerkezGirisService.yoneticiOlmali(b);
       MerkezGirisService.sifreKuraliniDenetle(girdi.password);
     }
   }
@@ -120,11 +122,11 @@ export class FirmaKullaniciMerkezService {
         throw err;
       }
     }
-    // Son yönetici kendi yöneticiliğini kaldırıp firmayı yöneticisiz bırakmasın: kendi kaydında bu alan değişmez
-    const kendisi = hedef.kullaniciId === b.kullanici.kullaniciId;
+    // Firma yetkilisi (merkezdeki Firma Yöneticisi) yalnız panelden değişir; kartın Sistem Yöneticisi işareti ona
+    // kopyalanmaz (kopyalanınca her sistem yöneticisi firma yetkilisi oluyordu)
     await KullaniciSqlRepository.bilgiGuncelle(hedef.kullaniciId, {
       adSoyad: guncel.fullName || hedef.adSoyad,
-      firmaYoneticisi: kendisi ? hedef.firmaYoneticisi : !!guncel.isSysAdmin,
+      firmaYoneticisi: hedef.firmaYoneticisi,
     });
     if (yeniSifre && String(yeniSifre).trim() !== "") {
       // Yöneticinin başkasına yazdığı şifre geçicidir: kullanıcı ilk girişte değiştirir (sifreDegismeli true; 816e79eb8 false

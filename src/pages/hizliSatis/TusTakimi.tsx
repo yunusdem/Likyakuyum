@@ -28,15 +28,17 @@ export const girisSayi = (g: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** Tuşa dokunmak odağı barkod kutusundan almasın: sıradaki okutma (rakamlar + Enter) düğmeye değil kutuya gitsin (26.11.2026 denetimi) */
+const odakKalsin = (e: React.MouseEvent) => e.preventDefault();
 const TUS: React.CSSProperties = { height: 54, fontSize: 20, fontWeight: 700, borderRadius: 10, touchAction: "manipulation" };
 const KOMUT: React.CSSProperties = { ...TUS, fontSize: 13, lineHeight: 1.1 };
 
 export const TusTakimi: React.FC<Props> = ({ giris, setGiris, onKomut, fiyatYetkisi, indirimVar, serbestVar, disabled }) => {
   const r = (t: string) => (
-    <button key={t} type="button" className="btn btn-light border" style={TUS} disabled={disabled} onClick={() => setGiris((g) => girisEkle(g, t))}>{t}</button>
+    <button key={t} type="button" onMouseDown={odakKalsin} className="btn btn-light border" style={TUS} disabled={disabled} onClick={() => setGiris((g) => girisEkle(g, t))}>{t}</button>
   );
   const k = (ad: string, komut: TusKomutu, renk = "btn-outline-secondary", kapali = false, title?: string) => (
-    <button type="button" className={`btn ${renk}`} style={KOMUT} disabled={disabled || kapali} title={title} onClick={() => onKomut(komut)}>{ad}</button>
+    <button type="button" onMouseDown={odakKalsin} className={`btn ${renk}`} style={KOMUT} disabled={disabled || kapali} title={title} onClick={() => onKomut(komut)}>{ad}</button>
   );
   return (
     <div>
@@ -48,8 +50,8 @@ export const TusTakimi: React.FC<Props> = ({ giris, setGiris, onKomut, fiyatYetk
         {r("4")}{r("5")}{r("6")}{k("Fiyat Değiştir", "fiyat", "btn-outline-primary", !fiyatYetkisi, fiyatYetkisi ? undefined : "Hızlı Satış – Fiyat/İndirim yetkisi gerekli")}
         {r("1")}{r("2")}{r("3")}{k("İskonto", "indirim", "btn-outline-primary", !indirimVar, indirimVar ? "Tanımlı iskonto seçin (elle iskonto yetkiliye açık)" : "Bu modülde ya da alışta iskonto yok")}
         {r("0")}{r("00")}{r(",")}{k("Satır Sil", "satirSil", "btn-outline-danger")}
-        <button type="button" className="btn btn-light border" style={TUS} disabled={disabled} title="Geri sil" onClick={() => setGiris((g) => g.slice(0, -1))}><IconBackspace size={20} /></button>
-        <button type="button" className="btn btn-light border" style={TUS} disabled={disabled} onClick={() => setGiris(() => "")}>C</button>
+        <button type="button" onMouseDown={odakKalsin} className="btn btn-light border" style={TUS} disabled={disabled} title="Geri sil" onClick={() => setGiris((g) => g.slice(0, -1))}><IconBackspace size={20} /></button>
+        <button type="button" onMouseDown={odakKalsin} className="btn btn-light border" style={TUS} disabled={disabled} onClick={() => setGiris(() => "")}>C</button>
         {k("Serbest Ürün", "serbest", "btn-outline-success", !serbestVar, serbestVar ? undefined : "Bu modülde serbest ürün yok")}
         {k("Enter", "enter", "btn-secondary")}
       </div>

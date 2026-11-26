@@ -51,6 +51,7 @@ import {
   firmaDurumSchema,
   firmaDogrulamaSchema,
   lisansEkleSchema,
+  restoranAdiSchema,
   kullaniciEkleSchema,
   kullaniciGuncelleSchema,
   modulKatalogSchema,
@@ -118,6 +119,7 @@ router.post("/firmalar/:id/db-test", validate(adminIdSchema), FirmaController.db
 router.post("/firmalar/:id/masak-kontrol", validate(adminIdSchema), FirmaController.masakKontrol);
 router.get("/firmalar/:id/lisanslar", validate(adminIdSchema), FirmaController.lisanslar);
 router.post("/firmalar/:id/lisanslar", validate(lisansEkleSchema), FirmaController.lisansEkle);
+router.put("/firmalar/:id/restoran-adi", validate(restoranAdiSchema), FirmaController.restoranAdi);
 router.post("/firmalar/:id/lisanslar/:lisansId/kod", validate(lisansKodSchema), FirmaController.lisansKodu);
 router.post("/firmalar/:id/lisanslar/:lisansId/iptal", validate(lisansIptalSchema), FirmaController.lisansIptal);
 router.post("/firmalar/:id/lisanslar/:lisansId/aktivasyon-anahtari", validate(lisansIptalSchema), FirmaController.aktivasyonAnahtari);

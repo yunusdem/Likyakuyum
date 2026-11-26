@@ -204,6 +204,9 @@ export class PaketService {
     const paketler = await PaketSqlRepository.paketler();
     const bilinmeyen = tekil.filter((u) => !paketler.some((p) => p.paketKodu === u && !p.cekirdek));
     if (bilinmeyen.length) throw ApiError.badRequest(`Bilinmeyen ürün: ${bilinmeyen.join(", ")}`);
+    // Ticari + Restorant (R3) Ticari ile Restorant'ı zaten içerir: birlikte seçilmez (paket adı "Likya.Ticari + Likya.Ticari + Restorant" olmasın)
+    if (tekil.includes("ticari_restorant") && (tekil.includes("ticari") || tekil.includes("adisyon")))
+      throw ApiError.badRequest("Ticari + Restorant tek başına seçilir; Ticari ya da Restorant ile birlikte seçilmez (ikisini zaten içerir).");
     return paketler.filter((p) => tekil.includes(p.paketKodu)).map((p) => p.paketKodu); // paket sırasıyla
   }
 

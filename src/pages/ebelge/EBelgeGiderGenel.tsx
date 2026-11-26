@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import EBelgeCariSec from "./EBelgeCariSec";
 import { EbelgeGiderIstegi, ebelgeService, ebelgeTutar } from "../../services/ebelgeService";
 import { useYerelTaslak } from "./useYerelTaslak";
+import { TicariService } from "../../services/ticariService";
 import GibSorguButonu from "../../components/common/GibSorguButonu";
 import { GibDegerleri, GibDoldurmaSonucu } from "../../utils/gibSorgu";
 import "./ebelgeForm.css";
@@ -26,6 +27,19 @@ export default function EBelgeGiderGenel({ turSecici }: { turSecici?: React.Reac
   useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf); }, [pdf]);
   const degistir = (patch: Partial<EbelgeGiderIstegi>) => { setGirdi(o => ({ ...o, ...patch })); setOnizleme(null); };
   const taslak = useYerelTaslak<EbelgeGiderIstegi & Record<string, unknown>>("EGiderPusulasi", (t) => setGirdi(t));
+  // Ticari satış iadesinden (docs/TICARI_ADISYON_YOL_HARITASI.md TA6): ?ticariIade=<iade fişi> ile form iade taslağıyla dolar (gönderim elle)
+  const [iadeMesaji, setIadeMesaji] = useState("");
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("ticariIade"));
+    if (!(id > 0)) return;
+    TicariService.iadeGiderTaslagi(id)
+      .then((t) => {
+        const { kimlikGerekli, ...icerik } = t;
+        setGirdi((o) => ({ ...o, ...icerik, alici: { ...o.alici, ...icerik.alici } }));
+        setIadeMesaji(`Ticari iade fişi taslağı yüklendi (${(icerik.notlar || [])[0] || ""}).${kimlikGerekli ? " Satış anonim müşteriye yapılmış: malı iade edenin TC kimlik no, ad ve soyadını yazın." : ""} Bilgileri kontrol edip Önizle / Gönder ile kesin.`);
+      })
+      .catch((e: any) => setHata(e?.message || "İade taslağı okunamadı."));
+  }, []);
   // GİB'den unvan / ad-soyad (docs/GIB_VKN_SORGU_YOL_HARITASI.md): boşlar dolar, farklıysa sorulur
   const [gibMesaji, setGibMesaji] = useState<GibDoldurmaSonucu | null>(null);
   // Sorgu yalnız GİB düğmesiyle (docs/GIB_BUTON_IL_ILCE_YOL_HARITASI.md); il / ilçe vergi dairesinden
@@ -64,6 +78,7 @@ export default function EBelgeGiderGenel({ turSecici }: { turSecici?: React.Reac
     {gibMesaji && <Alert variant={gibMesaji.tur} dismissible onClose={() => setGibMesaji(null)}>{gibMesaji.mesaj}</Alert>}
     {taslak.taslakHata && <Alert variant="danger">{taslak.taslakHata}</Alert>}
     {taslak.taslakMesaj && !sonuc && <Alert variant="info">{taslak.taslakMesaj}</Alert>}
+    {iadeMesaji && !sonuc && <Alert variant="info">{iadeMesaji}</Alert>}
     {sonuc && <Alert variant="success">{sonuc.belgeNo}: Gönderildi. {sonuc.mesaj}
       <Button size="sm" className="ms-2" onClick={async () => { try { setPdf(await ebelgeService.giderPdf(sonuc.uuid)); } catch (e: any) { setHata(e.message); } }}>PDF aç</Button></Alert>}
     {pdf && <iframe title="e-Gider PDF" src={pdf} width="100%" height="600" />}

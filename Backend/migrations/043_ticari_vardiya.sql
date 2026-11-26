@@ -1,0 +1,58 @@
+-- ============================================================================
+-- Göç 043: Ticari kasiyer vardiyası — kasa açılış / kapanış (docs/TICARI_ADISYON_YOL_HARITASI.md, TA8)
+-- Vardiya vezne başınadır: aynı vezne için aynı anda tek açık vardiya olur (filtreli tekil indeks).
+--   ACILIS_ZAMANI / KAPANIS_ZAMANI: GETDATE() — vezne belgelerinin EKLEME_ZAMANI'yla aynı saat; vardiya aralığı bununla seçilir.
+--   ACILIS_TR / KAPANIS_TR: Türkiye duvar saati (DATEADD(HOUR, 3, GETUTCDATE())) — yalnız gösterim için; sunucu saat dilimi farklı olabilir.
+--   DEVIR: açılışta kasadaki nakit (TL); SAYILAN: kapanışta sayılan nakit; BEKLENEN = devir + vardiyadaki net nakit hareketi.
+--   KUPUR: kapanış sayımının küpür dökümü (JSON, isteğe bağlı); OZET: kapanış anındaki rapor (JSON) — sonradan belge düzeltilse de değişmez.
+-- Yalnız ekleme; tekrar çalıştırılabilir. Uygulama da ilk kullanımda aynı dosyayı çalıştırır (ticariSema.ts).
+-- ============================================================================
+
+IF OBJECT_ID('dbo.TODVZ_TICARI_VARDIYA', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.TODVZ_TICARI_VARDIYA (
+    VARDIYA_ID INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_TODVZ_TICARI_VARDIYA PRIMARY KEY,
+    VEZNE_ID INT NOT NULL,
+    ACAN_ID INT NULL,
+    ACILIS_ZAMANI DATETIME NOT NULL CONSTRAINT DF_TODVZ_TICARI_VARDIYA_ACILIS DEFAULT GETDATE(),
+    ACILIS_TR DATETIME NOT NULL CONSTRAINT DF_TODVZ_TICARI_VARDIYA_ACILIS_TR DEFAULT DATEADD(HOUR, 3, GETUTCDATE()),
+    DEVIR DECIMAL(18,2) NOT NULL CONSTRAINT CK_TODVZ_TICARI_VARDIYA_DEVIR CHECK (DEVIR >= 0),
+    ACILIS_NOTU NVARCHAR(250) NULL,
+    KAPATAN_ID INT NULL,
+    KAPANIS_ZAMANI DATETIME NULL,
+    KAPANIS_TR DATETIME NULL,
+    SAYILAN DECIMAL(18,2) NULL,
+    BEKLENEN DECIMAL(18,2) NULL,
+    FARK DECIMAL(18,2) NULL,
+    KAPANIS_NOTU NVARCHAR(250) NULL,
+    KUPUR NVARCHAR(1000) NULL,
+    OZET NVARCHAR(MAX) NULL,
+    CONSTRAINT CK_TODVZ_TICARI_VARDIYA_SAYILAN CHECK (SAYILAN IS NULL OR SAYILAN >= 0)
+  );
+  CREATE NONCLUSTERED INDEX IX_TODVZ_TICARI_VARDIYA_VEZNE ON dbo.TODVZ_TICARI_VARDIYA (VEZNE_ID, ACILIS_ZAMANI DESC);
+  PRINT 'TODVZ_TICARI_VARDIYA tablosu kuruldu.';
+END
+GO
+
+-- Vezne başına tek açık vardiya (eşzamanlı iki "aç" isteğinde biri kalır)
+IF OBJECT_ID('dbo.TODVZ_TICARI_VARDIYA', 'U') IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.TODVZ_TICARI_VARDIYA') AND name = 'UX_TODVZ_TICARI_VARDIYA_ACIK')
+  EXEC('CREATE UNIQUE NONCLUSTERED INDEX UX_TODVZ_TICARI_VARDIYA_ACIK ON dbo.TODVZ_TICARI_VARDIYA (VEZNE_ID) WHERE KAPANIS_ZAMANI IS NULL');
+GO
+GO
+-- 26.11.2026 denetimi (karar K7): kapanmış vardiyanın fişini yönetici düzeltir / silerse nakit farkı, veznenin açık vardiyasına
+-- düzeltme satırı olarak işlenir (beklenen nakde girer, raporda ayrı görünür).
+IF OBJECT_ID('dbo.TODVZ_TICARI_VARDIYA_DUZELTME', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.TODVZ_TICARI_VARDIYA_DUZELTME (
+    DUZELTME_ID INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_TODVZ_TICARI_VARDIYA_DUZELTME PRIMARY KEY,
+    VARDIYA_ID INT NOT NULL CONSTRAINT FK_TODVZ_TICARI_VARDIYA_DUZELTME_VARDIYA REFERENCES dbo.TODVZ_TICARI_VARDIYA (VARDIYA_ID),
+    ZAMAN DATETIME NOT NULL CONSTRAINT DF_TODVZ_TICARI_VARDIYA_DUZELTME_ZAMAN DEFAULT GETDATE(),
+    ZAMAN_TR DATETIME NOT NULL CONSTRAINT DF_TODVZ_TICARI_VARDIYA_DUZELTME_TR DEFAULT DATEADD(HOUR, 3, GETUTCDATE()),
+    TUTAR DECIMAL(18,2) NOT NULL,
+    ACIKLAMA NVARCHAR(200) NULL,
+    KULLANICI_ID INT NULL
+  );
+  CREATE NONCLUSTERED INDEX IX_TODVZ_TICARI_VARDIYA_DUZELTME_VARDIYA ON dbo.TODVZ_TICARI_VARDIYA_DUZELTME (VARDIYA_ID);
+END
+GO

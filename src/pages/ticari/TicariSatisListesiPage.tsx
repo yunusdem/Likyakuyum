@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, Col, Form, InputGroup, Row, Spinner, Table } from "react-bootstrap";
-import { IconEdit, IconEye, IconPrinter, IconReceipt, IconSearch } from "@tabler/icons-react";
+import { IconArrowBackUp, IconEdit, IconEye, IconPrinter, IconReceipt, IconSearch } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import ERPToolbar from "../../components/common/ERPToolbar";
 import { useToast } from "../../context/ToastContext";
@@ -25,23 +25,28 @@ export const TicariSatisListesiPage: React.FC = () => {
   const [yazdirilacak, setYazdirilacak] = useState<TicariSatisFisi | null>(null);
   // Hızlı Satış süzgeci (docs/HIZLI_SATIS_YOL_HARITASI.md, H20)
   const [kaynak, setKaynak] = useState<KaynakSuzgeci>("all");
+  // Tür (docs/TICARI_ADISYON_YOL_HARITASI.md TA6): satış (varsayılan) / iade / hepsi — iadeler satış toplamına karışmasın
+  const [tip, setTip] = useState<string>("1");
+  const iadeMi = (f: TicariSatisListeSatiri) => Number(f.faturaTipi) === 2;
+  const fisAc = (f: TicariSatisListeSatiri) => navigate(iadeMi(f) ? `/ticari/iade-fisi?iade=${f.faturaId}` : `/ticari/satis-fisi-duzeltme?id=${f.faturaId}`);
 
   const istek = React.useRef(0);
   const yukle = async () => {
     const no = ++istek.current;
     setYukleniyor(true);
-    try { const v = await TicariService.satisListe({ baslangic: bas, bitis: bit, arama: arama.trim() || undefined, eBelgeDurumu: eBelge === "" ? null : Number(eBelge) }); if (no === istek.current) setListe(v); }
+    try { const v = await TicariService.satisListe({ baslangic: bas, bitis: bit, arama: arama.trim() || undefined, eBelgeDurumu: eBelge === "" ? null : Number(eBelge), tip: Number(tip) }); if (no === istek.current) setListe(v); }
     catch (e: any) { if (no === istek.current) showError(e?.message || "Satış listesi alınamadı."); }
     finally { if (no === istek.current) setYukleniyor(false); }
   };
-  useEffect(() => { void yukle(); }, [bas, bit, eBelge]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void yukle(); }, [bas, bit, eBelge, tip]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hizliAcik = useHizliSatisAcik("ticari");
   const hizliFisler = useHizliSatisIsaretleri("ticari", useMemo(() => liste.map((x) => x.faturaId), [liste]));
   const gorunen = useMemo(() => liste.filter((x) => kaynakUyar(kaynak, hizliFisler.has(x.faturaId))), [liste, kaynak, hizliFisler]);
 
   const t = useMemo(() => {
-    const top = (f: (x: TicariSatisListeSatiri) => number) => gorunen.reduce((a, x) => a + f(x), 0);
+    // "Hepsi"nde iade fişi eksi sayılır (net satış)
+    const top = (f: (x: TicariSatisListeSatiri) => number) => gorunen.reduce((a, x) => a + (iadeMi(x) && tip === "0" ? -1 : 1) * f(x), 0);
     return { adet: gorunen.length, brut: top((x) => x.brutDahil), iskonto: top((x) => x.iskonto), kdv: top((x) => x.toplamKdv), genel: top((x) => x.genelToplam),
       nakit: top((x) => x.nakit), kart: top((x) => x.kart), cari: top((x) => x.cari), havale: top((x) => x.havale) };
   }, [gorunen]);
@@ -92,6 +97,12 @@ export const TicariSatisListesiPage: React.FC = () => {
                 <option value="">Hepsi</option><option value="0">Gönderilmedi</option><option value="1">Gönderildi</option>
               </Form.Select>
             </Col>
+            <Col md={2}>
+              <Form.Label className="small text-muted mb-1 fw-bold">Tür</Form.Label>
+              <Form.Select size="sm" value={tip} onChange={(e) => setTip(e.target.value)} aria-label="Tür">
+                <option value="1">Satış</option><option value="2">İade</option><option value="0">Hepsi (iade eksi)</option>
+              </Form.Select>
+            </Col>
             {hizliAcik && (
             <Col md={2}>
               <Form.Label className="small text-muted mb-1 fw-bold">Kaynak</Form.Label>
@@ -118,16 +129,16 @@ export const TicariSatisListesiPage: React.FC = () => {
               <tr className="small text-secondary">
                 <th style={{ width: 40 }} className="text-center">#</th><th>Fatura No</th><th>Tarih</th><th>Müşteri</th><th>TCKN / VKN</th><th className="text-center">Kalem</th>
                 <th className="text-end">Brüt</th><th className="text-end">İskonto</th><th className="text-end">KDV</th><th className="text-end">Genel Toplam</th>
-                <th className="text-end">Nakit</th><th className="text-end">Kart</th><th className="text-end">Cari</th><th className="text-end">Havale</th><th className="text-center">e-Belge</th><th style={{ width: 100 }} className="text-center">İşlemler</th>
+                <th className="text-end">Nakit</th><th className="text-end">Kart</th><th className="text-end">Cari</th><th className="text-end">Havale</th><th className="text-center">e-Belge</th><th style={{ width: 120 }} className="text-center">İşlemler</th>
               </tr>
             </thead>
             <tbody>
               {yukleniyor ? <tr><td colSpan={16} className="text-center py-5"><Spinner size="sm" className="me-2" />Yükleniyor...</td></tr>
                 : gorunen.length === 0 ? <tr><td colSpan={16} className="text-center py-5 text-muted">Bu aralıkta satış fişi yok.</td></tr>
                 : gorunen.map((f, i) => (
-                  <tr key={f.faturaId} onDoubleClick={() => navigate(`/ticari/satis-fisi-duzeltme?id=${f.faturaId}`)} style={{ cursor: "pointer" }}>
+                  <tr key={f.faturaId} onDoubleClick={() => fisAc(f)} style={{ cursor: "pointer" }}>
                     <td className="text-center text-muted small">{i + 1}</td>
-                    <td className="fw-bold font-monospace text-primary">{f.faturaNo}{hizliFisler.has(f.faturaId) && <Badge bg="success" className="ms-1" title="Hızlı satıştan">Hızlı</Badge>}</td>
+                    <td className="fw-bold font-monospace text-primary">{f.faturaNo}{iadeMi(f) && <Badge bg="danger" className="ms-1">İade</Badge>}{hizliFisler.has(f.faturaId) && <Badge bg="success" className="ms-1" title="Hızlı satıştan">Hızlı</Badge>}</td>
                     <td className="small">{tarihYaz(f.tarih)} <span className="text-muted">{saatYaz(f.tarih)}</span></td>
                     <td className="fw-semibold text-truncate" style={{ maxWidth: 220 }} title={f.aliciUnvan}>{f.aliciUnvan}</td>
                     <td className="font-monospace small">{f.aliciVknTckn}</td>
@@ -135,17 +146,18 @@ export const TicariSatisListesiPage: React.FC = () => {
                     <td className="text-end small">{para(f.brutDahil)}</td>
                     <td className="text-end small text-success">{f.iskonto ? para(f.iskonto) : ""}</td>
                     <td className="text-end small text-muted">{para(f.toplamKdv)}</td>
-                    <td className="text-end fw-bold">{para(f.genelToplam)}</td>
+                    <td className={`text-end fw-bold ${iadeMi(f) ? "text-danger" : ""}`}>{iadeMi(f) ? `−${para(f.genelToplam)}` : para(f.genelToplam)}</td>
                     <td className="text-end small">{f.nakit ? para(f.nakit) : ""}</td>
                     <td className="text-end small">{f.kart ? para(f.kart) : ""}</td>
                     <td className="text-end small text-danger">{f.cari ? para(f.cari) : ""}</td>
                     <td className="text-end small">{f.havale ? para(f.havale) : ""}</td>
-                    <td className="text-center">{f.eBelgeDurumu ? <Badge bg="success">Gönderildi</Badge> : <Badge bg="light" text="dark" className="border">Gönderilmedi</Badge>}</td>
+                    <td className="text-center">{iadeMi(f) ? <Badge bg="light" text="dark" className="border">İade fişi</Badge> : f.eBelgeDurumu ? <Badge bg="success">Gönderildi</Badge> : <Badge bg="light" text="dark" className="border">Gönderilmedi</Badge>}</td>
                     <td className="text-center">
                       <div className="btn-group btn-group-sm">
-                        <Button size="sm" variant="outline-primary" className="py-0 px-1" title="Aç" onClick={() => navigate(`/ticari/satis-fisi-duzeltme?id=${f.faturaId}`)}><IconEye size={14} /></Button>
-                        <Button size="sm" variant="outline-secondary" className="py-0 px-1" title="Düzelt" disabled={!!f.eBelgeDurumu} onClick={() => navigate(`/ticari/satis-fisi-duzeltme?id=${f.faturaId}`)}><IconEdit size={14} /></Button>
-                        <Button size="sm" variant="outline-success" className="py-0 px-1" title="Yazdır" onClick={() => yazdir(f)}><IconPrinter size={14} /></Button>
+                        <Button size="sm" variant="outline-primary" className="py-0 px-1" title="Aç" onClick={() => fisAc(f)}><IconEye size={14} /></Button>
+                        {!iadeMi(f) && <Button size="sm" variant="outline-secondary" className="py-0 px-1" title="Düzelt" disabled={!!f.eBelgeDurumu} onClick={() => navigate(`/ticari/satis-fisi-duzeltme?id=${f.faturaId}`)}><IconEdit size={14} /></Button>}
+                        {!iadeMi(f) && <Button size="sm" variant="outline-danger" className="py-0 px-1" title="İade al" aria-label={`${f.faturaNo} iade al`} onClick={() => navigate(`/ticari/iade-fisi?fis=${f.faturaId}`)}><IconArrowBackUp size={14} /></Button>}
+                        {!iadeMi(f) && <Button size="sm" variant="outline-success" className="py-0 px-1" title="Yazdır" onClick={() => yazdir(f)}><IconPrinter size={14} /></Button>}
                       </div>
                     </td>
                   </tr>

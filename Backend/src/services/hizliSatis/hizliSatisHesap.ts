@@ -44,6 +44,8 @@ export interface SatirEk {
   stokKartId?: number | null;
   /** Ticari: satıra uygulanan kampanya (İş 11, G12) → satır iskontosu */
   kampanya?: { kampanyaId: number; ad: string; turu: 1 | 2; deger: number } | null;
+  /** Ticari: koli / ek birim barkoduyla eklendi (TA5); miktar ana birimde */
+  birim?: { ad: string; carpan: number } | null;
   /** Döviz: istatistikten oranlar */
   bmvOrani?: number;
   kmvOrani?: number;

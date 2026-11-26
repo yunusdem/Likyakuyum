@@ -15,9 +15,13 @@ const UrunSecici: React.FC<{ urunler: PaketDto[]; secili: string[]; onDegistir: 
   kimlik,
 }) => {
   const hepsiSecili = urunler.some((u) => u.hepsi && secili.includes(u.paketKodu));
+  // Ticari + Restorant (R3) Ticari ile Restorant'ı içerir: biri seçilince öbürleri bırakılır (sunucu da birlikte seçimi reddeder)
+  const ORTAK = "ticari_restorant", PARCALAR = ["ticari", "adisyon"];
   const degistir = (u: PaketDto, ac: boolean) => {
     if (u.hepsi) return onDegistir(ac ? [u.paketKodu] : []);
-    onDegistir(ac ? [...secili, u.paketKodu] : secili.filter((k) => k !== u.paketKodu));
+    if (!ac) return onDegistir(secili.filter((k) => k !== u.paketKodu));
+    const yeni = u.paketKodu === ORTAK ? secili.filter((k) => !PARCALAR.includes(k)) : PARCALAR.includes(u.paketKodu) ? secili.filter((k) => k !== ORTAK) : secili;
+    onDegistir([...yeni, u.paketKodu]);
   };
 
   return (

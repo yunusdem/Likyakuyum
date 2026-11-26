@@ -60,7 +60,22 @@ export const UrunHareketListesiPage: React.FC = () => {
     return [...m.values()].sort((a, b) => a.ad.localeCompare(b.ad, "tr"));
   }, [veri]);
 
-  const belgeAc = (s: StokHareketSatiri) => navigate(s.belgeTuru === 1 ? `/ticari/stok-giris-fisi?id=${s.belgeId}` : `/ticari/satis-fisi-duzeltme?id=${s.belgeId}`);
+  // Belge türüne göre ekran: 1 giriş, 2 satış (iade ise iade ekranı), 3 sayım, 4 fire (docs/TICARI_ADISYON_YOL_HARITASI.md)
+  const belgeAc = (s: StokHareketSatiri) => navigate(
+    s.belgeTuru === 1 ? `/ticari/stok-giris-fisi?id=${s.belgeId}`
+      : s.belgeTuru === 3 ? `/ticari/sayim-fisi?id=${s.belgeId}`
+      : s.belgeTuru === 4 ? `/ticari/fire-fisi?id=${s.belgeId}`
+      : s.belgeTuru === 5 ? `/ticari/tedarikci-iade?id=${s.belgeId}`
+      : s.belgeTuru === 6 ? `/ticari/parcalama?id=${s.belgeId}`
+      : s.belgeTuru === 7 ? `/ticari/satis-fisi-duzeltme?id=${s.belgeId}`
+      : s.iade ? `/ticari/iade-fisi?iade=${s.belgeId}` : `/ticari/satis-fisi-duzeltme?id=${s.belgeId}`);
+  const rozet = (s: StokHareketSatiri) => s.belgeTuru === 1 ? <Badge bg="success">Giriş</Badge>
+    : s.belgeTuru === 3 ? <Badge bg="info">Sayım</Badge>
+    : s.belgeTuru === 4 ? <Badge bg="secondary">Fire</Badge>
+    : s.belgeTuru === 5 ? <Badge bg="dark">T. İade</Badge>
+    : s.belgeTuru === 6 ? <Badge bg="primary">Parçalama</Badge>
+    : s.belgeTuru === 7 ? <Badge bg="info" text="dark">Reçete</Badge>
+    : s.iade ? <Badge bg="warning" text="dark">İade</Badge> : <Badge bg="danger">Satış</Badge>;
 
   const yazdir = () => printReportTable({
     title: "Ürün Hareket Listesi",
@@ -92,7 +107,7 @@ export const UrunHareketListesiPage: React.FC = () => {
             <Col md={2}><Form.Label className="small text-muted mb-1 fw-bold">Bitiş</Form.Label><Form.Control size="sm" type="date" value={bit} onChange={(e) => setBit(e.target.value)} /></Col>
             <Col md={2}>
               <Form.Label className="small text-muted mb-1 fw-bold">Belge</Form.Label>
-              <Form.Select size="sm" value={tur} onChange={(e) => setTur(e.target.value)}><option value="">Hepsi</option><option value="1">Stok girişi</option><option value="2">Satış</option></Form.Select>
+              <Form.Select size="sm" value={tur} onChange={(e) => setTur(e.target.value)}><option value="">Hepsi</option><option value="1">Stok girişi</option><option value="2">Satış / iade</option><option value="3">Sayım</option><option value="4">Fire</option><option value="5">Tedarikçiye iade</option><option value="6">Parçalama</option><option value="7">Reçete tüketimi</option></Form.Select>
             </Col>
             <Col md={2}>
               <Form.Label className="small text-muted mb-1 fw-bold">Grup</Form.Label>
@@ -122,7 +137,7 @@ export const UrunHareketListesiPage: React.FC = () => {
                     {g.satirlar.map((s) => (
                       <tr key={s.stokHareketId} onDoubleClick={() => belgeAc(s)} style={{ cursor: "pointer" }} title="Çift tıklayınca belge açılır">
                         <td className="small">{tarihYaz(s.tarih)} <span className="text-muted">{saatYaz(s.tarih)}</span></td>
-                        <td>{s.belgeTuru === 1 ? <Badge bg="success">Giriş</Badge> : <Badge bg="danger">Satış</Badge>}</td>
+                        <td>{rozet(s)}</td>
                         <td className="font-monospace small text-primary">{s.belgeNo}</td>
                         <td className="small text-truncate" style={{ maxWidth: 240 }}>{s.karsiTaraf}</td>
                         <td className="text-end text-success">{s.giris ? miktarYaz(s.giris) : ""}</td>

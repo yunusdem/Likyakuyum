@@ -6,7 +6,7 @@ import { logger } from "../../utils/logger.js";
 /** ADM_GIRIS_LOG ve ADM_ISLEM_LOG yazıcıları. Log yazılamaması asıl işlemi bozmaz. */
 export class AdminLogSqlRepository {
   public static async girisLogu(kayit: {
-    tur: "ADMIN" | "KULLANICI" | "DESTEK" | "MOBIL";
+    tur: "ADMIN" | "KULLANICI" | "DESTEK" | "MOBIL" | "GARSON";
     firmaId?: number | null;
     kullaniciAdi: string;
     basarili: boolean;

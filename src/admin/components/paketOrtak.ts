@@ -21,6 +21,8 @@ export const URUN_ROZET_RENGI: Record<string, string> = {
   doviz: "#047857",
   gumus: "#4a6a8a",
   ticari: "#c2410c",
+  adisyon: "#be123c",
+  ticari_restorant: "#9a3412",
   connector: "#0e7490",
   erp: "#4f46e5",
 };

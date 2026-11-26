@@ -51,6 +51,8 @@ export interface PosTahsilSonucu {
   tamam: boolean;
   /** Satır kimliği → cihazdan dönen bankaya göre belirlenen kart; yalnızca satırda seçili olandan farklıysa dolar (K15) */
   kartlar: Record<string, PosKarti>;
+  /** Satır kimliği → onaylanan POS işlemi (Adisyon ara ödemesi işlemi ödeme kaydına bağlar; fiş sonra kesilir) */
+  islemler?: Record<string, number>;
 }
 
 type Alinan = { posIslemId: number; tutar: number; kart: PosKarti | null };
@@ -120,7 +122,9 @@ export function usePosTahsilat() {
       const p = pencereRef.current;
       if (!p) return;
       setPencere(null);
-      cozRef.current?.({ tamam, kartlar: degisenKartlar(p.satirlar) });
+      const islemler: Record<string, number> = {};
+      for (const sa of p.satirlar) { const a = alinanlarRef.current.get(sa.kimlik); if (a) islemler[sa.kimlik] = a.posIslemId; }
+      cozRef.current?.({ tamam, kartlar: degisenKartlar(p.satirlar), islemler });
       cozRef.current = null;
     },
     [degisenKartlar]

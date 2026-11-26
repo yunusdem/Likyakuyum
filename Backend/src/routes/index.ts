@@ -31,6 +31,7 @@ import etiketRoutes from "./etiket.routes.js";
 import ayarRoutes from "./ayar.routes.js";
 import perakendeRoutes from "./perakende.routes.js";
 import ticariRoutes from "./ticari.routes.js";
+import adisyonRoutes from "./adisyon.routes.js";
 import adminRoutes from "./admin.routes.js";
 import sayimRoutes from "./sayim.routes.js";
 import iskontoRoutes from "./iskonto.routes.js";
@@ -41,6 +42,9 @@ import acikPanoRoutes from "./acikPano.routes.js";
 import panoEntegrasyonRoutes from "./panoEntegrasyon.routes.js";
 import mobilYonetimRoutes from "./mobilYonetim.routes.js";
 import mobilRoutes from "./mobil.routes.js";
+import garsonRoutes from "./garson.routes.js";
+import misafirRoutes from "./misafir.routes.js";
+import mutfakRoutes from "./mutfak.routes.js";
 import hizliSatisRoutes from "./hizliSatis.routes.js";
 import posRoutes from "./pos.routes.js";
 import { PosController } from "../controllers/pos.controller.js";
@@ -86,6 +90,12 @@ apiRouter.use("/iletisim", iletisimRoutes);
 apiRouter.use("/acik", acikPanoRoutes);
 // Mobil cari uçları (docs/MOBIL_CARI_YOL_HARITASI.md): kendi kimlik doğrulaması (mobil token), personel oturumu istemez
 apiRouter.use("/mobil", mobilRoutes);
+// Adisyon garson adresi (docs/TICARI_ADISYON_YOL_HARITASI.md, TA23): kendi kimlik doğrulaması (garson jetonu)
+apiRouter.use("/garson", garsonRoutes);
+// Masadaki misafir (QR / masa PIN, §11 M1–M8): kendi kimlik doğrulaması (misafir jetonu)
+apiRouter.use("/misafir", misafirRoutes);
+// Adisyon mutfak ekranı (KDS) bağlantısı (TA30): kendi kimlik doğrulaması (hazırlık yeri anahtarı)
+apiRouter.use("/mutfak", mutfakRoutes);
 apiRouter.use("/auth", authRoutes);
 apiRouter.use("/users", userRoutes);
 apiRouter.use("/company", companyRoutes);
@@ -154,6 +164,8 @@ apiRouter.use("/perakende", kapi("/perakende"), perakendeRoutes);
 apiRouter.use("/vezne/perakende", kapi("/perakende"), perakendeRoutes);
 // Ticari İşlemler: stok kartı, stok girişi, ticari satış fişi (docs/TICARI_ISLEMLER_YOL_HARITASI.md)
 apiRouter.use("/ticari", kapi("/ticari"), ticariRoutes);
+// Adisyon: masa / garson / mutfak (docs/TICARI_ADISYON_YOL_HARITASI.md)
+apiRouter.use("/adisyon", kapi("/adisyon"), adisyonRoutes);
 // Hızlı Satış: buton düzeni, ayarlar, fiş işareti (docs/HIZLI_SATIS_YOL_HARITASI.md)
 apiRouter.use("/hizli-satis", kapi("/hizli-satis"), hizliSatisRoutes);
 // XML Dosya İşlemleri (VİM Döviz Transfer XML: Kontrol, Oluşturma, Birleştirme)

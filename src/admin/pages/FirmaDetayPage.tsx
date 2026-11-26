@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Tab, Table, Tabs } from "react-bootstrap";
 import { adminApi, FirmaDto, FirmaDurum, gunYaz, LisansDto, LisansGirdi, PaketListesi, PaketOnizleme, tarihYaz } from "../services/adminApi";
 import FirmaFormu from "../components/FirmaFormu";
+import FirmaRestoranAdi from "../components/FirmaRestoranAdi";
 import FirmaKullanicilari from "../components/FirmaKullanicilari";
 import FirmaModulleri from "../components/FirmaModulleri";
 import FirmaPos from "../components/FirmaPos";
@@ -54,6 +55,8 @@ const FirmaDetayPage: React.FC = () => {
     kullaniciLimiti: 1,
     paketAdi: "",
     notlar: "",
+    garsonLimiti: "",
+    restoranAdi: "",
   });
   const [lisansHata, setLisansHata] = useState<string | null>(null);
   // Ürün paketleri (docs/LISANS_URUN_PAKETLERI.md): pencere açılınca yüklenir; kurulu değilse eski serbest "Paket" alanı
@@ -177,6 +180,10 @@ const FirmaDetayPage: React.FC = () => {
       paketAdi: mevcut?.paketAdi ?? "",
       notlar: "",
       urunler: mevcutUrunler,
+      // Uzatmada önceki lisansın garson sınırı korunur (boş = sınırsız)
+      garsonLimiti: lisanslar.find((l) => l.aktif)?.garsonLimiti ?? "",
+      // Restorant başlık adı (R4) da korunur
+      restoranAdi: lisanslar.find((l) => l.aktif)?.restoranAdi ?? "",
     });
     setLisansHata(null);
     setOnizleme(null);
@@ -430,6 +437,7 @@ const FirmaDetayPage: React.FC = () => {
                   {firma.aktifLisans ? "Lisansı Uzat / Yenile" : "Lisans Ekle"}
                 </Button>
               </div>
+              <FirmaRestoranAdi firma={firma} lisanslar={lisanslar} onGuncel={(r) => { setFirma(r.firma); setLisanslar(r.lisanslar); }} />
               {lisanslar.length === 0 ? (
                 <div className="text-muted py-3">Bu firmaya lisans tanımlanmamış.</div>
               ) : (
@@ -440,6 +448,8 @@ const FirmaDetayPage: React.FC = () => {
                       <th>Başlangıç</th>
                       <th>Bitiş</th>
                       <th>Kullanıcı limiti</th>
+                      <th>Garson</th>
+                      <th>Restorant adı</th>
                       <th>Paket</th>
                       <th>Lisans anahtarı</th>
                       <th>Not</th>
@@ -454,6 +464,8 @@ const FirmaDetayPage: React.FC = () => {
                         <td>{gunYaz(l.baslangic)}</td>
                         <td>{gunYaz(l.bitis)}</td>
                         <td>{l.kullaniciLimiti}</td>
+                        <td>{l.garsonLimiti ?? "—"}</td>
+                        <td>{l.restoranAdi || <span className="text-muted">Restorant</span>}</td>
                         <td>{l.urunler?.length ? <UrunRozetleri urunler={l.urunler} adlar={paketAdlari} /> : l.paketAdi || "-"}</td>
                         <td>{l.lisansAnahtari || "-"}</td>
                         <td style={{ maxWidth: 260 }}>{l.notlar || "-"}</td>
@@ -540,6 +552,27 @@ const FirmaDetayPage: React.FC = () => {
                     value={lisans.kullaniciLimiti}
                     onChange={(e) => setLisans({ ...lisans, kullaniciLimiti: Number(e.target.value) })}
                   />
+                </Form.Group>
+              </Col>
+              <Col xs={6}>
+                {/* Adisyon garson sınırı (docs/TICARI_ADISYON_YOL_HARITASI.md, TA24): garson lisans kullanıcısı harcamaz */}
+                <Form.Group controlId="lisGarson">
+                  <Form.Label>En çok garson (Restorant)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    min={0}
+                    max={10000}
+                    placeholder="Boş = sınırsız"
+                    value={lisans.garsonLimiti ?? ""}
+                    onChange={(e) => setLisans({ ...lisans, garsonLimiti: e.target.value === "" ? "" : Number(e.target.value) })}
+                  />
+                </Form.Group>
+              </Col>
+              <Col xs={6}>
+                {/* Restorant başlığının firmaya özel adı (R4): sol menüde Restorant başlığı bu adla görünür */}
+                <Form.Group controlId="lisRestoran">
+                  <Form.Label>Restorant başlık adı</Form.Label>
+                  <Form.Control maxLength={40} placeholder="Restorant" value={lisans.restoranAdi ?? ""} onChange={(e) => setLisans({ ...lisans, restoranAdi: e.target.value })} />
                 </Form.Group>
               </Col>
               {!paketListe?.kurulu || !(lisans.urunler ?? []).length ? (
