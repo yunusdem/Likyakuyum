@@ -1,8 +1,17 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { IconArrowRight, IconBuildingStore, IconCircleCheck, IconPlayerPlay } from "@tabler/icons-react";
+import {
+  IconArrowRight,
+  IconBrandWhatsapp,
+  IconBuildingStore,
+  IconCircleCheck,
+  IconHeadset,
+  IconPhone,
+  IconPlayerPlay,
+  IconUser,
+} from "@tabler/icons-react";
 import { ISLETME_TURLERI, ORTAK_ALTYAPI, URUNLER, urunKoduyla } from "../veri/urunler";
-import { RAKAMLAR, REFERANSLAR } from "../veri/sirket";
+import { DESTEK_EKIBI, RAKAMLAR, REFERANSLAR } from "../veri/sirket";
 import { useSayfa } from "../yardimci/sayfa";
 import { urunStili } from "../bilesenler/UrunStil";
 import { Belir, BolumBasligi, CagriBolumu, SSS, UrunKarti } from "../bilesenler/Ortak";
@@ -311,6 +320,91 @@ export const AnaSayfa: React.FC = () => {
             <h2 id="sss-baslik">Aklınıza takılanlar</h2>
           </div>
           <SSS sorular={ANA_SSS} />
+        </div>
+      </section>
+
+      {/* DESTEK EKİBİ */}
+      <section className="bolum" id="destek-ekibi" aria-labelledby="destek-ekibi-baslik">
+        <div className="k">
+          <div className="bolum-bas orta">
+            <span className="ust-baslik">Destek Numaraları</span>
+            <h2 id="destek-ekibi-baslik">Likya Destek Ekibi</h2>
+            <p>Kurulum, eğitim ve günlük teknik destek ihtiyaçlarınız için ekibimize doğrudan ulaşabilirsiniz.</p>
+          </div>
+          <div className="izgara izgara-2">
+            {DESTEK_EKIBI.map((uye) => (
+              <div
+                key={uye.ad}
+                className="kart"
+                style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 18 }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <span
+                    className="ikon-kutu"
+                    style={{
+                      "--u": "#0b1f3a",
+                      "--u-acik": "#eef2f7",
+                      width: 50,
+                      height: 50,
+                      flexShrink: 0,
+                    } as React.CSSProperties}
+                  >
+                    <IconUser size={24} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#047857",
+                        background: "#ecfdf5",
+                        padding: "2px 10px",
+                        borderRadius: 999,
+                        marginBottom: 4,
+                      }}
+                    >
+                      <IconHeadset size={13} aria-hidden="true" /> Teknik Destek Uzmanı
+                    </span>
+                    <h3 style={{ margin: "2px 0 4px" }}>{uye.ad}</h3>
+                    <a
+                      href={`tel:${uye.telefonHam}`}
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: "var(--lacivert)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {uye.telefon}
+                    </a>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <a href={`tel:${uye.telefonHam}`} className="dugme dugme-ana dugme-kucuk" style={{ flex: 1 }}>
+                    <IconPhone size={16} aria-hidden="true" /> Hemen Ara
+                  </a>
+                  <a
+                    href={uye.whatsapp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="dugme dugme-wa dugme-kucuk"
+                    style={{ flex: 1 }}
+                  >
+                    <IconBrandWhatsapp size={16} aria-hidden="true" /> WhatsApp
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p style={{ textAlign: "center", marginTop: 28 }}>
+            <Link to="/destek-ekibi" className="baglanti-ok" style={{ color: "var(--lacivert)" }}>
+              Destek ekibi sayfasını görüntüleyin <IconArrowRight size={16} aria-hidden="true" />
+            </Link>
+          </p>
         </div>
       </section>
 

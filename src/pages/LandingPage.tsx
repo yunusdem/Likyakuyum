@@ -30,11 +30,13 @@ import {
   IconX,
   IconZoomIn,
   IconDownload,
+  IconHeadset,
+  IconUser,
 } from "@tabler/icons-react";
 import LandingNavbar from "./landing/LandingNavbar";
 import IletisimFormu from "./landing/IletisimFormu";
 import HeroCarousel from "./landing/HeroCarousel";
-import { ILETISIM, MAIL_LINK, REFERANSLAR, TEL2_LINK, TEL_LINK } from "./landing/iletisimBilgileri";
+import { DESTEK_EKIBI, ILETISIM, MAIL_LINK, REFERANSLAR, TEL2_LINK, TEL_LINK } from "./landing/iletisimBilgileri";
 import "../styles/LandingFurni.css";
 
 export const LandingPage: React.FC = () => {
@@ -591,6 +593,87 @@ export const LandingPage: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── DESTEK EKİBİ BÖLÜMÜ (İletişim Bölümünün Üstünde) ─── */}
+      <section className="furni-section-pad bg-white border-top" id="destek-ekibi">
+        <div className="container" style={{ maxWidth: "1280px" }}>
+          <div className="text-center mb-5">
+            <span
+              className="badge px-3 py-2 fw-bold text-uppercase rounded-pill mb-2 d-inline-flex align-items-center gap-1.5"
+              style={{ backgroundColor: "#e6f2ed", color: "#2c4c41", fontSize: "0.78rem", letterSpacing: "1px" }}
+            >
+              <IconHeadset size={15} />
+              Destek Numaraları
+            </span>
+            <h2 style={{ fontSize: "2.2rem", color: "#0f172a" }}>Likya Destek Ekibi</h2>
+            <p className="mx-auto mb-0" style={{ maxWidth: "660px", fontSize: "1rem", color: "#475569" }}>
+              Kurulum, eğitim ve günlük teknik destek ihtiyaçlarınız için ekibimize telefon veya WhatsApp üzerinden doğrudan ulaşabilirsiniz.
+            </p>
+          </div>
+
+          <div className="row g-4">
+            {DESTEK_EKIBI.map((uye) => (
+              <div key={uye.ad} className="col-12 col-md-6">
+                <div
+                  className="h-100 rounded-4 border p-4 shadow-sm d-flex flex-column justify-content-between gap-3"
+                  style={{ backgroundColor: "#f8fbf9", borderColor: "#dce7e1" }}
+                >
+                  <div className="d-flex align-items-center gap-3">
+                    <div
+                      className="d-inline-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+                      style={{
+                        width: "52px",
+                        height: "52px",
+                        background: "linear-gradient(135deg, #2c4c41 0%, #1e352d 100%)",
+                        color: "#f9bf29",
+                      }}
+                    >
+                      <IconUser size={26} />
+                    </div>
+                    <div className="min-w-0">
+                      <span
+                        className="badge rounded-pill mb-1"
+                        style={{ backgroundColor: "#e6f2ed", color: "#047857", fontSize: "0.72rem" }}
+                      >
+                        Teknik Destek Uzmanı
+                      </span>
+                      <h3 className="h5 fw-bold mb-0" style={{ color: "#0f172a" }}>{uye.ad}</h3>
+                      <a
+                        href={`tel:${uye.telefonHam}`}
+                        className="text-decoration-none fw-bold font-monospace d-inline-block mt-1"
+                        style={{ fontSize: "1.02rem", color: "#2c4c41" }}
+                      >
+                        {uye.telefon}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="d-flex flex-wrap gap-2 pt-2 border-top" style={{ borderColor: "#dce7e1" }}>
+                    <a
+                      href={`tel:${uye.telefonHam}`}
+                      className="btn flex-grow-1 fw-bold rounded-pill py-2 d-inline-flex align-items-center justify-content-center gap-2"
+                      style={{ backgroundColor: "#2c4c41", color: "#ffffff", fontSize: "0.86rem" }}
+                    >
+                      <IconPhone size={16} />
+                      Hemen Ara
+                    </a>
+                    <a
+                      href={uye.whatsapp}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn flex-grow-1 fw-bold rounded-pill py-2 d-inline-flex align-items-center justify-content-center gap-2 text-white"
+                      style={{ backgroundColor: "#25D366", borderColor: "#25D366", fontSize: "0.86rem" }}
+                    >
+                      <IconBrandWhatsapp size={16} />
+                      WhatsApp
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
