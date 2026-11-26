@@ -34,48 +34,12 @@ import {
 import LandingNavbar from "./landing/LandingNavbar";
 import IletisimFormu from "./landing/IletisimFormu";
 import HeroCarousel from "./landing/HeroCarousel";
-import { ILETISIM, MAIL_LINK, TEL2_LINK, TEL_LINK } from "./landing/iletisimBilgileri";
+import { ILETISIM, MAIL_LINK, REFERANSLAR, TEL2_LINK, TEL_LINK } from "./landing/iletisimBilgileri";
 import "../styles/LandingFurni.css";
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTestiIndex, setActiveTestiIndex] = useState(0);
   const [isBrosurModalOpen, setIsBrosurModalOpen] = useState(false);
-
-  const testimonials = [
-    {
-      name: "Ahmet Yıldırım",
-      role: "Mağaza Sahibi",
-      store: "Yıldırım Mücevherat · Kapalıçarşı",
-      comment:
-        "Likya Kuyum'a geçtikten sonra vezne satış hızımız 3 katına çıktı. Hassas teraziden anında gram çekmesi ve F10 ile tek tuşla sessiz etiket basması sayesinde yoğun günlerde hata yapma riskimiz sıfıra indi.",
-      avatar: "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=150&h=150&fit=crop&auto=format",
-    },
-    {
-      name: "Mehmet Demir",
-      role: "Genel Müdür",
-      store: "Demir Sarrafiye & Döviz · Kuyumcukent",
-      comment:
-        "Cari has altın emanet takibi ve 3065 sayılı özel matrah KDV faturası bizim için en kritik konuydu. Likya sayesinde e-faturalarımız saniyeler içinde GİB portalında onaylanıyor.",
-      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&auto=format",
-    },
-    {
-      name: "Serkan Aktaş",
-      role: "Şube Müdürü",
-      store: "Aktaş Gold & Diamond · İzmir Kemeraltı",
-      comment:
-        "4K TV Canlı Vitrin Panosu mağazamıza inanılmaz prestij kattı. Müşteriler vitrindeki canlı Kapalıçarşı fiyatlarını izleyip güvenle alışveriş yapıyor, fiyatları kasadan değiştirdiğim an ekrana yansıyor.",
-      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop&auto=format",
-    },
-  ];
-
-  const handlePrevTesti = () => {
-    setActiveTestiIndex((prev) => (prev === 0 ? testimonials.length - 1 : prev - 1));
-  };
-
-  const handleNextTesti = () => {
-    setActiveTestiIndex((prev) => (prev === testimonials.length - 1 ? 0 : prev + 1));
-  };
 
   return (
     <div className="furni-wrapper">
@@ -489,68 +453,64 @@ export const LandingPage: React.FC = () => {
 
 
 
-      {/* ─── 7. TESTIMONIALS SECTION (Furni Slider Centered Quote) ─── */}
-      <section className="furni-section-pad" id="yorumlar">
+      {/* ─── 7. REFERANSLAR SECTION ─── */}
+      <section className="furni-section-pad" id="referanslar" style={{ backgroundColor: "#f8fbf9" }}>
         <div className="container" style={{ maxWidth: "1280px" }}>
           <div className="text-center mb-5">
-            <h2 style={{ fontSize: "2.2rem" }}>Kullanıcı Yorumları</h2>
+            <span
+              className="badge px-3 py-2 fw-bold text-uppercase rounded-pill mb-2"
+              style={{ backgroundColor: "#e6f2ed", color: "#2c4c41", fontSize: "0.78rem", letterSpacing: "1px" }}
+            >
+              Referanslarımız
+            </span>
+            <h2 style={{ fontSize: "2.2rem", color: "#0f172a" }}>Referanslar</h2>
+            <p className="text-secondary mx-auto mb-0" style={{ maxWidth: "640px", fontSize: "1rem" }}>
+              Türkiye genelinde güvenle hizmet veren kuyumculuk ve sarrafiye işletmeleri operasyonlarını Likya Kuyum ile yönetiyor.
+            </p>
           </div>
 
-          <div className="position-relative">
-            {/* Slider Navigation Buttons */}
-            <div className="d-flex align-items-center justify-content-between position-absolute top-50 start-0 end-0 translate-middle-y px-2 z-2 d-none d-md-flex">
-              <button
-                type="button"
-                onClick={handlePrevTesti}
-                className="furni-slider-btn"
-                aria-label="Önceki Yorum"
-              >
-                <IconChevronLeft size={22} />
-              </button>
-              <button
-                type="button"
-                onClick={handleNextTesti}
-                className="furni-slider-btn"
-                aria-label="Sonraki Yorum"
-              >
-                <IconChevronRight size={22} />
-              </button>
-            </div>
+          <div className="row g-4 justify-content-center">
+            {REFERANSLAR.map((refAd, idx) => (
+              <div key={refAd} className="col-12 col-sm-6 col-lg-4">
+                <div
+                  className="h-100 bg-white rounded-4 border p-4 shadow-sm d-flex flex-column justify-content-between"
+                  style={{ borderColor: "#dce7e1" }}
+                >
+                  <div className="d-flex align-items-center gap-3 mb-3">
+                    <div
+                      className="d-inline-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        background: "linear-gradient(135deg, #2c4c41 0%, #1e352d 100%)",
+                        color: "#f9bf29",
+                      }}
+                    >
+                      <IconBuildingStore size={24} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="small fw-semibold" style={{ color: "#64748b" }}>Referans #{idx + 1}</div>
+                      <h3 className="h5 fw-bold mb-0" style={{ color: "#0f172a" }}>{refAd}</h3>
+                    </div>
+                  </div>
+                  <div className="d-flex align-items-center gap-1.5 small fw-semibold" style={{ color: "#047857" }}>
+                    <IconCheck size={16} />
+                    <span>Aktif Likya Kullanıcısı</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
 
-            {/* Testimonial Quote Box */}
-            <div className="furni-testi-box">
-              <p className="furni-testi-quote">
-                "{testimonials[activeTestiIndex].comment}"
-              </p>
-              <img
-                src={testimonials[activeTestiIndex].avatar}
-                alt={testimonials[activeTestiIndex].name}
-                className="furni-testi-avatar"
-              />
-              <div className="fw-bold text-dark fs-6">
-                {testimonials[activeTestiIndex].name}
-              </div>
-              <div className="small text-secondary">
-                {testimonials[activeTestiIndex].role}, {testimonials[activeTestiIndex].store}
-              </div>
-
-              {/* Mobile Indicator Dots */}
-              <div className="d-flex justify-content-center gap-2 mt-4 d-md-none">
-                {testimonials.map((_, i) => (
-                  <span
-                    key={i}
-                    onClick={() => setActiveTestiIndex(i)}
-                    style={{
-                      width: "10px",
-                      height: "10px",
-                      borderRadius: "50%",
-                      backgroundColor: i === activeTestiIndex ? "#3b5d50" : "#d1d5db",
-                      cursor: "pointer",
-                    }}
-                  ></span>
-                ))}
-              </div>
-            </div>
+          <div className="text-center mt-4 pt-2">
+            <Link
+              to="/referanslar"
+              className="btn rounded-pill px-4 py-2 fw-bold d-inline-flex align-items-center gap-2"
+              style={{ backgroundColor: "#2c4c41", color: "#ffffff" }}
+            >
+              <span>Tüm Referansları İnceleyin</span>
+              <IconArrowRight size={16} />
+            </Link>
           </div>
         </div>
       </section>

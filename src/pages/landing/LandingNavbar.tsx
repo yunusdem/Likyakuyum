@@ -52,7 +52,6 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
     { label: "Çözümler", targetId: "cozumler" },
     { label: "Neden Biz?", targetId: "neden-biz" },
     { label: "Özellikler", targetId: "avantajlar" },
-    { label: "Yorumlar", targetId: "yorumlar" },
     { label: "İletişim", targetId: "iletisim" },
   ];
 

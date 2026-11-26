@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { IconArrowRight, IconCircleCheck, IconPlayerPlay } from "@tabler/icons-react";
+import { IconArrowRight, IconBuildingStore, IconCircleCheck, IconPlayerPlay } from "@tabler/icons-react";
 import { ISLETME_TURLERI, ORTAK_ALTYAPI, URUNLER, urunKoduyla } from "../veri/urunler";
-import { RAKAMLAR } from "../veri/sirket";
+import { RAKAMLAR, REFERANSLAR } from "../veri/sirket";
 import { useSayfa } from "../yardimci/sayfa";
 import { urunStili } from "../bilesenler/UrunStil";
-import { Belir, BolumBasligi, CagriBolumu, SSS, UrunKarti, Yorumlar } from "../bilesenler/Ortak";
+import { Belir, BolumBasligi, CagriBolumu, SSS, UrunKarti } from "../bilesenler/Ortak";
 
 const ANA_SSS = [
   {
@@ -261,14 +261,45 @@ export const AnaSayfa: React.FC = () => {
         </div>
       </section>
 
-      {/* YORUMLAR */}
-      <section className="bolum" aria-labelledby="yorum-baslik">
+      {/* REFERANSLAR */}
+      <section className="bolum" id="referanslar" aria-labelledby="referanslar-baslik">
         <div className="k">
           <div className="bolum-bas orta">
-            <span className="ust-baslik">Kullanıcılarımız</span>
-            <h2 id="yorum-baslik">Likya kullananlar ne diyor?</h2>
+            <span className="ust-baslik">Referanslarımız</span>
+            <h2 id="referanslar-baslik">Referanslar</h2>
+            <p>Kuyumculuk ve sarrafiye sektöründe güvenle hizmet veren iş ortaklarımız operasyonlarını Likya ile yönetiyor.</p>
           </div>
-          <Yorumlar />
+          <div className="izgara izgara-3">
+            {REFERANSLAR.map((refAd, idx) => (
+              <div
+                key={refAd}
+                className="kart"
+                style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 16 }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <span
+                    className="ikon-kutu"
+                    style={{ "--u": "#0b1f3a", "--u-acik": "#eef2f7", flexShrink: 0 } as React.CSSProperties}
+                  >
+                    <IconBuildingStore size={22} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <small style={{ color: "var(--gri-2)", fontWeight: 600 }}>Referans #{idx + 1}</small>
+                    <h3 style={{ margin: "2px 0 0" }}>{refAd}</h3>
+                  </div>
+                </div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#047857", fontSize: 13, fontWeight: 600 }}>
+                  <IconCircleCheck size={16} aria-hidden="true" />
+                  <span>Aktif Likya Kullanıcısı</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p style={{ textAlign: "center", marginTop: 28 }}>
+            <Link to="/referanslar" className="baglanti-ok" style={{ color: "var(--lacivert)" }}>
+              Tüm referanslarımızı inceleyin <IconArrowRight size={16} aria-hidden="true" />
+            </Link>
+          </p>
         </div>
       </section>
 
