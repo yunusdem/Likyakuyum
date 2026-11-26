@@ -7,7 +7,9 @@ import { AnaSayfa } from "./sayfalar/AnaSayfa";
 import { UrunSayfasi } from "./sayfalar/UrunSayfasi";
 import { Karsilastir } from "./sayfalar/Karsilastir";
 import { Entegrasyonlar } from "./sayfalar/Entegrasyonlar";
-import { Hakkimizda } from "./sayfalar/Hakkimizda";
+import { Hakkimizda as ErpHakkimizda } from "./sayfalar/Hakkimizda";
+import { Referanslar } from "./sayfalar/Referanslar";
+import { DestekEkibi } from "./sayfalar/DestekEkibi";
 import { Iletisim } from "./sayfalar/Iletisim";
 import { Gizlilik, Kvkk } from "./sayfalar/Yasal";
 import { Bulunamadi } from "./sayfalar/Bulunamadi";
@@ -63,7 +65,9 @@ export const ErpApp: React.FC = () => (
       <Route path="/urunler/:slug" element={<UrunSayfasi />} />
       <Route path="/karsilastir" element={<Karsilastir />} />
       <Route path="/entegrasyonlar" element={<Entegrasyonlar />} />
-      <Route path="/hakkimizda" element={<Hakkimizda />} />
+      <Route path="/hakkimizda" element={<ErpHakkimizda />} />
+      <Route path="/referanslar" element={<Referanslar />} />
+      <Route path="/destek-ekibi" element={<DestekEkibi />} />
       <Route path="/iletisim" element={<Iletisim />} />
       <Route path="/kvkk" element={<Kvkk />} />
       <Route path="/gizlilik" element={<Gizlilik />} />

@@ -1,4 +1,6 @@
-import { ILETISIM } from "../../pages/landing/iletisimBilgileri";
+import { DESTEK_EKIBI, ILETISIM, REFERANSLAR } from "../../pages/landing/iletisimBilgileri";
+
+export { DESTEK_EKIBI, REFERANSLAR };
 
 /**
  * likyaerp.com şirket ve iletişim bilgileri — tek yer (docs/LIKYAERP_TANITIM_SITESI.md K9, K10).

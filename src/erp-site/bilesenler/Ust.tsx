@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { IconArrowRight, IconChevronDown, IconLogin2, IconMenu2, IconPhone, IconX } from "@tabler/icons-react";
+import { IconArrowRight, IconChevronDown, IconHeadset, IconLogin2, IconMenu2, IconPhone, IconX } from "@tabler/icons-react";
 import { URUNLER } from "../veri/urunler";
 import { SIRKET, TEL_LINK } from "../veri/sirket";
 import { Logo } from "./Logo";
 import { urunStili } from "./UrunStil";
 import { useAuth } from "../../context/AuthContext";
 
-/** Üst menü: masaüstünde "Ürünler" açılır paneli, mobilde tam ekran menü. "Giriş Yap" uygulamanın giriş ekranına gider. */
+/** Üst menü: masaüstünde "Ürünler" açılır paneli, Referanslar & Destek Ekibi sayfa bağlantıları, mobilde tam ekran menü. */
 export const Ust: React.FC = () => {
   const konum = useLocation();
   const { isAuthenticated } = useAuth();
@@ -114,6 +114,12 @@ export const Ust: React.FC = () => {
             <NavLink to="/entegrasyonlar" className={({ isActive }) => (isActive ? "aktif" : "")}>
               Entegrasyonlar
             </NavLink>
+            <NavLink to="/referanslar" className={({ isActive }) => (isActive ? "aktif" : "")}>
+              Referanslar
+            </NavLink>
+            <NavLink to="/destek-ekibi" className={({ isActive }) => (isActive ? "aktif" : "")}>
+              <IconHeadset size={15} aria-hidden="true" /> Destek Ekibi
+            </NavLink>
             <NavLink to="/hakkimizda" className={({ isActive }) => (isActive ? "aktif" : "")}>
               Hakkımızda
             </NavLink>
@@ -163,6 +169,8 @@ export const Ust: React.FC = () => {
         <div className="ayrac" />
         <Link to="/karsilastir" className="mobil-oge">Karşılaştır</Link>
         <Link to="/entegrasyonlar" className="mobil-oge">Entegrasyonlar</Link>
+        <Link to="/referanslar" className="mobil-oge">Referanslar</Link>
+        <Link to="/destek-ekibi" className="mobil-oge">Destek Ekibi</Link>
         <Link to="/hakkimizda" className="mobil-oge">Hakkımızda</Link>
         <Link to="/iletisim" className="mobil-oge">İletişim</Link>
         <div className="ayrac" />

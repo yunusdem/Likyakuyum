@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   IconArrowRight,
   IconBuildingStore,
+  IconHeadset,
   IconMenu2,
   IconX,
 } from "@tabler/icons-react";
@@ -13,13 +14,17 @@ interface LandingNavbarProps {
 
 export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState("home");
 
+  const isHomePage = location.pathname === "/";
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
+      if (!isHomePage) return;
 
       const sections = ["home", "cozumler", "neden-biz", "avantajlar", "kampanya", "yorumlar", "iletisim"];
       const scrollPos = window.scrollY + 120;
@@ -39,7 +44,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
 
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [isHomePage]);
 
   const navLinks = [
     { label: "Ana Sayfa", targetId: "home" },
@@ -53,6 +58,14 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
 
   const scrollToSection = (targetId: string) => {
     setMobileMenuOpen(false);
+    if (!isHomePage) {
+      navigate("/");
+      setTimeout(() => {
+        const el = document.getElementById(targetId);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+      return;
+    }
     const el = document.getElementById(targetId);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -61,12 +74,10 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
 
   return (
     <header className="fixed-top z-3 w-100">
-      <nav
-        className={`furni-navbar ${isScrolled ? "scrolled" : ""}`}
-      >
+      <nav className={`furni-navbar ${isScrolled || !isHomePage ? "scrolled" : ""}`}>
         <div className="container" style={{ maxWidth: "1280px" }}>
           <div className="d-flex align-items-center justify-content-between w-100">
-            {/* 1. Left: Gold Brand Logo matching Login Page */}
+            {/* 1. Left: Gold Brand Logo */}
             <a
               href="#home"
               onClick={(e) => {
@@ -96,10 +107,10 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
               </div>
             </a>
 
-            {/* 2. Center: Single-Line Nav Links with Equal Gaps */}
-            <div className="d-none d-lg-flex align-items-center gap-4 mx-auto">
+            {/* 2. Center: Single-Line Nav Links + Referanslar & Destek Ekibi Sayfa Bağlantıları */}
+            <div className="d-none d-lg-flex align-items-center gap-3 gap-xl-4 mx-auto">
               {navLinks.map((item) => {
-                const isActive = activeSection === item.targetId;
+                const isActive = isHomePage && activeSection === item.targetId;
                 return (
                   <a
                     key={item.targetId}
@@ -108,26 +119,33 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
                       e.preventDefault();
                       scrollToSection(item.targetId);
                     }}
-                    className={`furni-nav-link ${isActive ? "active" : ""}`}
+                    className={`furni-nav-link text-nowrap ${isActive ? "active" : ""}`}
                   >
                     {item.label}
                   </a>
                 );
               })}
+
+              <Link
+                to="/referanslar"
+                className={`furni-nav-link text-nowrap ${location.pathname === "/referanslar" ? "active" : ""}`}
+              >
+                Referanslar
+              </Link>
+
+              <Link
+                to="/destek-ekibi"
+                className={`furni-nav-link text-nowrap d-inline-flex align-items-center gap-1 ${
+                  location.pathname === "/destek-ekibi" ? "active" : ""
+                }`}
+              >
+                <IconHeadset size={16} style={{ color: "#f9bf29" }} />
+                <span>Destek Ekibi</span>
+              </Link>
             </div>
 
-            {/* 3. Right: Action Login Button (Single Row, No Wrap) */}
-            <div className="d-none d-lg-flex align-items-center ms-4 flex-shrink-0">
-              {/* <button
-                type="button"
-                onClick={() => navigate("/login")}
-                className="furni-btn-login shadow-sm"
-              >
-                <IconBuildingStore size={17} />
-                <span>Sisteme Giriş Yap</span>
-                <IconArrowRight size={15} />
-              </button> */}
-            </div>
+            {/* 3. Right Placeholder */}
+            <div className="d-none d-lg-flex align-items-center ms-3 flex-shrink-0" />
 
             {/* Mobile Menu Toggle Button */}
             <button
@@ -152,7 +170,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
           >
             <div className="d-flex flex-column gap-2 mb-3">
               {navLinks.map((item) => {
-                const isActive = activeSection === item.targetId;
+                const isActive = isHomePage && activeSection === item.targetId;
                 return (
                   <a
                     key={item.targetId}
@@ -172,7 +190,37 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = () => {
                   </a>
                 );
               })}
+
+              <Link
+                to="/referanslar"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded text-decoration-none text-white fw-medium d-flex align-items-center justify-content-between"
+                style={{
+                  backgroundColor: location.pathname === "/referanslar" ? "rgba(249, 191, 41, 0.15)" : "transparent",
+                  color: location.pathname === "/referanslar" ? "#f9bf29" : "#ffffff",
+                }}
+              >
+                <span>Referanslar</span>
+                <IconArrowRight size={16} />
+              </Link>
+
+              <Link
+                to="/destek-ekibi"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-2 px-3 rounded text-decoration-none text-white fw-medium d-flex align-items-center justify-content-between"
+                style={{
+                  backgroundColor: location.pathname === "/destek-ekibi" ? "rgba(249, 191, 41, 0.15)" : "transparent",
+                  color: location.pathname === "/destek-ekibi" ? "#f9bf29" : "#ffffff",
+                }}
+              >
+                <span className="d-inline-flex align-items-center gap-1.5">
+                  <IconHeadset size={16} style={{ color: "#f9bf29" }} />
+                  Destek Ekibi
+                </span>
+                <IconArrowRight size={16} />
+              </Link>
             </div>
+
             <button
               type="button"
               onClick={() => {

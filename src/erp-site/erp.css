@@ -270,13 +270,14 @@ button {
   align-items: center;
   gap: 4px;
   height: 40px;
-  padding: 0 12px;
+  padding: 0 9px;
   border-radius: 8px;
   border: 0;
   background: none;
   color: var(--gri);
   font-weight: 500;
-  font-size: 15px;
+  font-size: 14px;
+  white-space: nowrap;
 }
 .menu > a:hover,
 .menu > .acilir > button:hover,
@@ -356,6 +357,123 @@ button {
 .acilir-alt a {
   font-weight: 600;
   color: var(--lacivert);
+}
+.acilir-panel-dar {
+  width: 340px;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 14px;
+}
+.acilir-panel-destek {
+  width: 360px;
+}
+.acilir-baslik {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--lacivert);
+  padding-bottom: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--kenar);
+}
+.referans-oge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-k);
+  background: var(--zemin-2);
+  border: 1px solid var(--kenar);
+}
+.referans-oge strong {
+  font-size: 14px;
+  color: var(--metin);
+  font-weight: 600;
+}
+.referans-ikon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #eef2f7;
+  color: var(--lacivert);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.destek-satir {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-k);
+  background: var(--zemin-2);
+  border: 1px solid var(--kenar);
+}
+.destek-bilgi strong {
+  display: block;
+  font-size: 14px;
+  color: var(--metin);
+}
+.destek-bilgi a {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lacivert);
+  font-variant-numeric: tabular-nums;
+}
+.destek-eylemler {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.destek-ikon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--kenar);
+  background: #fff;
+  color: var(--lacivert);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.destek-ikon-btn:hover {
+  background: var(--lacivert);
+  border-color: var(--lacivert);
+  color: #fff;
+}
+.destek-ikon-btn.destek-wa {
+  background: #25d366;
+  border-color: #25d366;
+  color: #fff;
+}
+.destek-ikon-btn.destek-wa:hover {
+  filter: brightness(0.95);
+}
+.mobil-referanslar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+.mobil-referans-rozet {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lacivert);
+  background: var(--zemin-2);
+  border: 1px solid var(--kenar);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+.mobil-destek-satir {
+  justify-content: space-between;
+}
+.mobil-destek-satir strong {
+  font-size: 13px;
+  color: var(--lacivert);
+  font-variant-numeric: tabular-nums;
 }
 
 .menu-dugme {

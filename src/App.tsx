@@ -111,12 +111,16 @@ import LandingPanoPage from "./pages/landing/LandingPanoPage";
 import LandingSecurityPage from "./pages/landing/LandingSecurityPage";
 import LandingFaqPage from "./pages/landing/LandingFaqPage";
 import LandingAboutPage from "./pages/landing/LandingAboutPage";
+import LandingReferanslarPage from "./pages/landing/LandingReferanslarPage";
+import LandingDestekEkibiPage from "./pages/landing/LandingDestekEkibiPage";
 import { ErpDuzen } from "./erp-site/ErpApp";
 import { AnaSayfa as ErpAnaSayfa } from "./erp-site/sayfalar/AnaSayfa";
 import { UrunSayfasi as ErpUrunSayfasi } from "./erp-site/sayfalar/UrunSayfasi";
 import { Karsilastir as ErpKarsilastir } from "./erp-site/sayfalar/Karsilastir";
 import { Entegrasyonlar as ErpEntegrasyonlar } from "./erp-site/sayfalar/Entegrasyonlar";
 import { Hakkimizda as ErpHakkimizda } from "./erp-site/sayfalar/Hakkimizda";
+import { Referanslar as ErpReferanslar } from "./erp-site/sayfalar/Referanslar";
+import { DestekEkibi as ErpDestekEkibi } from "./erp-site/sayfalar/DestekEkibi";
 import { Iletisim as ErpIletisim } from "./erp-site/sayfalar/Iletisim";
 import { Kvkk as ErpKvkk, Gizlilik as ErpGizlilik } from "./erp-site/sayfalar/Yasal";
 
@@ -411,6 +415,8 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="/karsilastir" element={<ErpKarsilastir />} />
               <Route path="/entegrasyonlar" element={<ErpEntegrasyonlar />} />
               <Route path="/hakkimizda" element={<ErpHakkimizda />} />
+              <Route path="/referanslar" element={<ErpReferanslar />} />
+              <Route path="/destek-ekibi" element={<ErpDestekEkibi />} />
               <Route path="/iletisim" element={<ErpIletisim />} />
               <Route path="/kvkk" element={<ErpKvkk />} />
               <Route path="/gizlilik" element={<ErpGizlilik />} />
@@ -426,6 +432,8 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="/mevzuat" element={<LandingSecurityPage />} />
               <Route path="/sss" element={<LandingFaqPage />} />
               <Route path="/hakkimizda" element={<LandingAboutPage />} />
+              <Route path="/referanslar" element={<LandingReferanslarPage />} />
+              <Route path="/destek-ekibi" element={<LandingDestekEkibiPage />} />
               <Route path="/iletisim" element={<LandingAboutPage />} />
             </>
           )}
