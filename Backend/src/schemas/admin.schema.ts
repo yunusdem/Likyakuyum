@@ -12,7 +12,8 @@ const adSoyad = z.string().trim().min(2, "Ad Soyad en az 2 karakter olmalıdır"
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 
 // Ürün paketi kodu (docs/LISANS_URUN_PAKETLERI.md)
-const paketKodu = z.string().trim().regex(/^[a-z]{2,20}$/, "Geçersiz paket kodu");
+// Alt çizgi de geçerli: "ticari_restorant" (Ticari + Restorant, R3); ADM_PAKET.PAKET_KODU VARCHAR(20)
+const paketKodu = z.string().trim().regex(/^[a-z][a-z_]{1,19}$/, "Geçersiz paket kodu");
 /** Lisansın ürünleri; gönderilmezse lisansın ürün alanına dokunulmaz (eski usul serbest paket adı) */
 export const urunlerAlani = z.array(paketKodu).max(10).optional();
 
