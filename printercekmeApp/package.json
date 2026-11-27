@@ -1,6 +1,6 @@
 {
   "name": "printercekme-app",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Likya ERP - Yerel Yazıcı Köprüsü ve Tarama Ajanı (Local Printer Bridge)",
   "main": "index.js",
   "type": "commonjs",
@@ -12,7 +12,10 @@
   "pkg": {
     "scripts": [
       "index.js",
-      "a4Baski.js"
+      "a4Baski.js",
+      "cdpRenderer.js",
+      "gdiWorker.js",
+      "terazi.js"
     ],
     "targets": [
       "node18-win-x64",

@@ -4,7 +4,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
-const CURRENT_VERSION = "1.2.4";
+const CURRENT_VERSION = "1.2.5";
 const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -13,6 +13,8 @@ const { exec, spawn } = require("child_process");
 const os = require("os");
 const util = require("util");
 const { a4PngUret, a4GdiParcasi } = require("./a4Baski");
+const cdpRenderer = require("./cdpRenderer");
+const gdiWorker = require("./gdiWorker");
 
 let activeTrayProc = null;
 const activeConsoleClients = new Set();
@@ -555,7 +557,9 @@ async function performSelfUpdate(downloadUrl, targetVersion = "") {
 
     console.log(`[printercekmeApp] Yeni sürüm doğrulandı (${(stats.size / (1024 * 1024)).toFixed(1)} MB). Değiştirme ve yeniden başlatma hazırlanıyor...`);
 
-    // Sistem tepsisi nöbetçi sürecini (activeTrayProc) kapat ki eski süreci yeniden başlatmasın!
+    // Sistem tepsisi nöbetçi sürecini (activeTrayProc) ve sıcak işçileri kapat ki eski süreci yeniden başlatmasın / dosya kilidi kalmasın!
+    try { cdpRenderer.shutdown(); } catch {}
+    try { gdiWorker.shutdown(); } catch {}
     try {
       if (activeTrayProc) {
         activeTrayProc.kill();
@@ -1125,6 +1129,8 @@ app.get(["/api/terazi", "/terazi"], async (req, res) => {
 // Güvenli kapatma endpoint'i (Sistem tepsisi çıkış menüsü için)
 app.all(["/api/exit", "/exit"], (_req, res) => {
   res.json({ success: true, message: "Likya ERP Yazıcı Servisi kapatılıyor..." });
+  try { cdpRenderer.shutdown(); } catch {}
+  try { gdiWorker.shutdown(); } catch {}
   setTimeout(() => {
     process.exit(0);
   }, 400);
@@ -1154,9 +1160,14 @@ app.get(["/api/printers", "/printers"], async (_req, res) => {
   }
 });
 
-// Windows üzerinde kurulu Chromium (Edge veya Chrome) yürütülebilir dosyasını bulur
+// Windows üzerinde kurulu Chromium (Edge veya Chrome) yürütülebilir dosyasını bulur (önbellekli)
+let cachedChromiumPath = undefined;
 function findChromiumPath() {
-  if (os.platform() !== "win32") return null;
+  if (cachedChromiumPath !== undefined) return cachedChromiumPath;
+  if (os.platform() !== "win32") {
+    cachedChromiumPath = null;
+    return null;
+  }
   const sysDrive = process.env.SystemDrive || "C:";
   const localAppData = process.env.LOCALAPPDATA || `${sysDrive}\\Users\\Default\\AppData\\Local`;
   const progFilesX86 = process.env["ProgramFiles(x86)"] || `${sysDrive}\\Program Files (x86)`;
@@ -1175,9 +1186,13 @@ function findChromiumPath() {
   ];
   for (const c of candidates) {
     try {
-      if (fs.existsSync(c)) return c;
+      if (fs.existsSync(c)) {
+        cachedChromiumPath = c;
+        return c;
+      }
     } catch {}
   }
+  cachedChromiumPath = null;
   return null;
 }
 
@@ -1381,7 +1396,7 @@ async function executePrintJobInternal(job) {
     `}
   </style>`;
 
-        const syncImageScript = `<script>try { document.querySelectorAll('img').forEach(function(img){ img.loading='eager'; img.decoding='sync'; }); } catch(e){} setTimeout(function(){}, 120);</script>`;
+        const syncImageScript = `<script>try { document.querySelectorAll('img').forEach(function(img){ img.loading='eager'; img.decoding='sync'; }); } catch(e){}</script>`;
         let fullHtml = "";
         if (isFullDoc) {
           if (html.includes("</head>")) {
@@ -1404,7 +1419,6 @@ async function executePrintJobInternal(job) {
 </body>
 </html>`;
         }
-        fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
 
         // Edge/Chromium ile piksel piksel birebir önizleme görüntüsü oluştur (80mm POS ve A4 için görsel motor)
         const chromiumPath = findChromiumPath();
@@ -1412,8 +1426,6 @@ async function executePrintJobInternal(job) {
         if (chromiumPath && isPos) {
           try {
             pngFile = path.join(tmpDir, `print_${timestamp}.png`);
-            chromeProfileDir = path.join(tmpDir, `chrome_prof_${timestamp}`);
-            const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
 
             // Şablonun gerçek yüksekliğini HTML içinden dinamik olarak hesapla (boş beyaz fazlalığı önler)
             let calculatedHeight = 1200;
@@ -1428,55 +1440,65 @@ async function executePrintJobInternal(job) {
             }
             calculatedHeight = Math.max(200, Math.min(3500, calculatedHeight));
 
-            const runChromiumShot = (headlessFlag) => new Promise((resolve) => {
-              const args = [
-                headlessFlag,
-                `--user-data-dir=${chromeProfileDir}`,
-                "--disable-gpu",
-                "--no-sandbox",
-                "--allow-file-access-from-files",
-                "--hide-scrollbars",
-                `--window-size=304,${calculatedHeight}`,
-                "--force-device-scale-factor=2",
-                "--disable-extensions",
-                "--disable-background-networking",
-                "--disable-component-update",
-                "--disable-default-apps",
-                "--disable-sync",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--mute-audio",
-                "--run-all-compositor-stages-before-draw",
-                "--virtual-time-budget=2000",
-                `--screenshot=${pngFile}`,
-                fileUrl,
-              ];
-              const child = spawn(chromiumPath, args, {
-                windowsHide: true,
-                stdio: "ignore",
-              });
-              const timer = setTimeout(() => {
-                try { child.kill(); } catch {}
-                resolve();
-              }, 10000);
-              child.on("close", () => {
-                clearTimeout(timer);
-                resolve();
-              });
-              child.on("error", () => {
-                clearTimeout(timer);
-                resolve();
-              });
-            });
+            // 1. ÖNCELİK (HIZLI MOTOR): Sürekli açık sıcak Chromium CDP (~40-90 ms)
+            const cdpOk = await cdpRenderer.renderPosPng(chromiumPath, fullHtml, calculatedHeight, pngFile);
 
-            await runChromiumShot("--headless=new");
-            if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
-              await runChromiumShot("--headless");
-            }
-            try { fs.rmSync(chromeProfileDir, { recursive: true, force: true }); } catch {}
-            if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
-              console.warn("[printercekmeApp] Uyarı: POS PNG çıktısı üretilemedi, boyut yetersiz.");
-              pngFile = "";
+            // 2. YEDEK: Sıcak CDP üretmediyse mevcut tek seferlik headless Chromium yoluna düş
+            if (!cdpOk || !fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
+              fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
+              chromeProfileDir = path.join(tmpDir, `chrome_prof_${timestamp}`);
+              const fileUrl = "file:///" + path.resolve(htmlFile).replace(/\\/g, "/");
+
+              const runChromiumShot = (headlessFlag) => new Promise((resolve) => {
+                const args = [
+                  headlessFlag,
+                  `--user-data-dir=${chromeProfileDir}`,
+                  "--disable-gpu",
+                  "--no-sandbox",
+                  "--allow-file-access-from-files",
+                  "--hide-scrollbars",
+                  `--window-size=304,${calculatedHeight}`,
+                  "--force-device-scale-factor=2",
+                  "--disable-extensions",
+                  "--disable-background-networking",
+                  "--disable-component-update",
+                  "--disable-default-apps",
+                  "--disable-sync",
+                  "--no-first-run",
+                  "--no-default-browser-check",
+                  "--mute-audio",
+                  "--run-all-compositor-stages-before-draw",
+                  "--virtual-time-budget=2000",
+                  `--screenshot=${pngFile}`,
+                  fileUrl,
+                ];
+                const child = spawn(chromiumPath, args, {
+                  windowsHide: true,
+                  stdio: "ignore",
+                });
+                const timer = setTimeout(() => {
+                  try { child.kill(); } catch {}
+                  resolve();
+                }, 10000);
+                child.on("close", () => {
+                  clearTimeout(timer);
+                  resolve();
+                });
+                child.on("error", () => {
+                  clearTimeout(timer);
+                  resolve();
+                });
+              });
+
+              await runChromiumShot("--headless=new");
+              if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
+                await runChromiumShot("--headless");
+              }
+              try { fs.rmSync(chromeProfileDir, { recursive: true, force: true }); } catch {}
+              if (!fs.existsSync(pngFile) || fs.statSync(pngFile).size < 1000) {
+                console.warn("[printercekmeApp] Uyarı: POS PNG çıktısı üretilemedi, boyut yetersiz.");
+                pngFile = "";
+              }
             }
           } catch (e) {
             console.warn("[printercekmeApp] POS PNG oluşturma hatası:", e.message);
@@ -1484,9 +1506,14 @@ async function executePrintJobInternal(job) {
             pngFile = "";
           }
         } else if (chromiumPath && !isPos) {
-          // A4: sayfa tarayıcı motoruyla görüntüye çevrilip birebir basılır (metin varsa yalnız görüntü üretilemezse kullanılır)
+          // A4: Önce sıcak Chromium CDP (tek oturumda ~150 ms), olmazsa mevcut a4PngUret yedeği
           try {
-            const sonuc = await a4PngUret(chromiumPath, htmlFile, path.join(tmpDir, `print_${timestamp}_a4.png`));
+            const a4PngPath = path.join(tmpDir, `print_${timestamp}_a4.png`);
+            let sonuc = await cdpRenderer.renderA4Png(chromiumPath, fullHtml, a4PngPath);
+            if (!sonuc) {
+              fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
+              sonuc = await a4PngUret(chromiumPath, htmlFile, a4PngPath);
+            }
             if (sonuc) {
               pngFile = sonuc.png;
               a4Sayfa = sonuc.sayfa;
@@ -1494,6 +1521,8 @@ async function executePrintJobInternal(job) {
           } catch {
             pngFile = "";
           }
+        } else {
+          fs.writeFileSync(htmlFile, "\ufeff" + fullHtml, "utf8");
         }
       }
 
@@ -1502,9 +1531,50 @@ async function executePrintJobInternal(job) {
       const escapedPngPath = pngFile && fs.existsSync(pngFile) ? pngFile.replace(/'/g, "''") : "";
       const numCopies = Math.max(1, Number(copies) || 1);
 
+      const cleanupTempFiles = () => {
+        setTimeout(() => {
+          if (htmlFile) { try { fs.unlinkSync(htmlFile); } catch {} }
+          if (textFile) { try { fs.unlinkSync(textFile); } catch {} }
+          if (pngFile) { try { fs.unlinkSync(pngFile); } catch {} }
+        }, 5000);
+      };
+
       console.log(`[printercekmeApp] Yerel yazdırma işlemi başlatılıyor: "${targetPrinter || 'Varsayılan'}" (PNG: ${Boolean(pngFile)})`);
 
-      // Windows Doğrudan GDI ve Spooler Yazdırma Scripti (Yüksek Hızlı Motor)
+      // 1. ÖNCELİK (HIZLI MOTOR): Kalıcı PowerShell GDI İşçisi (~20-60 ms, sıfır cold-start)
+      try {
+        const workerRes = await gdiWorker.print({
+          target: targetPrinter,
+          pngPath: pngFile && fs.existsSync(pngFile) ? pngFile : "",
+          textPath: textFile && fs.existsSync(textFile) ? textFile : "",
+          copies: numCopies,
+          isPos,
+          a4Sayfa,
+          timeoutMs: a4Sayfa > 0 ? 45000 : 12000,
+        });
+        if (workerRes && workerRes.success) {
+          const matchName = (workerRes.printerName || targetPrinter || "Varsayılan Yazıcı").trim();
+          const elapsed = Date.now() - timestamp;
+          console.log(`[printercekmeApp] ⚡ Hızlı yazdırma BAŞARILI (${elapsed} ms): "${matchName}"`);
+          cleanupTempFiles();
+          return {
+            success: true,
+            message: `Fiş "${matchName}" cihazına başarıyla gönderildi.`,
+            printerName: matchName,
+            elapsedMs: elapsed,
+          };
+        } else if (workerRes && workerRes.message && workerRes.message.includes("bulunamadı")) {
+          cleanupTempFiles();
+          return {
+            success: false,
+            message: workerRes.message,
+          };
+        }
+      } catch (workerErr) {
+        console.warn("[printercekmeApp] Kalıcı GDI işçisi yedeğe düşüyor:", workerErr.message);
+      }
+
+      // 2. YEDEK: Tek seferlik PowerShell GDI Yazdırma Scripti (eski motor)
       const psScript = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -1802,8 +1872,10 @@ exit 1
 }
 
 let printQueue = Promise.resolve();
+let queuedJobCount = 0;
 
 async function executePrintJob(job) {
+  queuedJobCount++;
   const runJob = async () => {
     const { title = "Fiş", printerName, targetDevice, copies = 1 } = job || {};
     const targetPrinter = (printerName || targetDevice || "").trim();
@@ -1811,17 +1883,23 @@ async function executePrintJob(job) {
 
     const result = await executePrintJobInternal(job);
     if (result.success) {
-      broadcastLog(`✅ Fiş başarıyla yazdırıldı -> Yazıcı: "${result.printerName || targetPrinter || 'Varsayılan Yazıcı'}"`);
+      const msInfo = result.elapsedMs ? ` (${result.elapsedMs} ms)` : "";
+      broadcastLog(`✅ Fiş başarıyla yazdırıldı${msInfo} -> Yazıcı: "${result.printerName || targetPrinter || 'Varsayılan Yazıcı'}"`);
     } else {
       broadcastLog(`❌ Yazdırma hatası: ${result.message}`);
     }
-    // Birden çok ardışık fişte yazıcının kâğıdı kesmesi ve kuyruğun rahatlaması için ara
-    await new Promise((r) => setTimeout(r, 400));
+    queuedJobCount = Math.max(0, queuedJobCount - 1);
     return result;
   };
 
-  printQueue = printQueue.then(runJob, runJob);
-  return printQueue;
+  // Sonucu kullanıcıya 0 ms gecikmeyle anında döndür; yalnızca kuyrukta bekleyen başka bir fiş varsa
+  // bir sonraki iş başlamadan önce yazıcının kesim payı için 100 ms nefes bırak
+  const jobPromise = printQueue.then(runJob, runJob);
+  printQueue = jobPromise.then(
+    () => (queuedJobCount > 0 ? new Promise((r) => setTimeout(r, 100)) : undefined),
+    () => undefined
+  );
+  return jobPromise;
 }
 
 // ─── HTTP Endpoints ─────────────────────────────────────────────────────────
@@ -1921,7 +1999,7 @@ wss.on("connection", (ws) => {
           console.log(`[printercekmeApp] WebSocket üzerinden yazdırma komutu alındı: "${msg.printerName || msg.targetDevice || 'Varsayılan'}"`);
           const result = await executePrintJob(msg);
           if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ action: "print_result", ...result }));
+            ws.send(JSON.stringify({ action: "print_result", jobId: msg.jobId || "", ...result }));
           }
           for (const client of activeConsoleClients) {
             try {
@@ -2221,6 +2299,8 @@ $timer.Start()
   });
 
   process.on("exit", () => {
+    try { cdpRenderer.shutdown(); } catch {}
+    try { gdiWorker.shutdown(); } catch {}
     try { trayProc.kill(); } catch {}
   });
 }
@@ -2274,6 +2354,17 @@ function startServer() {
     // Windows başlangıç ve sistem tepsisi (System Tray) entegrasyonu
     setupWindowsAutoStart();
     startSystemTray();
+
+    // Hızlı baskı motorlarını (kalıcı GDI işçisi + sıcak Chromium CDP) arka planda önceden ısıt
+    if (os.platform() === "win32") {
+      setTimeout(() => {
+        gdiWorker.ensureStarted().catch(() => {});
+        const chr = findChromiumPath();
+        if (chr) {
+          cdpRenderer.ensureStarted(chr).catch(() => {});
+        }
+      }, 600);
+    }
   });
 }
 

@@ -28,7 +28,7 @@ export interface SilentPrintResult {
 export const LOCAL_PRINT_URL = "http://127.0.0.1:9100/print";
 export const LOCAL_STATUS_URL = "http://127.0.0.1:9100/status";
 
-export const TARGET_PRINTER_AGENT_VERSION = "1.2.4";
+export const TARGET_PRINTER_AGENT_VERSION = "1.2.5";
 
 let lastProtocolWakeTime = 0;
 
@@ -437,99 +437,145 @@ interface WsPrintResult {
   result: SilentPrintResult | null;
 }
 
+// Kalıcı WebSocket bağlantısı: Her fişte yeni TCP/WS el sıkışması (~20-50 ms) yerine
+// mevcut açık bağlantıyı anında kullanır; koparsa otomatik yeniden bağlanır.
+let persistentWs: WebSocket | null = null;
+let persistentWsConnecting: Promise<WebSocket | null> | null = null;
+const pendingWsJobs = new Map<string, (res: SilentPrintResult) => void>();
+
+function attachPersistentWsHandlers(ws: WebSocket) {
+  ws.onmessage = (event) => {
+    try {
+      const parsed = JSON.parse(event.data);
+      if (parsed && (parsed.action === "print_result" || parsed.success !== undefined)) {
+        const resObj: SilentPrintResult = {
+          success: parsed.success !== false,
+          message: parsed.message || (parsed.success ? "Fiş yazıcıya başarıyla gönderildi." : "Yazdırma hatası."),
+        };
+        const jId = parsed.jobId ? String(parsed.jobId) : "";
+        if (jId && pendingWsJobs.has(jId)) {
+          const cb = pendingWsJobs.get(jId)!;
+          pendingWsJobs.delete(jId);
+          cb(resObj);
+        } else if (pendingWsJobs.size > 0) {
+          // Eski ajan sürümleri jobId dönmezse sıradaki ilk bekleyen işi tamamla
+          const firstKey = pendingWsJobs.keys().next().value;
+          if (firstKey) {
+            const cb = pendingWsJobs.get(firstKey)!;
+            pendingWsJobs.delete(firstKey);
+            cb(resObj);
+          }
+        }
+      }
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    if (persistentWs === ws) persistentWs = null;
+  };
+  ws.onerror = () => {
+    if (persistentWs === ws) persistentWs = null;
+  };
+}
+
+function openPersistentWs(wsUrl: string, timeoutMs = 2500): Promise<WebSocket | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (sock: WebSocket | null) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(sock);
+      }
+    };
+    const timer = setTimeout(() => {
+      try { ws?.close(); } catch {}
+      finish(null);
+    }, timeoutMs);
+
+    let ws: WebSocket | null = null;
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        if (!ws) return finish(null);
+        persistentWs = ws;
+        attachPersistentWsHandlers(ws);
+        finish(ws);
+      };
+      ws.onerror = () => finish(null);
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+async function getPersistentPrintWs(): Promise<WebSocket | null> {
+  if (typeof WebSocket === "undefined") return null;
+  if (persistentWs && persistentWs.readyState === WebSocket.OPEN) {
+    return persistentWs;
+  }
+  if (persistentWsConnecting) return persistentWsConnecting;
+
+  persistentWsConnecting = (async () => {
+    const s1 = await openPersistentWs("ws://127.0.0.1:9100", 2500);
+    if (s1) return s1;
+    const s2 = await openPersistentWs("ws://localhost:9100", 2500);
+    return s2;
+  })().finally(() => {
+    persistentWsConnecting = null;
+  });
+
+  return persistentWsConnecting;
+}
+
 /**
  * WebSocket (ws://127.0.0.1:9100 ve ws://localhost:9100) üzerinden doğrudan sessiz yazdırma.
- * Canlı HTTPS siteler yerel WebSocket bağlantılarını engellemediğinden
- * Mixed Content / Private Network Access hatası olmadan doğrudan çalışır.
+ * Kalıcı WebSocket bağlantısı kullanarak her fişte sıfır el sıkışma gecikmesiyle iletir.
  */
 async function printViaWebSocket(options: SilentPrintOptions, jobId: string): Promise<WsPrintResult> {
   if (typeof WebSocket === "undefined") return { handled: false, result: null };
 
-  const tryConnect = (wsUrl: string): Promise<WsPrintResult> => {
-    return new Promise((resolve) => {
-      let resolved = false;
-      let sent = false;
-      let ws: WebSocket | null = null;
-      let timer: any = null;
+  const ws = await getPersistentPrintWs();
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return { handled: false, result: null };
+  }
 
-      const finish = (result: SilentPrintResult | null) => {
-        if (!resolved) {
-          resolved = true;
-          if (timer) clearTimeout(timer);
-          if (ws) {
-            try { ws.close(); } catch {}
-          }
-          resolve({ handled: sent, result });
-        }
-      };
-
-      // 1. Aşama: Bağlantı kurulamazsa (servis kapalıysa) vazgeç: 3500ms
-      timer = setTimeout(() => {
-        finish(null);
-      }, 3500);
-
-      try {
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          try {
-            sent = true;
-            // 2. Aşama: Bağlantı kuruldu ve mesaj iletildi!
-            // Artık HTTP yedeğine düşülmemelidir; fiş işlenirken yanıt beklenir.
-            if (timer) clearTimeout(timer);
-            timer = setTimeout(() => {
-              // 12 saniyede yanıt gelmese bile istek iletildiği için başarılı kabul edilir, mükerrer basılmaz
-              finish({ success: true, message: "Fiş yazıcı kuyruğuna iletildi." });
-            }, 12000);
-
-            ws?.send(
-              JSON.stringify({
-                action: "print",
-                jobId,
-                html: options.html,
-                text: options.text,
-                printerName: options.printerName,
-                targetDevice: options.printerName,
-                copies: options.copies || 1,
-                isPos: options.isPos !== false,
-                title: options.title || "Likya_Fis",
-              })
-            );
-          } catch {
-            finish(null);
-          }
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const parsed = JSON.parse(event.data);
-            if (parsed && (parsed.action === "print_result" || parsed.success !== undefined)) {
-              finish({
-                success: parsed.success !== false,
-                message: parsed.message || (parsed.success ? "Fiş yazıcıya başarıyla gönderildi." : "Yazdırma hatası."),
-              });
-            }
-          } catch {}
-        };
-
-        ws.onerror = () => {
-          if (!sent) finish(null);
-        };
-      } catch {
-        finish(null);
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finish = (handled: boolean, result: SilentPrintResult | null) => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timer);
+        pendingWsJobs.delete(jobId);
+        resolve({ handled, result });
       }
-    });
-  };
+    };
 
-  // Önce 127.0.0.1 adresini dene
-  const res1 = await tryConnect("ws://127.0.0.1:9100");
-  if (res1.handled) return res1;
+    const timer = setTimeout(() => {
+      finish(true, { success: true, message: "Fiş yazıcı kuyruğuna iletildi." });
+    }, 12000);
 
-  // Sadece ilk bağlantı açılamadıysa localhost dene
-  const res2 = await tryConnect("ws://localhost:9100");
-  if (res2.handled) return res2;
+    pendingWsJobs.set(jobId, (res) => finish(true, res));
 
-  return { handled: false, result: null };
+    try {
+      ws.send(
+        JSON.stringify({
+          action: "print",
+          jobId,
+          html: options.html,
+          text: options.text,
+          printerName: options.printerName,
+          targetDevice: options.printerName,
+          copies: options.copies || 1,
+          isPos: options.isPos !== false,
+          title: options.title || "Likya_Fis",
+        })
+      );
+    } catch {
+      persistentWs = null;
+      finish(false, null);
+    }
+  });
 }
 
 /**
@@ -651,10 +697,31 @@ function showPrintLoadingOverlay(printerName?: string | null): void {
   document.body.appendChild(overlay);
 }
 
+let overlayDelayTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Yazdırma 220 ms'den uzun sürerse ekranda dönen yüklenme ikonunu gösterir.
+ * Hızlı (milisaniyelik) fiş baskılarında ekranı kilitleyip yanıp sönme oluşturmaz.
+ */
+function schedulePrintLoadingOverlay(printerName?: string | null): void {
+  if (overlayDelayTimer) {
+    clearTimeout(overlayDelayTimer);
+    overlayDelayTimer = null;
+  }
+  overlayDelayTimer = setTimeout(() => {
+    overlayDelayTimer = null;
+    showPrintLoadingOverlay(printerName);
+  }, 220);
+}
+
 /**
  * Ekranda gösterilen yüklenme spinner overlay'ini temizler.
  */
 function hidePrintLoadingOverlay(): void {
+  if (overlayDelayTimer) {
+    clearTimeout(overlayDelayTimer);
+    overlayDelayTimer = null;
+  }
   if (typeof document === "undefined") return;
   const overlay = document.getElementById("likya-print-loading-overlay");
   if (overlay) {
@@ -711,8 +778,8 @@ export async function triggerSilentPrint(options: SilentPrintOptions): Promise<S
 
   const jobId = "job_" + now + "_" + Math.random().toString(36).substring(2, 8);
 
-  // Yazıcıya gönderim süresince ekranda dönen yüklenme ikonu gösterilir
-  showPrintLoadingOverlay(printerName);
+  // Yazdırma 220 ms'yi aşarsa dönen yüklenme ikonu gösterilir (hızlı baskılarda ekranı kilitlemez)
+  schedulePrintLoadingOverlay(printerName);
 
   try {
     // 1. Öncelik: Yerel WebSocket (ws://127.0.0.1:9100) — Canlı HTTPS ortamlarında Mixed Content'e takılmaz!

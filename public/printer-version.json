@@ -1,8 +1,8 @@
 {
-  "version": "1.2.4",
+  "version": "1.2.5",
   "downloadUrl": "/PrinterAgent.exe",
   "name": "PrinterAgent",
-  "releaseNotes": "80 mm termal fişler (Döviz Fişi, Sarraf Fişi, Arbitraj) ve A4 belgeler ekrandaki görsel şablonla birebir basılır.",
+  "releaseNotes": "Sürekli açık Chromium CDP görsel motoru ve kalıcı PowerShell GDI işçisi ile 80 mm termal fiş ve A4 baskı hızı milisaniyelere indirildi; mevcut fiş tasarımları ve boyutları birebir korundu.",
   "minRequiredVersion": "1.0.0",
-  "updatedAt": "2026-11-24T08:46:29.610Z"
+  "updatedAt": "2026-11-27T20:38:00.000Z"
 }
