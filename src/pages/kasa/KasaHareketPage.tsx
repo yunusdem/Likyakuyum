@@ -101,6 +101,7 @@ export const KasaHareketPage: React.FC = () => {
   const [vezneBakiyeler, setVezneBakiyeler] = useState<{ paraId: number; paraKodu: string; paraAdi: string; miktar: number }[]>([]);
 
   const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   const [notification, setNotification] = useState<{ type: "success" | "danger" | "warning" | "info"; message: string } | null>(null);
 
   // Modallar
@@ -616,6 +617,8 @@ export const KasaHareketPage: React.FC = () => {
 
   // ─── Kaydet Aksiyonu (F1) ────────────────────────────────────────────────────
   const handleSave = useCallback(async (): Promise<HesapHareketiItem | null> => {
+    if (savingRef.current) return null;
+
     if (hesapHareketiId && fisKaynagi) {
       showNotif("warning", `Bu kasa kaydı ${fisKaynagi}'nden oluştu; burada düzeltilemez. Fişin kendi ekranından düzeltin.`);
       return null;
@@ -642,6 +645,7 @@ export const KasaHareketPage: React.FC = () => {
       return null;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       const kdvOraniNumber = parseDecimal(kdvOrani);
@@ -696,6 +700,7 @@ export const KasaHareketPage: React.FC = () => {
       showNotif("danger", err?.message || "Kasa hareketi kaydedilirken hata oluştu.");
       return null;
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   }, [hesapId, vezneId, paraId, meblag, tip, aciklama, hesapAd, hesapHareketiId, fisKaynagi, tarih, tarihYetkisi, kdvOrani, kdvTutari, degisiklikTakipVar, isEditPage, handleNew, fetchVezneBakiyeler, navigate]);
@@ -800,6 +805,7 @@ export const KasaHareketPage: React.FC = () => {
 
       if (e.key === "F1") {
         e.preventDefault();
+        if (e.repeat || savingRef.current) return;
         handleSave();
       } else if (e.key === "F2" && isEditPage && hesapHareketiId && !fisKaynagi) {
         e.preventDefault();
@@ -937,6 +943,7 @@ export const KasaHareketPage: React.FC = () => {
         hideDelete={!isEditPage || Boolean(fisKaynagi)}
         hideNavigation={!isEditPage}
         disabled={isSaving}
+        disableShortcuts={true}
         onSave={handleSave}
         onDelete={() => {
           if (fisKaynagi) showNotif("warning", `Bu kasa kaydı ${fisKaynagi}'nden oluştu; burada silinemez. Fişin kendi ekranından silin.`);
@@ -1291,6 +1298,7 @@ export const KasaHareketPage: React.FC = () => {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
+                          if (e.repeat || savingRef.current) return;
                           handleSave();
                         } else if (e.key === "ArrowUp") {
                           e.preventDefault();
