@@ -196,6 +196,11 @@ export class UserSqlRepository {
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [SADECE_DOVIZ_FISI_GOREBILIR] BIT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_SADECE_DOVIZ_FISI_GOREBILIR DEFAULT 0;
         END;
 
+        IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'ONAY_ALINACAK_VEZNE_ID') IS NULL
+        BEGIN
+          ALTER TABLE dbo.TODVZ_KULLANICI ADD [ONAY_ALINACAK_VEZNE_ID] INT NULL;
+        END;
+
         IF COL_LENGTH('dbo.TODVZ_KULLANICI', 'VEZNE_SON_ISLEMLER_YETKISI') IS NULL
         BEGIN
           ALTER TABLE dbo.TODVZ_KULLANICI ADD [VEZNE_SON_ISLEMLER_YETKISI] BIT NOT NULL CONSTRAINT DF_TODVZ_KULLANICI_VEZNE_SON_ISLEMLER_YETKISI DEFAULT 0;
@@ -270,6 +275,7 @@ export class UserSqlRepository {
       paraUstuVar: entity.PARA_USTU_VAR != null ? toBool(entity.PARA_USTU_VAR) : true,
       dovizFisiSatirModu: toBool(entity.DOVIZ_FISI_SATIR_MODU),
       sadeceDovizFisiGorebilir: toBool(entity.SADECE_DOVIZ_FISI_GOREBILIR),
+      onayAlinacakVezneId: entity.ONAY_ALINACAK_VEZNE_ID != null && Number(entity.ONAY_ALINACAK_VEZNE_ID) > 0 ? Number(entity.ONAY_ALINACAK_VEZNE_ID) : null,
       cariSinirlamaTipi: Number(entity.CARI_SINIRLAMA_TIPI ?? 0),
       atananCariIdler: (entity as any).atananCariIdler || [],
 
@@ -658,6 +664,7 @@ export class UserSqlRepository {
       request.input("PARA_USTU_VAR", sql.Bit, toBit(user.paraUstuVar ?? true));
       request.input("DOVIZ_FISI_SATIR_MODU", sql.Bit, toBit(user.dovizFisiSatirModu));
       request.input("SADECE_DOVIZ_FISI_GOREBILIR", sql.Bit, toBit(user.sadeceDovizFisiGorebilir));
+      request.input("ONAY_ALINACAK_VEZNE_ID", sql.Int, user.onayAlinacakVezneId && Number(user.onayAlinacakVezneId) > 0 ? Number(user.onayAlinacakVezneId) : null);
       request.input("VEZNE_SON_ISLEMLER_YETKISI", sql.Bit, toBit(user.hasVezneLastTransactionsPerm));
       request.input("KENDI_KAYITLARI_YETKISI", sql.Bit, toBit(user.hasOnlyOwnRecordsPerm));
       request.input("CARI_SINIRLAMA_TIPI", sql.TinyInt, toInt(user.cariSinirlamaTipi, 0));
@@ -683,7 +690,7 @@ export class UserSqlRepository {
           [ENTEGRATOR_KULLANICI_ADI], [ENTEGRATOR_KULLANICI_SIFRESI], [E_BELGE_KULLANILIYOR],
           [MASAK_KULLANICI_ADI], [MASAK_KULLANICI_SIFRESI], [MASAK_UYARISI_VERSIN], [SUPHELI_ISLEMLER_YETKILISI],
           [SAPMA_UYARISI_VERILMESIN], [GISE_KURU_DISINDA_OLABILIR], [CAPRAZ_KUR_KONTROLU_YOK], [SIDEBAR_GORUNUM],
-          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI], [DOVIZ_ZIYNET_GIRIS_SEKLI], [ALTIN_HESAPLAMA_SEKLI], [PARA_USTU_VAR], [DOVIZ_FISI_SATIR_MODU], [SADECE_DOVIZ_FISI_GOREBILIR],
+          [ISCILIK_GIRIS_SEKLI], [MILYEM_YETKISI], [MILYEM_TOLERANS_ORANI], [DOVIZ_ZIYNET_GIRIS_SEKLI], [ALTIN_HESAPLAMA_SEKLI], [PARA_USTU_VAR], [DOVIZ_FISI_SATIR_MODU], [SADECE_DOVIZ_FISI_GOREBILIR], [ONAY_ALINACAK_VEZNE_ID],
           [VEZNE_SON_ISLEMLER_YETKISI], [KENDI_KAYITLARI_YETKISI], [CARI_SINIRLAMA_TIPI]
         )
         VALUES (
@@ -703,7 +710,7 @@ export class UserSqlRepository {
           @ENTEGRATOR_KULLANICI_ADI, @ENTEGRATOR_KULLANICI_SIFRESI, @E_BELGE_KULLANILIYOR,
           @MASAK_KULLANICI_ADI, @MASAK_KULLANICI_SIFRESI, @MASAK_UYARISI_VERSIN, @SUPHELI_ISLEMLER_YETKILISI,
           @SAPMA_UYARISI_VERILMESIN, @GISE_KURU_DISINDA_OLABILIR, @CAPRAZ_KUR_KONTROLU_YOK, @SIDEBAR_GORUNUM,
-          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI, @DOVIZ_ZIYNET_GIRIS_SEKLI, @ALTIN_HESAPLAMA_SEKLI, @PARA_USTU_VAR, @DOVIZ_FISI_SATIR_MODU, @SADECE_DOVIZ_FISI_GOREBILIR,
+          @ISCILIK_GIRIS_SEKLI, @MILYEM_YETKISI, @MILYEM_TOLERANS_ORANI, @DOVIZ_ZIYNET_GIRIS_SEKLI, @ALTIN_HESAPLAMA_SEKLI, @PARA_USTU_VAR, @DOVIZ_FISI_SATIR_MODU, @SADECE_DOVIZ_FISI_GOREBILIR, @ONAY_ALINACAK_VEZNE_ID,
           @VEZNE_SON_ISLEMLER_YETKISI, @KENDI_KAYITLARI_YETKISI, @CARI_SINIRLAMA_TIPI
         );
 
@@ -822,6 +829,7 @@ export class UserSqlRepository {
       request.input("PARA_USTU_VAR", sql.Bit, toBit(user.paraUstuVar ?? true));
       request.input("DOVIZ_FISI_SATIR_MODU", sql.Bit, toBit(user.dovizFisiSatirModu));
       request.input("SADECE_DOVIZ_FISI_GOREBILIR", sql.Bit, toBit(user.sadeceDovizFisiGorebilir));
+      request.input("ONAY_ALINACAK_VEZNE_ID", sql.Int, user.onayAlinacakVezneId && Number(user.onayAlinacakVezneId) > 0 ? Number(user.onayAlinacakVezneId) : null);
       request.input("VEZNE_SON_ISLEMLER_YETKISI", sql.Bit, toBit(user.hasVezneLastTransactionsPerm));
       request.input("KENDI_KAYITLARI_YETKISI", sql.Bit, toBit(user.hasOnlyOwnRecordsPerm));
       request.input("CARI_SINIRLAMA_TIPI", sql.TinyInt, toInt(user.cariSinirlamaTipi, 0));
@@ -903,6 +911,7 @@ export class UserSqlRepository {
           [PARA_USTU_VAR] = @PARA_USTU_VAR,
           [DOVIZ_FISI_SATIR_MODU] = @DOVIZ_FISI_SATIR_MODU,
           [SADECE_DOVIZ_FISI_GOREBILIR] = @SADECE_DOVIZ_FISI_GOREBILIR,
+          [ONAY_ALINACAK_VEZNE_ID] = @ONAY_ALINACAK_VEZNE_ID,
           [VEZNE_SON_ISLEMLER_YETKISI] = @VEZNE_SON_ISLEMLER_YETKISI,
           [KENDI_KAYITLARI_YETKISI] = @KENDI_KAYITLARI_YETKISI,
           [CARI_SINIRLAMA_TIPI] = @CARI_SINIRLAMA_TIPI

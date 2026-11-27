@@ -31,6 +31,7 @@ import LookupModal, { LookupColumn } from "../../components/common/LookupModal";
 import FisDurbunModal from "../../components/common/FisDurbunModal";
 import { yeniOnceKarsilastirici } from "../../utils/fisDurbunFiltre";
 import { CashDeskService, VezneItem } from "../../services/cashDeskService";
+import { AuthService } from "../../services/authService";
 import { triggerSilentPrint } from "../../services/silentPrintService";
 import { PrinterService, YaziciItem } from "../../services/printerService";
 import { resolveEffectivePrinter } from "../../utils/printerResolver";
@@ -235,6 +236,8 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
   // Modals
   const [showVerenVezneModal, setShowVerenVezneModal] = useState<boolean>(false);
   const [showParaModal, setShowParaModal] = useState<boolean>(false);
+  const [paraSearchTerm, setParaSearchTerm] = useState<string>("");
+  const lastFocusedKodRef = useRef<string>("");
   const [activeRowIdForPara, setActiveRowIdForPara] = useState<string | null>(null);
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
   const [isF5Pending, setIsF5Pending] = useState<boolean>(false);
@@ -869,15 +872,79 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
         }
       }
     }
+    // F4 on kod cell opens Para lookup modal
+    if (e.key === "F4" && field === "kod") {
+      e.preventDefault();
+      e.stopPropagation();
+      const curLine = lines[idx];
+      if (curLine) {
+        setActiveRowIdForPara(curLine.id);
+        setParaSearchTerm((curLine.paraKodu || "").trim());
+        setShowParaModal(true);
+      }
+      return;
+    }
+
     // Enter key: jump between cells or append new row at the end of Miktar
     else if (e.key === "Enter") {
       e.preventDefault();
       if (field === "kod") {
-        const nextInput = rowInputRefs.current[`miktar-${idx}`];
-        if (nextInput) {
-          nextInput.focus();
-          nextInput.select();
-          setActiveRowIndex(idx);
+        const curLine = lines[idx];
+        const rawKod = (curLine?.paraKodu || "").trim();
+        const val = rawKod.toLowerCase();
+        const prevVal = (lastFocusedKodRef.current || "").trim().toLowerCase();
+
+        const focusMiktar = () => {
+          const nextInput = rowInputRefs.current[`miktar-${idx}`];
+          if (nextInput) {
+            nextInput.focus();
+            nextInput.select();
+            setActiveRowIndex(idx);
+          }
+        };
+
+        // Boşsa veya içerisindeki yazı değiştirilmemişse modalı açma, doğrudan Miktar'a geç
+        if (!val || (curLine?.paraId > 0 && val === prevVal)) {
+          focusMiktar();
+          return;
+        }
+
+        // Tam eşleşme kontrolü
+        const exact = paraList.find((p) => (p.kod || "").trim().toLowerCase() === val);
+        if (exact) {
+          setLines((prev) =>
+            prev.map((r, i) =>
+              i === idx ? { ...r, paraId: exact.id, paraKodu: exact.kod, paraAdi: exact.ad } : r
+            )
+          );
+          lastFocusedKodRef.current = exact.kod;
+          focusMiktar();
+          return;
+        }
+
+        // Kısmî eşleşmede tek kayıt varsa otomatik seç
+        const matches = paraList.filter(
+          (p) =>
+            (p.kod || "").toLowerCase().includes(val) ||
+            (p.ad || "").toLowerCase().includes(val)
+        );
+        if (matches.length === 1) {
+          const single = matches[0];
+          setLines((prev) =>
+            prev.map((r, i) =>
+              i === idx ? { ...r, paraId: single.id, paraKodu: single.kod, paraAdi: single.ad } : r
+            )
+          );
+          lastFocusedKodRef.current = single.kod;
+          focusMiktar();
+          return;
+        }
+
+        // Birden fazla eşleşme veya eşleşme yoksa arama modalını aç
+        if (curLine) {
+          setActiveRowIdForPara(curLine.id);
+          setParaSearchTerm(rawKod);
+          setShowParaModal(true);
         }
       } else if (field === "miktar") {
         if (idx === lines.length - 1) {
@@ -1112,6 +1179,49 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
           miktar: typeof l.miktar === "number" ? l.miktar : parseDecimal(l.miktar),
         })),
       };
+
+      // Veren vezne kullanıcının kendi veznesinden farklıysa veren vezneyi kullanan kullanıcılara onay gider;
+      // aksi halde kullanıcı tanımlarında "Onay alınacak vezne" seçiliyse o vezneye onay gider.
+      const userOwnVezneId = Number(
+        user?.vezneId ?? AuthService.getUser()?.vezneId ?? getUserVezne(vezneList)?.id ?? 0
+      );
+      const configuredOnayVezneId = Number(
+        user?.onayAlinacakVezneId ?? AuthService.getUser()?.onayAlinacakVezneId ?? 0
+      );
+      const targetOnayVezneId =
+        verenVezneId > 0 && verenVezneId !== userOwnVezneId
+          ? verenVezneId
+          : configuredOnayVezneId > 0 && configuredOnayVezneId !== userOwnVezneId
+          ? configuredOnayVezneId
+          : 0;
+
+      if (targetOnayVezneId > 0) {
+        const talep = await VezneTransferiService.createApprovalRequest(payload, targetOnayVezneId);
+        const onayVezneObj = vezneList.find((v) => Number(v.id) === targetOnayVezneId);
+        const onayVezneLabel =
+          talep.onayVezneAd ||
+          (onayVezneObj ? `${onayVezneObj.kod} - ${onayVezneObj.ad}` : `Vezne #${targetOnayVezneId}`);
+
+        // Kullanıcıyı kilitlemeden sadece bildirim göster; işlemlerine devam edebilsin
+        if (!isDuzeltmeMode) {
+          setTransferId(null);
+          setTarih(yerelGun(new Date()));
+          setRefNo("");
+          setVerenVezneId(0);
+          setVerenVezneKod("");
+          setVerenVezneAd("");
+          setVerenVezneBakiyeler([]);
+          setAciklama("");
+          setLines([createEmptyRow(1)]);
+          setActiveRowIndex(0);
+        }
+
+        setNotification({
+          type: "info",
+          message: `Onaya gönderildi (${onayVezneLabel}). Onay veya red sonucu geldiğinde ekranda bildirilecektir.`,
+        });
+        return;
+      }
 
       const saved = await VezneTransferiService.saveTransfer(payload);
       const savedRef = saved.refNo || `#${saved.id}`;
@@ -1688,6 +1798,10 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
                       <Form.Control
                         type="text"
                         value={line.paraKodu}
+                        onFocus={() => {
+                          setActiveRowIndex(idx);
+                          lastFocusedKodRef.current = (line.paraKodu || "").trim();
+                        }}
                         onChange={(e) => handleLineChange(idx, "paraKodu", e.target.value)}
                         placeholder=""
                         className="fw-bold text-primary text-uppercase p-1 text-center"
@@ -1703,6 +1817,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
                         style={{ height: "26px" }}
                         onClick={() => {
                           setActiveRowIdForPara(line.id);
+                          setParaSearchTerm((line.paraKodu || "").trim());
                           setShowParaModal(true);
                         }}
                         title="Para Seç"
@@ -1827,6 +1942,7 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
       {/* Para / Currency Lookup Modal */}
       <LookupModal<{ id: number; kod: string; ad: string }>
         show={showParaModal}
+        initialSearchTerm={paraSearchTerm}
         onHide={() => setShowParaModal(false)}
         title="Döviz / Para Birimi Seçiniz"
         items={paraList}
@@ -1837,6 +1953,9 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
           item.ad.toLowerCase().includes(term.toLowerCase())
         }
         onSelect={(item) => {
+          const selectedIdx = activeRowIdForPara
+            ? lines.findIndex((r) => r.id === activeRowIdForPara)
+            : -1;
           if (activeRowIdForPara) {
             setLines((prev) =>
               prev.map((r) =>
@@ -1845,8 +1964,19 @@ export const VezneTransferiPage: React.FC<VezneTransferiPageProps> = ({
                   : r
               )
             );
+            lastFocusedKodRef.current = item.kod;
           }
           setShowParaModal(false);
+          if (selectedIdx !== -1) {
+            setTimeout(() => {
+              const miktarEl = rowInputRefs.current[`miktar-${selectedIdx}`];
+              if (miktarEl) {
+                miktarEl.focus();
+                miktarEl.select();
+                setActiveRowIndex(selectedIdx);
+              }
+            }, 60);
+          }
         }}
       />
 

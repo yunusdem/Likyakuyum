@@ -1,5 +1,7 @@
 import { fisKayitYetkisi, gunSiniri, kayitErisimi, sonrakiGun } from "../services/yetki/fisYetkileri.js";
 import { VezneTransferiService } from "../services/vezneTransferi.service.js";
+import { VezneTransferOnaySqlRepository } from "../models/vezneTransferOnaySql.repository.js";
+import { UserSqlRepository } from "../models/userSql.repository.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -108,5 +110,130 @@ export class VezneTransferiController {
         await VezneTransferiService.deleteTransfer(id, kullaniciId, degisiklikTakipVar, dbContext);
         notifyVezneBakiyeDegisti({ type: "transfer_delete", id });
         return ApiResponse.ok(res, "Vezne transferi başarıyla silindi.", { id });
+    });
+    /**
+     * POST /api/v1/vezne-transferi/onay-talep
+     */
+    static createApprovalRequest = asyncHandler(async (req, res) => {
+        const dbContext = VezneTransferiController.getDbContext(req);
+        const u = req.user;
+        const kullaniciId = Number(u?.userId || u?.id) || 1;
+        const { nolar } = await fisKayitYetkisi(req, "vezneTransferi", req.body?.id, req.body?.tarih);
+        const dbUser = await UserSqlRepository.findById(String(kullaniciId), dbContext).catch(() => null);
+        const onayVezneId = Number(req.body?.onayVezneId || dbUser?.onayAlinacakVezneId || 0);
+        if (!onayVezneId || onayVezneId <= 0) {
+            throw ApiError.badRequest("Onay alınacak vezne tanımlı değil.");
+        }
+        const payloadToSave = {
+            ...req.body,
+            ...(nolar && { refNo: nolar.REF_NO ?? null }),
+            kullaniciId,
+        };
+        delete payloadToSave.onayVezneId;
+        const record = await VezneTransferOnaySqlRepository.createRequest({
+            talepEdenId: kullaniciId,
+            talepEdenAd: dbUser?.fullName || dbUser?.username || u?.username || "Kullanıcı",
+            talepEdenVezneId: dbUser?.vezneId ?? null,
+            onayVezneId,
+            islemTipi: req.body?.id ? "DUZELTME" : "KAYIT",
+            transferId: req.body?.id ? Number(req.body.id) : null,
+            alanVezneId: Number(req.body?.alanVezneId),
+            verenVezneId: Number(req.body?.verenVezneId),
+            tarih: String(req.body?.tarih || ""),
+            aciklama: String(req.body?.aciklama || ""),
+            payloadJson: JSON.stringify(payloadToSave),
+        }, dbContext);
+        return ApiResponse.ok(res, "Onay talebi gönderildi.", record);
+    });
+    /**
+     * GET /api/v1/vezne-transferi/onay-bekleyenler
+     */
+    static getPendingApprovals = asyncHandler(async (req, res) => {
+        const dbContext = VezneTransferiController.getDbContext(req);
+        const u = req.user;
+        const kullaniciId = Number(u?.userId || u?.id) || 0;
+        if (!kullaniciId) {
+            return ApiResponse.ok(res, "Bekleyen onay yok.", []);
+        }
+        const dbUser = await UserSqlRepository.findById(String(kullaniciId), dbContext).catch(() => null);
+        const userVezneId = Number(dbUser?.vezneId || u?.vezneId || 0);
+        if (!userVezneId) {
+            return ApiResponse.ok(res, "Bekleyen onay yok.", []);
+        }
+        const list = await VezneTransferOnaySqlRepository.listPendingForVezne(userVezneId, kullaniciId, dbContext);
+        return ApiResponse.ok(res, "Bekleyen onaylar listelendi.", list);
+    });
+    /**
+     * GET /api/v1/vezne-transferi/onay-durum/:onayId
+     */
+    static getApprovalStatus = asyncHandler(async (req, res) => {
+        const dbContext = VezneTransferiController.getDbContext(req);
+        const onayId = Number(req.params.onayId);
+        const rec = await VezneTransferOnaySqlRepository.getById(onayId, dbContext);
+        if (!rec) {
+            throw ApiError.notFound("Onay talebi bulunamadı.");
+        }
+        let savedTransfer = null;
+        if (rec.durum === "ONAYLANDI" && rec.transferId) {
+            savedTransfer = await VezneTransferiService.getTransferById(rec.transferId, dbContext).catch(() => null);
+        }
+        return ApiResponse.ok(res, "Onay durumu getirildi.", { ...rec, savedTransfer });
+    });
+    /**
+     * POST /api/v1/vezne-transferi/onay-karar/:onayId
+     */
+    static decideApproval = asyncHandler(async (req, res) => {
+        const dbContext = VezneTransferiController.getDbContext(req);
+        const onayId = Number(req.params.onayId);
+        const kararRaw = String(req.body?.karar || "").toUpperCase();
+        if (kararRaw !== "ONAYLANDI" && kararRaw !== "REDDEDILDI") {
+            throw ApiError.badRequest("Geçersiz karar değeri. ONAYLANDI veya REDDEDILDI olmalıdır.");
+        }
+        const u = req.user;
+        const kararVerenId = Number(u?.userId || u?.id) || 1;
+        const dbUser = await UserSqlRepository.findById(String(kararVerenId), dbContext).catch(() => null);
+        const kararVerenAd = dbUser?.fullName || dbUser?.username || u?.username || "Yetkili";
+        const existing = await VezneTransferOnaySqlRepository.getById(onayId, dbContext);
+        if (!existing) {
+            throw ApiError.notFound("Onay talebi bulunamadı.");
+        }
+        if (existing.durum !== "BEKLIYOR") {
+            return ApiResponse.ok(res, "Bu talep zaten sonuçlandırılmış.", existing);
+        }
+        let savedTransferId = existing.transferId;
+        if (kararRaw === "ONAYLANDI") {
+            const parsedPayload = JSON.parse(existing.payloadJson || "{}");
+            const saved = await VezneTransferiService.saveTransfer(parsedPayload, dbContext);
+            savedTransferId = saved?.id ?? null;
+            notifyVezneBakiyeDegisti({ type: "transfer" });
+        }
+        const updated = await VezneTransferOnaySqlRepository.updateDecision(onayId, kararRaw, kararVerenId, kararVerenAd, savedTransferId, req.body?.kararNotu || null, dbContext);
+        return ApiResponse.ok(res, kararRaw === "ONAYLANDI" ? "Vezne transferi onaylandı ve kaydedildi." : "Vezne transferi reddedildi.", updated);
+    });
+    /**
+     * GET /api/v1/vezne-transferi/onay-sonuclar
+     */
+    static getUnseenApprovalResults = asyncHandler(async (req, res) => {
+        const dbContext = VezneTransferiController.getDbContext(req);
+        const u = req.user;
+        const kullaniciId = Number(u?.userId || u?.id) || 0;
+        if (!kullaniciId) {
+            return ApiResponse.ok(res, "Sonuç yok.", []);
+        }
+        const list = await VezneTransferOnaySqlRepository.listUnseenResultsForRequester(kullaniciId, dbContext);
+        return ApiResponse.ok(res, "Onay sonuçları listelendi.", list);
+    });
+    /**
+     * POST /api/v1/vezne-transferi/onay-goruldu/:onayId
+     */
+    static markApprovalSeen = asyncHandler(async (req, res) => {
+        const dbContext = VezneTransferiController.getDbContext(req);
+        const onayId = Number(req.params.onayId);
+        const u = req.user;
+        const kullaniciId = Number(u?.userId || u?.id) || 0;
+        if (kullaniciId && onayId) {
+            await VezneTransferOnaySqlRepository.markSeenByRequester(onayId, kullaniciId, dbContext);
+        }
+        return ApiResponse.ok(res, "Bildirim görüldü olarak işaretlendi.", { onayId });
     });
 }

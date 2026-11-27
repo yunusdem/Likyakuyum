@@ -69,6 +69,31 @@ export interface VezneTransferiNavigation {
   lastId: number | null;
 }
 
+export interface VezneTransferOnayItem {
+  onayId: number;
+  talepEdenId: number;
+  talepEdenAd: string;
+  talepEdenVezneId: number | null;
+  onayVezneId: number;
+  onayVezneAd?: string;
+  islemTipi: "KAYIT" | "DUZELTME";
+  transferId: number | null;
+  alanVezneId: number;
+  alanVezneAd: string;
+  verenVezneId: number;
+  verenVezneAd: string;
+  tarih: string;
+  aciklama: string;
+  satirlar: { paraId: number; paraKodu?: string; paraAdi?: string; miktar: number }[];
+  durum: "BEKLIYOR" | "ONAYLANDI" | "REDDEDILDI";
+  kararVerenId: number | null;
+  kararVerenAd: string | null;
+  kararNotu: string | null;
+  olusturmaZamani: string;
+  kararZamani: string | null;
+  savedTransfer?: VezneTransferiModel | null;
+}
+
 export class VezneTransferiService {
   public static async getTransfers(params?: {
     search?: string;
@@ -98,6 +123,63 @@ export class VezneTransferiService {
   public static async getTransferById(id: number | string): Promise<VezneTransferiModel> {
     const res = await apiClient.get<VezneTransferiModel>(`/vezne-transferi/${id}`);
     return res.data;
+  }
+
+  public static async createApprovalRequest(
+    payload: SaveVezneTransferiPayload,
+    onayVezneId: number
+  ): Promise<VezneTransferOnayItem> {
+    const res = await apiClient.post<VezneTransferOnayItem>("/vezne-transferi/onay-talep", {
+      ...payload,
+      onayVezneId,
+    });
+    return res.data;
+  }
+
+  public static async getPendingApprovals(): Promise<VezneTransferOnayItem[]> {
+    const res = await apiClient.get<VezneTransferOnayItem[]>(
+      "/vezne-transferi/onay-bekleyenler",
+      undefined,
+      { silent: true }
+    );
+    return Array.isArray(res.data) ? res.data : [];
+  }
+
+  public static async getApprovalStatus(onayId: number): Promise<VezneTransferOnayItem> {
+    const res = await apiClient.get<VezneTransferOnayItem>(
+      `/vezne-transferi/onay-durum/${onayId}`,
+      undefined,
+      { silent: true }
+    );
+    return res.data;
+  }
+
+  public static async decideApproval(
+    onayId: number,
+    karar: "ONAYLANDI" | "REDDEDILDI",
+    kararNotu?: string
+  ): Promise<VezneTransferOnayItem> {
+    const res = await apiClient.post<VezneTransferOnayItem>(
+      `/vezne-transferi/onay-karar/${onayId}`,
+      { karar, kararNotu }
+    );
+    if (karar === "ONAYLANDI") {
+      notifyVezneBakiyeChanged({ type: "transfer" });
+    }
+    return res.data;
+  }
+
+  public static async getUnseenApprovalResults(): Promise<VezneTransferOnayItem[]> {
+    const res = await apiClient.get<VezneTransferOnayItem[]>(
+      "/vezne-transferi/onay-sonuclar",
+      undefined,
+      { silent: true }
+    );
+    return Array.isArray(res.data) ? res.data : [];
+  }
+
+  public static async markApprovalResultSeen(onayId: number): Promise<void> {
+    await apiClient.post(`/vezne-transferi/onay-goruldu/${onayId}`, {}, { silent: true });
   }
 
   public static async saveTransfer(payload: SaveVezneTransferiPayload): Promise<VezneTransferiModel> {

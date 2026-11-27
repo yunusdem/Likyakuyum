@@ -91,6 +91,7 @@ export interface UserModel {
   paraUstuVar?: boolean;
   dovizFisiSatirModu?: boolean;
   sadeceDovizFisiGorebilir?: boolean;
+  onayAlinacakVezneId?: number | null;
   cariSinirlamaTipi?: number;
   atananCariIdler?: number[];
 
@@ -201,6 +202,7 @@ export interface TodvzKullaniciEntity {
   PARA_USTU_VAR?: number | boolean | null;
   DOVIZ_FISI_SATIR_MODU?: number | boolean | null;
   SADECE_DOVIZ_FISI_GOREBILIR?: number | boolean | null;
+  ONAY_ALINACAK_VEZNE_ID?: number | null;
   VEZNE_SON_ISLEMLER_YETKISI?: number | boolean | null;
   KENDI_KAYITLARI_YETKISI?: number | boolean | null;
   CARI_SINIRLAMA_TIPI?: number | null;

@@ -28,6 +28,7 @@ import MobilKullanicilarPage from "./pages/mobil/MobilKullanicilarPage";
 import MobilAyarlarPage from "./pages/mobil/MobilAyarlarPage";
 import MobilEmirlerPage from "./pages/mobil/MobilEmirlerPage";
 import MobilEmirBildirimi from "./pages/mobil/MobilEmirBildirimi";
+import VezneTransferOnayDinleyici from "./pages/vezne/VezneTransferOnayDinleyici";
 import PanoPage from "./pages/kur/PanoPage";
 import TvKatalogPage from "./pages/katalog/TvKatalogPage";
 import MasakListsPage from "./pages/settings/MasakListsPage";
@@ -397,6 +398,8 @@ const DashboardLayout: React.FC = () => {
           <ModulKorumasi />
           {/* Yeni mobil emir bildirimi (docs/MOBIL_CARI_YOL_HARITASI.md V7) */}
           <MobilEmirBildirimi />
+          {/* Vezne transferi işlem izni (onay) popup dinleyicisi */}
+          <VezneTransferOnayDinleyici />
         </main>
         <footer className="custom-container py-3 border-top mt-auto bg-body">
           <div className="d-flex align-items-center">

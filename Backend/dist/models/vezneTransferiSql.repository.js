@@ -351,17 +351,54 @@ export class VezneTransferiSqlRepository {
 
       SELECT @OUT_ID AS RESULT_ID, @OUT_REF AS RESULT_REF;
     `;
-        try {
+        const executeBatch = async (overrideRef) => {
             const request = pool.request();
             request.input("TARGET_ID", sql.Int, targetId);
-            request.input("TARGET_REF", sql.VarChar(20), refNo);
+            request.input("TARGET_REF", sql.VarChar(20), overrideRef);
             request.input("TARIH", sql.DateTime, new Date(dto.tarih));
             request.input("ALAN_VEZNE_ID", sql.Int, dto.alanVezneId);
             request.input("VEREN_VEZNE_ID", sql.Int, dto.verenVezneId);
             request.input("ACIKLAMA", sql.VarChar(250), aciklama);
             request.input("KULLANICI_ID", sql.Int, kullaniciId);
             request.input("DEGISIKLIK_TAKIP_VAR", sql.Bit, degisiklikTakipVar);
-            const result = await request.query(batchQuery);
+            return request.query(batchQuery);
+        };
+        try {
+            let result;
+            try {
+                result = await executeBatch(refNo);
+            }
+            catch (firstErr) {
+                const msg = String(firstErr?.message || "");
+                if (msg.includes("Numeratör bitiş sayısını geçmiş")) {
+                    // Vezne Transferi (TUR = 10) numeratör bitiş limitini otomatik genişletip tekrar dene
+                    try {
+                        await pool.request().query(`
+              IF OBJECT_ID('dbo.TODVZ_NUMERATOR', 'U') IS NOT NULL
+              BEGIN
+                UPDATE dbo.TODVZ_NUMERATOR
+                SET BITIS = ISNULL(BASLANGIC, 0) + 1000000
+                WHERE TUR = 10 AND (BITIS IS NULL OR BITIS <= ISNULL(BASLANGIC, 0));
+              END
+            `);
+                        result = await executeBatch(refNo);
+                    }
+                    catch {
+                        // Hâlâ üretemediyse güvenli fallback REF_NO ile kaydet
+                        const d = new Date(dto.tarih || Date.now());
+                        const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+                        const seqRes = await pool
+                            .request()
+                            .query(`SELECT ISNULL(MAX(VEZNE_TRANSFERI_ID), 0) + 1 AS NEXT_ID FROM dbo.TODVZ_VEZNE_TRANSFERI`);
+                        const nextSeq = Number(seqRes.recordset?.[0]?.NEXT_ID || 1);
+                        const fallbackRef = `VT${ymd}${String(nextSeq).padStart(4, "0")}`.slice(0, 20);
+                        result = await executeBatch(fallbackRef);
+                    }
+                }
+                else {
+                    throw firstErr;
+                }
+            }
             const savedRecord = result.recordset?.[0];
             const newId = savedRecord?.RESULT_ID || targetId;
             if (!newId) {

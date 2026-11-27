@@ -335,6 +335,7 @@ const defaultNewUserTemplate: UserProfile = {
   paraUstuVar: true,
   dovizFisiSatirModu: false,
   sadeceDovizFisiGorebilir: false,
+  onayAlinacakVezneId: null,
 
   menuPerms: {
     mainMenu: "Tam Yetki",
@@ -421,6 +422,7 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
     paraUstuVar: u.paraUstuVar !== undefined ? Boolean(u.paraUstuVar) : true,
     dovizFisiSatirModu: Boolean(u.dovizFisiSatirModu),
     sadeceDovizFisiGorebilir: Boolean(u.sadeceDovizFisiGorebilir),
+    onayAlinacakVezneId: u.onayAlinacakVezneId != null && Number(u.onayAlinacakVezneId) > 0 ? Number(u.onayAlinacakVezneId) : null,
     cariSinirlamaTipi: u.cariSinirlamaTipi !== undefined ? Number(u.cariSinirlamaTipi) : 0,
     atananCariIdler: Array.isArray(u.atananCariIdler) ? u.atananCariIdler : [],
     appearance: {
@@ -1004,6 +1006,23 @@ const UserDefinitionsPage: React.FC = () => {
   };
 
   const [showSadeceDovizWarnModal, setShowSadeceDovizWarnModal] = useState(false);
+  const [showOnayVezneModal, setShowOnayVezneModal] = useState(false);
+  const [onayVezneInput, setOnayVezneInput] = useState("");
+  const [onayVezneSearch, setOnayVezneSearch] = useState("");
+
+  React.useEffect(() => {
+    const id = currentUser.onayAlinacakVezneId;
+    if (!id) {
+      setOnayVezneInput("");
+      return;
+    }
+    const found = cashierList.find((c) => Number(c.id) === Number(id));
+    if (found) {
+      setOnayVezneInput(found.kod ? `${found.kod} - ${found.name}` : found.name);
+    } else {
+      setOnayVezneInput(String(id));
+    }
+  }, [currentUser.onayAlinacakVezneId, cashierList]);
 
   const handleSave = async (bypassSadeceDovizConfirm?: unknown) => {
     if (bypassSadeceDovizConfirm !== true && Boolean(currentUser.sadeceDovizFisiGorebilir)) {
@@ -1078,14 +1097,14 @@ const UserDefinitionsPage: React.FC = () => {
           ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
           ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
             ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
-                ? String(currentUser.ratePermValue).replace(/,/g, ".")
-                : "0.00")
+              ? String(currentUser.ratePermValue).replace(/,/g, ".")
+              : "0.00")
             : "0.00",
           milyemPermType: currentUser.milyemPermType === "Limitli" ? "Yüzde" : (currentUser.milyemPermType || "Var"),
           milyemPermValue: (currentUser.milyemPermType === "Yüzde" || currentUser.milyemPermType === "Limitli")
             ? (currentUser.milyemPermValue !== undefined && currentUser.milyemPermValue !== null && String(currentUser.milyemPermValue).trim() !== ""
-                ? String(currentUser.milyemPermValue).replace(/,/g, ".")
-                : "0.00")
+              ? String(currentUser.milyemPermValue).replace(/,/g, ".")
+              : "0.00")
             : "0.00",
           cariSinirlamaTipi: currentUser.cariSinirlamaTipi !== undefined ? Number(currentUser.cariSinirlamaTipi) : 0,
           atananCariIdler: currentUser.atananCariIdler || [],
@@ -1093,6 +1112,7 @@ const UserDefinitionsPage: React.FC = () => {
           paraUstuVar: currentUser.paraUstuVar !== undefined ? Boolean(currentUser.paraUstuVar) : true,
           dovizFisiSatirModu: Boolean(currentUser.dovizFisiSatirModu),
           sadeceDovizFisiGorebilir: Boolean(currentUser.sadeceDovizFisiGorebilir),
+          onayAlinacakVezneId: currentUser.onayAlinacakVezneId != null && Number(currentUser.onayAlinacakVezneId) > 0 ? Number(currentUser.onayAlinacakVezneId) : null,
         };
 
         const created = await UserService.createUser(toCreateUser);
@@ -1161,14 +1181,14 @@ const UserDefinitionsPage: React.FC = () => {
           ratePermType: currentUser.ratePermType === "Limitli" ? "Yüzde" : (currentUser.ratePermType || "Var"),
           ratePermValue: (currentUser.ratePermType === "Yüzde" || currentUser.ratePermType === "Limitli")
             ? (currentUser.ratePermValue !== undefined && currentUser.ratePermValue !== null && String(currentUser.ratePermValue).trim() !== ""
-                ? String(currentUser.ratePermValue).replace(/,/g, ".")
-                : "0.00")
+              ? String(currentUser.ratePermValue).replace(/,/g, ".")
+              : "0.00")
             : "0.00",
           milyemPermType: currentUser.milyemPermType === "Limitli" ? "Yüzde" : (currentUser.milyemPermType || "Var"),
           milyemPermValue: (currentUser.milyemPermType === "Yüzde" || currentUser.milyemPermType === "Limitli")
             ? (currentUser.milyemPermValue !== undefined && currentUser.milyemPermValue !== null && String(currentUser.milyemPermValue).trim() !== ""
-                ? String(currentUser.milyemPermValue).replace(/,/g, ".")
-                : "0.00")
+              ? String(currentUser.milyemPermValue).replace(/,/g, ".")
+              : "0.00")
             : "0.00",
           cariSinirlamaTipi: currentUser.cariSinirlamaTipi !== undefined ? Number(currentUser.cariSinirlamaTipi) : 0,
           atananCariIdler: currentUser.atananCariIdler || [],
@@ -1176,6 +1196,7 @@ const UserDefinitionsPage: React.FC = () => {
           paraUstuVar: currentUser.paraUstuVar !== undefined ? Boolean(currentUser.paraUstuVar) : true,
           dovizFisiSatirModu: Boolean(currentUser.dovizFisiSatirModu),
           sadeceDovizFisiGorebilir: Boolean(currentUser.sadeceDovizFisiGorebilir),
+          onayAlinacakVezneId: currentUser.onayAlinacakVezneId != null && Number(currentUser.onayAlinacakVezneId) > 0 ? Number(currentUser.onayAlinacakVezneId) : null,
         };
 
         const updated = await UserService.updateUser(existingUser.id, toSaveUser);
@@ -1218,10 +1239,10 @@ const UserDefinitionsPage: React.FC = () => {
                 appearance: toSaveUser.appearance || parsed.appearance,
               };
               localStorage.setItem("kuyumcu_erp_user", JSON.stringify(merged));
-              await refreshUser().catch(() => {});
+              await refreshUser().catch(() => { });
               window.dispatchEvent(new Event("storage"));
               window.dispatchEvent(new Event("likya_kullanici_yetki_degisti"));
-            } catch {}
+            } catch { }
           }
         }
       }
@@ -1454,7 +1475,13 @@ const UserDefinitionsPage: React.FC = () => {
                     size="sm"
                     value={selectedCashierValue}
                     disabled={isLoading || !kartYoneticisi}
-                    onChange={(e) => updateField("cashierCode", e.target.value)}
+                    onChange={(e) => {
+                      const nextVezne = e.target.value;
+                      updateField("cashierCode", nextVezne);
+                      if (currentUser.onayAlinacakVezneId && String(currentUser.onayAlinacakVezneId) === String(nextVezne)) {
+                        updateField("onayAlinacakVezneId", null);
+                      }
+                    }}
                     className="border fw-bold font-monospace"
                   >
                     <option value="">-- Vezne Seçiniz --</option>
@@ -2040,8 +2067,8 @@ const UserDefinitionsPage: React.FC = () => {
                                 disabled={!kartYoneticisi}
                                 variant={Number(currentUser.iscilikGirisSekli || 0) === 0 ? "primary" : "light"}
                                 className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.iscilikGirisSekli || 0) === 0
-                                    ? "shadow-sm text-white"
-                                    : "text-secondary bg-transparent hover-bg-white"
+                                  ? "shadow-sm text-white"
+                                  : "text-secondary bg-transparent hover-bg-white"
                                   }`}
                                 style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
                                 onClick={() => updateField("iscilikGirisSekli", 0)}
@@ -2054,8 +2081,8 @@ const UserDefinitionsPage: React.FC = () => {
                                 disabled={!kartYoneticisi}
                                 variant={Number(currentUser.iscilikGirisSekli || 0) === 1 ? "primary" : "light"}
                                 className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.iscilikGirisSekli || 0) === 1
-                                    ? "shadow-sm text-white"
-                                    : "text-secondary bg-transparent hover-bg-white"
+                                  ? "shadow-sm text-white"
+                                  : "text-secondary bg-transparent hover-bg-white"
                                   }`}
                                 style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
                                 onClick={() => updateField("iscilikGirisSekli", 1)}
@@ -2084,8 +2111,8 @@ const UserDefinitionsPage: React.FC = () => {
                                 disabled={!kartYoneticisi}
                                 variant={Number(currentUser.dovizZiynetGirisSekli || 0) === 0 ? "primary" : "light"}
                                 className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.dovizZiynetGirisSekli || 0) === 0
-                                    ? "shadow-sm text-white"
-                                    : "text-secondary bg-transparent hover-bg-white"
+                                  ? "shadow-sm text-white"
+                                  : "text-secondary bg-transparent hover-bg-white"
                                   }`}
                                 style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
                                 onClick={() => updateField("dovizZiynetGirisSekli", 0)}
@@ -2098,8 +2125,8 @@ const UserDefinitionsPage: React.FC = () => {
                                 disabled={!kartYoneticisi}
                                 variant={Number(currentUser.dovizZiynetGirisSekli || 0) === 1 ? "primary" : "light"}
                                 className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.dovizZiynetGirisSekli || 0) === 1
-                                    ? "shadow-sm text-white"
-                                    : "text-secondary bg-transparent hover-bg-white"
+                                  ? "shadow-sm text-white"
+                                  : "text-secondary bg-transparent hover-bg-white"
                                   }`}
                                 style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
                                 onClick={() => updateField("dovizZiynetGirisSekli", 1)}
@@ -2128,8 +2155,8 @@ const UserDefinitionsPage: React.FC = () => {
                                 disabled={!kartYoneticisi}
                                 variant={Number(currentUser.altinHesaplamaSekli || 0) === 0 ? "primary" : "light"}
                                 className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.altinHesaplamaSekli || 0) === 0
-                                    ? "shadow-sm text-white"
-                                    : "text-secondary bg-transparent hover-bg-white"
+                                  ? "shadow-sm text-white"
+                                  : "text-secondary bg-transparent hover-bg-white"
                                   }`}
                                 style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
                                 onClick={() => updateField("altinHesaplamaSekli", 0)}
@@ -2142,8 +2169,8 @@ const UserDefinitionsPage: React.FC = () => {
                                 disabled={!kartYoneticisi}
                                 variant={Number(currentUser.altinHesaplamaSekli || 0) === 1 ? "primary" : "light"}
                                 className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${Number(currentUser.altinHesaplamaSekli || 0) === 1
-                                    ? "shadow-sm text-white"
-                                    : "text-secondary bg-transparent hover-bg-white"
+                                  ? "shadow-sm text-white"
+                                  : "text-secondary bg-transparent hover-bg-white"
                                   }`}
                                 style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
                                 onClick={() => updateField("altinHesaplamaSekli", 1)}
@@ -2172,8 +2199,8 @@ const UserDefinitionsPage: React.FC = () => {
                                 disabled={!kartYoneticisi}
                                 variant={(currentUser.paraUstuVar ?? true) ? "primary" : "light"}
                                 className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${(currentUser.paraUstuVar ?? true)
-                                    ? "shadow-sm text-white"
-                                    : "text-secondary bg-transparent hover-bg-white"
+                                  ? "shadow-sm text-white"
+                                  : "text-secondary bg-transparent hover-bg-white"
                                   }`}
                                 style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
                                 onClick={() => updateField("paraUstuVar", true)}
@@ -2186,8 +2213,8 @@ const UserDefinitionsPage: React.FC = () => {
                                 disabled={!kartYoneticisi}
                                 variant={!(currentUser.paraUstuVar ?? true) ? "primary" : "light"}
                                 className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${!(currentUser.paraUstuVar ?? true)
-                                    ? "shadow-sm text-white"
-                                    : "text-secondary bg-transparent hover-bg-white"
+                                  ? "shadow-sm text-white"
+                                  : "text-secondary bg-transparent hover-bg-white"
                                   }`}
                                 style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
                                 onClick={() => updateField("paraUstuVar", false)}
@@ -2212,6 +2239,99 @@ const UserDefinitionsPage: React.FC = () => {
                             checked={Boolean(currentUser.dovizFisiSatirModu)}
                             onChange={(e) => updateField("dovizFisiSatirModu", e.target.checked)}
                           />
+                        </div>
+
+                        {/* Onay Alınacak Vezne */}
+                        <div className="py-1 px-2 bg-white rounded border">
+                          <div className="d-flex align-items-center justify-content-between gap-2">
+                            <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
+                              <IconUserCheck size={15} /> Onay alınacak vezne:
+                            </span>
+                            <InputGroup size="sm" style={{ maxWidth: "185px" }}>
+                              <Form.Control
+                                type="text"
+                                size="sm"
+                                disabled={isLoading || !kartYoneticisi}
+                                value={onayVezneInput}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setOnayVezneInput(v);
+                                  if (!v.trim()) {
+                                    updateField("onayAlinacakVezneId", null);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    const val = onayVezneInput.trim().toLowerCase();
+                                    if (!val) {
+                                      updateField("onayAlinacakVezneId", null);
+                                      return;
+                                    }
+                                    const others = cashierList.filter(
+                                      (c) => String(c.id) !== String(selectedCashierValue)
+                                    );
+                                    const exact = others.find(
+                                      (c) =>
+                                        String(c.kod || "").trim().toLowerCase() === val ||
+                                        String(c.id) === val ||
+                                        `${c.kod} - ${c.name}`.toLowerCase() === val
+                                    );
+                                    if (exact) {
+                                      updateField("onayAlinacakVezneId", Number(exact.id));
+                                      setOnayVezneInput(exact.kod ? `${exact.kod} - ${exact.name}` : exact.name);
+                                      return;
+                                    }
+                                    const matches = others.filter(
+                                      (c) =>
+                                        String(c.kod || "").toLowerCase().includes(val) ||
+                                        String(c.name || "").toLowerCase().includes(val)
+                                    );
+                                    if (matches.length === 1) {
+                                      const m = matches[0];
+                                      updateField("onayAlinacakVezneId", Number(m.id));
+                                      setOnayVezneInput(m.kod ? `${m.kod} - ${m.name}` : m.name);
+                                      return;
+                                    }
+                                    setOnayVezneSearch(onayVezneInput.trim());
+                                    setShowOnayVezneModal(true);
+                                  } else if (e.key === "F4") {
+                                    e.preventDefault();
+                                    setOnayVezneSearch(onayVezneInput.trim());
+                                    setShowOnayVezneModal(true);
+                                  }
+                                }}
+                                className="bg-light border fw-semibold font-monospace"
+                                style={{ fontSize: "12px" }}
+                              />
+                              {currentUser.onayAlinacakVezneId && kartYoneticisi && (
+                                <Button
+                                  variant="outline-secondary"
+                                  disabled={isLoading}
+                                  onClick={() => {
+                                    updateField("onayAlinacakVezneId", null);
+                                    setOnayVezneInput("");
+                                  }}
+                                  title="Onay veznesini temizle"
+                                  className="px-1.5 bg-light"
+                                >
+                                  <IconX size={13} />
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline-secondary"
+                                disabled={isLoading || !kartYoneticisi}
+                                onClick={() => {
+                                  setOnayVezneSearch("");
+                                  setShowOnayVezneModal(true);
+                                }}
+                                title="Onay Alınacak Vezne Seç (Dürbün / F4)"
+                                className="d-flex align-items-center justify-content-center px-2 bg-light"
+                              >
+                                <IconBinoculars size={14} />
+                              </Button>
+                            </InputGroup>
+                          </div>
                         </div>
                       </fieldset>
                     </div>
@@ -2874,8 +2994,8 @@ const UserDefinitionsPage: React.FC = () => {
                           <div
                             onClick={() => updateAppearanceField("sidebarStyle", styleItem.id)}
                             className={`p-3 rounded-3 border h-100 position-relative transition-all d-flex flex-column justify-content-between ${isSelected
-                                ? "border-primary bg-primary-subtle bg-opacity-25 shadow-sm"
-                                : "border-light-subtle bg-white hover-shadow"
+                              ? "border-primary bg-primary-subtle bg-opacity-25 shadow-sm"
+                              : "border-light-subtle bg-white hover-shadow"
                               }`}
                             style={{
                               borderWidth: isSelected ? "2px" : "1px",
@@ -3406,6 +3526,100 @@ const UserDefinitionsPage: React.FC = () => {
           updateField("atananCariIdler", selectedIds);
         }}
       />
+      {/* Onay Alınacak Vezne Seçim Modalı (Kendi veznesi pasif) */}
+      <Modal
+        show={showOnayVezneModal}
+        onHide={() => setShowOnayVezneModal(false)}
+        centered
+      >
+        <Modal.Header closeButton className="py-2">
+          <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
+            <IconUserCheck size={18} className="text-primary" /> Onay Alınacak Vezne Seçiniz
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-2">
+          <Form.Control
+            type="text"
+            size="sm"
+            autoFocus
+            placeholder="Vezne kodu veya adı ile arayın..."
+            value={onayVezneSearch}
+            onChange={(e) => setOnayVezneSearch(e.target.value)}
+            className="mb-2"
+          />
+          <div className="table-responsive" style={{ maxHeight: "300px", overflowY: "auto" }}>
+            <Table size="sm" hover className="mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th style={{ width: "90px" }}>Kod</th>
+                  <th>Vezne Adı</th>
+                  <th style={{ width: "110px" }} className="text-end">Durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cashierList
+                  .filter((c) => {
+                    const q = onayVezneSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      String(c.kod || "").toLowerCase().includes(q) ||
+                      String(c.name || "").toLowerCase().includes(q)
+                    );
+                  })
+                  .map((c) => {
+                    const isOwn = String(c.id) === String(selectedCashierValue);
+                    const isSelected = Number(currentUser.onayAlinacakVezneId) === Number(c.id);
+                    return (
+                      <tr
+                        key={c.id}
+                        onClick={() => {
+                          if (isOwn) return;
+                          updateField("onayAlinacakVezneId", Number(c.id));
+                          setOnayVezneInput(c.kod ? `${c.kod} - ${c.name}` : c.name);
+                          setShowOnayVezneModal(false);
+                        }}
+                        style={{
+                          cursor: isOwn ? "not-allowed" : "pointer",
+                          opacity: isOwn ? 0.5 : 1,
+                          backgroundColor: isOwn ? "#f1f5f9" : isSelected ? "#eff6ff" : undefined,
+                        }}
+                      >
+                        <td className="font-monospace fw-bold text-primary">{c.kod || c.id}</td>
+                        <td className="fw-medium">{c.name}</td>
+                        <td className="text-end">
+                          {isOwn ? (
+                            <Badge bg="secondary">Kendi Veznesi</Badge>
+                          ) : isSelected ? (
+                            <Badge bg="primary">Seçili</Badge>
+                          ) : (
+                            <span className="text-muted small">Seç</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer className="py-2 d-flex justify-content-between">
+          <Button
+            variant="outline-danger"
+            size="sm"
+            onClick={() => {
+              updateField("onayAlinacakVezneId", null);
+              setOnayVezneInput("");
+              setShowOnayVezneModal(false);
+            }}
+          >
+            Onayı Kaldır
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setShowOnayVezneModal(false)}>
+            Kapat
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
       {/* Sadece Döviz Fişi Görebilir Kaydetme Uyarısı */}
       <Modal
         show={showSadeceDovizWarnModal}

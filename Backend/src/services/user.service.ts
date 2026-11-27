@@ -122,6 +122,7 @@ export class UserService {
       paraUstuVar: input.paraUstuVar ?? true,
       dovizFisiSatirModu: input.dovizFisiSatirModu ?? false,
       sadeceDovizFisiGorebilir: input.sadeceDovizFisiGorebilir ?? false,
+      onayAlinacakVezneId: input.onayAlinacakVezneId ?? null,
       hasVezneLastTransactionsPerm: input.hasVezneLastTransactionsPerm ?? false,
       hasOnlyOwnRecordsPerm: input.hasOnlyOwnRecordsPerm ?? false,
       cariSinirlamaTipi: input.cariSinirlamaTipi ?? 0,

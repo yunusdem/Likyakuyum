@@ -105,6 +105,11 @@ export const createUserSchema = z.object({
     paraUstuVar: z.boolean().optional().default(true),
     dovizFisiSatirModu: z.boolean().optional().default(false),
     sadeceDovizFisiGorebilir: z.boolean().optional().default(false),
+    onayAlinacakVezneId: z.union([z.number(), z.string(), z.null()]).optional().transform((v) => {
+      if (v === undefined || v === null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }),
 
     menuPerms: menuPermissionsSchema.passthrough().optional(),
 
@@ -174,6 +179,12 @@ export const updateUserSchema = z.object({
     paraUstuVar: z.boolean().optional(),
     dovizFisiSatirModu: z.boolean().optional(),
     sadeceDovizFisiGorebilir: z.boolean().optional(),
+    onayAlinacakVezneId: z.union([z.number(), z.string(), z.null()]).optional().transform((v) => {
+      if (v === undefined) return undefined;
+      if (v === null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }),
 
     menuPerms: menuPermissionsSchema.partial().passthrough().optional(),
 

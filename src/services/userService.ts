@@ -77,6 +77,7 @@ export interface UserProfileDto {
   paraUstuVar?: boolean;
   dovizFisiSatirModu?: boolean;
   sadeceDovizFisiGorebilir?: boolean;
+  onayAlinacakVezneId?: number | null;
 
   // General Tab - Right Menu Perms
   menuPerms: {
