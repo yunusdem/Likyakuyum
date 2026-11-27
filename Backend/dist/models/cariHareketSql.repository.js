@@ -12,6 +12,7 @@ const HAREKET_TIPI_LABELS = {
     4: "Virman",
     5: "Devir",
     6: "Stok Girişi",
+    7: "Tedarikçiye İade",
 };
 export class CariHareketSqlRepository {
     /**
@@ -531,6 +532,7 @@ export class CariHareketSqlRepository {
                 4: "Virman",
                 5: "Devir",
                 6: "Stok Girişi",
+                7: "Tedarikçiye İade",
                 10: "Sarraf Fişi",
                 11: "Döviz Fişi",
                 12: "Perakende Faturası",

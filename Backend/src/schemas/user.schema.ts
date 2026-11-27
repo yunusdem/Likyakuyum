@@ -102,6 +102,7 @@ export const createUserSchema = z.object({
     iscilikGirisSekli: flexNumber(0),
     dovizZiynetGirisSekli: flexNumber(0),
     altinHesaplamaSekli: flexNumber(0),
+    paraUstuVar: z.boolean().optional().default(true),
 
     menuPerms: menuPermissionsSchema.passthrough().optional(),
 
@@ -168,6 +169,7 @@ export const updateUserSchema = z.object({
     iscilikGirisSekli: flexNumber(0),
     dovizZiynetGirisSekli: flexNumber(0),
     altinHesaplamaSekli: flexNumber(0),
+    paraUstuVar: z.boolean().optional(),
 
     menuPerms: menuPermissionsSchema.partial().passthrough().optional(),
 

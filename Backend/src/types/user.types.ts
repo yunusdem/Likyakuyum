@@ -88,6 +88,7 @@ export interface UserModel {
   iscilikGirisSekli?: number;
   dovizZiynetGirisSekli?: number;
   altinHesaplamaSekli?: number;
+  paraUstuVar?: boolean;
   cariSinirlamaTipi?: number;
   atananCariIdler?: number[];
 
@@ -195,6 +196,7 @@ export interface TodvzKullaniciEntity {
   ISCILIK_GIRIS_SEKLI?: number | null;
   DOVIZ_ZIYNET_GIRIS_SEKLI?: number | null;
   ALTIN_HESAPLAMA_SEKLI?: number | null;
+  PARA_USTU_VAR?: number | boolean | null;
   VEZNE_SON_ISLEMLER_YETKISI?: number | boolean | null;
   KENDI_KAYITLARI_YETKISI?: number | boolean | null;
   CARI_SINIRLAMA_TIPI?: number | null;

@@ -352,10 +352,8 @@ export class AuthService {
         const gorunumKapali = await kullaniciKapalilari(user.id, AuthService.gorunumYoneticisi(user, merkez), dbContext).catch(() => []);
         return { ...UserSqlRepository.toDto(user), ...(merkez && { merkez }), gorunumKapali };
     }
-    /** Görünümden muaf / görünümü yöneten kullanıcı: Firma Yöneticisi ya da Sistem Yöneticisi (G5, Y3) */
-    static gorunumYoneticisi(user, merkez) {
-        if (merkez && !env.KURULUM_MODU && merkez.firmaYoneticisi)
-            return true;
+    /** Görünümden muaf / görünümü yöneten kullanıcı: kartta Sistem Yöneticisi (yetki kuralıyla aynı; Firma Yöneticisi muaf değil, 26.11.2026) */
+    static gorunumYoneticisi(user, _merkez) {
         return !!user.isSysAdmin || user.role === "admin";
     }
     /**

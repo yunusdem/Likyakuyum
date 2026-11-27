@@ -74,6 +74,7 @@ export interface UserProfileDto {
   iscilikGirisSekli?: number;
   dovizZiynetGirisSekli?: number;
   altinHesaplamaSekli?: number;
+  paraUstuVar?: boolean;
 
   // General Tab - Right Menu Perms
   menuPerms: {

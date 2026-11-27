@@ -134,6 +134,19 @@ const ensureAdminSchema = async (pool) => {
           [AKTIVASYON_ANAHTARI]         VARCHAR(30)    NULL,
           [AKTIVASYON_TARIHI]           DATETIME       NULL,
           [AKTIVASYON_MAKINE]           VARCHAR(40)    NULL;
+
+      -- Adisyon garson sınırı (docs/TICARI_ADISYON_YOL_HARITASI.md, TA24): NULL = sınırsız
+      IF COL_LENGTH('dbo.ADM_LISANS', 'GARSON_LIMITI') IS NULL
+        ALTER TABLE [dbo].[ADM_LISANS] ADD [GARSON_LIMITI] INT NULL;
+
+      -- Restorant başlığının firmaya özel adı (26.11.2026, R4): NULL = "Restorant"
+      IF COL_LENGTH('dbo.ADM_LISANS', 'RESTORAN_ADI') IS NULL
+        ALTER TABLE [dbo].[ADM_LISANS] ADD [RESTORAN_ADI] NVARCHAR(40) NULL;
+
+      -- Ürün paketi "Likya.Ticari + Restorant" (R3): yalnız yoksa eklenir (ad / içerik Paket Tanımları'nda değiştirilir; ilk içeriği panel
+      -- menüden bir kez gönderir — ILK_ICERIK 0)
+      IF OBJECT_ID('dbo.ADM_PAKET', 'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.ADM_PAKET WHERE PAKET_KODU = 'ticari_restorant')
+        INSERT INTO dbo.ADM_PAKET (PAKET_KODU, AD, SIRA, CEKIRDEK, HEPSI, ILK_ICERIK) VALUES ('ticari_restorant', N'Likya.Ticari + Restorant', 8, 0, 0, 0);
     `);
         // Dizin ayrı toplu iş: kolonlar aynı toplu işte eklenince derleme anında bilinmiyor
         await pool.request().query(`

@@ -1,7 +1,9 @@
 /**
  * Kullanıcı kartı yetkileri (TODVZ_KULLANICI, eski programla ortak) — saf kurallar; ön yüz de içe aktarır.
- * docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4. Yönetici (kartta Sistem Yöneticisi ya da merkezde Firma Yöneticisi) her yetkiye
- * sahiptir, kur / milyem sınırı dahil; MASAK uyarısı yetki değil, herkeste kalır (docs/YETKI_DASHBOARD_ISCILIK_YOL_HARITASI.md Y3).
+ * docs/YETKI_VE_VEZNE_YOL_HARITASI.md §4. Yönetici (kartta Sistem Yöneticisi) her yetkiye sahiptir, kur / milyem sınırı dahil;
+ * MASAK uyarısı yetki değil, herkeste kalır. Merkezdeki Firma Yöneticisi (firmanın tek yetkilisi) tam yetki VERMEZ, yalnız kart
+ * yönetimi / kullanıcı açma / şifre sıfırlama hakkıdır (26.11.2026 kullanıcı kararı; Y3'teki "Firma Yöneticisi de muaf" kalktı:
+ * otomatik giriş kaydı herkesi Firma Yöneticisi yaptığından yöneticinin kartlarda koyduğu kısıtlar hiç işlemiyordu).
  */
 /** Sistem yöneticisi ya da kısıtsız kullanıcı */
 export const TAM_YETKI = {
@@ -80,7 +82,7 @@ export const milyemYetkisiKoda = (v) => {
 export const yetkiProfilden = (u) => {
     if (!u)
         return { ...TAM_YETKI, yonetici: false };
-    const isAdmin = Boolean(u.isSysAdmin || u.role === "admin" || u.merkez?.firmaYoneticisi);
+    const isAdmin = Boolean(u.isSysAdmin || u.role === "admin");
     const base = isAdmin ? TAM_YETKI : null;
     const kurYetkisi = isAdmin ? "Var" : kurYetkisiKoddan(u.ratePermType);
     const kurTolerans = isAdmin ? 0 : Math.max(0, sayi(u.ratePermValue));
@@ -115,11 +117,11 @@ export const yetkiProfilden = (u) => {
         calismaAlani: evet(u.hasWorkspacePerm),
     };
 };
-/** TODVZ_KULLANICI satırı → yetki (sunucu). firmaYoneticisi: merkezdeki Firma Yöneticisi işareti (Y3) */
-export const yetkiSatirdan = (r, firmaYoneticisi = false) => {
+/** TODVZ_KULLANICI satırı → yetki (sunucu). Yönetici yalnız kartta Sistem Yöneticisi olandır. */
+export const yetkiSatirdan = (r) => {
     if (!r)
         return { ...TAM_YETKI, yonetici: false };
-    const yonetici = evet(r.SISTEM_YONETICISI) || firmaYoneticisi;
+    const yonetici = evet(r.SISTEM_YONETICISI);
     const kurYetkisi = yonetici ? "Var" : kurYetkisiKoddan(r.KUR_YETKISI);
     const kurTolerans = yonetici ? 0 : Math.max(0, sayi(r.KUR_TOLERANS_ORANI));
     const milyemYetkisi = yonetici ? "Var" : milyemYetkisiKoddan(r.MILYEM_YETKISI);
@@ -227,6 +229,9 @@ export const ANA_MENULER = {
     perakende: { harf: "J", alan: null },
     ticari: { harf: "K", alan: null },
     ayarlar: { harf: "L", alan: "techOps" },
+    // Restorant (eski programda yok; 26.11.2026): ana menü harfi M — kullanıcı kartında "Ana menü" altında aç / kapa. Eskiden tabloda
+    // yoktu ve her kullanıcıya açık sayılıyordu; Ticari kayıt uçları Restorant menüsünü de kabul ettiği için yetki burada denetlenir.
+    adisyon: { harf: "M", alan: null },
 };
 /**
  * Kolonun sığmadığı maddeler (16 harf sonrası, Türkçe harfler) bağlı oldukları maddenin yetkisini alır. "P" aynı ana

@@ -183,6 +183,7 @@ export const KARZAR_SORGULARI = {
       CASE WHEN COL_LENGTH('dbo.TODVZ_ALTIN_URUN','MALIYET_ISCILIK_TUTARI') IS NULL THEN 0 ELSE 1 END altinIscilik,
       CASE WHEN COL_LENGTH('dbo.TODVZ_OZEL_URUN','MALIYET_PARA_KODU') IS NULL THEN 0 ELSE 1 END ozelMaliyetPara,
       CASE WHEN OBJECT_ID('dbo.TODVZ_STOK_HAREKET','U') IS NULL OR OBJECT_ID('dbo.TODVZ_STOK_KART','U') IS NULL THEN 0 ELSE 1 END stok,
+      CASE WHEN COL_LENGTH('dbo.TODVZ_STOK_KART','RECETELI') IS NULL OR OBJECT_ID('dbo.TODVZ_STOK_RECETE','U') IS NULL THEN 0 ELSE 1 END recete,
       CASE WHEN COL_LENGTH('dbo.TODVZ_SARRAF_FISI_SATIRI','ISCILIK_TUTARI') IS NULL THEN 0 ELSE 1 END sarrafIscilikTutari,
       CASE WHEN COL_LENGTH('dbo.TODVZ_PARA','HAS_ORANI') IS NULL THEN 0 ELSE 1 END paraHasOrani,
       CASE WHEN COL_LENGTH('dbo.TODVZ_PARA','URUN_TIPI') IS NULL THEN 0 ELSE 1 END paraUrunTipi,
@@ -312,7 +313,12 @@ export const KARZAR_SORGULARI = {
                 const f = filtreler(req, p, { vezne: "V" });
                 const r = await req.query(`
           SELECT ${ortak}, S.STOK_KART_ID kartId, RTRIM(ISNULL(K.KOD,'')) kartKod, RTRIM(ISNULL(K.AD,'')) kartAd, ISNULL(S.MIKTAR,0) miktar,
-            COALESCE(NULLIF(K.SON_ALIS_FIYATI,0), K.ALIS_FIYATI, 0) birimMaliyet, RTRIM(ISNULL(KP.KOD,'TL')) kartPara
+            ${kolon.recete
+                    // Reçeteli ürün (docs/TICARI_ADISYON_YOL_HARITASI.md TA18): maliyet = reçetedeki malzeme miktarı × malzemenin son alışı
+                    ? `CASE WHEN ISNULL(K.RECETELI,0)=1 THEN ISNULL((SELECT SUM(R.MIKTAR*COALESCE(NULLIF(M.SON_ALIS_FIYATI,0), M.ALIS_FIYATI, 0)) FROM dbo.TODVZ_STOK_RECETE R
+                  JOIN dbo.TODVZ_STOK_KART M ON M.STOK_KART_ID=R.MALZEME_KART_ID WHERE R.STOK_KART_ID=K.STOK_KART_ID),0)
+                ELSE COALESCE(NULLIF(K.SON_ALIS_FIYATI,0), K.ALIS_FIYATI, 0) END birimMaliyet, ISNULL(K.RECETELI,0) receteli,`
+                    : "COALESCE(NULLIF(K.SON_ALIS_FIYATI,0), K.ALIS_FIYATI, 0) birimMaliyet, 0 receteli,"} RTRIM(ISNULL(KP.KOD,'TL')) kartPara
           FROM dbo.TODVZ_FATURA F JOIN dbo.TODVZ_FATURA_SATIRI S ON S.FATURA_ID=F.FATURA_ID
             LEFT JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID=S.STOK_KART_ID LEFT JOIN dbo.TODVZ_PARA KP ON KP.PARA_ID=K.PARA_ID LEFT JOIN dbo.TODVZ_VEZNE V ON V.VEZNE_ID=F.VEZNE_ID
           WHERE ${fWhere} AND ${kaynak}=1 AND S.STOK_KART_ID IS NOT NULL ${f}
@@ -326,8 +332,12 @@ export const KARZAR_SORGULARI = {
                     for (const x of r.recordset) {
                         const gun = gunMetni(x.gun), kod = String(x.kartPara).toUpperCase();
                         const kur = kod === "TL" || kod === "TRY" ? 1 : (kurlar?.get(gun)?.get(paraIdleri.get(kod) || 0) ?? 0);
-                        hareketler.push({ bolum: 4, paraId: -Number(x.kartId), paraKod: x.kartKod, paraAd: x.kartAd, siraNo: 999, gun, zamanMs: zamanMs(x.zaman), tip: Number(x.tip),
-                            miktar: Number(x.miktar), tutar: Number(x.tutar), kur: Number(x.kur), komisyon: 0, vergiler: 0, iscilik: 0, maliyetSabit: Number(x.miktar) * Number(x.birimMaliyet) * kur });
+                        // Ticari satış iadesi (FATURA_TIPI 2 → tip 0) alış değildir: satıştan eksi miktar / tutar / maliyetle düşülür (docs/TICARI_ADISYON_YOL_HARITASI.md U22)
+                        const isaret = Number(x.tip) === 1 ? 1 : -1;
+                        // Reçeteli ürün iadesinde malzeme stoğa dönmez: maliyet geri alınmaz (TA18)
+                        const maliyetSabit = isaret < 0 && Number(x.receteli) === 1 ? 0 : isaret * Number(x.miktar) * Number(x.birimMaliyet) * kur;
+                        hareketler.push({ bolum: 4, paraId: -Number(x.kartId), paraKod: x.kartKod, paraAd: x.kartAd, siraNo: 999, gun, zamanMs: zamanMs(x.zaman), tip: 1,
+                            miktar: isaret * Number(x.miktar), tutar: isaret * Number(x.tutar), kur: Number(x.kur), komisyon: 0, vergiler: 0, iscilik: 0, maliyetSabit });
                     }
                 }
             }
@@ -338,8 +348,12 @@ export const KARZAR_SORGULARI = {
             const r = await pool.request().input("bas", sql.Date, p.baslangic).input("bit", sql.Date, p.bitis).query(`
         SELECT K.STOK_KART_ID id, COALESCE(NULLIF(K.SON_ALIS_FIYATI,0), K.ALIS_FIYATI, 0) birimMaliyet, RTRIM(ISNULL(KP.KOD,'TL')) kartPara,
           SUM(CASE WHEN ${YEREL_GUN("H.TARIH")}<@bas THEN ISNULL(H.GIRIS,0)-ISNULL(H.CIKIS,0) ELSE 0 END) devir,
-          SUM(CASE WHEN ${YEREL_GUN("H.TARIH")} BETWEEN @bas AND @bit AND ISNULL(H.GIRIS,0)>0 THEN H.GIRIS ELSE 0 END) alisMiktar,
-          SUM(CASE WHEN ${YEREL_GUN("H.TARIH")} BETWEEN @bas AND @bit AND ISNULL(H.GIRIS,0)>0 THEN H.GIRIS*ISNULL(H.BIRIM_FIYAT,0) ELSE 0 END) alisTutar,
+          -- Alış yalnız Stok Giriş Fişi (BELGE_TURU 1): satış iadesi / sayım fazlası girişi alış değildir (docs/TICARI_ADISYON_YOL_HARITASI.md U22)
+          -- Tedarikçiye iade (BELGE_TURU 5, ÇIKIŞ) alıştan düşer (TA13)
+          SUM(CASE WHEN ${YEREL_GUN("H.TARIH")} BETWEEN @bas AND @bit AND H.BELGE_TURU=1 AND ISNULL(H.GIRIS,0)>0 THEN H.GIRIS
+                   WHEN ${YEREL_GUN("H.TARIH")} BETWEEN @bas AND @bit AND H.BELGE_TURU=5 THEN -ISNULL(H.CIKIS,0) ELSE 0 END) alisMiktar,
+          SUM(CASE WHEN ${YEREL_GUN("H.TARIH")} BETWEEN @bas AND @bit AND H.BELGE_TURU=1 AND ISNULL(H.GIRIS,0)>0 THEN H.GIRIS*ISNULL(H.BIRIM_FIYAT,0)
+                   WHEN ${YEREL_GUN("H.TARIH")} BETWEEN @bas AND @bit AND H.BELGE_TURU=5 THEN -ISNULL(H.CIKIS,0)*ISNULL(H.BIRIM_FIYAT,0) ELSE 0 END) alisTutar,
           SUM(CASE WHEN ${YEREL_GUN("H.TARIH")}<=@bit THEN ISNULL(H.GIRIS,0)-ISNULL(H.CIKIS,0) ELSE 0 END) mevcut
         FROM dbo.TODVZ_STOK_HAREKET H JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID=H.STOK_KART_ID LEFT JOIN dbo.TODVZ_PARA KP ON KP.PARA_ID=K.PARA_ID
         GROUP BY K.STOK_KART_ID, K.SON_ALIS_FIYATI, K.ALIS_FIYATI, KP.KOD`);

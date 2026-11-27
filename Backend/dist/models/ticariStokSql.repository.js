@@ -1,13 +1,49 @@
 import sql from "mssql";
 import { getDbPool } from "../config/mssql.config.js";
 import { ApiError } from "../utils/ApiError.js";
+import { HttpStatus } from "../constants/httpStatusCodes.js";
 import { ticariSemaHazirla } from "../services/ticari/ticariSema.js";
-import { GECERLI_KDV_ORANLARI, birimAdiDuzelt } from "../services/ticari/ticariHesap.js";
+import { GECERLI_KDV_ORANLARI, SKT_UYARI_GUN_VARSAYILAN, receteDenetle, birimAdiDuzelt, ekBirimleriDenetle, tartiBirimi, teraziBarkodCoz, teraziDuzeniDenetle } from "../services/ticari/ticariHesap.js";
 import { UrunResimSqlRepository } from "./urunResimSql.repository.js";
 import { TicariFiyatSqlRepository } from "./ticariFiyatSql.repository.js";
 /** Stok hareketi belge türleri */
-export const STOK_BELGE = { GIRIS: 1, SATIS: 2 };
-export const STOK_BELGE_ADI = { 1: "Stok Giriş Fişi", 2: "Satış Fişi" };
+/** TODVZ_STOK_HAREKET.BELGE_TURU: 1 giriş, 2 satış / satış iadesi (fatura), 3 sayım (TA11), 4 fire (TA12), 5 tedarikçiye iade (TA13) */
+export const STOK_BELGE = { GIRIS: 1, SATIS: 2, SAYIM: 3, FIRE: 4, TEDARIKCI_IADE: 5, PARCALAMA: 6, RECETE: 7 };
+export const STOK_BELGE_ADI = { 1: "Stok Giriş Fişi", 2: "Satış Fişi", 3: "Sayım Fişi", 4: "Fire Fişi", 5: "Tedarikçiye İade", 6: "Parçalama Fişi", 7: "Reçete Tüketimi" };
+/** Reçeteli ürün (TA18) stok tutmaz: giriş / sayım / fire / tedarikçiye iade / parçalamada reddedilir */
+export async function receteliReddet(tx, kartIdler, islem) {
+    const ids = [...new Set(kartIdler.map(Number).filter((x) => x > 0))];
+    if (!ids.length)
+        return;
+    const r = await new sql.Request(tx).query(`SELECT TOP 1 RTRIM(KOD) AS KOD, AD FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${ids.join(",")}) AND ISNULL(RECETELI, 0) = 1`);
+    if (r.recordset.length)
+        throw ApiError.badRequest(`${String(r.recordset[0].AD ?? "").trim()} reçeteli üründür (stok tutmaz, satılınca malzemeleri düşer); ${islem} yapılamaz.`);
+}
+/**
+ * Ticari stok / vezne yazan işlemlerin firma veritabanındaki ortak kilidi (docs/TICARI_ADISYON_YOL_HARITASI.md U25).
+ * Satış, iade, giriş, fire, sayım onayı, tedarikçiye iade aynı anda koşunca birbirinin henüz kaydedilmemiş hareket / ödeme satırını
+ * tarayıp kilitlenmeye (deadlock) giriyordu; eksi stok denetimi de öteki işlemin yazdığını göremiyordu. İşlem başında alınır,
+ * işlem bitince (commit / rollback) kendiliğinden bırakılır; aynı işlem içinde ikinci kez çağrılması zararsızdır.
+ */
+export async function stokIslemKilidi(tx, beklemeMs = 20000) {
+    // Çağıranların çoğu bu kilidi try bloğundan ÖNCE alır: kilit alınamazsa işlem burada geri alınır, yoksa açık işlem ve
+    // havuz bağlantısı sızar (kilit 20 sn'de alınamayan her istek bir bağlantı götürür, havuz tükenir).
+    let sonuc = -999;
+    try {
+        const r = await new sql.Request(tx).input("BEK", sql.Int, beklemeMs).query(`DECLARE @R INT;
+      EXEC @R = sp_getapplock @Resource = 'LIKYA_TICARI_STOK', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = @BEK;
+      SELECT @R AS R;`);
+        sonuc = Number(r.recordset[0]?.R);
+    }
+    catch (e) {
+        await tx.rollback().catch(() => undefined);
+        throw e;
+    }
+    if (!(sonuc >= 0)) {
+        await tx.rollback().catch(() => undefined);
+        throw ApiError.conflict("Başka bir stok işlemi sürüyor; birkaç saniye sonra yeniden deneyin.");
+    }
+}
 /** Ürün resmi (TODVZ_URUN_RESIM.TIP): 0 altın, 1 özel ürün, 2 stok kartı */
 export const STOK_RESIM_TIPI = 2;
 export const EKSI_STOK_DAVRANISLARI = ["UYAR", "ENGELLE", "SESSIZ"];
@@ -142,11 +178,11 @@ export function kartGirdisiDenetle(g) {
 }
 /** Kart kolonları: barkodlar tek alanda, bakiye hareket defterinden (yalnız seçilen satırlar için hesaplanır) */
 const KART_KOLONLARI = `K.STOK_KART_ID, K.KOD, K.AD, K.STOK_GRUP_ID, G.AD AS GRUP_ADI, K.BIRIM, K.KDV_ORANI, K.SATIS_FIYATI, K.FIYAT_KDV_DAHIL,
-    K.PARA_ID, RTRIM(P.KOD) AS PARA_KODU, K.ALIS_FIYATI, K.SON_ALIS_FIYATI, K.SON_ALIS_TARIHI, K.EN_AZ_STOK, K.AKTIF, K.ACIKLAMA, K.STOK_KONTROL,
+    K.PARA_ID, RTRIM(P.KOD) AS PARA_KODU, K.ALIS_FIYATI, K.SON_ALIS_FIYATI, K.SON_ALIS_TARIHI, K.EN_AZ_STOK, K.AKTIF, K.ACIKLAMA, K.STOK_KONTROL, K.TERAZI_KODU, ISNULL(K.SKT_TAKIBI, 0) AS SKT_TAKIBI, ISNULL(K.RECETELI, 0) AS RECETELI, K.ADISYON_KDV_ORANI,
     K.TEDARIKCI_CARI_ID, RTRIM(TC.AD) AS TEDARIKCI_AD, LF.FIYAT AS LISTE_FIYATI,
     CASE WHEN K.RESIM IS NULL THEN 0 ELSE 1 END AS RESIM_VAR,
     ISNULL(H.BAKIYE, 0) AS BAKIYE,
-    STUFF((SELECT '|' + B.BARKOD FROM dbo.TODVZ_STOK_BARKOD B WHERE B.STOK_KART_ID = K.STOK_KART_ID ORDER BY B.STOK_BARKOD_ID FOR XML PATH(''), TYPE).value('.', 'varchar(max)'), 1, 1, '') AS BARKODLAR`;
+    STUFF((SELECT '|' + B.BARKOD FROM dbo.TODVZ_STOK_BARKOD B WHERE B.STOK_KART_ID = K.STOK_KART_ID AND B.STOK_BIRIM_ID IS NULL ORDER BY B.STOK_BARKOD_ID FOR XML PATH(''), TYPE).value('.', 'varchar(max)'), 1, 1, '') AS BARKODLAR`;
 /** @LISTE parametresi (int, null olabilir): verilen fiyat listesindeki fiyat LISTE_FIYATI olarak gelir */
 const KART_BIRLESIM = `
   LEFT JOIN dbo.TODVZ_STOK_GRUP G ON G.STOK_GRUP_ID = K.STOK_GRUP_ID
@@ -212,6 +248,27 @@ const kartModeli = (r) => ({
     tedarikciCariId: r.TEDARIKCI_CARI_ID ?? null,
     tedarikciAd: r.TEDARIKCI_AD ? temiz(r.TEDARIKCI_AD) : null,
     listeFiyati: r.LISTE_FIYATI === null || r.LISTE_FIYATI === undefined ? null : Number(r.LISTE_FIYATI),
+    teraziKodu: r.TERAZI_KODU === null || r.TERAZI_KODU === undefined ? null : Number(r.TERAZI_KODU),
+    sktTakibi: !!r.SKT_TAKIBI,
+    receteli: !!r.RECETELI,
+    adisyonKdvOrani: r.ADISYON_KDV_ORANI === null || r.ADISYON_KDV_ORANI === undefined ? null : Number(r.ADISYON_KDV_ORANI),
+});
+/** Terazi PLU kodu girdisi: boş → null, 1–999999 tam sayı, değilse "hata" */
+const teraziKoduOku = (v) => {
+    const t = temiz(v);
+    if (!t)
+        return null;
+    const n = Number(t);
+    return Number.isInteger(n) && n >= 1 && n <= 999999 ? n : "hata";
+};
+const teraziDuzeniModeli = (r) => ({
+    teraziBarkodId: r.TERAZI_BARKOD_ID,
+    onek: temiz(r.ONEK),
+    kodHane: Number(r.KOD_HANE),
+    degerTuru: temiz(r.DEGER_TURU) === "F" ? "F" : "A",
+    ondalik: Number(r.ONDALIK),
+    aktif: r.AKTIF === true || r.AKTIF === 1,
+    aciklama: r.ACIKLAMA ? temiz(r.ACIKLAMA) : null,
 });
 export class TicariStokSqlRepository {
     static async havuz(ctx) {
@@ -245,6 +302,11 @@ export class TicariStokSqlRepository {
       ORDER BY U.AD`);
         return {
             eksiStok: await this.eksiStokDavranisi(ctx, pool),
+            teraziDuzenleri: await this.teraziDuzenleri(pool),
+            // Kasiyer vardiyası (TA8): satış / iade için veznede açık vardiya şartı
+            vardiyaZorunlu: String((await pool.request().query(`SELECT TOP 1 DEGER FROM dbo.TODVZ_STOK_AYAR WHERE ANAHTAR = 'VARDIYA_ZORUNLU'`)).recordset[0]?.DEGER ?? "").trim().toUpperCase() === "EVET",
+            // SKT yaklaşanlar uyarı eşiği (TA16)
+            sktUyariGun: await this.sktUyariGun(pool),
             kullanicilar: kullanicilar.recordset.map((r) => ({
                 kullaniciId: r.KULLANICI_ID,
                 ad: temiz(r.AD),
@@ -253,8 +315,35 @@ export class TicariStokSqlRepository {
             })),
         };
     }
+    /** SKT yaklaşanlar uyarı eşiği (gün, TA16): TODVZ_STOK_AYAR 'SKT_UYARI_GUN', yoksa 30 */
+    static async sktUyariGun(pool) {
+        const ham = String((await pool.request().query(`SELECT TOP 1 DEGER FROM dbo.TODVZ_STOK_AYAR WHERE ANAHTAR = 'SKT_UYARI_GUN'`)).recordset[0]?.DEGER ?? "").trim();
+        const v = ham === "" ? NaN : Number(ham);
+        return Number.isInteger(v) && v >= 0 && v <= 3650 ? v : SKT_UYARI_GUN_VARSAYILAN;
+    }
     static async ayarKaydet(girdi, kullaniciId, ctx) {
         const pool = await this.havuz(ctx);
+        let sktGun = null;
+        if (girdi.sktUyariGun !== undefined && girdi.sktUyariGun !== null && String(girdi.sktUyariGun).trim() !== "") {
+            sktGun = Number(String(girdi.sktUyariGun).trim());
+            if (!Number.isInteger(sktGun) || sktGun < 0 || sktGun > 3650)
+                throw ApiError.badRequest("SKT uyarı eşiği 0 ile 3650 gün arasında tam sayı olmalı.");
+        }
+        // Terazi düzenleri (TA3): liste verilirse tamamı yerine yazılır; önek tekil
+        let duzenler = null;
+        if (Array.isArray(girdi.teraziDuzenleri)) {
+            duzenler = girdi.teraziDuzenleri.map((d, i) => {
+                const yeni = { onek: temiz(d.onek), kodHane: Number(d.kodHane), degerTuru: d.degerTuru === "F" ? "F" : "A", ondalik: Number(d.ondalik), aktif: d.aktif === undefined ? true : !!d.aktif, aciklama: temiz(d.aciklama).slice(0, 100) || null };
+                const h = teraziDuzeniDenetle({ ...yeni, degerTuru: d.degerTuru });
+                if (h)
+                    throw ApiError.badRequest(`Terazi düzeni ${i + 1} (${yeni.onek || "önek yok"}): ${h}`);
+                return yeni;
+            });
+            const onekler = duzenler.map((d) => d.onek);
+            const tekrar = onekler.find((o, i) => onekler.indexOf(o) !== i);
+            if (tekrar)
+                throw ApiError.badRequest(`Terazi düzeninde "${tekrar}" öneki iki kez yazılmış.`);
+        }
         const tx = new sql.Transaction(pool);
         await tx.begin();
         try {
@@ -265,6 +354,24 @@ export class TicariStokSqlRepository {
                 await new sql.Request(tx).input("D", sql.NVarChar(200), d).query(`
           IF EXISTS (SELECT 1 FROM dbo.TODVZ_STOK_AYAR WHERE ANAHTAR = 'EKSI_STOK') UPDATE dbo.TODVZ_STOK_AYAR SET DEGER = @D WHERE ANAHTAR = 'EKSI_STOK'
           ELSE INSERT INTO dbo.TODVZ_STOK_AYAR (ANAHTAR, DEGER) VALUES ('EKSI_STOK', @D);`);
+            }
+            if (sktGun !== null) {
+                await new sql.Request(tx).input("D", sql.NVarChar(200), String(sktGun)).query(`
+          IF EXISTS (SELECT 1 FROM dbo.TODVZ_STOK_AYAR WHERE ANAHTAR = 'SKT_UYARI_GUN') UPDATE dbo.TODVZ_STOK_AYAR SET DEGER = @D WHERE ANAHTAR = 'SKT_UYARI_GUN'
+          ELSE INSERT INTO dbo.TODVZ_STOK_AYAR (ANAHTAR, DEGER) VALUES ('SKT_UYARI_GUN', @D);`);
+            }
+            if (girdi.vardiyaZorunlu !== undefined) {
+                await new sql.Request(tx).input("D", sql.NVarChar(200), girdi.vardiyaZorunlu ? "EVET" : "HAYIR").query(`
+          IF EXISTS (SELECT 1 FROM dbo.TODVZ_STOK_AYAR WHERE ANAHTAR = 'VARDIYA_ZORUNLU') UPDATE dbo.TODVZ_STOK_AYAR SET DEGER = @D WHERE ANAHTAR = 'VARDIYA_ZORUNLU'
+          ELSE INSERT INTO dbo.TODVZ_STOK_AYAR (ANAHTAR, DEGER) VALUES ('VARDIYA_ZORUNLU', @D);`);
+            }
+            if (duzenler) {
+                await new sql.Request(tx).query(`DELETE FROM dbo.TODVZ_TERAZI_BARKOD`);
+                for (const d of duzenler) {
+                    await new sql.Request(tx).input("O", sql.VarChar(2), d.onek).input("K", sql.TinyInt, d.kodHane).input("T", sql.Char(1), d.degerTuru)
+                        .input("N", sql.TinyInt, d.ondalik).input("A", sql.Bit, d.aktif ? 1 : 0).input("C", sql.NVarChar(100), d.aciklama)
+                        .query(`INSERT INTO dbo.TODVZ_TERAZI_BARKOD (ONEK, KOD_HANE, DEGER_TURU, ONDALIK, AKTIF, ACIKLAMA) VALUES (@O, @K, @T, @N, @A, @C)`);
+                }
             }
             if (Array.isArray(girdi.yetkiliKullanicilar)) {
                 await new sql.Request(tx).query(`DELETE FROM dbo.TODVZ_STOK_YETKI`);
@@ -455,8 +562,72 @@ export class TicariStokSqlRepository {
             if (k.resimVar)
                 k.resim = (await UrunResimSqlRepository.getResimlerByIslemId(STOK_RESIM_TIPI, id, ctx))[0] || null;
             k.listeFiyatlari = await TicariFiyatSqlRepository.kartListeFiyatlari(id, ctx);
+            k.birimler = await this.kartBirimleri(pool, id);
+            if (k.receteli)
+                k.recete = await this.recete(pool, id);
         }
         return k;
+    }
+    /** Reçete satırları (TA18) */
+    static async recete(pool, stokKartId) {
+        const r = await new sql.Request(pool).input("ID", sql.Int, stokKartId).query(`SELECT R.MALZEME_KART_ID, RTRIM(K.KOD) AS KOD, K.AD, RTRIM(ISNULL(K.BIRIM, 'Adet')) AS BIRIM, R.MIKTAR
+      FROM dbo.TODVZ_STOK_RECETE R JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = R.MALZEME_KART_ID WHERE R.STOK_KART_ID = @ID ORDER BY R.SATIR_NO`);
+        return r.recordset.map((x) => ({ malzemeKartId: Number(x.MALZEME_KART_ID), kod: temiz(x.KOD), ad: temiz(x.AD), birim: temiz(x.BIRIM), miktar: Number(x.MIKTAR) }));
+    }
+    /** Reçeteli işaret + reçete yazımı (kartYaz içinden; girdi verilmediyse dokunulmaz) */
+    static async receteYaz(tx, id, g) {
+        if ((g.receteli === undefined || g.receteli === null) && (g.recete === undefined || g.recete === null))
+            return;
+        const mevcut = (await new sql.Request(tx).input("ID", sql.Int, id).query(`SELECT ISNULL(RECETELI, 0) AS R FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID = @ID`)).recordset[0];
+        const receteli = g.receteli === undefined || g.receteli === null ? !!mevcut?.R : !!g.receteli;
+        if (!receteli) {
+            await new sql.Request(tx).input("ID", sql.Int, id).query(`UPDATE dbo.TODVZ_STOK_KART SET RECETELI = 0 WHERE STOK_KART_ID = @ID; DELETE FROM dbo.TODVZ_STOK_RECETE WHERE STOK_KART_ID = @ID;`);
+            return;
+        }
+        const d = (await new sql.Request(tx).input("ID", sql.Int, id).query(`SELECT
+      (SELECT COUNT(*) FROM dbo.TODVZ_STOK_HAREKET WHERE STOK_KART_ID = @ID) AS HAREKET,
+      (SELECT TOP 1 RTRIM(U.AD) FROM dbo.TODVZ_STOK_RECETE R JOIN dbo.TODVZ_STOK_KART U ON U.STOK_KART_ID = R.STOK_KART_ID WHERE R.MALZEME_KART_ID = @ID) AS MALZEMESI_OLDUGU`)).recordset[0];
+        if (Number(d.HAREKET) > 0)
+            throw ApiError.badRequest("Stok hareketi olan kart reçeteli yapılamaz (reçeteli ürün stok tutmaz); menü ürünü için yeni kart açın.");
+        if (d.MALZEMESI_OLDUGU)
+            throw ApiError.badRequest(`Bu kart "${temiz(d.MALZEMESI_OLDUGU)}" reçetesinde malzeme; reçeteli yapılamaz (iç içe reçete yok).`);
+        const satirlar = Array.isArray(g.recete)
+            ? g.recete.map((x) => ({ malzemeKartId: Number(x.malzemeKartId) || 0, miktar: x.miktar }))
+            : (await this.recete(tx, id)).map((x) => ({ malzemeKartId: x.malzemeKartId, miktar: x.miktar }));
+        const h = receteDenetle(id, satirlar);
+        if (h)
+            throw ApiError.badRequest(h);
+        const ids = satirlar.map((x) => x.malzemeKartId);
+        const m = await new sql.Request(tx).query(`SELECT STOK_KART_ID, AD, ISNULL(RECETELI, 0) AS R FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID IN (${ids.join(",")})`);
+        const bulunan = new Map(m.recordset.map((x) => [Number(x.STOK_KART_ID), x]));
+        const yok = ids.find((x) => !bulunan.has(x));
+        if (yok)
+            throw ApiError.badRequest(`Reçetedeki malzeme kartı bulunamadı (#${yok}).`);
+        const ic = ids.map((x) => bulunan.get(x)).find((x) => Number(x.R) === 1);
+        if (ic)
+            throw ApiError.badRequest(`"${temiz(ic.AD)}" reçeteli bir ürün; malzeme olamaz (iç içe reçete yok).`);
+        const req = new sql.Request(tx).input("ID", sql.Int, id);
+        const v = satirlar.map((x, j) => {
+            const mk = typeof x.miktar === "string" ? Number(x.miktar.includes(",") ? x.miktar.replace(/\./g, "").replace(",", ".") : x.miktar) : Number(x.miktar);
+            req.input(`K${j}`, sql.Int, x.malzemeKartId).input(`M${j}`, sql.Decimal(18, 4), Math.round(mk * 10000) / 10000);
+            return `(@ID, ${j + 1}, @K${j}, @M${j})`;
+        });
+        await req.query(`UPDATE dbo.TODVZ_STOK_KART SET RECETELI = 1 WHERE STOK_KART_ID = @ID; DELETE FROM dbo.TODVZ_STOK_RECETE WHERE STOK_KART_ID = @ID;
+      INSERT INTO dbo.TODVZ_STOK_RECETE (STOK_KART_ID, SATIR_NO, MALZEME_KART_ID, MIKTAR) VALUES ${v.join(",")};`);
+    }
+    /** Kartın ek birimleri ve barkodları (TA5) */
+    static async kartBirimleri(pool, stokKartId, stokBirimId) {
+        const r = await new sql.Request(pool).input("ID", sql.Int, stokKartId).input("BID", sql.Int, stokBirimId ?? null).query(`
+      SELECT U.STOK_BIRIM_ID, RTRIM(U.BIRIM) AS BIRIM, U.CARPAN, U.SATIS_FIYATI,
+        STUFF((SELECT '|' + B.BARKOD FROM dbo.TODVZ_STOK_BARKOD B WHERE B.STOK_BIRIM_ID = U.STOK_BIRIM_ID ORDER BY B.STOK_BARKOD_ID FOR XML PATH(''), TYPE).value('.', 'varchar(max)'), 1, 1, '') AS BARKODLAR
+      FROM dbo.TODVZ_STOK_BIRIM U WHERE U.STOK_KART_ID = @ID AND (@BID IS NULL OR U.STOK_BIRIM_ID = @BID) ORDER BY U.SIRA, U.STOK_BIRIM_ID`);
+        return r.recordset.map((x) => ({
+            stokBirimId: x.STOK_BIRIM_ID,
+            birim: temiz(x.BIRIM),
+            carpan: Number(x.CARPAN),
+            satisFiyati: x.SATIS_FIYATI === null || x.SATIS_FIYATI === undefined ? null : Number(x.SATIS_FIYATI),
+            barkodlar: x.BARKODLAR ? String(x.BARKODLAR).split("|").filter(Boolean) : [],
+        }));
     }
     /** Barkod ya da kod ile tam eşleşen kart (satış / giriş fişi okutması) */
     static async kartBul(deger, ctx, fiyatListesiId) {
@@ -465,11 +636,38 @@ export class TicariStokSqlRepository {
             return null;
         const pool = await this.havuz(ctx);
         // Kimlik önce bulunur (barkod / kod tekil indeksleri), kart sonra okunur: süzgeç içindeki alt sorgu bütün tabloyu taratıyordu
+        // Ek birim barkodu (koli) okunduysa birim de döner (TA5)
         const r = await listeGirdisi(pool.request().input("D", sql.VarChar(50), t.slice(0, 50)), fiyatListesiId).query(`
-      DECLARE @ID INT = COALESCE((SELECT TOP 1 B.STOK_KART_ID FROM dbo.TODVZ_STOK_BARKOD B WHERE B.BARKOD = @D),
-                                 (SELECT TOP 1 K2.STOK_KART_ID FROM dbo.TODVZ_STOK_KART K2 WHERE K2.KOD = @D));
+      DECLARE @ID INT, @BID INT;
+      SELECT TOP 1 @ID = B.STOK_KART_ID, @BID = B.STOK_BIRIM_ID FROM dbo.TODVZ_STOK_BARKOD B WHERE B.BARKOD = @D;
+      IF @ID IS NULL SELECT TOP 1 @ID = K2.STOK_KART_ID FROM dbo.TODVZ_STOK_KART K2 WHERE K2.KOD = @D;
+      SELECT ${KART_KOLONLARI}, @BID AS OKUNAN_BIRIM_ID FROM dbo.TODVZ_STOK_KART K${KART_BIRLESIM} WHERE K.STOK_KART_ID = @ID`);
+        if (r.recordset.length) {
+            const k = kartModeli(r.recordset[0]);
+            const bid = r.recordset[0].OKUNAN_BIRIM_ID;
+            if (bid)
+                k.okunanBirim = (await this.kartBirimleri(pool, k.stokKartId, Number(bid)))[0];
+            return k;
+        }
+        // Terazi etiketli barkod (TA3): kart barkodlarında yoksa etkin düzenlerden biriyle çözülür, kart TERAZI_KODU ile bulunur
+        if (!/^\d{13}$/.test(t))
+            return null;
+        const c = teraziBarkodCoz(t, await this.teraziDuzenleri(pool));
+        if (!c)
+            return null;
+        const rt = await listeGirdisi(pool.request().input("PLU", sql.Int, c.plu), fiyatListesiId).query(`
+      DECLARE @ID INT = (SELECT TOP 1 K2.STOK_KART_ID FROM dbo.TODVZ_STOK_KART K2 WHERE K2.TERAZI_KODU = @PLU);
       ${KART_SECIMI} WHERE K.STOK_KART_ID = @ID`);
-        return r.recordset.length ? kartModeli(r.recordset[0]) : null;
+        // Etiket çözüldü ama kod hiçbir karta bağlı değil: "yeni kart aç" akışına düşmesin (etiket her tartımda değişir)
+        if (!rt.recordset.length) {
+            throw new ApiError(HttpStatus.NOT_FOUND, `Terazi etiketi okundu ama ${c.plu} terazi kodlu stok kartı yok. Stok Kartları'nda ürünün "Terazi kodu" alanına ${c.plu} yazın.`, { kod: "TERAZI_KARTSIZ", plu: c.plu });
+        }
+        return { ...kartModeli(rt.recordset[0]), terazi: { barkod: t, plu: c.plu, agirlikKg: c.agirlikKg, fiyat: c.fiyat } };
+    }
+    /** Terazi barkodu düzenleri (TA3) */
+    static async teraziDuzenleri(pool) {
+        const r = await new sql.Request(pool).query(`SELECT TERAZI_BARKOD_ID, ONEK, KOD_HANE, DEGER_TURU, ONDALIK, AKTIF, ACIKLAMA FROM dbo.TODVZ_TERAZI_BARKOD ORDER BY ONEK`);
+        return r.recordset.map(teraziDuzeniModeli);
     }
     /** Bir sonraki otomatik kod: STK00001 */
     static async yeniKod(pool) {
@@ -492,12 +690,28 @@ export class TicariStokSqlRepository {
             .query(`SELECT TOP 1 AD FROM dbo.TODVZ_STOK_KART WHERE KOD = @KOD AND STOK_KART_ID <> @ID`);
         if (ayniKod.recordset.length)
             throw ApiError.badRequest(`"${kod}" kodu "${temiz(ayniKod.recordset[0].AD)}" kartında kullanılıyor.`);
-        for (const b of d.barkodlar) {
-            const r = await new sql.Request(tx).input("B", sql.VarChar(50), b).input("ID", sql.Int, id).query(`
-        SELECT TOP 1 RTRIM(K.KOD) + ' ' + K.AD AS KART FROM dbo.TODVZ_STOK_BARKOD B JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = B.STOK_KART_ID
-        WHERE B.BARKOD = @B AND B.STOK_KART_ID <> @ID`);
+        // Ek birimler (TA5): verildiyse hepsi yeniden yazılır; verilmediyse (Excel) mevcut birim barkodları korunur
+        const birimVar = Array.isArray(g.birimler);
+        const birimler = birimVar ? g.birimler : [];
+        if (birimVar) {
+            const bh = ekBirimleriDenetle(d.birim, birimler);
+            if (bh.length)
+                throw ApiError.badRequest(bh.join(" "));
+        }
+        const birimBarkodlari = birimler.flatMap((b) => (b.barkodlar || []).map((x) => temiz(x)).filter(Boolean));
+        const tumBarkodlar = [...d.barkodlar, ...birimBarkodlari];
+        const tekrarBarkod = tumBarkodlar.find((b, i) => tumBarkodlar.indexOf(b) !== i);
+        if (tekrarBarkod)
+            throw ApiError.badRequest(`"${tekrarBarkod}" barkodu kartta iki kez yazılmış (kart / ek birim).`);
+        for (const b of tumBarkodlar) {
+            if (b.length > 50 || /\s/.test(b))
+                throw ApiError.badRequest(`Barkod "${b}" geçersiz (en çok 50 karakter, boşluksuz).`);
+            // Aynı kartın ek birim barkodu: birimler yeniden yazılıyorsa serbest, yazılmıyorsa (birim barkodu korunacak) çakışır
+            const r = await new sql.Request(tx).input("B", sql.VarChar(50), b).input("ID", sql.Int, id).input("BV", sql.Bit, birimVar ? 1 : 0).query(`
+        SELECT TOP 1 RTRIM(K.KOD) + ' ' + K.AD AS KART, CASE WHEN B.STOK_KART_ID = @ID THEN 1 ELSE 0 END AS AYNI FROM dbo.TODVZ_STOK_BARKOD B JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = B.STOK_KART_ID
+        WHERE B.BARKOD = @B AND (B.STOK_KART_ID <> @ID OR (B.STOK_BIRIM_ID IS NOT NULL AND @BV = 0))`);
             if (r.recordset.length)
-                throw ApiError.badRequest(`"${b}" barkodu "${temiz(r.recordset[0].KART)}" kartında kullanılıyor.`);
+                throw ApiError.badRequest(Number(r.recordset[0].AYNI) ? `"${b}" barkodu bu kartın bir ek biriminde kullanılıyor.` : `"${b}" barkodu "${temiz(r.recordset[0].KART)}" kartında kullanılıyor.`);
         }
         if (d.stokGrupId) {
             const r = await new sql.Request(tx).input("G", sql.Int, d.stokGrupId).query(`SELECT 1 AS V FROM dbo.TODVZ_STOK_GRUP WHERE STOK_GRUP_ID = @G`);
@@ -508,6 +722,22 @@ export class TicariStokSqlRepository {
             const r = await new sql.Request(tx).input("P", sql.Int, d.paraId).query(`SELECT 1 AS V FROM dbo.TODVZ_PARA WHERE PARA_ID = @P`);
             if (!r.recordset.length)
                 throw ApiError.badRequest("Seçilen para birimi bulunamadı.");
+        }
+        // Adisyon KDV oranı (TA32): undefined dokunulmaz; boş = Adisyon ayarındaki varsayılan
+        const adisyonKdv = g.adisyonKdvOrani === undefined ? undefined : g.adisyonKdvOrani === null || String(g.adisyonKdvOrani).trim() === "" ? null : Number(String(g.adisyonKdvOrani).replace(",", "."));
+        if (adisyonKdv !== undefined && adisyonKdv !== null && !GECERLI_KDV_ORANLARI.includes(adisyonKdv))
+            throw ApiError.badRequest(`Adisyon KDV oranı ${adisyonKdv} olamaz.`);
+        // Terazi PLU kodu (TA3): undefined dokunulmaz; dolu ise tekil ve yalnız tartılı (Kg / Gr) kartta
+        const terazi = g.teraziKodu === undefined ? undefined : teraziKoduOku(g.teraziKodu);
+        if (terazi === "hata")
+            throw ApiError.badRequest("Terazi kodu 1 ile 999999 arasında tam sayı olmalı.");
+        if (terazi) {
+            if (!tartiBirimi(d.birim))
+                throw ApiError.badRequest("Terazi kodu yalnız Kg ya da Gr birimli karta verilir.");
+            const r = await new sql.Request(tx).input("T", sql.Int, terazi).input("ID", sql.Int, id)
+                .query(`SELECT TOP 1 RTRIM(KOD) + ' ' + AD AS KART FROM dbo.TODVZ_STOK_KART WHERE TERAZI_KODU = @T AND STOK_KART_ID <> @ID`);
+            if (r.recordset.length)
+                throw ApiError.badRequest(`Terazi kodu ${terazi} "${temiz(r.recordset[0].KART)}" kartında kullanılıyor.`);
         }
         const req = new sql.Request(tx)
             .input("ID", sql.Int, id)
@@ -526,6 +756,12 @@ export class TicariStokSqlRepository {
             .input("KONTROL", sql.VarChar(10), d.stokKontrol)
             .input("TED", sql.Int, g.tedarikciCariId === undefined ? null : Number(g.tedarikciCariId) || null)
             .input("TEDVAR", sql.Bit, g.tedarikciCariId === undefined ? 0 : 1)
+            .input("TRZ", sql.Int, terazi === undefined ? null : terazi)
+            .input("TRZVAR", sql.Bit, terazi === undefined ? 0 : 1)
+            .input("AKDV", sql.Decimal(5, 2), adisyonKdv === undefined ? null : adisyonKdv)
+            .input("AKDVVAR", sql.Bit, adisyonKdv === undefined ? 0 : 1)
+            .input("SKTT", sql.Bit, g.sktTakibi ? 1 : 0)
+            .input("SKTVAR", sql.Bit, g.sktTakibi === undefined || g.sktTakibi === null ? 0 : 1)
             .input("KUL", sql.Int, kullaniciId || null);
         if (g.tedarikciCariId) {
             const c = await new sql.Request(tx).input("C", sql.Int, Number(g.tedarikciCariId)).query(`SELECT 1 AS V FROM dbo.TODVZ_CARI_KART WHERE CARI_KART_ID = @C`);
@@ -534,10 +770,18 @@ export class TicariStokSqlRepository {
         }
         let yeniId = id;
         if (id) {
+            // Reçetede malzeme olan kartın birimi değişmez (reçete miktarı o birimde)
+            const bm = await new sql.Request(tx).input("ID", sql.Int, id).input("BIRIM", sql.VarChar(20), d.birim).query(`SELECT TOP 1 RTRIM(U.AD) AS URUN FROM dbo.TODVZ_STOK_RECETE R
+        JOIN dbo.TODVZ_STOK_KART U ON U.STOK_KART_ID = R.STOK_KART_ID JOIN dbo.TODVZ_STOK_KART M ON M.STOK_KART_ID = R.MALZEME_KART_ID WHERE R.MALZEME_KART_ID = @ID AND RTRIM(ISNULL(M.BIRIM, '')) <> @BIRIM`);
+            if (bm.recordset.length)
+                throw ApiError.badRequest(`Bu kart "${temiz(bm.recordset[0].URUN)}" reçetesinde malzeme; birimi değiştirilemez.`);
             const r = await req.query(`
         UPDATE dbo.TODVZ_STOK_KART SET KOD = @KOD, AD = @AD, STOK_GRUP_ID = @GRUP, BIRIM = @BIRIM, KDV_ORANI = @KDV, SATIS_FIYATI = @SATIS,
           FIYAT_KDV_DAHIL = @DAHIL, PARA_ID = @PARA, ALIS_FIYATI = @ALIS, EN_AZ_STOK = @ENAZ, AKTIF = @AKTIF, ACIKLAMA = @ACIKLAMA,
-          STOK_KONTROL = @KONTROL, TEDARIKCI_CARI_ID = CASE WHEN @TEDVAR = 1 THEN @TED ELSE TEDARIKCI_CARI_ID END, GUNCELLEYEN_ID = @KUL, GUNCELLEME_ZAMANI = GETDATE()
+          STOK_KONTROL = @KONTROL, TEDARIKCI_CARI_ID = CASE WHEN @TEDVAR = 1 THEN @TED ELSE TEDARIKCI_CARI_ID END,
+          TERAZI_KODU = CASE WHEN @TRZVAR = 1 THEN @TRZ ELSE TERAZI_KODU END, SKT_TAKIBI = CASE WHEN @SKTVAR = 1 THEN @SKTT ELSE SKT_TAKIBI END,
+          ADISYON_KDV_ORANI = CASE WHEN @AKDVVAR = 1 THEN @AKDV ELSE ADISYON_KDV_ORANI END,
+          GUNCELLEYEN_ID = @KUL, GUNCELLEME_ZAMANI = GETDATE()
         WHERE STOK_KART_ID = @ID;
         SELECT @@ROWCOUNT AS N;`);
             if (!Number(r.recordset[0]?.N))
@@ -548,24 +792,51 @@ export class TicariStokSqlRepository {
         WHERE H.STOK_KART_ID = @ID AND S.BIRIM <> @BIRIM
         UNION ALL
         SELECT TOP 1 1 FROM dbo.TODVZ_STOK_HAREKET H JOIN dbo.TODVZ_FATURA_SATIRI S ON H.BELGE_TURU = 2 AND S.FATURA_ID = H.BELGE_ID AND S.SATIR_NO = H.SATIR_NO
-        WHERE H.STOK_KART_ID = @ID AND S.BIRIM <> @BIRIM`);
+        WHERE H.STOK_KART_ID = @ID AND S.BIRIM <> @BIRIM
+        UNION ALL
+        SELECT TOP 1 1 FROM dbo.TODVZ_STOK_SAYIM_SATIR S WHERE S.STOK_KART_ID = @ID AND S.BIRIM <> @BIRIM
+        UNION ALL
+        SELECT TOP 1 1 FROM dbo.TODVZ_STOK_FIRE_SATIR S WHERE S.STOK_KART_ID = @ID AND S.BIRIM <> @BIRIM
+        UNION ALL
+        SELECT TOP 1 1 FROM dbo.TODVZ_STOK_TEDARIKCI_IADE_SATIR S WHERE S.STOK_KART_ID = @ID AND S.BIRIM <> @BIRIM
+        UNION ALL
+        SELECT TOP 1 1 FROM dbo.TODVZ_STOK_PARCALAMA_SATIR S WHERE S.STOK_KART_ID = @ID AND S.BIRIM <> @BIRIM
+        UNION ALL
+        SELECT TOP 1 1 FROM dbo.TODVZ_STOK_PARCALAMA P WHERE P.GIRDI_KART_ID = @ID AND P.GIRDI_BIRIM <> @BIRIM`);
             if (birimDegisti.recordset.length)
                 throw ApiError.badRequest("Hareket görmüş kartın birimi değiştirilemez; yeni birim için yeni kart açın.");
         }
         else {
             const r = await req.query(`
-        INSERT INTO dbo.TODVZ_STOK_KART (KOD, AD, STOK_GRUP_ID, BIRIM, KDV_ORANI, SATIS_FIYATI, FIYAT_KDV_DAHIL, PARA_ID, ALIS_FIYATI, EN_AZ_STOK, AKTIF, ACIKLAMA, STOK_KONTROL, TEDARIKCI_CARI_ID, EKLEYEN_ID)
+        INSERT INTO dbo.TODVZ_STOK_KART (KOD, AD, STOK_GRUP_ID, BIRIM, KDV_ORANI, SATIS_FIYATI, FIYAT_KDV_DAHIL, PARA_ID, ALIS_FIYATI, EN_AZ_STOK, AKTIF, ACIKLAMA, STOK_KONTROL, TEDARIKCI_CARI_ID, TERAZI_KODU, SKT_TAKIBI, ADISYON_KDV_ORANI, EKLEYEN_ID)
         OUTPUT INSERTED.STOK_KART_ID
-        VALUES (@KOD, @AD, @GRUP, @BIRIM, @KDV, @SATIS, @DAHIL, @PARA, @ALIS, @ENAZ, @AKTIF, @ACIKLAMA, @KONTROL, @TED, @KUL);`);
+        VALUES (@KOD, @AD, @GRUP, @BIRIM, @KDV, @SATIS, @DAHIL, @PARA, @ALIS, @ENAZ, @AKTIF, @ACIKLAMA, @KONTROL, @TED, @TRZ, @SKTT, @AKDV, @KUL);`);
             yeniId = r.recordset[0].STOK_KART_ID;
         }
-        await new sql.Request(tx).input("ID", sql.Int, yeniId).query(`DELETE FROM dbo.TODVZ_STOK_BARKOD WHERE STOK_KART_ID = @ID`);
+        // Kartın kendi barkodları; ek birimler verildiyse birimler ve barkodları da baştan
+        await new sql.Request(tx).input("ID", sql.Int, yeniId).input("BV", sql.Bit, birimVar ? 1 : 0)
+            .query(`DELETE FROM dbo.TODVZ_STOK_BARKOD WHERE STOK_KART_ID = @ID AND (@BV = 1 OR STOK_BIRIM_ID IS NULL)`);
         for (const b of d.barkodlar) {
             await new sql.Request(tx).input("ID", sql.Int, yeniId).input("B", sql.VarChar(50), b)
                 .query(`INSERT INTO dbo.TODVZ_STOK_BARKOD (STOK_KART_ID, BARKOD) VALUES (@ID, @B)`);
         }
+        if (birimVar) {
+            await new sql.Request(tx).input("ID", sql.Int, yeniId).query(`DELETE FROM dbo.TODVZ_STOK_BIRIM WHERE STOK_KART_ID = @ID`);
+            for (const [i, b] of birimler.entries()) {
+                const fiyat = b.satisFiyati === null || b.satisFiyati === undefined || String(b.satisFiyati).trim() === "" ? null : Number(String(b.satisFiyati).replace(",", "."));
+                const u = await new sql.Request(tx).input("ID", sql.Int, yeniId).input("BR", sql.VarChar(20), temiz(b.birim)).input("C", sql.Float, Number(String(b.carpan).replace(",", ".")))
+                    .input("F", sql.Float, fiyat).input("S", sql.Int, i)
+                    .query(`INSERT INTO dbo.TODVZ_STOK_BIRIM (STOK_KART_ID, BIRIM, CARPAN, SATIS_FIYATI, SIRA) OUTPUT INSERTED.STOK_BIRIM_ID VALUES (@ID, @BR, @C, @F, @S)`);
+                const bid = u.recordset[0].STOK_BIRIM_ID;
+                for (const x of (b.barkodlar || []).map((y) => temiz(y)).filter(Boolean)) {
+                    await new sql.Request(tx).input("ID", sql.Int, yeniId).input("BID", sql.Int, bid).input("B", sql.VarChar(50), x)
+                        .query(`INSERT INTO dbo.TODVZ_STOK_BARKOD (STOK_KART_ID, BARKOD, STOK_BIRIM_ID) VALUES (@ID, @B, @BID)`);
+                }
+            }
+        }
         if (Array.isArray(g.listeFiyatlari))
             await TicariFiyatSqlRepository.kartListeFiyatlariniYaz(tx, yeniId, g.listeFiyatlari, kullaniciId);
+        await this.receteYaz(tx, yeniId, g);
         return yeniId;
     }
     /**
@@ -634,10 +905,12 @@ export class TicariStokSqlRepository {
         await new sql.Request(tx).batch(`
       IF OBJECT_ID('tempdb..#KART') IS NOT NULL DROP TABLE #KART;
       IF OBJECT_ID('tempdb..#BARKOD') IS NOT NULL DROP TABLE #BARKOD;
-      CREATE TABLE #KART (SIRA INT NOT NULL PRIMARY KEY, ID INT NULL, KOD VARCHAR(30) NOT NULL, AD NVARCHAR(200) NOT NULL, GRUP INT NULL, BIRIM VARCHAR(20) NOT NULL,
-        KDV FLOAT NOT NULL, SATIS FLOAT NULL, DAHIL BIT NOT NULL, PARA INT NULL, ALIS FLOAT NULL, ENAZ FLOAT NULL, AKTIF BIT NOT NULL, ACIKLAMA NVARCHAR(500) NULL, KONTROL VARCHAR(10) NULL,
-        TED INT NULL, TEDVAR BIT NOT NULL);
-      CREATE TABLE #BARKOD (SIRA INT NOT NULL, BARKOD VARCHAR(50) NOT NULL);`);
+      -- Geçici tablolar tempdb'nin harmanlamasını alır (sunucu Turkish_CI_AS, firma veritabanı SQL_Latin1 olabilir): metin kolonları
+      -- veritabanının harmanlamasıyla açılır, yoksa KOD / BARKOD karşılaştırmaları "collation conflict" verir (27.11.2026 canlı hatası)
+      CREATE TABLE #KART (SIRA INT NOT NULL PRIMARY KEY, ID INT NULL, KOD VARCHAR(30) COLLATE DATABASE_DEFAULT NOT NULL, AD NVARCHAR(200) COLLATE DATABASE_DEFAULT NOT NULL, GRUP INT NULL,
+        BIRIM VARCHAR(20) COLLATE DATABASE_DEFAULT NOT NULL, KDV FLOAT NOT NULL, SATIS FLOAT NULL, DAHIL BIT NOT NULL, PARA INT NULL, ALIS FLOAT NULL, ENAZ FLOAT NULL, AKTIF BIT NOT NULL,
+        ACIKLAMA NVARCHAR(500) COLLATE DATABASE_DEFAULT NULL, KONTROL VARCHAR(10) COLLATE DATABASE_DEFAULT NULL, TED INT NULL, TEDVAR BIT NOT NULL);
+      CREATE TABLE #BARKOD (SIRA INT NOT NULL, BARKOD VARCHAR(50) COLLATE DATABASE_DEFAULT NOT NULL);`);
         // 17 parametre / satır → 120 satır / paket (SQL Server sınırı 2.100 parametre)
         for (let i = 0; i < satirlar.length; i += 120) {
             const paket = satirlar.slice(i, i + 120);
@@ -664,16 +937,21 @@ export class TicariStokSqlRepository {
         // Denetimler (ilk hata döner)
         const d = (await new sql.Request(tx).query(`
       SELECT TOP 1 'ID' AS TUR, T.SIRA, NULL AS BILGI FROM #KART T WHERE T.ID IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.TODVZ_STOK_KART K WHERE K.STOK_KART_ID = T.ID)
-      UNION ALL SELECT TOP 1 'KOD', T.SIRA, RTRIM(T.KOD) + '|' + K.AD FROM #KART T JOIN dbo.TODVZ_STOK_KART K ON K.KOD = T.KOD WHERE K.STOK_KART_ID <> ISNULL(T.ID, 0)
-      UNION ALL SELECT TOP 1 'BARKOD', X.SIRA, X.BARKOD + '|' + RTRIM(K.KOD) + ' ' + K.AD FROM #BARKOD X JOIN #KART T ON T.SIRA = X.SIRA
-        JOIN dbo.TODVZ_STOK_BARKOD B ON B.BARKOD = X.BARKOD JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = B.STOK_KART_ID WHERE B.STOK_KART_ID <> ISNULL(T.ID, 0)
+      UNION ALL SELECT TOP 1 'KOD', T.SIRA, RTRIM(T.KOD) COLLATE DATABASE_DEFAULT + '|' + K.AD FROM #KART T JOIN dbo.TODVZ_STOK_KART K ON K.KOD = T.KOD COLLATE DATABASE_DEFAULT WHERE K.STOK_KART_ID <> ISNULL(T.ID, 0)
+      UNION ALL SELECT TOP 1 'BARKOD', X.SIRA, X.BARKOD COLLATE DATABASE_DEFAULT + '|' + RTRIM(K.KOD) + ' ' + K.AD FROM #BARKOD X JOIN #KART T ON T.SIRA = X.SIRA
+        JOIN dbo.TODVZ_STOK_BARKOD B ON B.BARKOD = X.BARKOD COLLATE DATABASE_DEFAULT JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = B.STOK_KART_ID WHERE B.STOK_KART_ID <> ISNULL(T.ID, 0) OR B.STOK_BIRIM_ID IS NOT NULL
       UNION ALL SELECT TOP 1 'GRUP', T.SIRA, NULL FROM #KART T WHERE T.GRUP IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.TODVZ_STOK_GRUP G WHERE G.STOK_GRUP_ID = T.GRUP)
       UNION ALL SELECT TOP 1 'PARA', T.SIRA, NULL FROM #KART T WHERE T.PARA IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.TODVZ_PARA P WHERE P.PARA_ID = T.PARA)
       UNION ALL SELECT TOP 1 'TED', T.SIRA, NULL FROM #KART T WHERE T.TED IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.TODVZ_CARI_KART C WHERE C.CARI_KART_ID = T.TED)
       UNION ALL SELECT TOP 1 'BIRIM', T.SIRA, NULL FROM #KART T JOIN dbo.TODVZ_STOK_HAREKET H ON H.STOK_KART_ID = T.ID
-        JOIN dbo.TODVZ_STOK_GIRIS_SATIRI S ON H.BELGE_TURU = 1 AND S.STOK_GIRIS_ID = H.BELGE_ID AND S.SATIR_NO = H.SATIR_NO WHERE S.BIRIM <> T.BIRIM
+        JOIN dbo.TODVZ_STOK_GIRIS_SATIRI S ON H.BELGE_TURU = 1 AND S.STOK_GIRIS_ID = H.BELGE_ID AND S.SATIR_NO = H.SATIR_NO WHERE S.BIRIM <> T.BIRIM COLLATE DATABASE_DEFAULT
       UNION ALL SELECT TOP 1 'BIRIM', T.SIRA, NULL FROM #KART T JOIN dbo.TODVZ_STOK_HAREKET H ON H.STOK_KART_ID = T.ID
-        JOIN dbo.TODVZ_FATURA_SATIRI S ON H.BELGE_TURU = 2 AND S.FATURA_ID = H.BELGE_ID AND S.SATIR_NO = H.SATIR_NO WHERE S.BIRIM <> T.BIRIM`)).recordset[0];
+        JOIN dbo.TODVZ_FATURA_SATIRI S ON H.BELGE_TURU = 2 AND S.FATURA_ID = H.BELGE_ID AND S.SATIR_NO = H.SATIR_NO WHERE S.BIRIM <> T.BIRIM COLLATE DATABASE_DEFAULT
+      UNION ALL SELECT TOP 1 'BIRIM', T.SIRA, NULL FROM #KART T JOIN dbo.TODVZ_STOK_SAYIM_SATIR S ON S.STOK_KART_ID = T.ID WHERE S.BIRIM <> T.BIRIM COLLATE DATABASE_DEFAULT
+      UNION ALL SELECT TOP 1 'BIRIM', T.SIRA, NULL FROM #KART T JOIN dbo.TODVZ_STOK_FIRE_SATIR S ON S.STOK_KART_ID = T.ID WHERE S.BIRIM <> T.BIRIM COLLATE DATABASE_DEFAULT
+      UNION ALL SELECT TOP 1 'BIRIM', T.SIRA, NULL FROM #KART T JOIN dbo.TODVZ_STOK_TEDARIKCI_IADE_SATIR S ON S.STOK_KART_ID = T.ID WHERE S.BIRIM <> T.BIRIM COLLATE DATABASE_DEFAULT
+      UNION ALL SELECT TOP 1 'BIRIM', T.SIRA, NULL FROM #KART T JOIN dbo.TODVZ_STOK_PARCALAMA_SATIR S ON S.STOK_KART_ID = T.ID WHERE S.BIRIM <> T.BIRIM COLLATE DATABASE_DEFAULT
+      UNION ALL SELECT TOP 1 'BIRIM', T.SIRA, NULL FROM #KART T JOIN dbo.TODVZ_STOK_PARCALAMA P ON P.GIRDI_KART_ID = T.ID WHERE P.GIRDI_BIRIM <> T.BIRIM COLLATE DATABASE_DEFAULT`)).recordset[0];
         if (d) {
             const [a, b] = String(d.BILGI || "").split("|");
             const mesaj = d.TUR === "ID" ? "Stok kartı bulunamadı."
@@ -692,8 +970,8 @@ export class TicariStokSqlRepository {
       FROM dbo.TODVZ_STOK_KART K JOIN #KART T ON T.ID = K.STOK_KART_ID;
       INSERT INTO dbo.TODVZ_STOK_KART (KOD, AD, STOK_GRUP_ID, BIRIM, KDV_ORANI, SATIS_FIYATI, FIYAT_KDV_DAHIL, PARA_ID, ALIS_FIYATI, EN_AZ_STOK, AKTIF, ACIKLAMA, STOK_KONTROL, TEDARIKCI_CARI_ID, EKLEYEN_ID)
       SELECT T.KOD, T.AD, T.GRUP, T.BIRIM, T.KDV, T.SATIS, T.DAHIL, T.PARA, T.ALIS, T.ENAZ, T.AKTIF, T.ACIKLAMA, T.KONTROL, T.TED, @KUL FROM #KART T WHERE T.ID IS NULL ORDER BY T.SIRA;
-      UPDATE T SET ID = K.STOK_KART_ID FROM #KART T JOIN dbo.TODVZ_STOK_KART K ON K.KOD = T.KOD WHERE T.ID IS NULL;
-      DELETE B FROM dbo.TODVZ_STOK_BARKOD B JOIN #KART T ON T.ID = B.STOK_KART_ID;
+      UPDATE T SET ID = K.STOK_KART_ID FROM #KART T JOIN dbo.TODVZ_STOK_KART K ON K.KOD = T.KOD COLLATE DATABASE_DEFAULT WHERE T.ID IS NULL;
+      DELETE B FROM dbo.TODVZ_STOK_BARKOD B JOIN #KART T ON T.ID = B.STOK_KART_ID WHERE B.STOK_BIRIM_ID IS NULL;
       INSERT INTO dbo.TODVZ_STOK_BARKOD (STOK_KART_ID, BARKOD) SELECT T.ID, X.BARKOD FROM #BARKOD X JOIN #KART T ON T.SIRA = X.SIRA ORDER BY X.SIRA;
       SELECT SIRA, ID FROM #KART ORDER BY SIRA;
       DROP TABLE #BARKOD; DROP TABLE #KART;`);
@@ -738,13 +1016,34 @@ export class TicariStokSqlRepository {
         const r = await pool.request().input("ID", sql.Int, id).query(`
       SELECT (SELECT COUNT(*) FROM dbo.TODVZ_STOK_HAREKET WHERE STOK_KART_ID = @ID)
            + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_GIRIS_SATIRI WHERE STOK_KART_ID = @ID)
-           + (SELECT COUNT(*) FROM dbo.TODVZ_FATURA_SATIRI WHERE STOK_KART_ID = @ID) AS N`);
+           + (SELECT COUNT(*) FROM dbo.TODVZ_FATURA_SATIRI WHERE STOK_KART_ID = @ID)
+           + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_SAYIM_SATIR WHERE STOK_KART_ID = @ID)
+           + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_FIRE_SATIR WHERE STOK_KART_ID = @ID)
+           + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_TEDARIKCI_IADE_SATIR WHERE STOK_KART_ID = @ID)
+           + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_PARCALAMA_SATIR WHERE STOK_KART_ID = @ID)
+           + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_PARCALAMA WHERE GIRDI_KART_ID = @ID)
+           + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_PARCALAMA_SABLON WHERE GIRDI_KART_ID = @ID)
+           + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_PARCALAMA_SABLON_SATIR WHERE STOK_KART_ID = @ID)
+           + (SELECT COUNT(*) FROM dbo.TODVZ_STOK_RECETE WHERE MALZEME_KART_ID = @ID) AS N`);
         if (Number(r.recordset[0]?.N) > 0)
-            throw ApiError.badRequest("Hareket görmüş stok kartı silinemez; kartı pasif yapın.");
+            throw ApiError.badRequest("Hareket görmüş stok kartı (sayım / fire taslağı, parçalama şablonu, reçete malzemesi dahil) silinemez; kartı pasif yapın.");
+        // T13 / M12 (26.11.2026 denetimi): açık adisyonda kalemi olan kart silinmez (kasada fiş yazılamazdı)
+        const ad = await pool.request().input("ID", sql.Int, id).query(`IF OBJECT_ID('dbo.TODVZ_ADISYON_KALEM', 'U') IS NULL SELECT 0 AS N
+      ELSE SELECT COUNT(*) AS N FROM dbo.TODVZ_ADISYON_KALEM K JOIN dbo.TODVZ_ADISYON A ON A.ADISYON_ID = K.ADISYON_ID
+        WHERE K.STOK_KART_ID = @ID AND K.IPTAL = 0 AND K.FATURA_ID IS NULL AND A.DURUM IN (0, 1)`);
+        if (Number(ad.recordset[0]?.N) > 0)
+            throw ApiError.badRequest("Bu ürün açık bir adisyonda var; adisyon kapanmadan kart silinemez (kartı pasif yapabilirsiniz).");
         const tx = new sql.Transaction(pool);
         await tx.begin();
         try {
-            await new sql.Request(tx).input("ID", sql.Int, id).query(`DELETE FROM dbo.TODVZ_STOK_BARKOD WHERE STOK_KART_ID = @ID`);
+            await new sql.Request(tx).input("ID", sql.Int, id).query(`DELETE FROM dbo.TODVZ_STOK_BARKOD WHERE STOK_KART_ID = @ID; DELETE FROM dbo.TODVZ_STOK_BIRIM WHERE STOK_KART_ID = @ID`);
+            // T13: karta bağlı tanım satırları da silinir (eskiden yabancı anahtar hatası 500 veriyordu): kendi reçetesi, e-Fatura eşleşmeleri,
+            // Adisyon porsiyon / seçenek bağları. Hareket tabloları yukarıda denetlendi (kart hareketsiz).
+            await new sql.Request(tx).input("ID", sql.Int, id).query(`
+        IF OBJECT_ID('dbo.TODVZ_STOK_RECETE', 'U') IS NOT NULL DELETE FROM dbo.TODVZ_STOK_RECETE WHERE STOK_KART_ID = @ID;
+        IF OBJECT_ID('dbo.TODVZ_STOK_EFATURA_ESLESME', 'U') IS NOT NULL DELETE FROM dbo.TODVZ_STOK_EFATURA_ESLESME WHERE STOK_KART_ID = @ID;
+        IF OBJECT_ID('dbo.TODVZ_ADISYON_KART_SECENEK', 'U') IS NOT NULL DELETE FROM dbo.TODVZ_ADISYON_KART_SECENEK WHERE STOK_KART_ID = @ID;
+        IF OBJECT_ID('dbo.TODVZ_ADISYON_PORSIYON', 'U') IS NOT NULL DELETE FROM dbo.TODVZ_ADISYON_PORSIYON WHERE STOK_KART_ID = @ID;`);
             const s = await new sql.Request(tx).input("ID", sql.Int, id).query(`DELETE FROM dbo.TODVZ_STOK_KART WHERE STOK_KART_ID = @ID; SELECT @@ROWCOUNT AS N`);
             if (!Number(s.recordset[0]?.N))
                 throw ApiError.notFound("Stok kartı bulunamadı.");
@@ -850,14 +1149,24 @@ export class TicariStokSqlRepository {
       )
       SELECT TOP (@SINIR) H.STOK_HAREKET_ID, H.STOK_KART_ID, RTRIM(K.KOD) AS KOD, K.AD, K.BIRIM, H.TARIH, H.BELGE_TURU, H.BELGE_ID, H.SATIR_NO,
         H.GIRIS, H.CIKIS, H.BIRIM_FIYAT, ISNULL(D.DEVIR, 0) AS DEVIR,
-        CASE H.BELGE_TURU WHEN 1 THEN SG.FIS_NO ELSE F.FATURA_NO END AS BELGE_NO,
-        CASE H.BELGE_TURU WHEN 1 THEN COALESCE(C.AD, SG.ACIKLAMA) ELSE F.ALICI_UNVAN END AS KARSI_TARAF
+        CASE H.BELGE_TURU WHEN 1 THEN SG.FIS_NO WHEN 3 THEN SY.SAYIM_NO WHEN 4 THEN FR.FIRE_NO WHEN 5 THEN TI.IADE_NO WHEN 6 THEN PR.PARCALAMA_NO WHEN 7 THEN F7.FATURA_NO ELSE F.FATURA_NO END AS BELGE_NO,
+        CASE H.BELGE_TURU WHEN 1 THEN COALESCE(C.AD, SG.ACIKLAMA) WHEN 3 THEN CASE WHEN H.GIRIS > 0 THEN N'Sayım fazlası' ELSE N'Sayım eksiği' END
+          WHEN 4 THEN FS.NEDEN WHEN 5 THEN TC.AD WHEN 6 THEN CASE WHEN H.CIKIS > 0 THEN N'Parçalanan' ELSE N'Parça: ' + RTRIM(PK.AD) END WHEN 7 THEN N'Reçete: ' + RTRIM(S7.URUN_ADI) ELSE F.ALICI_UNVAN END AS KARSI_TARAF, ISNULL(F.FATURA_TIPI, 1) AS FATURA_TIPI
       FROM dbo.TODVZ_STOK_HAREKET H
       JOIN dbo.TODVZ_STOK_KART K ON K.STOK_KART_ID = H.STOK_KART_ID
       LEFT JOIN D ON D.STOK_KART_ID = H.STOK_KART_ID
       LEFT JOIN dbo.TODVZ_STOK_GIRIS SG ON H.BELGE_TURU = 1 AND SG.STOK_GIRIS_ID = H.BELGE_ID
       LEFT JOIN dbo.TODVZ_CARI_KART C ON C.CARI_KART_ID = SG.CARI_KART_ID
       LEFT JOIN dbo.TODVZ_FATURA F ON H.BELGE_TURU = 2 AND F.FATURA_ID = H.BELGE_ID
+      LEFT JOIN dbo.TODVZ_STOK_SAYIM SY ON H.BELGE_TURU = 3 AND SY.SAYIM_ID = H.BELGE_ID
+      LEFT JOIN dbo.TODVZ_STOK_FIRE FR ON H.BELGE_TURU = 4 AND FR.FIRE_ID = H.BELGE_ID
+      LEFT JOIN dbo.TODVZ_STOK_FIRE_SATIR FS ON H.BELGE_TURU = 4 AND FS.FIRE_ID = H.BELGE_ID AND FS.SATIR_NO = H.SATIR_NO
+      LEFT JOIN dbo.TODVZ_STOK_TEDARIKCI_IADE TI ON H.BELGE_TURU = 5 AND TI.IADE_ID = H.BELGE_ID
+      LEFT JOIN dbo.TODVZ_CARI_KART TC ON TC.CARI_KART_ID = TI.CARI_KART_ID
+      LEFT JOIN dbo.TODVZ_STOK_PARCALAMA PR ON H.BELGE_TURU = 6 AND PR.PARCALAMA_ID = H.BELGE_ID
+      LEFT JOIN dbo.TODVZ_STOK_KART PK ON PK.STOK_KART_ID = PR.GIRDI_KART_ID
+      LEFT JOIN dbo.TODVZ_FATURA F7 ON H.BELGE_TURU = 7 AND F7.FATURA_ID = H.BELGE_ID
+      LEFT JOIN dbo.TODVZ_FATURA_SATIRI S7 ON H.BELGE_TURU = 7 AND S7.FATURA_ID = H.BELGE_ID AND S7.SATIR_NO = H.SATIR_NO
       WHERE (@BAS IS NULL OR ${gun} >= CAST(@BAS AS date)) AND (@BIT IS NULL OR ${gun} <= CAST(@BIT AS date))${turKosulu}
         ${kosul.length ? "AND " + kosul.join(" AND ") : ""}
       ORDER BY K.AD, K.STOK_KART_ID, H.TARIH, H.STOK_HAREKET_ID`);
@@ -879,7 +1188,10 @@ export class TicariStokSqlRepository {
                 birim: temiz(x.BIRIM),
                 tarih: new Date(x.TARIH).toISOString(),
                 belgeTuru: Number(x.BELGE_TURU),
-                belgeTuruAdi: STOK_BELGE_ADI[Number(x.BELGE_TURU)] || "",
+                // Satış iadesi (TA6): fatura belgesi, FATURA_TIPI 2
+                belgeTuruAdi: Number(x.BELGE_TURU) === STOK_BELGE.SATIS && Number(x.FATURA_TIPI) === 2 ? "Satış İadesi" : STOK_BELGE_ADI[Number(x.BELGE_TURU)] || "",
+                /** Satış iadesi (fatura belgesi, FATURA_TIPI 2): ekran rozeti ve belge açma için */
+                iade: Number(x.BELGE_TURU) === STOK_BELGE.SATIS && Number(x.FATURA_TIPI) === 2,
                 belgeId: x.BELGE_ID,
                 belgeNo: temiz(x.BELGE_NO),
                 karsiTaraf: temiz(x.KARSI_TARAF),

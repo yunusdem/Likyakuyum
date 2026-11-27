@@ -50,7 +50,8 @@ export const KAYIT_MADDELERI = {
     sarraf: { kayit: [["vezne", "A"], ["yonetici", "D"]], duzeltme: [["vezne", "B"]] },
     doviz: { kayit: [["vezne", "E"], ["yonetici", "E"]], duzeltme: [["vezne", "F"]] },
     perakende: { kayit: [["vezne", "C"], ["perakende", null], ["yonetici", "F"]], duzeltme: [["vezne", "D"], ["perakende", null]] },
-    ticari: { kayit: [["ticari", null]], duzeltme: [["ticari", null]] },
+    // Restorant (R1): stok / sayım / fire / iade ekranları Restorant menüsünde de var — yalnız Restorant lisanslı firmada Ticari menüsü yok
+    ticari: { kayit: [["ticari", null], ["adisyon", null]], duzeltme: [["ticari", null], ["adisyon", null]] },
     vezneTransferi: { kayit: [["vezne", "G"]], duzeltme: [["vezne", "H"]] },
     kasaHareket: { kayit: [["kasa", "C"]], duzeltme: [["kasa", "D"]] },
     kasaHesap: { kayit: [["kasa", "A"]], duzeltme: [["kasa", "B"]] },

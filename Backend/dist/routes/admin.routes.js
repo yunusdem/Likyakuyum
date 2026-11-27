@@ -16,7 +16,7 @@ import { adminKonuListeSchema, adminMesajSchema, adminKonuGuncelleSchema, bildir
 import { validate } from "../middlewares/validate.middleware.js";
 import { adminKapisi, adminAuthenticate, adminGirisSiniri, sifreBelirlenmisOlmali, adminHataIsleyici, epostaOnaySiniri, } from "../middlewares/adminAuth.middleware.js";
 import { ApiError } from "../utils/ApiError.js";
-import { adminGirisSchema, adminSifreDegistirSchema, adminEkleSchema, adminGuncelleSchema, adminIdSchema, firmaEkleSchema, bulutFirmaSchema, firmaSilSchema, indirSchema, lisansKodSchema, lisansIptalSchema, ayarKaydetSchema, surumGuncelleSchema, dagitimBaslatSchema, dagitimIdSchema, hedefSurumSchema, firmaGuncelleSchema, firmaDurumSchema, firmaDogrulamaSchema, lisansEkleSchema, kullaniciEkleSchema, kullaniciGuncelleSchema, modulKatalogSchema, firmaModulSchema, girisLogSchema, islemLogSchema, oturumKapatSchema, epostaDogrulamaElleSchema, epostaOnaySchema, adminFirmaPanoSchema, adminMobilSchema, paketIlkIcerikSchema, paketYazSchema, paketOnizlemeSchema, } from "../schemas/admin.schema.js";
+import { adminGirisSchema, adminSifreDegistirSchema, adminEkleSchema, adminGuncelleSchema, adminIdSchema, firmaEkleSchema, bulutFirmaSchema, firmaSilSchema, indirSchema, lisansKodSchema, lisansIptalSchema, ayarKaydetSchema, surumGuncelleSchema, dagitimBaslatSchema, dagitimIdSchema, hedefSurumSchema, firmaGuncelleSchema, firmaDurumSchema, firmaDogrulamaSchema, lisansEkleSchema, restoranAdiSchema, kullaniciEkleSchema, kullaniciGuncelleSchema, modulKatalogSchema, firmaModulSchema, girisLogSchema, islemLogSchema, oturumKapatSchema, epostaDogrulamaElleSchema, epostaOnaySchema, adminFirmaPanoSchema, adminMobilSchema, paketIlkIcerikSchema, paketYazSchema, paketOnizlemeSchema, } from "../schemas/admin.schema.js";
 // Ana admin paneli API'si (docs/ADMIN_PANEL_YOL_HARITASI.md). Kullanıcı tarafının authenticate'i burada kullanılmaz.
 const router = Router();
 router.use(adminKapisi);
@@ -58,6 +58,7 @@ router.post("/firmalar/:id/db-test", validate(adminIdSchema), FirmaController.db
 router.post("/firmalar/:id/masak-kontrol", validate(adminIdSchema), FirmaController.masakKontrol);
 router.get("/firmalar/:id/lisanslar", validate(adminIdSchema), FirmaController.lisanslar);
 router.post("/firmalar/:id/lisanslar", validate(lisansEkleSchema), FirmaController.lisansEkle);
+router.put("/firmalar/:id/restoran-adi", validate(restoranAdiSchema), FirmaController.restoranAdi);
 router.post("/firmalar/:id/lisanslar/:lisansId/kod", validate(lisansKodSchema), FirmaController.lisansKodu);
 router.post("/firmalar/:id/lisanslar/:lisansId/iptal", validate(lisansIptalSchema), FirmaController.lisansIptal);
 router.post("/firmalar/:id/lisanslar/:lisansId/aktivasyon-anahtari", validate(lisansIptalSchema), FirmaController.aktivasyonAnahtari);

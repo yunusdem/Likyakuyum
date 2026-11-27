@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import sql from "mssql";
 import { ApiError } from "../../utils/ApiError.js";
-import { TicariStokSqlRepository, kartGirdisiDenetle } from "../../models/ticariStokSql.repository.js";
+import { TicariStokSqlRepository, kartGirdisiDenetle, stokIslemKilidi } from "../../models/ticariStokSql.repository.js";
 import { TicariGirisSqlRepository } from "../../models/ticariGirisSql.repository.js";
 import { TicariFiyatSqlRepository } from "../../models/ticariFiyatSql.repository.js";
 export const EXCEL_SUTUNLARI = [
@@ -352,6 +352,8 @@ export async function excelYukle(dosya, kullaniciId, ctx) {
     await tx.begin();
     let girisNo = null;
     try {
+        // Açılış girişi stok yazar: öbür stok / vezne işlemleriyle aynı sırada (U25)
+        await stokIslemKilidi(tx);
         // Gruplar: eksik olanlar tek seferde açılır
         const grupAdlari = [...new Set(girdiler.map((g) => g.grupAdi.trim()).filter(Boolean))];
         const grupIdleri = new Map();
@@ -377,7 +379,7 @@ export async function excelYukle(dosya, kullaniciId, ctx) {
         const guncellenecek = [...new Set(girdiler.map((g) => Number(g.stokKartId) || 0).filter(Boolean))];
         for (let i = 0; i < guncellenecek.length; i += 1000) {
             const r = await new sql.Request(tx).query(`
-        SELECT K.*, STUFF((SELECT '|' + B.BARKOD FROM dbo.TODVZ_STOK_BARKOD B WHERE B.STOK_KART_ID = K.STOK_KART_ID ORDER BY B.STOK_BARKOD_ID FOR XML PATH(''), TYPE).value('.', 'varchar(max)'), 1, 1, '') AS BARKODLAR
+        SELECT K.*, STUFF((SELECT '|' + B.BARKOD FROM dbo.TODVZ_STOK_BARKOD B WHERE B.STOK_KART_ID = K.STOK_KART_ID AND B.STOK_BIRIM_ID IS NULL ORDER BY B.STOK_BARKOD_ID FOR XML PATH(''), TYPE).value('.', 'varchar(max)'), 1, 1, '') AS BARKODLAR
         FROM dbo.TODVZ_STOK_KART K WHERE K.STOK_KART_ID IN (${guncellenecek.slice(i, i + 1000).join(",")})`);
             for (const e of r.recordset)
                 eskiler.set(Number(e.STOK_KART_ID), e);

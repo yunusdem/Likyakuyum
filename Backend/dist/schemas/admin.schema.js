@@ -8,7 +8,8 @@ const kullaniciAdi = z
 const adSoyad = z.string().trim().min(2, "Ad Soyad en az 2 karakter olmalıdır").max(100);
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 // Ürün paketi kodu (docs/LISANS_URUN_PAKETLERI.md)
-const paketKodu = z.string().trim().regex(/^[a-z]{2,20}$/, "Geçersiz paket kodu");
+// Alt çizgi de geçerli: "ticari_restorant" (Ticari + Restorant, R3); ADM_PAKET.PAKET_KODU VARCHAR(20)
+const paketKodu = z.string().trim().regex(/^[a-z][a-z_]{1,19}$/, "Geçersiz paket kodu");
 /** Lisansın ürünleri; gönderilmezse lisansın ürün alanına dokunulmaz (eski usul serbest paket adı) */
 export const urunlerAlani = z.array(paketKodu).max(10).optional();
 export const adminGirisSchema = z.object({
@@ -239,7 +240,16 @@ export const lisansEkleSchema = z.object({
         paketAdi: secmeli(100),
         notlar: secmeli(1000),
         urunler: urunlerAlani,
+        // Adisyon garson sınırı (TA24): boş = sınırsız
+        garsonLimiti: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.coerce.number().int().min(0, "Garson sınırı 0 ya da daha büyük olmalıdır").max(10000).nullable()).optional(),
+        // Restorant başlık adı (R4): boş = "Restorant"
+        restoranAdi: z.string().max(60, "Restorant başlık adı en çok 40 karakter olmalıdır").nullable().optional(),
     }),
+});
+/** Etkin lisansın Restorant başlık adı (R4) */
+export const restoranAdiSchema = z.object({
+    params: idParam,
+    body: z.object({ restoranAdi: z.string().max(60, "Restorant başlık adı en çok 40 karakter olmalıdır").nullable() }),
 });
 // Dağıtım (docs/CANLI_TEST_AYRIMI_YOL_HARITASI.md): "Test'i Güncelle" / "Canlıya Geçir"
 export const dagitimBaslatSchema = z.object({

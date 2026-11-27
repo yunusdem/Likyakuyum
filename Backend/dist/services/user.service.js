@@ -92,6 +92,7 @@ export class UserService {
             iscilikGirisSekli: input.iscilikGirisSekli ?? 0,
             dovizZiynetGirisSekli: input.dovizZiynetGirisSekli ?? 0,
             altinHesaplamaSekli: input.altinHesaplamaSekli ?? 0,
+            paraUstuVar: input.paraUstuVar ?? true,
             hasVezneLastTransactionsPerm: input.hasVezneLastTransactionsPerm ?? false,
             hasOnlyOwnRecordsPerm: input.hasOnlyOwnRecordsPerm ?? false,
             cariSinirlamaTipi: input.cariSinirlamaTipi ?? 0,

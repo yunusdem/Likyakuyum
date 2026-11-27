@@ -3,9 +3,10 @@ import sql from "mssql";
 import { EVRAK_TURU_PERAKENDE, gibeGonderildiyseEngelle } from "./ebelgeGonderimKilidi.js";
 import { ApiError } from "../utils/ApiError.js";
 import { logger } from "../utils/logger.js";
-import { ticariFisHesapla, GECERLI_KDV_ORANLARI, birimAdiDuzelt } from "../services/ticari/ticariHesap.js";
+import { ticariFisHesapla, GECERLI_KDV_ORANLARI, birimAdiDuzelt, receteTuketimi } from "../services/ticari/ticariHesap.js";
+import { TicariKarSqlRepository } from "./ticariKarSql.repository.js";
 import { PerakendeSqlRepository } from "./perakendeSql.repository.js";
-import { STOK_BELGE, TicariStokSqlRepository } from "./ticariStokSql.repository.js";
+import { STOK_BELGE, TicariStokSqlRepository, stokIslemKilidi } from "./ticariStokSql.repository.js";
 import { bakiyeler, eksiStokDenetle } from "./ticariGirisSql.repository.js";
 import { TicariKampanyaSqlRepository } from "./ticariKampanyaSql.repository.js";
 import { durbunFiltresiVar, durbunLimiti, durbunParametreleriniBagla, fisDurbunKosullari } from "../utils/fisDurbunFiltre.js";
@@ -33,7 +34,7 @@ const sayi = (v) => {
     return Number.isFinite(n) ? n : 0;
 };
 /** Ödemelerin vezne bakiyesine işlenmiş etkisini geri alır (Perakende'deki kuralın ödeme kısmı) */
-const ODEME_VEZNE_GERI_AL = `
+export const ODEME_VEZNE_GERI_AL = `
   DECLARE @GA_VEZNE INT, @GA_TIPI INT;
   SELECT @GA_VEZNE = VEZNE_ID, @GA_TIPI = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FID;
   IF @GA_VEZNE IS NOT NULL AND @GA_VEZNE > 0
@@ -103,6 +104,56 @@ const NUMARA_URET = `
     UPDATE dbo.TODVZ_NUMERATOR SET BASLANGIC = BASLANGIC + 1
     WHERE TUR = @TARGET_TUR AND @GEN_NO = RTRIM(@ONEK) + LTRIM(REPLACE(STR(@SAYAC, @SAYAC_BOYU, 0), ' ', '0'));
   SELECT @GEN_NO AS GENERATED_FATURA_NO;`;
+/**
+ * Fişin ödeme satırlarını yazar (satış ve iade ortak; docs/TICARI_ADISYON_YOL_HARITASI.md TA6). Vezneye işleme ayrı (vezneyeIsle):
+ * yön fişin FATURA_TIPI'nden (1 satış giriş, 2 iade çıkış).
+ */
+export async function odemeleriYaz(tx, faturaId, odemeler) {
+    const posTablosu = (await new sql.Request(tx).query(`SELECT OBJECT_ID('dbo.TODVZ_POS_CIHAZI', 'U') AS V`)).recordset[0]?.V != null;
+    let sira = 1;
+    for (const o of odemeler) {
+        const oat = Number(o.odemeAraciTuru) || 0;
+        const iy = oat === 1 ? 1 : oat === 2 ? 3 : oat === 3 ? 2 : 0;
+        const tutar = sayi(o.tutar);
+        const kur = sayi(o.kur) > 0 ? sayi(o.kur) : 1;
+        await new sql.Request(tx)
+            .input("FATURA_ID", sql.Int, faturaId).input("SATIR_NO", sql.Int, sira++).input("ODEME_ARACI_TURU", sql.TinyInt, oat).input("ISLEME_YERI", sql.TinyInt, iy)
+            .input("CARI_KART_ID", sql.Int, oat === 1 || oat === 3 ? Number(o.cariKartId) || null : null)
+            .input("POS_CIHAZI_ID", sql.Int, oat === 2 ? Number(o.posCihaziId) || null : null)
+            .input("CARI_KOD", sql.VarChar(50), temiz(o.cariKod).slice(0, 50) || null)
+            .input("CARI_UNVAN", sql.VarChar(250), temiz(o.cariUnvan).slice(0, 250) || null)
+            .input("PARA_ID", sql.Int, Number(o.paraId) || null)
+            .input("PARA_KODU", sql.VarChar(50), temiz(o.paraKodu) || "TL")
+            .input("PARA_ADI", sql.VarChar(100), temiz(o.paraAdi).slice(0, 100))
+            .input("MIKTAR", sql.Float, o.miktar === null || o.miktar === undefined ? (kur === 1 ? tutar : null) : sayi(o.miktar))
+            .input("KUR", sql.Float, kur).input("TUTAR", sql.Float, tutar)
+            .query(`INSERT INTO dbo.TODVZ_FATURA_ODEME (FATURA_ID, SATIR_NO, ODEME_ARACI_TURU, ISLEME_YERI, CARI_KART_ID, POS_CIHAZI_ID, CARI_KOD, CARI_UNVAN,
+          PARA_ID, PARA_KODU, PARA_ADI, ADET, MIKTAR, MILYEM, HAS_GRAM, KUR, TUTAR)
+        VALUES (@FATURA_ID, @SATIR_NO, @ODEME_ARACI_TURU, @ISLEME_YERI, @CARI_KART_ID,
+          ${posTablosu ? "COALESCE(@POS_CIHAZI_ID, (SELECT TOP 1 POS_CIHAZI_ID FROM dbo.TODVZ_POS_CIHAZI WHERE @ODEME_ARACI_TURU = 2 AND UPPER(LTRIM(RTRIM(KOD))) = UPPER(@CARI_KOD)))" : "@POS_CIHAZI_ID"},
+          @CARI_KOD, @CARI_UNVAN,
+          COALESCE(@PARA_ID, (SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@PARA_KODU)), 1),
+          @PARA_KODU, @PARA_ADI, NULL, @MIKTAR, NULL, NULL, @KUR, @TUTAR)`);
+    }
+}
+/** Vezneden (nakit) ödemeleri vezne bakiyesine işler: satışta giriş, iadede (FATURA_TIPI 2) çıkış */
+export async function vezneyeIsle(tx, faturaId) {
+    await new sql.Request(tx).input("FID", sql.Int, faturaId).query(`
+    DECLARE @TV INT, @TT INT;
+    SELECT @TV = VEZNE_ID, @TT = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FID;
+    IF @TV IS NOT NULL AND @TV > 0
+    BEGIN
+      UPDATE O SET VEZNE_ISLENDI = 1 FROM dbo.TODVZ_FATURA_ODEME O JOIN dbo.TODVZ_PARA P ON P.PARA_ID = O.PARA_ID
+        WHERE O.FATURA_ID = @FID AND ISNULL(O.ODEME_ARACI_TURU, 0) = 0 AND ISNULL(O.ISLEME_YERI, 0) = 0 AND ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0)) <> 0;
+      DECLARE @TE TABLE (PARA_ID INT, M FLOAT);
+      INSERT INTO @TE (PARA_ID, M)
+        SELECT O.PARA_ID, SUM(CASE WHEN @TT = 1 THEN 1 ELSE -1 END * ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0)))
+        FROM dbo.TODVZ_FATURA_ODEME O WHERE O.FATURA_ID = @FID AND ISNULL(O.VEZNE_ISLENDI, 0) = 1 GROUP BY O.PARA_ID;
+      UPDATE B SET MIKTAR = B.MIKTAR + E.M FROM dbo.TODVZ_VEZNE_BAKIYE B JOIN @TE E ON E.PARA_ID = B.PARA_ID WHERE B.VEZNE_ID = @TV;
+      INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR)
+        SELECT @TV, E.PARA_ID, E.M FROM @TE E WHERE NOT EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE B WHERE B.VEZNE_ID = @TV AND B.PARA_ID = E.PARA_ID);
+    END;`);
+}
 export class TicariSatisSqlRepository {
     static async siradakiNo(senaryo, ctx) {
         const s = temiz(senaryo).toUpperCase() || "EARSIVFATURA";
@@ -112,12 +163,19 @@ export class TicariSatisSqlRepository {
     /** Fişi düzeltilebilir / silinebilir mi: Ticari fişi olmalı, e-Belge'ye iletilmemiş olmalı */
     static async duzeltilebilir(tx, id) {
         const r = await new sql.Request(tx).input("ID", sql.Int, id)
-            .query(`SELECT ISNULL(FIS_KAYNAGI, 0) AS K, ISNULL(E_BELGE_DURUMU, 0) AS D, FATURA_NO FROM dbo.TODVZ_FATURA WITH (UPDLOCK) WHERE FATURA_ID = @ID`);
+            .query(`SELECT ISNULL(FIS_KAYNAGI, 0) AS K, ISNULL(E_BELGE_DURUMU, 0) AS D, FATURA_NO, FATURA_TIPI AS T,
+        (SELECT COUNT(*) FROM dbo.TODVZ_TICARI_IADE I WHERE I.ASIL_FATURA_ID = @ID) AS IADE
+        FROM dbo.TODVZ_FATURA WITH (UPDLOCK) WHERE FATURA_ID = @ID`);
         const f = r.recordset[0];
         if (!f)
             throw ApiError.notFound("Satış fişi bulunamadı.");
         if (Number(f.K) !== FIS_KAYNAGI_TICARI)
             throw ApiError.badRequest("Bu fiş Ticari satış fişi değil; Perakende ekranından düzeltin.");
+        // Satış iadesi (docs/TICARI_ADISYON_YOL_HARITASI.md TA6): iade fişi buradan düzeltilmez; iadesi olan satış fişi değişmez
+        if (Number(f.T) === 2)
+            throw ApiError.badRequest(`${temiz(f.FATURA_NO)} bir iade fişidir; İade Fişi ekranından silinip yeniden kesilir.`);
+        if (Number(f.IADE) > 0)
+            throw ApiError.badRequest(`${temiz(f.FATURA_NO)} numaralı fişin iadesi var; önce iade fişini silin.`);
         if (Number(f.D) === 1 || Number(f.D) === 2) {
             throw ApiError.badRequest(`${temiz(f.FATURA_NO)} numaralı fiş e-Belge olarak iletildi; düzeltilemez ve silinemez (gerekirse e-Belge iptali yapılır).`);
         }
@@ -125,12 +183,61 @@ export class TicariSatisSqlRepository {
     /** Fişin stok hareketlerini, ödemelerin vezne etkisini ve satır / ödemelerini kaldırır */
     static async etkiyiKaldir(tx, id) {
         await new sql.Request(tx).input("FID", sql.Int, id).query(ODEME_VEZNE_GERI_AL);
-        await new sql.Request(tx).input("ID", sql.Int, id).input("TUR", sql.TinyInt, STOK_BELGE.SATIS).query(`
-      DELETE FROM dbo.TODVZ_STOK_HAREKET WHERE BELGE_TURU = @TUR AND BELGE_ID = @ID;
+        await new sql.Request(tx).input("ID", sql.Int, id).input("TUR", sql.TinyInt, STOK_BELGE.SATIS).input("REC", sql.TinyInt, STOK_BELGE.RECETE).query(`
+      DELETE FROM dbo.TODVZ_STOK_HAREKET WHERE BELGE_TURU IN (@TUR, @REC) AND BELGE_ID = @ID;
       DELETE FROM dbo.TODVZ_FATURA_ODEME WHERE FATURA_ID = @ID;
       DELETE FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @ID;`);
     }
-    static async kaydet(girdi, kullaniciId, ctx) {
+    /**
+     * Adisyondan kesilmiş fiş mi (26.11.2026 denetimi): satırları adisyon kalemleriyle birebir bağlıdır (masa KDV'si, porsiyon çarpanı,
+     * porsiyon / seçenek adı, stok takibi). Öyleyse fişin satırları adisyondan yeniden kurulmuş hâliyle döner.
+     */
+    static async adisyonFisi(id, ctx) {
+        const pool = await TicariStokSqlRepository.havuz(ctx);
+        const v = await pool.request().input("ID", sql.Int, id).query(`IF OBJECT_ID('dbo.TODVZ_ADISYON_FIS', 'U') IS NULL SELECT 0 AS V
+      ELSE SELECT COUNT(*) AS V FROM dbo.TODVZ_ADISYON_FIS WHERE FATURA_ID = @ID`);
+        if (!Number(v.recordset[0]?.V))
+            return null;
+        const r = await pool.request().input("ID", sql.Int, id).query(`
+      SELECT K.STOK_KART_ID, K.MIKTAR, K.BIRIM_FIYAT, K.KDV_ORANI, K.PORSIYON_CARPAN, K.AD, K.PORSIYON_AD, K.IKRAM, RTRIM(K.BIRIM) AS BIRIM
+        FROM dbo.TODVZ_ADISYON_KALEM K WHERE K.FATURA_ID = @ID ORDER BY K.FATURA_SATIR_NO, K.KALEM_ID;
+      SELECT URUN_ADI, RTRIM(BIRIM) AS BIRIM, KDV_ORANI, KDV_DAHIL_FIYAT, MIKTAR FROM dbo.TODVZ_FATURA_SATIRI S WHERE S.FATURA_ID = @ID AND S.STOK_KART_ID IS NULL
+        AND S.SATIR_NO > (SELECT COUNT(*) FROM dbo.TODVZ_ADISYON_KALEM K WHERE K.FATURA_ID = @ID) ORDER BY S.SATIR_NO;
+      SELECT COUNT(*) AS N FROM dbo.TODVZ_STOK_HAREKET WHERE BELGE_ID = @ID AND BELGE_TURU IN (${STOK_BELGE.SATIS}, ${STOK_BELGE.RECETE});
+      SELECT COUNT(*) AS N FROM dbo.TODVZ_ADISYON_KALEM WHERE FATURA_ID = @ID AND STOK_KART_ID IS NOT NULL;`);
+        const rs = r.recordsets;
+        const satirlar = rs[0].map((k) => ({
+            stokKartId: k.STOK_KART_ID, miktar: Number(k.MIKTAR), kdvDahilFiyat: Number(k.BIRIM_FIYAT), kdvOrani: Number(k.KDV_ORANI), stokCarpani: Number(k.PORSIYON_CARPAN) || 1,
+            urunAdi: `${temiz(k.AD)}${k.PORSIYON_AD ? ` (${temiz(k.PORSIYON_AD)})` : ""}`.slice(0, 200), birim: temiz(k.BIRIM) || "Adet",
+            ...(k.IKRAM ? { iskontoTuru: 1, iskontoDegeri: 100 } : {}),
+        }));
+        for (const x of rs[1])
+            satirlar.push({ stokKartId: null, urunAdi: temiz(x.URUN_ADI), birim: temiz(x.BIRIM) || "Adet", kdvOrani: Number(x.KDV_ORANI), miktar: Number(x.MIKTAR), kdvDahilFiyat: Number(x.KDV_DAHIL_FIYAT) });
+        // Stok takibi fiş anındaki ayara göre: fişin stok hareketi varsa yazılır; kartlı kalemi olup hareketi yoksa yazılmaz
+        return { satirlar, stokYazma: Number(rs[2][0].N) > 0 || !Number(rs[3][0].N) };
+    }
+    static async kaydet(girdi, kullaniciId, ctx, yetki) {
+        // Adisyon fişi (karar K2, 26.11.2026): yalnız yönetici düzeltir; satırlar adisyon kalemleri olarak kalır (başlık, müşteri ve ödemeler düzeltilir)
+        let ic;
+        if (girdi.faturaId) {
+            const ad = await this.adisyonFisi(Number(girdi.faturaId), ctx);
+            if (ad) {
+                if (!yetki?.yonetici)
+                    throw ApiError.forbidden("Bu fiş Adisyon'dan kesildi; yalnız yönetici düzeltebilir.");
+                girdi = { ...girdi, satirlar: ad.satirlar };
+                ic = { satirKdv: true, satirAdi: true, stokYazma: ad.stokYazma, pasifKart: true, eksiStokSerbest: true };
+            }
+        }
+        const r = await this.kaydetIc(girdi, kullaniciId, ctx, ic);
+        return { fis: await this.getir(r.faturaId, ctx), uyari: r.uyari };
+    }
+    /** Adisyon kapanışı (D7): çağıranın işlemi içinde yeni satış fişi; fiş kimliği / no / toplam döner (işlem onaylanmadan getir yapılmaz) */
+    static async kaydetIslemde(girdi, kullaniciId, ctx, ic) {
+        if (girdi.faturaId)
+            throw ApiError.badRequest("İşlem içinden yalnız yeni fiş yazılır.");
+        return this.kaydetIc(girdi, kullaniciId, ctx, ic);
+    }
+    static async kaydetIc(girdi, kullaniciId, ctx, ic) {
         const pool = await TicariStokSqlRepository.havuz(ctx);
         const serbestMi = (s) => !(Number(s.stokKartId) > 0);
         const satirGirdi = (girdi.satirlar || []).filter((s) => s && (Number(s.stokKartId) > 0 || temiz(s.urunAdi)));
@@ -156,7 +263,7 @@ export class TicariSatisSqlRepository {
         }
         const kr = kartIdler.length
             ? await pool.request().input("LISTE", sql.Int, fiyatListesiId).query(`
-          SELECT K.STOK_KART_ID, RTRIM(K.KOD) AS KOD, K.AD, K.BIRIM, K.KDV_ORANI, COALESCE(LF.FIYAT, K.SATIS_FIYATI) AS SATIS_FIYATI, K.FIYAT_KDV_DAHIL, K.AKTIF, K.STOK_GRUP_ID
+          SELECT K.STOK_KART_ID, RTRIM(K.KOD) AS KOD, K.AD, K.BIRIM, K.KDV_ORANI, COALESCE(LF.FIYAT, K.SATIS_FIYATI) AS SATIS_FIYATI, K.FIYAT_KDV_DAHIL, K.AKTIF, K.STOK_GRUP_ID, ISNULL(K.RECETELI, 0) AS RECETELI
           FROM dbo.TODVZ_STOK_KART K LEFT JOIN dbo.TODVZ_STOK_KART_FIYAT LF ON LF.STOK_KART_ID = K.STOK_KART_ID AND LF.FIYAT_LISTESI_ID = @LISTE
           WHERE K.STOK_KART_ID IN (${kartIdler.join(",")})`)
             : { recordset: [] };
@@ -176,9 +283,13 @@ export class TicariSatisSqlRepository {
             const k = kartlar.get(Number(s.stokKartId));
             if (!k)
                 throw ApiError.badRequest(`${i + 1}. satırdaki stok kartı bulunamadı.`);
-            if (!(k.AKTIF === true || k.AKTIF === 1))
+            if (!(k.AKTIF === true || k.AKTIF === 1) && !ic?.pasifKart)
                 throw ApiError.badRequest(`${i + 1}. satırdaki "${temiz(k.AD)}" kartı pasif; satılamaz.`);
-            const kdvOrani = Number(k.KDV_ORANI) || 0;
+            // Adisyon (D7): masa KDV'si satırdan (yalnız işlem içi çağrıda; öbür ekranlar kartın KDV'sini kullanır)
+            const satirKdvVar = !!ic?.satirKdv && s.kdvOrani !== null && s.kdvOrani !== undefined && temiz(s.kdvOrani) !== "";
+            if (satirKdvVar && !GECERLI_KDV_ORANLARI.includes(sayi(s.kdvOrani)))
+                throw ApiError.badRequest(`${i + 1}. satırın KDV oranı geçersiz.`);
+            const kdvOrani = satirKdvVar ? sayi(s.kdvOrani) : Number(k.KDV_ORANI) || 0;
             const kartFiyati = Number(k.SATIS_FIYATI) || 0;
             const varsayilan = k.FIYAT_KDV_DAHIL === true || k.FIYAT_KDV_DAHIL === 1 ? kartFiyati : kartFiyati * (1 + kdvOrani / 100);
             const fiyat = s.kdvDahilFiyat === null || s.kdvDahilFiyat === undefined || temiz(s.kdvDahilFiyat) === "" ? varsayilan : sayi(s.kdvDahilFiyat);
@@ -202,17 +313,40 @@ export class TicariSatisSqlRepository {
                 throw ApiError.badRequest("Cari ödeme satırında cari seçilmeli.");
         }
         const onEk = await PerakendeSqlRepository.numaratorOnEki(1, senaryo, ctx);
-        const tx = new sql.Transaction(pool);
-        await tx.begin();
+        const disIslem = !!ic?.tx;
+        const tx = ic?.tx ?? new sql.Transaction(pool);
+        if (!disIslem)
+            await tx.begin();
+        await stokIslemKilidi(tx);
         let faturaId = id0;
+        let faturaNoSon = "";
         let uyari = null;
+        const stokYaz = ic?.stokYazma !== false;
         try {
             let eskiKartlar = [];
             if (id0) {
                 await this.duzeltilebilir(tx, id0);
-                eskiKartlar = (await new sql.Request(tx).input("ID", sql.Int, id0).query(`SELECT DISTINCT STOK_KART_ID FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @ID AND STOK_KART_ID IS NOT NULL`)).recordset.map((x) => Number(x.STOK_KART_ID));
+                // Eski fişin kartları + reçeteli satırlarının düşürdüğü malzemeler (TA18)
+                eskiKartlar = (await new sql.Request(tx).input("ID", sql.Int, id0).query(`SELECT DISTINCT STOK_KART_ID FROM dbo.TODVZ_FATURA_SATIRI WHERE FATURA_ID = @ID AND STOK_KART_ID IS NOT NULL
+          UNION SELECT DISTINCT STOK_KART_ID FROM dbo.TODVZ_STOK_HAREKET WHERE BELGE_TURU = 7 AND BELGE_ID = @ID`)).recordset.map((x) => Number(x.STOK_KART_ID));
             }
-            const onceki = await bakiyeler(tx, [...kartIdler, ...eskiKartlar]);
+            // Reçeteli ürünler (TA18): kendisi stok tutmaz; satılınca reçetedeki malzemeler düşer
+            const receteliIdler = [...kartlar.values()].filter((k) => Number(k.RECETELI) === 1).map((k) => Number(k.STOK_KART_ID));
+            const receteler = new Map();
+            if (receteliIdler.length) {
+                const rq = await new sql.Request(tx).query(`SELECT STOK_KART_ID, MALZEME_KART_ID, MIKTAR FROM dbo.TODVZ_STOK_RECETE WHERE STOK_KART_ID IN (${receteliIdler.join(",")}) ORDER BY STOK_KART_ID, SATIR_NO`);
+                for (const x of rq.recordset) {
+                    const l = receteler.get(Number(x.STOK_KART_ID)) || [];
+                    l.push({ malzemeKartId: Number(x.MALZEME_KART_ID), miktar: Number(x.MIKTAR) });
+                    receteler.set(Number(x.STOK_KART_ID), l);
+                }
+                const bos = receteliIdler.find((id) => !receteler.get(id)?.length);
+                if (bos)
+                    throw ApiError.badRequest(`"${temiz(kartlar.get(bos)?.AD)}" reçeteli ürün ama reçetesi boş; stok kartından reçetesini yazın.`);
+            }
+            const malzemeIdler = [...new Set([...receteler.values()].flat().map((x) => x.malzemeKartId))];
+            const malzemeOrt = malzemeIdler.length ? await TicariKarSqlRepository.ortalamalar(tx, malzemeIdler, tarih) : new Map();
+            const onceki = await bakiyeler(tx, [...kartIdler, ...eskiKartlar, ...malzemeIdler]);
             const no = await new sql.Request(tx)
                 .input("IN_FATURA_ID", sql.Int, id0)
                 .input("IN_FATURA_NO", sql.VarChar(50), temiz(girdi.faturaNo) || null)
@@ -220,6 +354,7 @@ export class TicariSatisSqlRepository {
                 .input("IN_PREFIX", sql.VarChar(10), onEk)
                 .query(NUMARA_URET);
             const faturaNo = temiz(no.recordset[0]?.GENERATED_FATURA_NO) || `${onEk}${tarih.getFullYear()}000000001`;
+            faturaNoSon = faturaNo;
             if (id0)
                 await this.etkiyiKaldir(tx, id0);
             const bas = new sql.Request(tx)
@@ -269,7 +404,8 @@ export class TicariSatisSqlRepository {
                 const h = hesap.satirlar[i];
                 const serbest = serbestMi(satirGirdi[i]);
                 const k = serbest ? null : kartlar.get(Number(satirGirdi[i].stokKartId));
-                const ad = serbest ? temiz(satirGirdi[i].urunAdi) : temiz(k.AD);
+                const ad = serbest ? temiz(satirGirdi[i].urunAdi) : ic?.satirAdi && temiz(satirGirdi[i].urunAdi) ? temiz(satirGirdi[i].urunAdi) : temiz(k.AD);
+                const carpan = Number(satirGirdi[i].stokCarpani) > 0 ? Number(satirGirdi[i].stokCarpani) : 1;
                 const birim = (serbest ? birimAdiDuzelt(satirGirdi[i].birim) : temiz(k.BIRIM)) || "Adet";
                 // Kampanya (İş 11, G12): yürürlükte ve kartı kapsıyor olmalı; satır iskontosu kampanyanınkiyle aynı olmalı
                 const kampanyaId = Number(satirGirdi[i].kampanyaId) || null;
@@ -287,67 +423,43 @@ export class TicariSatisSqlRepository {
                     .input("TT", sql.Float, h.toplamTutar).input("DF", sql.Float, h.kdvDahilFiyat)
                     .input("IT", sql.TinyInt, h.iskontoTuru || null).input("ID", sql.Float, h.iskontoTuru ? h.iskontoDegeri : null).input("IST", sql.Float, h.iskontoTutari)
                     .input("TARIH", sql.DateTime, tarih).input("TUR", sql.TinyInt, STOK_BELGE.SATIS).input("KUL", sql.Int, kullaniciId || null)
+                    .input("REC", sql.Bit, k && Number(k.RECETELI) === 1 ? 1 : 0)
+                    .input("SM", sql.Float, Math.round(h.miktar * carpan * 10000) / 10000).input("STOK", sql.Bit, stokYaz ? 1 : 0)
                     .query(`INSERT INTO dbo.TODVZ_FATURA_SATIRI (FATURA_ID, SATIR_NO, ALTIN_URUN_ID, BARKOD, URUN_ADI, AYAR, MIKTAR, BIRIM, GRAM, HAS_GRAM, BIRIM_FIYAT, TUTAR,
               KDV_ORANI, KDV_TUTARI, TOPLAM_TUTAR, STOK_KART_ID, KDV_DAHIL_FIYAT, SATIR_ISKONTO_TURU, SATIR_ISKONTO_DEGERI, SATIR_ISKONTO_TUTARI, KAMPANYA_ID)
             VALUES (@FID, @NO, NULL, NULL, @AD, NULL, @M, @BIRIM, 0, 0, @BF, @T, @KO, @KT, @TT, @KART, @DF, @IT, @ID, @IST, @KMP);
-            IF @KART IS NOT NULL
+            IF @KART IS NOT NULL AND @REC = 0 AND @STOK = 1
               INSERT INTO dbo.TODVZ_STOK_HAREKET (STOK_KART_ID, TARIH, BELGE_TURU, BELGE_ID, SATIR_NO, GIRIS, CIKIS, BIRIM_FIYAT, EKLEYEN_ID)
-              VALUES (@KART, @TARIH, @TUR, @FID, @NO, 0, @M, @BF, @KUL);`);
+              VALUES (@KART, @TARIH, @TUR, @FID, @NO, 0, @SM, @BF, @KUL);`);
+                // Reçeteli satır: malzemeler tür 7 hareketiyle düşer (birim fiyat: satış anındaki ortalama maliyet, bilgi amaçlı; rapor yeniden hesaplar)
+                const rec = stokYaz && k && Number(k.RECETELI) === 1 ? receteler.get(Number(k.STOK_KART_ID)) || [] : [];
+                if (rec.length) {
+                    const rr = new sql.Request(tx).input("FID", sql.Int, faturaId).input("NO", sql.Int, i + 1).input("TARIH", sql.DateTime, tarih).input("TUR", sql.TinyInt, STOK_BELGE.RECETE).input("KUL", sql.Int, kullaniciId || null);
+                    const v = receteTuketimi(h.miktar, rec, carpan).filter((t) => t.miktar > 0).map((t, j) => {
+                        rr.input(`MK${j}`, sql.Int, t.malzemeKartId).input(`MM${j}`, sql.Float, t.miktar).input(`MF${j}`, sql.Float, malzemeOrt.get(t.malzemeKartId) || 0);
+                        return `(@MK${j}, @TARIH, @TUR, @FID, @NO, 0, @MM${j}, @MF${j}, @KUL)`;
+                    });
+                    if (v.length)
+                        await rr.query(`INSERT INTO dbo.TODVZ_STOK_HAREKET (STOK_KART_ID, TARIH, BELGE_TURU, BELGE_ID, SATIR_NO, GIRIS, CIKIS, BIRIM_FIYAT, EKLEYEN_ID) VALUES ${v.join(",")}`);
+                }
             }
-            const posTablosu = (await new sql.Request(tx).query(`SELECT OBJECT_ID('dbo.TODVZ_POS_CIHAZI', 'U') AS V`)).recordset[0]?.V != null;
-            let sira = 1;
-            for (const o of odemeler) {
-                const oat = Number(o.odemeAraciTuru) || 0;
-                const iy = oat === 1 ? 1 : oat === 2 ? 3 : oat === 3 ? 2 : 0;
-                const tutar = sayi(o.tutar);
-                const kur = sayi(o.kur) > 0 ? sayi(o.kur) : 1;
-                await new sql.Request(tx)
-                    .input("FATURA_ID", sql.Int, faturaId).input("SATIR_NO", sql.Int, sira++).input("ODEME_ARACI_TURU", sql.TinyInt, oat).input("ISLEME_YERI", sql.TinyInt, iy)
-                    .input("CARI_KART_ID", sql.Int, oat === 1 || oat === 3 ? Number(o.cariKartId) || null : null)
-                    .input("POS_CIHAZI_ID", sql.Int, oat === 2 ? Number(o.posCihaziId) || null : null)
-                    .input("CARI_KOD", sql.VarChar(50), temiz(o.cariKod).slice(0, 50) || null)
-                    .input("CARI_UNVAN", sql.VarChar(250), temiz(o.cariUnvan).slice(0, 250) || null)
-                    .input("PARA_ID", sql.Int, Number(o.paraId) || null)
-                    .input("PARA_KODU", sql.VarChar(50), temiz(o.paraKodu) || "TL")
-                    .input("PARA_ADI", sql.VarChar(100), temiz(o.paraAdi).slice(0, 100))
-                    .input("MIKTAR", sql.Float, o.miktar === null || o.miktar === undefined ? (kur === 1 ? tutar : null) : sayi(o.miktar))
-                    .input("KUR", sql.Float, kur).input("TUTAR", sql.Float, tutar)
-                    .query(`INSERT INTO dbo.TODVZ_FATURA_ODEME (FATURA_ID, SATIR_NO, ODEME_ARACI_TURU, ISLEME_YERI, CARI_KART_ID, POS_CIHAZI_ID, CARI_KOD, CARI_UNVAN,
-              PARA_ID, PARA_KODU, PARA_ADI, ADET, MIKTAR, MILYEM, HAS_GRAM, KUR, TUTAR)
-            VALUES (@FATURA_ID, @SATIR_NO, @ODEME_ARACI_TURU, @ISLEME_YERI, @CARI_KART_ID,
-              ${posTablosu ? "COALESCE(@POS_CIHAZI_ID, (SELECT TOP 1 POS_CIHAZI_ID FROM dbo.TODVZ_POS_CIHAZI WHERE @ODEME_ARACI_TURU = 2 AND UPPER(LTRIM(RTRIM(KOD))) = UPPER(@CARI_KOD)))" : "@POS_CIHAZI_ID"},
-              @CARI_KOD, @CARI_UNVAN,
-              COALESCE(@PARA_ID, (SELECT TOP 1 PARA_ID FROM dbo.TODVZ_PARA WHERE UPPER(LTRIM(RTRIM(KOD))) = UPPER(@PARA_KODU)), 1),
-              @PARA_KODU, @PARA_ADI, NULL, @MIKTAR, NULL, NULL, @KUR, @TUTAR)`);
-            }
+            await odemeleriYaz(tx, faturaId, odemeler);
             // Vezneden tahsilat vezne bakiyesine işlenir (Perakende'deki kural)
-            await new sql.Request(tx).input("FID", sql.Int, faturaId).query(`
-        DECLARE @TV INT, @TT INT;
-        SELECT @TV = VEZNE_ID, @TT = FATURA_TIPI FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @FID;
-        IF @TV IS NOT NULL AND @TV > 0
-        BEGIN
-          UPDATE O SET VEZNE_ISLENDI = 1 FROM dbo.TODVZ_FATURA_ODEME O JOIN dbo.TODVZ_PARA P ON P.PARA_ID = O.PARA_ID
-            WHERE O.FATURA_ID = @FID AND ISNULL(O.ODEME_ARACI_TURU, 0) = 0 AND ISNULL(O.ISLEME_YERI, 0) = 0 AND ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0)) <> 0;
-          DECLARE @TE TABLE (PARA_ID INT, M FLOAT);
-          INSERT INTO @TE (PARA_ID, M)
-            SELECT O.PARA_ID, SUM(CASE WHEN @TT = 1 THEN 1 ELSE -1 END * ISNULL(NULLIF(O.MIKTAR, 0), O.TUTAR / NULLIF(O.KUR, 0)))
-            FROM dbo.TODVZ_FATURA_ODEME O WHERE O.FATURA_ID = @FID AND ISNULL(O.VEZNE_ISLENDI, 0) = 1 GROUP BY O.PARA_ID;
-          UPDATE B SET MIKTAR = B.MIKTAR + E.M FROM dbo.TODVZ_VEZNE_BAKIYE B JOIN @TE E ON E.PARA_ID = B.PARA_ID WHERE B.VEZNE_ID = @TV;
-          INSERT INTO dbo.TODVZ_VEZNE_BAKIYE (VEZNE_ID, PARA_ID, MIKTAR)
-            SELECT @TV, E.PARA_ID, E.M FROM @TE E WHERE NOT EXISTS (SELECT 1 FROM dbo.TODVZ_VEZNE_BAKIYE B WHERE B.VEZNE_ID = @TV AND B.PARA_ID = E.PARA_ID);
-        END;`);
-            const eksi = await eksiStokDenetle(tx, onceki, girdi.eksiStokOnay);
+            await vezneyeIsle(tx, faturaId);
+            const eksi = ic?.eksiStokSerbest ? [] : await eksiStokDenetle(tx, onceki, girdi.eksiStokOnay);
             if (eksi.length)
                 uyari = `Eksiye düşen stok: ${eksi.map((k) => `${k.kod} ${k.ad} (${k.sonraki.toLocaleString("tr-TR")} ${k.birim})`).join(", ")}`;
-            await tx.commit();
+            if (!disIslem)
+                await tx.commit();
         }
         catch (e) {
-            await tx.rollback().catch(() => undefined);
+            if (!disIslem)
+                await tx.rollback().catch(() => undefined);
             if (!(e instanceof ApiError))
                 logger.error("TicariSatisSqlRepository.kaydet", { message: e?.message, stack: e?.stack });
             throw e;
         }
-        return { fis: await this.getir(faturaId, ctx), uyari };
+        return { faturaId: Number(faturaId), faturaNo: faturaNoSon, genelToplam: hesap.genelToplam, uyari };
     }
     static async sil(id, ctx) {
         const pool = await TicariStokSqlRepository.havuz(ctx);
@@ -355,8 +467,14 @@ export class TicariSatisSqlRepository {
         await gibeGonderildiyseEngelle(pool, EVRAK_TURU_PERAKENDE, id, "ticari satış fişi");
         const tx = new sql.Transaction(pool);
         await tx.begin();
+        await stokIslemKilidi(tx);
         try {
             await this.duzeltilebilir(tx, id);
+            // Adisyon fişi silinmez (karar K2): adisyon "ödendi" kalıp fişsiz kalmasın; geri alma Adisyon tarafında "Yeniden aç" ile yapılır
+            const adf = await new sql.Request(tx).input("ID", sql.Int, id).query(`IF OBJECT_ID('dbo.TODVZ_ADISYON_FIS', 'U') IS NULL SELECT 0 AS V
+        ELSE SELECT COUNT(*) AS V FROM dbo.TODVZ_ADISYON_FIS WHERE FATURA_ID = @ID`);
+            if (Number(adf.recordset[0]?.V))
+                throw ApiError.badRequest("Bu fiş Adisyon'dan kesildi; buradan silinemez. Adisyonu Adisyon ekranından yeniden açın.");
             await this.etkiyiKaldir(tx, id);
             await new sql.Request(tx).input("ID", sql.Int, id).query(`DELETE FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @ID`);
             await tx.commit();
@@ -365,6 +483,17 @@ export class TicariSatisSqlRepository {
             await tx.rollback().catch(() => undefined);
             throw e;
         }
+    }
+    /**
+     * Adisyonu yeniden açma (karar K1): adisyon fişi, çağıranın işlemi içinde geri alınır (stok ve vezne etkisiyle birlikte silinir).
+     * Kurallar normal silmeyle aynı: e-Belge'ye iletilmiş / GİB'e gönderilmiş ya da iadesi olan fiş geri alınamaz. Stok kilidini çağıran alır.
+     */
+    static async silIslemde(tx, id, ctx) {
+        const pool = await TicariStokSqlRepository.havuz(ctx);
+        await gibeGonderildiyseEngelle(pool, EVRAK_TURU_PERAKENDE, id, "adisyon fişi");
+        await this.duzeltilebilir(tx, id);
+        await this.etkiyiKaldir(tx, id);
+        await new sql.Request(tx).input("ID", sql.Int, id).query(`DELETE FROM dbo.TODVZ_FATURA WHERE FATURA_ID = @ID`);
     }
     static async getir(id, ctx) {
         const pool = await TicariStokSqlRepository.havuz(ctx);
@@ -488,6 +617,10 @@ export class TicariSatisSqlRepository {
         const pool = await TicariStokSqlRepository.havuz(ctx);
         const req = pool.request();
         const kosul = [`ISNULL(F.FIS_KAYNAGI, 0) = ${FIS_KAYNAGI_TICARI}`];
+        // Tür (TA6): 1 satış (varsayılan), 2 iade, 0 hepsi — iade fişleri satış toplamlarına karışmasın
+        const tip = f.tip === null || f.tip === undefined ? 1 : Number(f.tip);
+        if (tip === 1 || tip === 2)
+            kosul.push(`ISNULL(F.FATURA_TIPI, 1) = ${tip}`);
         const gun = "CAST(DATEADD(hour, 3, F.TARIH) AS date)";
         if (f.baslangic) {
             req.input("BAS", sql.VarChar(10), temiz(f.baslangic).slice(0, 10));
@@ -525,7 +658,7 @@ export class TicariSatisSqlRepository {
         const r = await req.query(`
       SELECT ${ust}F.FATURA_ID, F.FATURA_NO, F.TARIH, F.SENARYO, F.ALICI_VKN_TCKN, F.ALICI_UNVAN, F.CARI_KART_ID, RTRIM(C.KOD) AS CARI_KOD,
         F.ARA_TOPLAM, F.TOPLAM_KDV, F.ISKONTO_TUTARI, F.GENEL_TOPLAM, ISNULL(F.E_BELGE_DURUMU, 0) AS E_BELGE_DURUMU, F.GIB_STATU_KODU,
-        F.VEZNE_ID, RTRIM(V.KOD) AS VEZNE_KOD,
+        F.VEZNE_ID, RTRIM(V.KOD) AS VEZNE_KOD, ISNULL(F.FATURA_TIPI, 1) AS FATURA_TIPI,
         (SELECT COUNT(*) FROM dbo.TODVZ_FATURA_SATIRI S WHERE S.FATURA_ID = F.FATURA_ID) AS SATIR_SAYISI,
         (SELECT ISNULL(SUM(ROUND(S.MIKTAR * ISNULL(S.KDV_DAHIL_FIYAT, 0), 2)), 0) FROM dbo.TODVZ_FATURA_SATIRI S WHERE S.FATURA_ID = F.FATURA_ID) AS BRUT,
         (SELECT ISNULL(SUM(O.TUTAR), 0) FROM dbo.TODVZ_FATURA_ODEME O WHERE O.FATURA_ID = F.FATURA_ID AND ISNULL(O.ODEME_ARACI_TURU, 0) = 0) AS NAKIT,
@@ -549,6 +682,7 @@ export class TicariSatisSqlRepository {
             cariKod: x.CARI_KOD ? temiz(x.CARI_KOD) : null,
             vezneId: x.VEZNE_ID ?? null,
             vezneKod: x.VEZNE_KOD ? temiz(x.VEZNE_KOD) : null,
+            faturaTipi: Number(x.FATURA_TIPI) || 1,
             satirSayisi: Number(x.SATIR_SAYISI) || 0,
             brutDahil: p(x.BRUT),
             iskonto: p(Number(x.BRUT) - Number(x.GENEL_TOPLAM)),

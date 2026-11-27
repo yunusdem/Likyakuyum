@@ -173,6 +173,7 @@ export class EbelgeKaynakRepository {
       WHERE (@kkKullanici IS NULL OR F.EKLEYEN_ID=@kkKullanici OR (@kkVezne>0 AND F.VEZNE_ID=@kkVezne)) AND ((@kaynak IS NULL AND ((@gP=1 AND ISNULL(F.FIS_KAYNAGI,0)=0) OR (@gT=1 AND ISNULL(F.FIS_KAYNAGI,0)=1)))
           OR (@kaynak='PERAKENDE_SATIS' AND F.FATURA_TIPI<>0 AND ISNULL(F.FIS_KAYNAGI,0)=0) OR (@kaynak='PERAKENDE_ALIS' AND F.FATURA_TIPI=0 AND ISNULL(F.FIS_KAYNAGI,0)=0)
           OR (@kaynak='TICARI_SATIS' AND ISNULL(F.FIS_KAYNAGI,0)=1))
+        AND NOT (ISNULL(F.FIS_KAYNAGI,0)=1 AND F.FATURA_TIPI=2) -- Ticari iade fişi (TA6) satış gibi gönderilmez; e-Gider Pusulası (iade) ile
         AND (@tur IS NULL OR F.FATURA_TIPI=@tur)
         AND (@ilk IS NULL OR F.TARIH>=@ilk) AND (@son IS NULL OR F.TARIH<DATEADD(day,1,@son))
         AND (F.FATURA_NO LIKE @arama OR F.ALICI_UNVAN LIKE @arama);

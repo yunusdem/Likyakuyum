@@ -66,7 +66,8 @@ export const GECERLI_KDV_ORANLARI = [0, 1, 8, 10, 18, 20];
 export function ticariFisHesapla(girdiler, baslik) {
     const ara = girdiler.map((g, i) => {
         const miktar = yuvarla(sayi(g.miktar), 4);
-        const kdvDahilFiyat = yuvarla(sayi(g.kdvDahilFiyat), 4);
+        // 6 hane: koli fiyatı ana birime bölününce (1.000 TL / 144) satır tutarı koli fiyatıyla aynı çıksın (TA5); elle girilen fiyatlar en çok 4 hanelidir, değişmez
+        const kdvDahilFiyat = yuvarla(sayi(g.kdvDahilFiyat), 6);
         const kdvOrani = sayi(g.kdvOrani);
         const iskontoTuru = (Number(g.iskontoTuru) === 1 || Number(g.iskontoTuru) === 2 ? Number(g.iskontoTuru) : 0);
         const iskontoDegeri = iskontoTuru ? sayi(g.iskontoDegeri) : 0;
@@ -205,3 +206,406 @@ export const birimKoduTicari = (birim) => {
     const ad = birimAdiDuzelt(birim);
     return BIRIMLER.find((b) => b.ad === ad)?.kod ?? "C62";
 };
+/** Kartın birimi tartılı mı (Kg / Gr); değilse null */
+export const tartiBirimi = (birim) => {
+    const ad = birimAdiDuzelt(birim);
+    return ad === "Kg" || ad === "Gr" ? ad : null;
+};
+/** Tartı penceresinde yazılan değer (gram ya da kilo) → kartın biriminde miktar (4 hane: 0,1 gr çözünürlüğü) */
+export const tartiMiktari = (deger, yazim, kartBirimi) => {
+    const d = sayi(deger);
+    if (!(d > 0))
+        return 0;
+    const gram = yazim === "gram" ? d : d * 1000;
+    return kartBirimi === "Kg" ? yuvarla(gram / 1000, 4) : yuvarla(gram, 4);
+};
+/** Kart birimindeki miktar → yazım biriminde değer (pencereyi var olan miktarla açmak için) */
+export const tartiDegeri = (miktar, yazim, kartBirimi) => {
+    const gram = kartBirimi === "Kg" ? sayi(miktar) * 1000 : sayi(miktar);
+    return yazim === "gram" ? yuvarla(gram, 1) : yuvarla(gram / 1000, 4);
+};
+/**
+ * "100 TL'lik" → kartın biriminde miktar; terazi gibi gram çözünürlüğüne yuvarlanır (Kg: 3 hane, Gr: tam gram).
+ * Fiyat KDV dahil birim (kg ya da gr) fiyatıdır. Sonuç tutarı kuruş farkı verebilir; ekran önce gösterir.
+ */
+export const tutardanTartiMiktari = (tutar, birimFiyat, kartBirimi) => {
+    const t = sayi(tutar), f = sayi(birimFiyat);
+    if (!(t > 0) || !(f > 0))
+        return 0;
+    const m = t / f;
+    return kartBirimi === "Kg" ? yuvarla(m, 3) : Math.round(m);
+};
+/** Tuş takımından gelen metin pencerede hangi yazımla açılır: virgüllü → kilo, virgülsüz → gram (TA2: varsayılan gram) */
+export const tartiYazimiTahmin = (metin) => (/[.,]/.test(String(metin ?? "")) ? "kilo" : "gram");
+/**
+ * Fiş hücresine yazılan tartı metni: "347gr", "347 g", "1,25kg", "1.25 kilo" → kartın biriminde miktar.
+ * Soneksiz sayı kartın biriminde kabul edilir (Kg kartında "0,5" = 0,5 kg). Geçersiz / sıfır → null.
+ */
+export const tartiMetniCoz = (metin, kartBirimi) => {
+    const m = /^\s*(\d+(?:[.,]\d+)?)\s*(kg|kilo|kilogram|gr|g|gram)?\s*$/i.exec(String(metin ?? "").toLocaleLowerCase("tr-TR"));
+    if (!m)
+        return null;
+    const d = Number(m[1].replace(",", "."));
+    if (!(d > 0))
+        return null;
+    const sonek = m[2];
+    const yazim = !sonek ? null : /^(kg|kilo|kilogram)$/.test(sonek) ? "kilo" : "gram";
+    if (!yazim)
+        return yuvarla(d, 4);
+    return tartiMiktari(d, yazim, kartBirimi);
+};
+/** "0,347 kg" / "347 gr" — ekranda tartı miktarı */
+export const tartiYaz = (miktar, kartBirimi) => {
+    const gram = kartBirimi === "Kg" ? sayi(miktar) * 1000 : sayi(miktar);
+    const kg = (gram / 1000).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 4 });
+    return `${kg} kg (${gram.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} gr)`;
+};
+/** EAN-13'ün ilk 12 hanesinden kontrol hanesi */
+export const ean13KontrolHanesi = (ilk12) => {
+    let t = 0;
+    for (let i = 0; i < 12; i++)
+        t += Number(ilk12[i]) * (i % 2 === 0 ? 1 : 3);
+    return (10 - (t % 10)) % 10;
+};
+/** Değer hanesi sayısı: 12 veri hanesi − önek − kod */
+export const teraziDegerHanesi = (d) => 12 - String(d.onek).length - Number(d.kodHane);
+/** Düzen denetimi; hata yoksa null */
+export const teraziDuzeniDenetle = (d) => {
+    const onek = String(d.onek ?? "").trim();
+    if (!/^\d{1,2}$/.test(onek))
+        return "Önek 1 ya da 2 rakam olmalı (ör. 27).";
+    if (!/^2/.test(onek))
+        return "Terazi barkodu öneki 2 ile başlamalı (20–29 mağaza içi barkodlar).";
+    const kod = Number(d.kodHane);
+    if (!Number.isInteger(kod) || kod < 3 || kod > 6)
+        return "Ürün kodu hanesi 3 ile 6 arasında olmalı.";
+    const deger = teraziDegerHanesi({ onek, kodHane: kod });
+    if (deger < 4)
+        return "Değer için en az 4 hane kalmalı; ürün kodu hanesini azaltın.";
+    if (d.degerTuru !== "A" && d.degerTuru !== "F")
+        return "Değer türü Ağırlık ya da Fiyat olmalı.";
+    const o = Number(d.ondalik);
+    if (!Number.isInteger(o) || o < 0 || o > 3 || o >= deger)
+        return "Ondalık 0 ile 3 arasında olmalı (ağırlıkta 3 = gram, fiyatta 2 = kuruş).";
+    return null;
+};
+/**
+ * Terazi barkodunu çözer: 13 rakam, kontrol hanesi doğru, etkin bir düzenin önekiyle başlar (uzun önek önce). Eşleşmezse null.
+ * Normal ürün barkodu önce kart barkodlarında aranır; bu yalnız orada bulunamayan barkod için kullanılır.
+ */
+export function teraziBarkodCoz(barkod, duzenler) {
+    const b = String(barkod ?? "").trim();
+    if (!/^\d{13}$/.test(b))
+        return null;
+    if (ean13KontrolHanesi(b) !== Number(b[12]))
+        return null;
+    const adaylar = duzenler.filter((d) => d.aktif && !teraziDuzeniDenetle(d) && b.startsWith(String(d.onek))).sort((x, y) => String(y.onek).length - String(x.onek).length);
+    const d = adaylar[0];
+    if (!d)
+        return null;
+    const ol = String(d.onek).length;
+    const plu = Number(b.slice(ol, ol + d.kodHane));
+    const ham = Number(b.slice(ol + d.kodHane, 12));
+    if (!(plu > 0))
+        return null;
+    const deger = yuvarla(ham / 10 ** d.ondalik, 4);
+    return { duzen: d, plu, agirlikKg: d.degerTuru === "A" ? deger : null, fiyat: d.degerTuru === "F" ? deger : null };
+}
+/**
+ * Terazi barkodundan kartın biriminde miktar. Ağırlık: Kg kartında kg, Gr kartında gram. Fiyat: etiketteki tutar ÷ KDV dahil
+ * birim fiyat, gram çözünürlüğüne yuvarlanmış (Kg: 3 hane, Gr: tam gram). Tartılı olmayan karta bağlıysa ya da değer sıfırsa açıklama metni döner.
+ */
+export const teraziMiktari = (c, kartBirimi, birimFiyat) => {
+    const b = tartiBirimi(kartBirimi);
+    if (!b)
+        return "Terazi barkodu tartılı (Kg / Gr) olmayan bir karta bağlı; kartın birimini ya da terazi kodunu düzeltin.";
+    if (c.agirlikKg !== null) {
+        if (!(c.agirlikKg > 0))
+            return "Terazi barkodundaki ağırlık sıfır.";
+        return b === "Kg" ? yuvarla(c.agirlikKg, 4) : yuvarla(c.agirlikKg * 1000, 4);
+    }
+    if (!(Number(c.fiyat) > 0))
+        return "Terazi barkodundaki tutar sıfır.";
+    if (!(birimFiyat > 0))
+        return "Kartın fiyatı yok; terazi etiketindeki tutardan miktar hesaplanamadı.";
+    // Terazi tutarı gram × kg fiyatından hesaplar: miktar gram çözünürlüğüne yuvarlanınca satır tutarı etiketle aynı çıkar
+    return tutardanTartiMiktari(Number(c.fiyat), birimFiyat, b);
+};
+/** Ayar ekranı için örnek barkod: verilen düzen, PLU ve değerle kontrol haneli EAN-13 */
+export const teraziOrnekBarkod = (d, plu, deger) => {
+    const dh = teraziDegerHanesi(d);
+    const ilk12 = `${d.onek}${String(Math.trunc(plu)).padStart(d.kodHane, "0").slice(-d.kodHane)}${String(Math.round(deger * 10 ** d.ondalik)).padStart(dh, "0").slice(-dh)}`;
+    return ilk12 + ean13KontrolHanesi(ilk12);
+};
+/**
+ * Ek birim satırının ana birim başına KDV dahil fiyatı: birimin kendi fiyatı (KDV dahil TL'ye çevrilmiş) ÷ çarpan; yoksa ana fiyat.
+ * 6 hane tutulur (satır tutarı = miktar × fiyat yuvarlanınca koli fiyatı çıkar).
+ */
+export const ekBirimSatirFiyati = (anaDahilFiyat, carpan, birimDahilFiyat) => {
+    const c = sayi(carpan);
+    if (!(c > 0))
+        return sayi(anaDahilFiyat);
+    if (birimDahilFiyat === null || birimDahilFiyat === undefined || !(sayi(birimDahilFiyat) > 0))
+        return sayi(anaDahilFiyat);
+    return yuvarla(sayi(birimDahilFiyat) / c, 6);
+};
+/** "1 Koli (12 Adet)" — ana birimdeki miktar çarpanın katıysa; değilse yalnız ana birim ("13 Adet") */
+export const ekBirimYaz = (anaMiktar, anaBirim, b) => {
+    const m = yuvarla(sayi(anaMiktar), 4);
+    const yaz = (n) => n.toLocaleString("tr-TR", { maximumFractionDigits: 4 });
+    if (!b || !(b.carpan > 0))
+        return `${yaz(m)} ${anaBirim}`;
+    const adet = m / b.carpan;
+    if (Math.abs(adet - Math.round(adet)) > 1e-9 || Math.round(adet) <= 0)
+        return `${yaz(m)} ${anaBirim}`;
+    return `${yaz(Math.round(adet))} ${b.birim} (${yaz(m)} ${anaBirim})`;
+};
+/** Ek birim listesi denetimi: hata metinleri (boşsa geçerli) */
+export const ekBirimleriDenetle = (anaBirim, birimler) => {
+    const hatalar = [];
+    const adlar = new Set();
+    const ana = String(anaBirim ?? "").trim().toLocaleLowerCase("tr-TR");
+    birimler.forEach((b, i) => {
+        const ad = String(b.birim ?? "").trim();
+        const k = `${i + 1}. birim`;
+        if (!ad)
+            hatalar.push(`${k}: birim adı boş.`);
+        else if (ad.length > 20)
+            hatalar.push(`${k}: birim adı 20 karakterden uzun.`);
+        else if (ad.toLocaleLowerCase("tr-TR") === ana)
+            hatalar.push(`${k}: "${ad}" kartın ana birimiyle aynı.`);
+        else if (adlar.has(ad.toLocaleLowerCase("tr-TR")))
+            hatalar.push(`${k}: "${ad}" iki kez yazılmış.`);
+        adlar.add(ad.toLocaleLowerCase("tr-TR"));
+        const c = sayi(b.carpan);
+        if (!(c > 0))
+            hatalar.push(`${k}: çarpan sıfırdan büyük olmalı.`);
+        else if (c === 1)
+            hatalar.push(`${k}: çarpan 1 olamaz (ana birimle aynı olur).`);
+        else if (c > 100000)
+            hatalar.push(`${k}: çarpan çok büyük.`);
+        if (b.satisFiyati !== null && b.satisFiyati !== undefined && String(b.satisFiyati).trim() !== "" && !(sayi(b.satisFiyati) >= 0))
+            hatalar.push(`${k}: fiyat geçersiz.`);
+    });
+    return hatalar;
+};
+/**
+ * Bir asıl satırdan q miktar iadenin tutarı: matrah ve KDV asıl satırın saklı tutarlarından miktarla orantılı paylaştırılır;
+ * satırın SON iadesi (kalanın tamamı) kalan matrah / KDV'yi alır. Böylece bir satırın bütün iadelerinin toplamı müşterinin o
+ * satıra ödediğine kuruşu kuruşuna eşittir (her iadeyi ayrı KDV yuvarlamasıyla hesaplamak 1 kuruş fazla iade ettiriyordu).
+ * e-Belge satırı kuralı satış satırıyla aynı: tutar = miktar × birim fiyat; matrahtan küçükse birim fiyat kuruş yukarı, fark iskonto.
+ */
+export function iadeSatirTutari(asil, onceki, q) {
+    const Q = sayi(asil.miktar);
+    const miktar = yuvarla(sayi(q), 4);
+    const kalan = yuvarla(Q - sayi(onceki.miktar), 4);
+    if (!(miktar > 0))
+        throw new Error("İade miktarı sıfırdan büyük olmalı.");
+    if (miktar - kalan > 0.00001)
+        throw new Error(`İade miktarı (${miktar}) kalan miktardan (${kalan}) fazla.`);
+    const son = Math.abs(miktar - kalan) <= 0.00001;
+    const matrah = son ? yuvarla2(sayi(asil.matrah) - sayi(onceki.matrah)) : yuvarla2((sayi(asil.matrah) * miktar) / Q);
+    const kdvTutari = son ? yuvarla2(sayi(asil.kdv) - sayi(onceki.kdv)) : yuvarla2((sayi(asil.kdv) * miktar) / Q);
+    let birimFiyat = yuvarla2(sayi(asil.birimFiyat));
+    let tutar = yuvarla2(miktar * birimFiyat);
+    if (tutar + 0.0001 < matrah) {
+        birimFiyat = yukari2(matrah / miktar);
+        tutar = yuvarla2(miktar * birimFiyat);
+    }
+    const iskontoTutari = yuvarla2(Math.max(0, tutar - matrah));
+    const toplamTutar = yuvarla2(matrah + kdvTutari);
+    return { miktar, birimFiyat, tutar, iskontoTutari, matrah, kdvTutari, toplamTutar, kdvOrani: sayi(asil.kdvOrani), kdvDahilFiyat: yuvarla(toplamTutar / miktar, 6), son };
+}
+/** Beklenen kasa nakdi: devir ile vardiya aralığındaki TL nakit hareketlerinden. Saf fonksiyon. */
+export function vardiyaNakdi(devir, hareketler) {
+    let nakitSatis = 0, nakitIade = 0, digerGiris = 0, digerCikis = 0;
+    for (const h of hareketler) {
+        const g = sayi(h.giris), c = sayi(h.cikis);
+        if (h.tur === "SATIS")
+            nakitSatis += g - c;
+        else if (h.tur === "IADE")
+            nakitIade += c - g;
+        else {
+            digerGiris += g;
+            digerCikis += c;
+        }
+    }
+    const d = yuvarla2(sayi(devir));
+    const r = { devir: d, nakitSatis: yuvarla2(nakitSatis), nakitIade: yuvarla2(nakitIade), digerGiris: yuvarla2(digerGiris), digerCikis: yuvarla2(digerCikis) };
+    return { ...r, beklenen: yuvarla2(r.devir + r.nakitSatis - r.nakitIade + r.digerGiris - r.digerCikis) };
+}
+/** Sayılan − beklenen; yarım kuruştan küçük fark TAMAM sayılır. Saf fonksiyon. */
+export function vardiyaFarki(beklenen, sayilan) {
+    const fark = yuvarla2(sayi(sayilan) - sayi(beklenen));
+    return { fark: Math.abs(fark) < 0.005 ? 0 : fark, durum: Math.abs(fark) < 0.005 ? "TAMAM" : fark > 0 ? "FAZLA" : "EKSIK" };
+}
+/** TL banknot ve madenî paralar (kuruş için 0,50 … 0,01) — kapanış sayımında küpür dökümü */
+export const TL_KUPURLERI = [200, 100, 50, 20, 10, 5, 1, 0.5, 0.25, 0.1, 0.05, 0.01];
+/** Küpür dökümünü denetler: anahtar tanımlı küpür, adet 0 ya da pozitif tam sayı. Hata metni ya da null. Saf fonksiyon. */
+export function kupurDenetle(kupur) {
+    for (const [k, v] of Object.entries(kupur || {})) {
+        if (!TL_KUPURLERI.some((x) => String(x) === String(Number(k))))
+            return `${k} TL tanımlı bir küpür değil.`;
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < 0 || n > 1_000_000)
+            return `${k} TL için adet 0 ya da pozitif tam sayı olmalı.`;
+    }
+    return null;
+}
+/** Küpür dökümünün toplamı (TL, 2 hane). Saf fonksiyon. */
+export function kupurToplami(kupur) {
+    let kurus = 0;
+    for (const [k, v] of Object.entries(kupur || {}))
+        kurus += Math.round(Number(k) * 100) * (Number(v) || 0);
+    return kurus / 100;
+}
+/** Ticari ödeme aracı türünün adı: 0 nakit (vezne), 1 cari (veresiye), 2 POS / kart, 3 banka */
+export const odemeAraciAdi = (tur) => (["Nakit", "Cari (veresiye)", "POS / Kart", "Banka"][Number(tur)] ?? "Diğer");
+// ── Sayım + fire fişi (docs/TICARI_ADISYON_YOL_HARITASI.md, TA11 / TA12) ──
+/** Sayım farkı: sayılan − sistem (4 hane); fazla GİRİŞ, eksik ÇIKIŞ olur. Saf fonksiyon. */
+export function sayimFarki(sayilan, sistem) {
+    const f = yuvarla(sayi(sayilan) - sayi(sistem), 4);
+    const fark = Math.abs(f) < 0.00005 ? 0 : f;
+    return { fark, giris: fark > 0 ? fark : 0, cikis: fark < 0 ? -fark : 0 };
+}
+export const FIRE_NEDENLERI = ["Bozulma", "Kesim firesi", "Son kullanma tarihi", "Kırık / hasarlı", "Kayıp / çalıntı", "Numune / ikram", "Diğer"];
+/** Miktar: sıfırdan büyük (sayımda sıfır da olur), en çok 4 ondalık, makul üst sınır. Hata metni ya da null. Saf fonksiyon. */
+export function stokMiktariDenetle(miktar, sifirOlur = false) {
+    const n = typeof miktar === "string" ? Number(miktar.includes(",") ? miktar.replace(/\./g, "").replace(",", ".") : miktar) : Number(miktar);
+    if (miktar === null || miktar === undefined || miktar === "" || !Number.isFinite(n))
+        return "Miktar yazılmalı.";
+    if (sifirOlur ? n < 0 : n <= 0)
+        return sifirOlur ? "Miktar eksi olamaz." : "Miktar sıfırdan büyük olmalı.";
+    if (n > 99_999_999)
+        return "Miktar çok büyük.";
+    if (Math.abs(n * 10000 - Math.round(n * 10000)) > 1e-6)
+        return "Miktar en çok 4 ondalık hane olabilir.";
+    return null;
+}
+// ── Son kullanma tarihi (docs/TICARI_ADISYON_YOL_HARITASI.md, TA16) ──
+/** SKT uyarı eşiği varsayılanı (gün) */
+export const SKT_UYARI_GUN_VARSAYILAN = 30;
+const gunBicimi = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** YYYY-AA-GG gerçek bir gün mü (31 Şubat değil) */
+export function gecerliGun(s) {
+    const m = gunBicimi.exec(String(s ?? "").trim());
+    if (!m)
+        return false;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+}
+/** İki gün arasındaki fark (b − a, gün) */
+export const gunFarki = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+/**
+ * Giriş satırı SKT denetimi. skt boşsa: takipli kartta hata, değilse null. Giriş gününden önce olamaz (süresi geçmiş mal stoğa alınmaz;
+ * gerekiyorsa fire fişiyle düşülür), girişten 30 yıldan uzak olamaz (yazım hatası). Dönen: hata metni ya da null.
+ */
+export function sktDenetle(skt, girisGunu, takipli) {
+    const t = String(skt ?? "").trim();
+    if (!t)
+        return takipli ? "SKT takibi yapılan üründe son kullanma tarihi yazılmalı." : null;
+    if (!gecerliGun(t))
+        return "Son kullanma tarihi YYYY-AA-GG biçiminde gerçek bir gün olmalı.";
+    if (gecerliGun(girisGunu) && t < girisGunu)
+        return "Son kullanma tarihi giriş gününden önce olamaz.";
+    if (gecerliGun(girisGunu) && gunFarki(girisGunu, t) > 366 * 30)
+        return "Son kullanma tarihi giriş gününden 30 yıldan uzak olamaz.";
+    return null;
+}
+/**
+ * Eldeki stoğu partilere dağıtır (satışta parti takibi yok → ilk giren ilk çıkar varsayımı): bakiye en yeni girişten geriye doğru
+ * doldurulur; SKT'siz girişler de pay alır (stoğun parçasıdır). Dönen dizi girdiyle aynı sırada, her partinin kalan tahmini.
+ */
+export function sktPartiDagit(partiler, bakiye) {
+    let kalanBakiye = Math.max(0, Number(bakiye) || 0);
+    const sirali = partiler.map((p, i) => ({ p, i })).sort((a, b) => b.p.zaman - a.p.zaman || b.p.sira - a.p.sira);
+    const kalanlar = new Array(partiler.length).fill(0);
+    for (const { p, i } of sirali) {
+        const m = Math.max(0, Number(p.miktar) || 0);
+        const al = Math.min(m, kalanBakiye);
+        kalanlar[i] = Math.round(al * 10000) / 10000;
+        kalanBakiye = Math.round((kalanBakiye - al) * 10000) / 10000;
+        if (kalanBakiye <= 0)
+            kalanBakiye = 0;
+    }
+    return partiler.map((p, i) => ({ ...p, kalan: kalanlar[i] }));
+}
+/** SKT durumu: geçti (bugünden önce), bugün, yaklaşıyor (eşik içinde), uzak */
+export function sktDurumu(skt, bugun, esikGun) {
+    const kalanGun = gunFarki(bugun, skt);
+    return { kalanGun, durum: kalanGun < 0 ? "gecti" : kalanGun === 0 ? "bugun" : kalanGun <= esikGun ? "yaklasiyor" : "uzak" };
+}
+// ── Parçalama (docs/TICARI_ADISYON_YOL_HARITASI.md, TA17) ──
+/** Ağırlık birimlerinin gram karşılığı: girdi / çıktı / fire karşılaştırması yalnız ağırlık birimleri arasında yapılır */
+const AGIRLIK_GRAM = { kg: 1000, kilo: 1000, kilogram: 1000, gr: 1, g: 1, gram: 1 };
+export const agirlikCarpani = (birim) => AGIRLIK_GRAM[String(birim || "").trim().toLocaleLowerCase("tr-TR")] ?? null;
+/**
+ * Parçalama özeti: girdi maliyeti (miktar × o anki ortalama), çıktı maliyeti toplamı, fark ve fire önerisi (girdi ve bütün
+ * çıktılar ağırlık birimindeyse girdi − çıktı, girdinin biriminde). Uyarılar: çıktı ağırlığı girdiyi aşıyor; maliyet farkı
+ * girdi maliyetinin %0,5'inden ve 1 TL'den büyük.
+ */
+export function parcalamaOzeti(girdi, ciktilar) {
+    const girdiMaliyet = yuvarla2(girdi.miktar * girdi.birimMaliyet);
+    const ciktiMaliyet = yuvarla2(ciktilar.reduce((t, c) => t + c.miktar * c.birimMaliyet, 0));
+    const fark = yuvarla2(ciktiMaliyet - girdiMaliyet);
+    const gc = agirlikCarpani(girdi.birim);
+    const hepsiAgirlik = gc !== null && ciktilar.length > 0 && ciktilar.every((c) => agirlikCarpani(c.birim) !== null);
+    const ciktiGram = hepsiAgirlik ? ciktilar.reduce((t, c) => t + c.miktar * agirlikCarpani(c.birim), 0) : 0;
+    const fireOnerisi = hepsiAgirlik && gc ? Math.round(((girdi.miktar * gc - ciktiGram) / gc) * 10000) / 10000 : null;
+    const uyarilar = [];
+    if (fireOnerisi !== null && fireOnerisi < -0.00005)
+        uyarilar.push("Çıktıların ağırlığı girdiden fazla.");
+    if (Math.abs(fark) > Math.max(1, girdiMaliyet * 0.005)) {
+        uyarilar.push(`Çıktı maliyeti girdi maliyetinden ${fark > 0 ? "fazla" : "az"} (fark ${Math.abs(fark).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL).`);
+    }
+    const verimYuzde = fireOnerisi !== null && girdi.miktar > 0 ? Math.round(((girdi.miktar - fireOnerisi) / girdi.miktar) * 10000) / 100 : null;
+    return { girdiMaliyet, ciktiMaliyet, fark, fireOnerisi, verimYuzde, uyarilar };
+}
+/**
+ * Girdi maliyetini çıktılara dağıtır: pay verilmişse paya (maliyet payı), verilmemişse miktara göre (o zaman bütün parçaların birim
+ * maliyeti aynıdır). Birim maliyet 6 hane; satır tutarları (miktar × birim, kuruş) toplamı girdi maliyetine eşit olsun diye kuruş
+ * artığı yalnız en büyük paylı satırın birim maliyetine yansıtılır.
+ */
+export function maliyetDagit(girdiMaliyet, ciktilar) {
+    if (!ciktilar.length)
+        return [];
+    const y6 = (x) => Math.round(x * 1_000_000) / 1_000_000;
+    const payVar = ciktilar.some((c) => c.pay !== null && c.pay !== undefined && Number(c.pay) > 0);
+    const agirlik = ciktilar.map((c) => (Number(c.miktar) > 0 ? (payVar ? Math.max(0, Number(c.pay) || 0) : Number(c.miktar)) : 0));
+    const toplam = agirlik.reduce((t, x) => t + x, 0);
+    if (!(toplam > 0))
+        return ciktilar.map(() => 0);
+    const birim = ciktilar.map((c, i) => (Number(c.miktar) > 0 ? y6((girdiMaliyet * agirlik[i]) / toplam / Number(c.miktar)) : 0));
+    const tutar = (i) => yuvarla2(Number(ciktilar[i].miktar) * birim[i]);
+    const enBuyuk = agirlik.indexOf(Math.max(...agirlik));
+    const digerleri = ciktilar.reduce((t, _c, i) => (i === enBuyuk ? t : t + tutar(i)), 0);
+    const hedef = yuvarla2(girdiMaliyet - digerleri);
+    if (Math.abs(hedef - tutar(enBuyuk)) >= 0.005)
+        birim[enBuyuk] = y6(hedef / Number(ciktilar[enBuyuk].miktar));
+    return birim;
+}
+/** Reçete denetimi: en az bir malzeme, ürünün kendisi malzeme olamaz, malzeme tekrar edemez, miktar > 0 ve en çok 4 hane */
+export function receteDenetle(urunKartId, satirlar) {
+    if (!satirlar.length)
+        return "Reçetede en az bir malzeme olmalı.";
+    const gorulen = new Set();
+    for (const [i, s] of satirlar.entries()) {
+        const id = Number(s.malzemeKartId) || 0;
+        if (!id)
+            return `${i + 1}. malzeme seçilmeli.`;
+        if (urunKartId && id === urunKartId)
+            return `${i + 1}. malzeme: ürünün kendisi kendi reçetesinde olamaz.`;
+        if (gorulen.has(id))
+            return `${i + 1}. malzeme reçetede iki kez yazılmış.`;
+        gorulen.add(id);
+        const h = stokMiktariDenetle(s.miktar);
+        if (h)
+            return `${i + 1}. malzeme: ${h}`;
+    }
+    return null;
+}
+/** Satılan miktar × porsiyon çarpanı × reçete miktarı → malzeme başına tüketim (4 hane); iade (eksi miktar) eksi tüketim döner */
+export function receteTuketimi(satirMiktar, recete, porsiyon = 1) {
+    const carpan = (Number(satirMiktar) || 0) * (Number(porsiyon) > 0 ? Number(porsiyon) : 1);
+    return recete.map((r) => ({ malzemeKartId: r.malzemeKartId, miktar: Math.round(carpan * (Number(r.miktar) || 0) * 10000) / 10000 }));
+}

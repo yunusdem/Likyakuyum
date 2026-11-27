@@ -137,4 +137,8 @@ export class FirmaController {
     static lisansEkle = asyncHandler(async (req, res) => {
         return ApiResponse.created(res, "Lisans eklendi.", await FirmaService.lisansEkle(req.admin, id(req), req.body));
     });
+    /** Etkin lisansın Restorant başlık adı (R4) */
+    static restoranAdi = asyncHandler(async (req, res) => {
+        return ApiResponse.ok(res, "Restorant başlık adı güncellendi.", await FirmaService.restoranAdiGuncelle(req.admin, id(req), req.body?.restoranAdi ?? null));
+    });
 }

@@ -332,6 +332,7 @@ const defaultNewUserTemplate: UserProfile = {
   iscilikGirisSekli: 0,
   dovizZiynetGirisSekli: 0,
   altinHesaplamaSekli: 0,
+  paraUstuVar: true,
 
   menuPerms: {
     mainMenu: "Tam Yetki",
@@ -415,6 +416,7 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
     milyemPermValue: normalizedMilyemValue,
     dovizZiynetGirisSekli: u.dovizZiynetGirisSekli !== undefined ? Number(u.dovizZiynetGirisSekli) : 0,
     altinHesaplamaSekli: u.altinHesaplamaSekli !== undefined ? Number(u.altinHesaplamaSekli) : 0,
+    paraUstuVar: u.paraUstuVar !== undefined ? Boolean(u.paraUstuVar) : true,
     cariSinirlamaTipi: u.cariSinirlamaTipi !== undefined ? Number(u.cariSinirlamaTipi) : 0,
     atananCariIdler: Array.isArray(u.atananCariIdler) ? u.atananCariIdler : [],
     appearance: {
@@ -1070,6 +1072,7 @@ const UserDefinitionsPage: React.FC = () => {
           cariSinirlamaTipi: currentUser.cariSinirlamaTipi !== undefined ? Number(currentUser.cariSinirlamaTipi) : 0,
           atananCariIdler: currentUser.atananCariIdler || [],
           altinHesaplamaSekli: currentUser.altinHesaplamaSekli !== undefined ? Number(currentUser.altinHesaplamaSekli) : 0,
+          paraUstuVar: currentUser.paraUstuVar !== undefined ? Boolean(currentUser.paraUstuVar) : true,
         };
 
         const created = await UserService.createUser(toCreateUser);
@@ -1150,6 +1153,7 @@ const UserDefinitionsPage: React.FC = () => {
           cariSinirlamaTipi: currentUser.cariSinirlamaTipi !== undefined ? Number(currentUser.cariSinirlamaTipi) : 0,
           atananCariIdler: currentUser.atananCariIdler || [],
           altinHesaplamaSekli: currentUser.altinHesaplamaSekli !== undefined ? Number(currentUser.altinHesaplamaSekli) : 0,
+          paraUstuVar: currentUser.paraUstuVar !== undefined ? Boolean(currentUser.paraUstuVar) : true,
         };
 
         const updated = await UserService.updateUser(existingUser.id, toSaveUser);
@@ -1737,13 +1741,13 @@ const UserDefinitionsPage: React.FC = () => {
 
                   {/* Orta Kolon: Donanım, Zoom, Oranlar & Kur Yetkisi */}
                   <Col xs={12} lg={4}>
-                    <div className="p-3 rounded-3 border bg-light h-100 d-flex flex-column gap-3">
-                      <h6 className="fw-bold text-dark pb-2 border-bottom mb-0">
+                    <div className="p-2 rounded-3 border bg-light h-100 d-flex flex-column gap-1">
+                      <h6 className="fw-bold text-dark pb-1 border-bottom mb-1">
                         Donanım, Yakınlaştırma & Kur
                       </h6>
 
                       {/* Yazıcı */}
-                      <div className="p-2 bg-white rounded border">
+                      <div className="py-1 px-2 bg-white rounded border">
                         <div className="d-flex align-items-center justify-content-between gap-2">
                           <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
                             <IconPrinter size={16} /> Yazıcı:
@@ -1805,14 +1809,14 @@ const UserDefinitionsPage: React.FC = () => {
                       </div>
 
                       {/* Zoom Ayarları */}
-                      <div className="p-2 bg-white rounded border">
-                        <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 mb-2">
-                          <IconZoomIn size={16} /> Ekran Yakınlaştırma
-                        </span>
-                        <div className="d-flex flex-column gap-2">
-                          <Form.Group as={Row} className="align-items-center mb-0">
-                            <Form.Label column sm={5} className="small text-muted text-sm-end pe-2 mb-0">Yatay zoom:</Form.Label>
-                            <Col sm={7}>
+                      <div className="py-1 px-2 bg-white rounded border">
+                        <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                          <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
+                            <IconZoomIn size={16} /> Ekran Yakınlaştırma
+                          </span>
+                          <div className="d-flex align-items-center gap-2">
+                            <div className="d-flex align-items-center gap-1">
+                              <span className="small text-muted text-nowrap">Yatay:</span>
                               <Form.Control
                                 type="text"
                                 inputMode="numeric"
@@ -1824,13 +1828,12 @@ const UserDefinitionsPage: React.FC = () => {
                                 onChange={(e) =>
                                   updateField("horizontalZoom", onlyDigits(e.target.value))
                                 }
-                                className="bg-light border text-center"
+                                className="bg-light border text-center px-1"
+                                style={{ width: "54px" }}
                               />
-                            </Col>
-                          </Form.Group>
-                          <Form.Group as={Row} className="align-items-center mb-0">
-                            <Form.Label column sm={5} className="small text-muted text-sm-end pe-2 mb-0">Dikey zoom:</Form.Label>
-                            <Col sm={7}>
+                            </div>
+                            <div className="d-flex align-items-center gap-1">
+                              <span className="small text-muted text-nowrap">Dikey:</span>
                               <Form.Control
                                 type="text"
                                 inputMode="numeric"
@@ -1842,17 +1845,18 @@ const UserDefinitionsPage: React.FC = () => {
                                 onChange={(e) =>
                                   updateField("verticalZoom", onlyDigits(e.target.value))
                                 }
-                                className="bg-light border text-center"
+                                className="bg-light border text-center px-1"
+                                style={{ width: "54px" }}
                               />
-                            </Col>
-                          </Form.Group>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
                       {/* Komisyon Oranı ve Kur Yetkisi: yalnız yönetici değiştirir */}
-                      <fieldset disabled={!kartYoneticisi} className="d-flex flex-column gap-3">
-                        <div className="p-2 bg-white rounded border">
-                          <div className="d-flex align-items-center justify-content-between mb-1">
+                      <fieldset disabled={!kartYoneticisi} className="d-flex flex-column gap-1">
+                        <div className="py-1 px-2 bg-white rounded border">
+                          <div className="d-flex align-items-center justify-content-between mb-0">
                             <Form.Check
                               type="checkbox"
                               id="hasCommissionRate"
@@ -1882,7 +1886,7 @@ const UserDefinitionsPage: React.FC = () => {
                         </div>
 
                         {/* Kur Yetkisi */}
-                        <div className="p-2 bg-white rounded border">
+                        <div className="py-1 px-2 bg-white rounded border">
                           <div className="d-flex align-items-center gap-1 flex-wrap">
                             <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0 me-1">
                               <IconExchange size={16} /> Kur yetkisi:
@@ -1940,7 +1944,7 @@ const UserDefinitionsPage: React.FC = () => {
                         </div>
 
                         {/* Milyem Yetkisi */}
-                        <div className="p-2 bg-white rounded border">
+                        <div className="py-1 px-2 bg-white rounded border">
                           <div className="d-flex align-items-center gap-1 flex-wrap">
                             <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0 me-1">
                               <IconPercentage size={16} /> Milyem yetkisi:
@@ -1997,7 +2001,7 @@ const UserDefinitionsPage: React.FC = () => {
                         </div>
 
                         {/* İşçilik Giriş Şekli */}
-                        <div className="p-2 bg-white rounded border">
+                        <div className="py-1 px-2 bg-white rounded border">
                           <div className="d-flex align-items-center justify-content-between gap-2">
                             <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
                               <IconTools size={16} /> İşçilik giriş şekli:
@@ -2041,7 +2045,7 @@ const UserDefinitionsPage: React.FC = () => {
                         </div>
 
                         {/* Döviz / Ziynet Seçimi (0: Adet, 1: Miktar) */}
-                        <div className="p-2 bg-white rounded border">
+                        <div className="py-1 px-2 bg-white rounded border">
                           <div className="d-flex align-items-center justify-content-between gap-2">
                             <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
                               <IconCoins size={16} /> Döviz / ziynet seçimi:
@@ -2085,7 +2089,7 @@ const UserDefinitionsPage: React.FC = () => {
                         </div>
 
                         {/* Altın Hesaplama Şekli (0: Has kuru, 1: Ürün kuru) */}
-                        <div className="p-2 bg-white rounded border">
+                        <div className="py-1 px-2 bg-white rounded border">
                           <div className="d-flex align-items-center justify-content-between gap-2">
                             <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
                               <IconCoins size={16} /> Altın hesaplama şekli:
@@ -2123,6 +2127,50 @@ const UserDefinitionsPage: React.FC = () => {
                                 onClick={() => updateField("altinHesaplamaSekli", 1)}
                               >
                                 Ürün kuru
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Para Üstü (true: Var, false: Yok) */}
+                        <div className="py-1 px-2 bg-white rounded border">
+                          <div className="d-flex align-items-center justify-content-between gap-2">
+                            <span className="small text-secondary fw-semibold d-flex align-items-center gap-1 flex-shrink-0">
+                              <IconCash size={16} /> Para Üstü:
+                            </span>
+                            <div
+                              className="btn-group p-0.5 bg-light rounded border flex-shrink-0"
+                              role="group"
+                              aria-label="Para Üstü"
+                              style={{ padding: "2px" }}
+                            >
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                variant={(currentUser.paraUstuVar ?? true) ? "primary" : "light"}
+                                className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${(currentUser.paraUstuVar ?? true)
+                                    ? "shadow-sm text-white"
+                                    : "text-secondary bg-transparent hover-bg-white"
+                                  }`}
+                                style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
+                                onClick={() => updateField("paraUstuVar", true)}
+                              >
+                                Var
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!kartYoneticisi}
+                                variant={!(currentUser.paraUstuVar ?? true) ? "primary" : "light"}
+                                className={`py-0 px-3 fw-medium border-0 transition-all text-nowrap ${!(currentUser.paraUstuVar ?? true)
+                                    ? "shadow-sm text-white"
+                                    : "text-secondary bg-transparent hover-bg-white"
+                                  }`}
+                                style={{ fontSize: "12px", height: "26px", lineHeight: "26px", whiteSpace: "nowrap" }}
+                                onClick={() => updateField("paraUstuVar", false)}
+                              >
+                                Yok
                               </Button>
                             </div>
                           </div>

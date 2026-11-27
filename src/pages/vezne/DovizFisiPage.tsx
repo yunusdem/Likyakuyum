@@ -4942,9 +4942,10 @@ export const DovizFisiPage: React.FC = () => {
       // F10 ile Satış fişi kaydedilirken (arbitrajlı satış dahil) Para Üstü modalını aç:
       // Kullanıcı isterse alınan parayı girer, isterse tamamı nakit ödendiyse Enter ile geçer.
       const isSatisFisi = Number(tip) === 1;
+      const paraUstuAktif = (user?.paraUstuVar ?? AuthService.getUser()?.paraUstuVar) !== false;
       let effectiveAlinanPara = isSatisFisi ? (Number(alinanPara) || 0) : 0;
       let effectiveParaUstu = isSatisFisi ? (Number(paraUstu) || 0) : 0;
-      if (andDirectPrint && isSatisFisi) {
+      if (andDirectPrint && isSatisFisi && paraUstuAktif) {
         const puResult = await new Promise<{ alinanPara: number; paraUstu: number } | null>((resolve) => {
           setParaUstuPrompt({ resolve });
         });

@@ -18,7 +18,9 @@ export const API_MODULLERI = {
     "/vezne-izleme": ["vezne", "ust:vezne-izleme", "yonetici"],
     "/perakende": ["perakende", "vezne", "ust:perakende"],
     // Ticari İşlemler (docs/TICARI_ISLEMLER_YOL_HARITASI.md, T2): stok kartı, giriş, ticari satış fişi
-    "/ticari": ["ticari", "ust:ticari"],
+    "/ticari": ["ticari", "ust:ticari", "adisyon", "ust:adisyon"],
+    // Adisyon (docs/TICARI_ADISYON_YOL_HARITASI.md, D1): masa / garson / mutfak; ürünler Ticari kartları (/ticari tanım uçları açık)
+    "/adisyon": ["adisyon", "ust:adisyon"],
     "/kasa": ["kasa", "raporlar", "yonetici"],
     "/banka": ["banka", "ust:banka", "kasa", "raporlar"],
     // e-Banka (Vomsis): F- Banka altındaki açılır grup, ayrı açılıp kapatılır (docs/EBANKA_VOMSIS_YOL_HARITASI.md, E9).
@@ -26,10 +28,10 @@ export const API_MODULLERI = {
     // kayıtlı firmalar için durur.
     "/ebanka": ["banka:#d-e-banka", "banka:#f-e-banka"],
     // POS cihazı entegrasyonu: tanım ve işlem ekranları F- Banka altındadır; fiş ekranları da tahsilat için kullanır
-    "/pos": ["banka", "ust:banka", "vezne", "perakende", "ust:sarraf", "ust:perakende", "yonetici", "ticari", "ust:ticari"],
+    "/pos": ["banka", "ust:banka", "vezne", "perakende", "ust:sarraf", "ust:perakende", "yonetici", "ticari", "ust:ticari", "adisyon", "ust:adisyon"],
     "/cari-hareket": ["cari", "ust:c-hareket", "raporlar", "vezne"],
     "/cari-dekont": ["cari", "ust:c-hareket", "raporlar"],
-    "/e-belge": ["ebelge", "ust:e-belge", "vezne", "perakende", "ayarlar", "ticari"],
+    "/e-belge": ["ebelge", "ust:e-belge", "vezne", "perakende", "ayarlar", "ticari", "adisyon"],
     "/masak": ["ust:masak", "vezne", "cari", "perakende", "raporlar"],
     "/etiket": ["etiket", "ust:fiyat", "perakende"],
     // Etiket sayım fişi ve TV katalog / menü (barkodlu ürünler): Etiket ile aynı (önceden kapısızdı, lisansta kapalıyken açıktı)

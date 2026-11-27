@@ -1,7 +1,7 @@
 import { FirmaSqlRepository } from "../../models/admin/firmaSql.repository.js";
 import { PaketService } from "./paket.service.js";
 import { PaketSqlRepository } from "../../models/admin/paketSql.repository.js";
-import { LisansSqlRepository } from "../../models/admin/lisansSql.repository.js";
+import { LisansSqlRepository, restoranAdiTemizle } from "../../models/admin/lisansSql.repository.js";
 import { AdminLogSqlRepository } from "../../models/admin/adminLogSql.repository.js";
 import { benzersizIhlalMi } from "../../models/admin/adminSql.repository.js";
 import { LISANS_UYARI_GUN, } from "../../types/admin.types.js";
@@ -197,6 +197,23 @@ export class FirmaService {
         }
         return liste;
     }
+    /** Etkin lisansın Restorant başlık adını değiştirir (R4); yeni lisans yazılmaz, işlem günlüğe yazılır */
+    static async restoranAdiGuncelle(yapan, firmaId, ad) {
+        await this.getir(firmaId);
+        const s = await LisansSqlRepository.restoranAdiGuncelle(firmaId, ad);
+        if (!s)
+            throw ApiError.badRequest("Firmanın etkin lisansı yok; önce lisans ekleyin.");
+        OturumService.onbellegiTemizle();
+        await AdminLogSqlRepository.islemLogu({
+            adminId: yapan.adminId,
+            islem: "RESTORAN_ADI_GUNCELLENDI",
+            hedefTur: "LISANS",
+            hedefId: s.lisansId,
+            eski: { restoranAdi: s.eski },
+            yeni: { restoranAdi: s.yeni },
+        });
+        return { firma: await this.getir(firmaId), lisanslar: await LisansSqlRepository.firmaLisanslari(firmaId) };
+    }
     static async lisansEkle(yapan, firmaId, girdi) {
         const firma = await this.getir(firmaId);
         // Ürün seçimi: önce doğrula (lisans yazılmadan), PAKET_ADI ürünlerden üretilir
@@ -217,6 +234,9 @@ export class FirmaService {
             paketAdi: bosIseNull(paketAdi),
             notlar: bosIseNull(girdi.notlar),
             adminId: yapan.adminId,
+            garsonLimiti: girdi.garsonLimiti ?? null,
+            // Uzatma / yeni lisansta ad kaybolmasın: alan gönderilmezse eski etkin lisansın adı taşınır
+            restoranAdi: girdi.restoranAdi !== undefined ? restoranAdiTemizle(girdi.restoranAdi) : await LisansSqlRepository.aktifRestoranAdi(firmaId).catch(() => null),
         };
         const lisansId = await LisansSqlRepository.ekle(veri);
         // Ürünler aynıysa (salt uzatma) modüllere dokunulmaz; değiştiyse firmanın modülleri paketlerden yeniden hesaplanır

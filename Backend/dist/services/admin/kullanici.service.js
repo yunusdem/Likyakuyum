@@ -207,7 +207,6 @@ export class KullaniciService {
                 zatenVar++;
                 continue;
             }
-            const v = s.SISTEM_YONETICISI;
             try {
                 await KullaniciSqlRepository.ekle({
                     firmaId,
@@ -215,7 +214,8 @@ export class KullaniciService {
                     adSoyad: null,
                     sifreHash: ESKI_SIFRE_ISARETI,
                     sifreDegismeli: false,
-                    firmaYoneticisi: v === true || v === 1 || v === "1" || v === "true",
+                    // Kartın Sistem Yöneticisi işareti merkeze taşınmaz (firma verisinde kalır); Firma yöneticisi panelden işaretlenir
+                    firmaYoneticisi: false,
                     firmaDbKullaniciId: s.KULLANICI_ID,
                     olusturan: "ICE_AKTARIM",
                 }, false);
