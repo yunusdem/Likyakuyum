@@ -347,6 +347,25 @@ const DashboardLayout: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
+  const isSadeceDovizFisi = Boolean(user?.sadeceDovizFisiGorebilir);
+  if (isSadeceDovizFisi) {
+    const allowedDovizPaths = [
+      "/vezne/doviz-fisi-kayit",
+      "/vezne/doviz-fisi-duzeltme",
+      "/vezne/doviz-fisi",
+      "/vezne/doviz-fis",
+      "/vezne/doviz-fis-duzeltme",
+    ];
+    if (!allowedDovizPaths.includes(location.pathname)) {
+      return <Navigate to="/vezne/doviz-fisi-kayit" replace />;
+    }
+    return (
+      <div className="min-vh-100 w-100 bg-light p-2" data-sayfa-icerik="true">
+        <Outlet />
+      </div>
+    );
+  }
+
   return (
     <div className={`dashboard-layout-root min-vh-100 position-relative ${drawerOpen ? "drawer-open" : ""}`}>
       {/* 1. Main Sidebar: Masaüstünde seçili stile göre, mobilde (<1200px) ise TÜM stillerde (üst menüler dahil) yandan açılır çekmece olarak çalışır */}

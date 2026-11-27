@@ -334,6 +334,7 @@ const defaultNewUserTemplate: UserProfile = {
   altinHesaplamaSekli: 0,
   paraUstuVar: true,
   dovizFisiSatirModu: false,
+  sadeceDovizFisiGorebilir: false,
 
   menuPerms: {
     mainMenu: "Tam Yetki",
@@ -419,6 +420,7 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
     altinHesaplamaSekli: u.altinHesaplamaSekli !== undefined ? Number(u.altinHesaplamaSekli) : 0,
     paraUstuVar: u.paraUstuVar !== undefined ? Boolean(u.paraUstuVar) : true,
     dovizFisiSatirModu: Boolean(u.dovizFisiSatirModu),
+    sadeceDovizFisiGorebilir: Boolean(u.sadeceDovizFisiGorebilir),
     cariSinirlamaTipi: u.cariSinirlamaTipi !== undefined ? Number(u.cariSinirlamaTipi) : 0,
     atananCariIdler: Array.isArray(u.atananCariIdler) ? u.atananCariIdler : [],
     appearance: {
@@ -1001,7 +1003,13 @@ const UserDefinitionsPage: React.FC = () => {
     }));
   };
 
-  const handleSave = async () => {
+  const [showSadeceDovizWarnModal, setShowSadeceDovizWarnModal] = useState(false);
+
+  const handleSave = async (bypassSadeceDovizConfirm?: unknown) => {
+    if (bypassSadeceDovizConfirm !== true && Boolean(currentUser.sadeceDovizFisiGorebilir)) {
+      setShowSadeceDovizWarnModal(true);
+      return;
+    }
     try {
       setIsLoading(true);
       setAlertError(null);
@@ -1028,12 +1036,20 @@ const UserDefinitionsPage: React.FC = () => {
 
       const passwordVal = (currentUser.password || "").trim();
 
-      // Kayıt modu kart kimliğiyle seçilir: açık (kayıtlı) kart güncellenir — ad değiştiyse yeniden adlandırılır —, yeni kayıt
-      // yalnız "Yeni" ile açılan kartta. Önceden kullanıcı adı eşleşmesine bakılıyordu: ad değiştirmek yeni kayıt açıyordu.
-      // (ortak alan denetimi 19.11.2026, #17)
-      const existingUser = !isNewRecord && currentUser.id
+      // Açık kart giriş yapan kullanıcıya aitse ve farklı bir kullanıcı adı + şifre girildiyse:
+      // Giriş yapan kullanıcının kaydı değişmeden, ekrandaki tüm ayarlarla sıfırdan YENİ kullanıcı oluşturulur.
+      const acikKart = !isNewRecord && currentUser.id
         ? users.find((u) => String(u.id) === String(currentUser.id))
         : undefined;
+      const girisYapanKarti =
+        !!acikKart && !!authUser?.id && String(acikKart.id) === String(authUser.id);
+      const baskaKullaniciAdiGirildi =
+        girisYapanKarti &&
+        kartYoneticisi &&
+        (acikKart.username || "").toLowerCase().trim() !== trimmedUsername.toLowerCase() &&
+        Boolean(passwordVal);
+
+      const existingUser = baskaKullaniciAdiGirildi ? undefined : acikKart;
       const adCakisan = users.find(
         (u) => u.username && u.username.toLowerCase().trim() === trimmedUsername.toLowerCase() && String(u.id) !== String(existingUser?.id ?? "")
       );
@@ -1076,6 +1092,7 @@ const UserDefinitionsPage: React.FC = () => {
           altinHesaplamaSekli: currentUser.altinHesaplamaSekli !== undefined ? Number(currentUser.altinHesaplamaSekli) : 0,
           paraUstuVar: currentUser.paraUstuVar !== undefined ? Boolean(currentUser.paraUstuVar) : true,
           dovizFisiSatirModu: Boolean(currentUser.dovizFisiSatirModu),
+          sadeceDovizFisiGorebilir: Boolean(currentUser.sadeceDovizFisiGorebilir),
         };
 
         const created = await UserService.createUser(toCreateUser);
@@ -1158,6 +1175,7 @@ const UserDefinitionsPage: React.FC = () => {
           altinHesaplamaSekli: currentUser.altinHesaplamaSekli !== undefined ? Number(currentUser.altinHesaplamaSekli) : 0,
           paraUstuVar: currentUser.paraUstuVar !== undefined ? Boolean(currentUser.paraUstuVar) : true,
           dovizFisiSatirModu: Boolean(currentUser.dovizFisiSatirModu),
+          sadeceDovizFisiGorebilir: Boolean(currentUser.sadeceDovizFisiGorebilir),
         };
 
         const updated = await UserService.updateUser(existingUser.id, toSaveUser);
@@ -2222,6 +2240,22 @@ const UserDefinitionsPage: React.FC = () => {
                       />
                       {/* Hızlı menü (üst kısayol çubuğu) ve üst çubuk düğmeleri: aynı mantık, kullanıcı görünümü tablosunda */}
                       {kartYoneticisi && <KisayolYetkileriAlani kapali={kisayolKapali} degistir={setKisayolKapali} kilitli={!kartYoneticisi || !!currentUser.isSysAdmin} />}
+
+                      {/* Sadece Döviz Fişi Görebilir (Kırmızı Uyarı Alanı) */}
+                      <div className="mt-2 p-2 rounded border border-danger bg-danger-subtle">
+                        <Form.Check
+                          type="checkbox"
+                          id="sadeceDovizFisiGorebilir"
+                          disabled={!kartYoneticisi}
+                          label={
+                            <span className="small fw-bold text-danger">
+                              Sadece döviz fişi görebilir
+                            </span>
+                          }
+                          checked={Boolean(currentUser.sadeceDovizFisiGorebilir)}
+                          onChange={(e) => updateField("sadeceDovizFisiGorebilir", e.target.checked)}
+                        />
+                      </div>
                     </div>
                   </Col>
 
@@ -3372,6 +3406,42 @@ const UserDefinitionsPage: React.FC = () => {
           updateField("atananCariIdler", selectedIds);
         }}
       />
+      {/* Sadece Döviz Fişi Görebilir Kaydetme Uyarısı */}
+      <Modal
+        show={showSadeceDovizWarnModal}
+        onHide={() => setShowSadeceDovizWarnModal(false)}
+        centered
+        size="sm"
+      >
+        <Modal.Header closeButton className="bg-danger-subtle border-danger">
+          <Modal.Title className="fs-6 fw-bold text-danger d-flex align-items-center gap-2">
+            <IconAlertCircle size={18} /> Dikkat
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="py-3 text-center small">
+          <p className="mb-2 fw-semibold text-danger">
+            "Sadece döviz fişi görebilir" seçeneği işaretli!
+          </p>
+          <p className="mb-0 text-dark">
+            Bu şekilde kaydederseniz bu kullanıcı bir daha <strong>Kullanıcı Tanımları</strong> ve diğer menüleri göremeyecektir. Devam etmek istiyor musunuz?
+          </p>
+        </Modal.Body>
+        <Modal.Footer className="py-2">
+          <Button variant="secondary" size="sm" onClick={() => setShowSadeceDovizWarnModal(false)}>
+            Vazgeç
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => {
+              setShowSadeceDovizWarnModal(false);
+              void handleSave(true);
+            }}
+          >
+            Evet, Kaydet
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };

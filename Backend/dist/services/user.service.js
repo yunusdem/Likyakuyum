@@ -94,6 +94,7 @@ export class UserService {
             altinHesaplamaSekli: input.altinHesaplamaSekli ?? 0,
             paraUstuVar: input.paraUstuVar ?? true,
             dovizFisiSatirModu: input.dovizFisiSatirModu ?? false,
+            sadeceDovizFisiGorebilir: input.sadeceDovizFisiGorebilir ?? false,
             hasVezneLastTransactionsPerm: input.hasVezneLastTransactionsPerm ?? false,
             hasOnlyOwnRecordsPerm: input.hasOnlyOwnRecordsPerm ?? false,
             cariSinirlamaTipi: input.cariSinirlamaTipi ?? 0,

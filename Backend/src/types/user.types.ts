@@ -90,6 +90,7 @@ export interface UserModel {
   altinHesaplamaSekli?: number;
   paraUstuVar?: boolean;
   dovizFisiSatirModu?: boolean;
+  sadeceDovizFisiGorebilir?: boolean;
   cariSinirlamaTipi?: number;
   atananCariIdler?: number[];
 
@@ -199,6 +200,7 @@ export interface TodvzKullaniciEntity {
   ALTIN_HESAPLAMA_SEKLI?: number | null;
   PARA_USTU_VAR?: number | boolean | null;
   DOVIZ_FISI_SATIR_MODU?: number | boolean | null;
+  SADECE_DOVIZ_FISI_GOREBILIR?: number | boolean | null;
   VEZNE_SON_ISLEMLER_YETKISI?: number | boolean | null;
   KENDI_KAYITLARI_YETKISI?: number | boolean | null;
   CARI_SINIRLAMA_TIPI?: number | null;
