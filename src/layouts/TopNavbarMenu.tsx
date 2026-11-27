@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import LiveClock from "../components/common/LiveClock";
 import { useAuth } from "../context/AuthContext";
 import { DashboardMenu } from "../routes/DashboardRoute";
 import { menuyuKullaniciyaSuz, menuyuSuz } from "../config/modulKatalogu";
@@ -79,25 +80,7 @@ export const TopNavbarMenu: React.FC = () => {
 
   const displayName = user?.fullName || user?.username || "Admin";
 
-  const [currentDate, setCurrentDate] = useState<string>(() =>
-    new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" })
-  );
-  const [currentTime, setCurrentTime] = useState<string>(() =>
-    new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })
-  );
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date();
-      setCurrentDate(
-        now.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" })
-      );
-      setCurrentTime(
-        now.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })
-      );
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Saat ve tarih artık izole LiveClock bileşeninde güncellenir (tüm TopNavbarMenu her saniye yeniden render edilmez)
 
   const [vezneName, setVezneName] = useState<string>("");
 
@@ -815,7 +798,7 @@ export const TopNavbarMenu: React.FC = () => {
             <div className="d-flex align-items-center gap-3 small font-monospace">
               <span className="text-muted">Vezne: <strong className="text-dark">{cleanVezne}</strong></span>
               <span className="text-muted">Kul.: <strong className="text-primary">{displayName}</strong></span>
-              <span className="px-2 py-0.5 rounded bg-light border fw-bold text-dark">{currentDate} {currentTime}</span>
+              <span className="px-2 py-0.5 rounded bg-light border fw-bold text-dark"><LiveClock mode="date" /> <LiveClock mode="time" /></span>
             </div>
           </div>
 
@@ -945,7 +928,7 @@ export const TopNavbarMenu: React.FC = () => {
             </Link>
             <div className="d-flex align-items-center gap-2 small font-monospace">
               <span className="fw-bold text-primary">{displayName}</span>
-              <span className="px-1.5 py-0.5 rounded bg-light border text-dark">{currentDate} {currentTime}</span>
+              <span className="px-1.5 py-0.5 rounded bg-light border text-dark"><LiveClock mode="date" /> <LiveClock mode="time" /></span>
             </div>
           </div>
 
@@ -1765,7 +1748,7 @@ export const TopNavbarMenu: React.FC = () => {
 
           {/* Tarih ve Canlı Saat */}
           <div className="d-flex align-items-center justify-content-between gap-1 text-nowrap font-monospace" title="Tarih ve Saat">
-            <span style={{ fontSize: "9.5px", fontWeight: 600, color: isDock || isSplitbar ? "#e2e8f0" : "#475569" }}>{currentDate}</span>
+            <span style={{ fontSize: "9.5px", fontWeight: 600, color: isDock || isSplitbar ? "#e2e8f0" : "#475569" }}><LiveClock mode="date" /></span>
             <span
               className="px-1 rounded border"
               style={{
@@ -1776,7 +1759,7 @@ export const TopNavbarMenu: React.FC = () => {
                 color: isDock || isSplitbar ? "#ffffff" : "#0f172a",
               }}
             >
-              {currentTime}
+              <LiveClock mode="time" />
             </span>
           </div>
         </div>

@@ -333,6 +333,7 @@ const defaultNewUserTemplate: UserProfile = {
   dovizZiynetGirisSekli: 0,
   altinHesaplamaSekli: 0,
   paraUstuVar: true,
+  dovizFisiSatirModu: false,
 
   menuPerms: {
     mainMenu: "Tam Yetki",
@@ -417,6 +418,7 @@ const ensureUserSidebarStyle = (u: any): UserProfile => {
     dovizZiynetGirisSekli: u.dovizZiynetGirisSekli !== undefined ? Number(u.dovizZiynetGirisSekli) : 0,
     altinHesaplamaSekli: u.altinHesaplamaSekli !== undefined ? Number(u.altinHesaplamaSekli) : 0,
     paraUstuVar: u.paraUstuVar !== undefined ? Boolean(u.paraUstuVar) : true,
+    dovizFisiSatirModu: Boolean(u.dovizFisiSatirModu),
     cariSinirlamaTipi: u.cariSinirlamaTipi !== undefined ? Number(u.cariSinirlamaTipi) : 0,
     atananCariIdler: Array.isArray(u.atananCariIdler) ? u.atananCariIdler : [],
     appearance: {
@@ -1073,6 +1075,7 @@ const UserDefinitionsPage: React.FC = () => {
           atananCariIdler: currentUser.atananCariIdler || [],
           altinHesaplamaSekli: currentUser.altinHesaplamaSekli !== undefined ? Number(currentUser.altinHesaplamaSekli) : 0,
           paraUstuVar: currentUser.paraUstuVar !== undefined ? Boolean(currentUser.paraUstuVar) : true,
+          dovizFisiSatirModu: Boolean(currentUser.dovizFisiSatirModu),
         };
 
         const created = await UserService.createUser(toCreateUser);
@@ -1154,6 +1157,7 @@ const UserDefinitionsPage: React.FC = () => {
           atananCariIdler: currentUser.atananCariIdler || [],
           altinHesaplamaSekli: currentUser.altinHesaplamaSekli !== undefined ? Number(currentUser.altinHesaplamaSekli) : 0,
           paraUstuVar: currentUser.paraUstuVar !== undefined ? Boolean(currentUser.paraUstuVar) : true,
+          dovizFisiSatirModu: Boolean(currentUser.dovizFisiSatirModu),
         };
 
         const updated = await UserService.updateUser(existingUser.id, toSaveUser);
@@ -2174,6 +2178,22 @@ const UserDefinitionsPage: React.FC = () => {
                               </Button>
                             </div>
                           </div>
+                        </div>
+
+                        {/* Döviz Fişi Alış/Satış Satır (Grid) Modu */}
+                        <div className="py-1 px-2 bg-white rounded border">
+                          <Form.Check
+                            type="checkbox"
+                            id="dovizFisiSatirModu"
+                            disabled={!kartYoneticisi}
+                            label={
+                              <span className="small fw-semibold text-secondary">
+                                Döviz fişi alış/satış satır (grid) modu
+                              </span>
+                            }
+                            checked={Boolean(currentUser.dovizFisiSatirModu)}
+                            onChange={(e) => updateField("dovizFisiSatirModu", e.target.checked)}
+                          />
                         </div>
                       </fieldset>
                     </div>

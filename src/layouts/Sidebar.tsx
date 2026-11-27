@@ -1,5 +1,6 @@
 import React, { Fragment, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import LiveClock from "../components/common/LiveClock";
 import {
   Accordion,
   Badge,
@@ -417,42 +418,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
     };
   }, [user?.cashierCode, (user as any)?.vezneId]);
 
-  const [currentDate, setCurrentDate] = useState<string>(() => {
-    return new Date().toLocaleDateString("tr-TR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  });
-
-  const [currentTime, setCurrentTime] = useState<string>(() => {
-    return new Date().toLocaleTimeString("tr-TR", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  });
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date();
-      setCurrentDate(
-        now.toLocaleDateString("tr-TR", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        })
-      );
-      setCurrentTime(
-        now.toLocaleTimeString("tr-TR", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        })
-      );
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Saat ve tarih artık izole LiveClock bileşeninde güncellenir (tüm Sidebar her saniye yeniden render edilmez)
 
   // Helper to extract prefix shortcut letter (e.g. "A-" -> "A")
   const getShortcutLetter = (text?: string): string | null => {
@@ -966,7 +932,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           </div>
 
           <div className="p-2 border-top bg-light d-flex align-items-center justify-content-between gap-1 flex-shrink-0">
-            <span className="small text-muted font-monospace tree-node-title">{currentTime}</span>
+            <span className="small text-muted font-monospace tree-node-title"><LiveClock mode="time" /></span>
             <button
               type="button"
               onClick={handleLogout}
@@ -1180,7 +1146,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
           </div>
 
           <div className="p-2 border-top bg-light d-flex align-items-center justify-content-between gap-1 flex-shrink-0">
-            <span className="small text-muted font-monospace railgrid-footer-time">{currentTime}</span>
+            <span className="small text-muted font-monospace railgrid-footer-time"><LiveClock mode="time" /></span>
             <button
               type="button"
               onClick={handleLogout}
@@ -1403,7 +1369,7 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
                   </div>
 
                   <div className="p-2 border-top bg-white d-flex align-items-center justify-content-between flex-shrink-0">
-                    <span className="small text-muted font-monospace">{currentTime}</span>
+                    <span className="small text-muted font-monospace"><LiveClock mode="time" /></span>
                     <button
                       type="button"
                       onClick={handleLogout}
@@ -1992,12 +1958,12 @@ const Sidebar: React.FC<SidebarProps> = ({ hideLogo = false, containerId }) => {
             >
               <span className="d-inline-flex align-items-center gap-1 text-dark fw-semibold text-nowrap">
                 <IconCalendar size={12} className="text-primary flex-shrink-0" />
-                {currentDate}
+                <LiveClock mode="date" />
               </span>
               <span className="text-muted opacity-50">•</span>
               <span className="d-inline-flex align-items-center gap-1 text-nowrap font-monospace fw-bold text-secondary">
                 <IconClock size={12} className="text-secondary flex-shrink-0" />
-                {currentTime}
+                <LiveClock mode="time" />
               </span>
             </div>
 

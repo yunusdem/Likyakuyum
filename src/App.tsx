@@ -35,7 +35,7 @@ import RaporPage from "./pages/rapor/RaporPage";
 import XmlDosyaPage from "./pages/rapor/XmlDosyaPage";
 import BanknotDefinitionsPage from "./pages/settings/BanknotDefinitionsPage";
 import CariEmanetDekontPage from "./pages/cari/CariEmanetDekontPage";
-import DovizFisiPage from "./pages/vezne/DovizFisiPage";
+import DovizFisiRouter from "./pages/vezne/DovizFisiRouter";
 import VezneTransferiPage from "./pages/vezne/VezneTransferiPage";
 import VezneIzlemePage from "./pages/vezne/VezneIzlemePage";
 import VezneParaSayPage from "./pages/vezne/VezneParaSayPage";
@@ -548,11 +548,11 @@ export default function App({ isErpSite: isErpSiteProp }: AppProps = {}) {
               <Route path="cari/emanet-kayit" element={<CariEmanetDekontPage />} />
               <Route path="cari/cari-emanet-dekont" element={<CariEmanetDekontPage />} />
               <Route path="cari/emanet" element={<CariEmanetDekontPage />} />
-              <Route path="vezne/doviz-fisi" element={<DovizFisiPage />} />
-              <Route path="vezne/doviz-fis" element={<DovizFisiPage />} />
-              <Route path="vezne/doviz-fisi-kayit" element={<DovizFisiPage />} />
-              <Route path="vezne/doviz-fisi-duzeltme" element={<DovizFisiPage />} />
-              <Route path="vezne/doviz-fis-duzeltme" element={<DovizFisiPage />} />
+              <Route path="vezne/doviz-fisi" element={<DovizFisiRouter />} />
+              <Route path="vezne/doviz-fis" element={<DovizFisiRouter />} />
+              <Route path="vezne/doviz-fisi-kayit" element={<DovizFisiRouter />} />
+              <Route path="vezne/doviz-fisi-duzeltme" element={<DovizFisiRouter />} />
+              <Route path="vezne/doviz-fis-duzeltme" element={<DovizFisiRouter />} />
               <Route path="vezne/transfer-kayit" element={<VezneTransferiPage />} />
               <Route path="vezne/transfer-duzeltme" element={<VezneTransferiPage />} />
               <Route path="vezne/vezne-transferi-kayit" element={<VezneTransferiPage />} />

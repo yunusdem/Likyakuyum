@@ -13,7 +13,7 @@ const YETKI_ALANLARI = [
   // Sonradan eklenen kart yetkileri (göç 026/028/031, giriş şekilleri): açık oturuma yansımıyordu (Y12)
   // (ortak alan denetimi 19.11.2026, #45)
   "hasVezneLastTransactionsPerm", "hasOnlyOwnRecordsPerm", "cariSinirlamaTipi", "atananCariIdler", "iscilikGirisSekli",
-  "dovizZiynetGirisSekli", "altinHesaplamaSekli", "paraUstuVar",
+  "dovizZiynetGirisSekli", "altinHesaplamaSekli", "paraUstuVar", "dovizFisiSatirModu",
 ];
 
 interface AuthContextType {
